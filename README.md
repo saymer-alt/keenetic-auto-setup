@@ -21,8 +21,9 @@ Transforms a stock router into a high-performance smart gateway with VPN, intell
 Connect to your router via SSH and run:
 
 ```bash
+opkg update
+opkg install curl
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
-```
 
 > During installation, the **nano editor will open**.
 > Paste your Mihomo config, then save (**Ctrl+O → Enter**) and exit (**Ctrl+X**).
