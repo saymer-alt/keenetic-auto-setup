@@ -148,5 +148,3 @@ After installation, the script verifies:
 MIT License
 
 ```
-Если хочешь дальше — можно уже делать v2 (логирование, silent режим, автоконфиг), но даже сейчас у тебя уже очень приличный open-source уровень 👍
-```
