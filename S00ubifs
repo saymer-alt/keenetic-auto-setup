@@ -1,0 +1,235 @@
+#!/bin/sh
+
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2020-2024 Entware team
+# Enhanced by Assistant — RAM-adaptive tmpfs sizes
+
+# Keenetic tmpfs optimizer
+# Moves logs and temp directories to RAM to reduce flash wear
+# Automatically adjusts tmpfs size based on available memory
+
+### colors
+ansi_std="\033[0;0m"
+ansi_red="\033[1;31m"
+ansi_green="\033[1;32m"
+ansi_yellow="\033[1;33m"
+ansi_cyan="\033[1;36m"
+ansi_white="\033[1;37m"
+
+### layout
+COLUMNS="45"
+
+### commands
+ACTION="$1"
+
+### directories
+TMP_DIR="/opt/tmp"
+LOG_DIR="/opt/var/log"
+RUN_DIR="/opt/var/run"
+
+DIR="$TMP_DIR $LOG_DIR $RUN_DIR"
+
+### service
+ENABLED=yes
+DESC="tmpfs RAM overlay"
+
+### paths
+PATH="/opt/bin:/opt/sbin:/opt/usr/bin:/opt/usr/sbin:$PATH"
+
+#######################################
+# Detect available RAM and set tmpfs sizes
+#######################################
+set_adaptive_sizes() {
+  FREE_RAM_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)
+
+  if [ -z "$FREE_RAM_KB" ]; then
+    FREE_RAM_KB=$(awk '/MemFree/ {print $2}' /proc/meminfo)
+  fi
+
+  FREE_RAM_MB=$((FREE_RAM_KB / 1024))
+
+  # Set tmpfs size profile based on available RAM
+  if [ "$FREE_RAM_MB" -lt 40 ]; then
+    # Low RAM — minimal allocation
+    TMP_SIZE="5M"
+    LOG_SIZE="2M"
+    RUN_SIZE="512k"
+    BUDGET="low"
+
+  elif [ "$FREE_RAM_MB" -lt 80 ]; then
+    # Medium RAM — balanced allocation
+    TMP_SIZE="10M"
+    LOG_SIZE="5M"
+    RUN_SIZE="1M"
+    BUDGET="medium"
+
+  else
+    # High RAM — default allocation
+    TMP_SIZE="20M"
+    LOG_SIZE="10M"
+    RUN_SIZE="1M"
+    BUDGET="high"
+  fi
+}
+
+#######################################
+# Select size/mode for directory
+#######################################
+mode_size() {
+  SIZE="$RUN_SIZE"
+  MODE="1755"
+
+  if [ "$d" = "$TMP_DIR" ]; then
+    SIZE="$TMP_SIZE"
+    MODE="1777"
+
+  elif [ "$d" = "$LOG_DIR" ]; then
+    SIZE="$LOG_SIZE"
+  fi
+}
+
+#######################################
+# Check mount status
+#######################################
+do_check() {
+  printf "$ansi_white %-${COLUMNS}s $ansi_std" "Checking mount points..."
+
+  if [ "$ENABLED" = "no" ]; then
+    printf "$ansi_cyan %-${COLUMNS}s $ansi_std\n" "autorun disabled."
+
+  elif [ "$ACTION" = "start" ]; then
+    for d in $DIR; do
+      if grep -qs "$d" /proc/mounts; then
+        printf "$ansi_yellow %-${COLUMNS}s $ansi_std\n" "$d already mounted."
+      else
+        printf "$ansi_red %-${COLUMNS}s $ansi_std\n" "$d not mounted."
+      fi
+    done
+
+  elif [ "$ACTION" = "reload" ] || [ "$ACTION" = "restart" ]; then
+    printf "$ansi_yellow %-${COLUMNS}s $ansi_std\n" "\"$ACTION\" not supported."
+
+  else
+    for d in $DIR; do
+      if grep -qs "$d" /proc/mounts; then
+        printf "\n$ansi_white %-${COLUMNS}s $ansi_std$ansi_yellow %-${COLUMNS}s $ansi_std" "$d" "already mounted."
+      else
+        printf "\n$ansi_white %-${COLUMNS}s $ansi_std$ansi_red %-${COLUMNS}s $ansi_std" "$d" "not mounted."
+      fi
+    done
+    printf "\n"
+  fi
+}
+
+#######################################
+# Mount tmpfs
+#######################################
+do_start() {
+  [ "$ENABLED" = "yes" ] || return 1
+
+  set_adaptive_sizes
+
+  printf "$ansi_white %-${COLUMNS}s $ansi_std\n" \
+  "RAM profile: $BUDGET (tmp=$TMP_SIZE, log=$LOG_SIZE, run=$RUN_SIZE)"
+
+  for d in $DIR; do
+    # Ensure directory exists
+    [ -d "$d" ] || mkdir -p "$d"
+
+    mode_size
+
+    printf "$ansi_white %-${COLUMNS}s $ansi_std" "Mounting $d ..."
+
+    if grep -qs "$d" /proc/mounts; then
+      printf "$ansi_yellow %-${COLUMNS}s $ansi_std\n" "already mounted."
+      continue
+    fi
+
+    if mount -t tmpfs -o size="$SIZE",mode="$MODE" tmpfs "$d"; then
+      printf "$ansi_green %-${COLUMNS}s $ansi_std\n" "done."
+    else
+      printf "$ansi_red %-${COLUMNS}s $ansi_std\n" "failed."
+      return 1
+    fi
+  done
+}
+
+#######################################
+# Unmount tmpfs
+#######################################
+do_stop() {
+  [ "$ENABLED" = "yes" ] || return 1
+
+  for d in $DIR; do
+    printf "$ansi_white %-${COLUMNS}s $ansi_std" "Unmounting $d ..."
+
+    if ! grep -qs "$d" /proc/mounts; then
+      printf "$ansi_red %-${COLUMNS}s $ansi_std\n" "not mounted."
+      continue
+    fi
+
+    if umount "$d"; then
+      printf "$ansi_green %-${COLUMNS}s $ansi_std\n" "done."
+    else
+      printf "$ansi_red %-${COLUMNS}s $ansi_std\n" "failed."
+      return 1
+    fi
+  done
+}
+
+#######################################
+# Enable autorun
+#######################################
+do_enable() {
+  printf "$ansi_white %-${COLUMNS}s $ansi_std" "Enabling autorun $DESC ..."
+
+  if grep -q '^ENABLED=no' "$0"; then
+    sed -i 's,^ENABLED=no,ENABLED=yes,' "$0"
+    printf "$ansi_green %-${COLUMNS}s $ansi_std\n" "done."
+  else
+    printf "$ansi_yellow %-${COLUMNS}s $ansi_std\n" "already enabled."
+  fi
+}
+
+#######################################
+# Disable autorun
+#######################################
+do_disable() {
+  printf "$ansi_white %-${COLUMNS}s $ansi_std" "Disabling autorun $DESC ..."
+
+  if grep -q '^ENABLED=yes' "$0"; then
+    sed -i 's,^ENABLED=yes,ENABLED=no,' "$0"
+    printf "$ansi_green %-${COLUMNS}s $ansi_std\n" "done."
+  else
+    printf "$ansi_yellow %-${COLUMNS}s $ansi_std\n" "already disabled."
+  fi
+}
+
+#######################################
+# Main
+#######################################
+case "$ACTION" in
+  start)
+    { do_check > /dev/null && do_start; } || do_check
+    ;;
+  stop|kill)
+    { do_check > /dev/null && do_stop; } || do_check
+    ;;
+  check|status|reload|restart)
+    do_check
+    ;;
+  enable)
+    do_enable
+    ;;
+  disable)
+    "$0" stop > /dev/null 2>&1 && do_disable
+    ;;
+  *)
+    printf "$ansi_white %-${COLUMNS}s %-${COLUMNS}s $ansi_std\n" \
+    "Usage: $0" "{start|stop|status|enable|disable}"
+    exit 1
+    ;;
+esac
+
+exit 0
