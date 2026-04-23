@@ -1,5 +1,3 @@
-### Обновленный `README.md`
-
 ```markdown
 # 🛡️ Keenetic Auto-Setup Suite
 
