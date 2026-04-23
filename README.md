@@ -11,14 +11,12 @@ Transforms a stock router into a high-performance smart gateway with VPN, intell
 * 🧠 **Smart routing** — split tunneling via MagiTrickle
 * 📞 **VoIP stabilization** — fixes Telegram / WhatsApp call issues
 * 💾 **Flash protection** — RAM-based tmpfs (S00ubifs) reduces storage wear
-* 🌐 **Bypass ISP restrictions** during setup and operation
-* ⚡ **One-command deployment** (~2–3 minutes setup)
+* 🌐 **Bypass ISP restrictions**
+* ⚡ **Fast deployment** (~2–3 minutes)
 
 ---
 
 ## 🚀 Installation
-
-### Quick start
 
 Connect to your router via SSH and run:
 
@@ -27,14 +25,16 @@ Connect to your router via SSH and run:
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
+```
 
 ### Option 2 (if curl is not installed)
 
 ```bash
 wget -O- https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
+```
 
 > During installation, the **nano editor will open**.
-> Paste your Mihomo config, then save (**Ctrl+O → Enter**) and exit (**Ctrl+X**).
+> Paste your Mihomo config, save (**Ctrl+O → Enter**) and exit (**Ctrl+X**).
 
 ---
 
@@ -53,9 +53,9 @@ wget -O- https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/d
 
 ```
 .
-├── deploy.sh            # Main installer (entry point)
-├── S00ubifs             # RAM tmpfs service (flash wear protection)
-├── 020-bypass_wa.sh     # VoIP traffic marking (Telegram/WhatsApp)
+├── deploy.sh
+├── S00ubifs
+├── 020-bypass_wa.sh
 └── README.md
 ```
 
@@ -63,36 +63,36 @@ wget -O- https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/d
 
 ## 🛠 What the script does
 
-1. Updates package lists and installs required tools (`curl`, `jq`, `nano`)
-2. Enables `bypass_wa` policy for Entware traffic
-3. Installs and starts RAM tmpfs service (`S00ubifs`)
-4. Downloads and installs Mihomo (auto-detects CPU architecture)
-5. Creates and configures `Proxy0` interface
-6. Opens nano editor for manual config input
-7. Installs and starts MagiTrickle
-8. Deploys VoIP bypass rules (`020-bypass_wa.sh`)
+1. Installs required tools (`curl`, `jq`, `nano`)
+2. Enables `bypass_wa` policy
+3. Starts RAM tmpfs service (`S00ubifs`)
+4. Installs Mihomo (auto-detect CPU)
+5. Creates `Proxy0` interface
+6. Opens nano for config input
+7. Installs MagiTrickle
+8. Adds VoIP rules
 9. Restarts services
-10. Runs diagnostics (services + network + JSON test)
+10. Runs diagnostics
 
 ---
 
 ## 📊 Diagnostics
 
-After installation, the script verifies:
+Checks after install:
 
 * tmpfs status
-* Mihomo service
-* MagiTrickle service
-* Internet connectivity (`curl`)
+* Mihomo status
+* MagiTrickle status
+* Internet access (`curl`)
 * JSON parsing (`jq`)
 
 ---
 
 ## ❗ Notes
 
-* Does **not overwrite your Mihomo config automatically**
-* Designed for **safe and repeatable deployment**
-* Works on multiple Keenetic models with Entware
+* Does **not overwrite Mihomo config**
+* Safe to re-run
+* Designed for multiple routers
 
 ---
 
@@ -103,11 +103,10 @@ Use at your own risk.
 
 ---
 
-## 🌍 Russian Description (RU)
+## 🌍 Russian Description
 
-Скрипт автоматической настройки роутеров Keenetic «под ключ».
-Устанавливает VPN (Mihomo), настраивает маршрутизацию, переносит логи в RAM и исправляет проблемы со звонками в мессенджерах.
-Установка выполняется одной командой через SSH.
+Скрипт автоматической настройки роутеров Keenetic.
+Настраивает VPN (Mihomo), маршрутизацию, RAM-диск и исправляет звонки в мессенджерах.
 
 ---
 
