@@ -12,7 +12,8 @@ Transforms a stock router into a smart gateway with VPN, intelligent routing and
 * 🔒 **Modern VPN stack** — Mihomo (Clash Meta) with VLESS / Reality
 * 🧠 **Smart routing** — split tunneling via MagiTrickle
 * 📞 **VoIP stabilization** — fixes Telegram / WhatsApp call issues
-* 💾 **Flash protection** — RAM-based tmpfs (S00ubifs) reduces storage wear
+* 💾 **Flash protection (optional)** — RAM-based tmpfs (S00ubifs)
+* 💽 **Disk mode support** — optimized for SSD / USB / NVMe setups
 * 🌐 **Bypass ISP restrictions** during setup and operation
 * ⚡ **Fast deployment** (~2–3 minutes)
 
@@ -34,9 +35,36 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 sh deploy.sh
 ```
 
-> ⚠️ **Important:**
-> Nano editor will NOT open if script is executed via pipe (`curl | sh`).
-> Use full installation method for interactive setup.
+> ⚠️ Nano editor will NOT open if script is executed via pipe (`curl | sh`)
+
+---
+
+## 💽 Installation Modes
+
+### RAM mode (default)
+
+Recommended for routers using **internal storage**.
+Uses tmpfs to reduce flash wear.
+
+```bash
+sh deploy.sh
+```
+
+---
+
+### Disk mode (external storage)
+
+Recommended when Entware is installed on:
+
+* USB flash
+* SSD
+* NVMe (via USB adapter)
+
+Disables tmpfs to preserve RAM.
+
+```bash
+sh deploy.sh disk
+```
 
 ---
 
@@ -55,9 +83,9 @@ sh deploy.sh
 
 ```
 .
-├── deploy.sh            # Main installer (entry point)
-├── S00ubifs             # RAM tmpfs service (flash wear protection)
-├── 020-bypass_wa.sh     # VoIP traffic marking (Telegram/WhatsApp)
+├── deploy.sh            # Main installer (supports ram/disk modes)
+├── S00ubifs             # RAM tmpfs service (optional)
+├── 020-bypass_wa.sh     # VoIP traffic marking
 └── README.md
 ```
 
@@ -71,11 +99,15 @@ sh deploy.sh
 nano /opt/etc/mihomo/config.yaml
 ```
 
+---
+
 ### Restart Mihomo
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
 ```
+
+---
 
 ### Check status
 
@@ -87,13 +119,15 @@ nano /opt/etc/mihomo/config.yaml
 
 ## 🧹 Reset config
 
-### Quick clear (truncate file)
+### Quick clear
 
 ```bash
 > /opt/etc/mihomo/config.yaml
 ```
 
-### Full reset (delete and recreate)
+---
+
+### Full reset
 
 ```bash
 rm /opt/etc/mihomo/config.yaml
@@ -102,7 +136,7 @@ touch /opt/etc/mihomo/config.yaml
 
 ---
 
-## 🧠 tmpfs service management
+## 🧠 tmpfs service (RAM mode only)
 
 ```bash
 /opt/etc/init.d/S00ubifs start
@@ -116,7 +150,7 @@ touch /opt/etc/mihomo/config.yaml
 
 After installation, the script verifies:
 
-* tmpfs status
+* tmpfs status (if enabled)
 * Mihomo service
 * MagiTrickle service
 * Internet connectivity (`curl`)
@@ -126,10 +160,11 @@ After installation, the script verifies:
 
 ## ⚠️ Notes
 
-* `bypass_wa` policy should be created manually (if used)
+* `bypass_wa` policy may need to be created manually (optional)
 * Mihomo config is provided by user
 * Script is safe to re-run
 * Designed for multi-device deployment
+* Interactive editor works only in full install mode
 
 ---
 
@@ -137,12 +172,17 @@ After installation, the script verifies:
 
 Скрипт автоматической настройки роутеров Keenetic «под ключ».
 
-Устанавливает VPN (Mihomo), настраивает маршрутизацию, переносит логи в RAM и исправляет проблемы со звонками в мессенджерах.
+Устанавливает VPN (Mihomo), настраивает маршрутизацию, переносит логи в RAM (опционально) и исправляет проблемы со звонками в мессенджерах.
 
-Установка выполняется одной командой через SSH.
+Поддерживает два режима:
+
+* RAM (по умолчанию)
+* Disk (для внешних накопителей)
 
 ---
 
 ## 📄 License
 
 MIT License
+
+```
