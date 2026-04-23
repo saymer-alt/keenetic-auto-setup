@@ -1,86 +1,82 @@
-# Keenetic Auto Setup
+### Обновленный `README.md`
 
-Automated setup script for Keenetic routers.
-Transforms a stock router into a fully configured smart gateway with VPN, traffic routing and system optimizations.
+```markdown
+# 🛡️ Keenetic Auto-Setup Suite
+
+**Automated security & performance orchestration for Keenetic routers.** Transform your stock router into a high-performance smart gateway with VLESS/Reality support, intelligent routing, and system optimizations.
 
 ---
 
 ## ✨ Features
 
-* 🧠 **Smart routing (split-tunnel)** via MagiTrickle
-* 🔒 **Modern VPN stack** (Mihomo with VLESS/Reality support)
-* 📞 **Fixes VoIP issues** (Telegram / WhatsApp calls stability)
-* 💾 **Flash wear protection** (logs and temp files moved to RAM)
-* 🌐 **Bypass ISP restrictions** (updates and package installation)
-* ⚡ **Fast deployment** (full setup in ~2 minutes)
+* 🔒 **Next-Gen VPN Stack**: Automated deployment of `Mihomo` (Clash Meta) with VLESS, Reality, and ShadowTLS support.
+* 🧠 **Intelligent Traffic Management**: Split-tunneling via `MagiTrickle` for seamless access to global and local resources.
+* 📞 **VoIP Stabilization**: Specialized Netfilter rules to fix Telegram and WhatsApp call drops under restrictive ISP environments.
+* 💾 **Hardware Longevity**: Advanced RAM-disk implementation (`S00ubifs`) to prevent flash memory wear by offloading logs and temporary files.
+* 🚀 **DPI Evasion**: Built-in logic to bypass ISP-level blocks during the installation process itself.
+* 📊 **Live Diagnostics**: Integrated post-deployment health check for all services and connectivity.
 
 ---
 
 ## 🚀 Installation
 
-Connect to your router via SSH and run:
+1. Connect to your router via SSH (ensure Entware is installed).
+2. Run the master deployment script:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/USERNAME/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL [https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh](https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh) | sh
 ```
+
+*Note: During installation, the `nano` editor will open. Paste your Mihomo/Clash configuration there, save (Ctrl+O, Enter), and exit (Ctrl+X).*
 
 ---
 
 ## 📂 Project Structure
 
-```
+```text
 .
-├── install.sh          # Main installation script
-├── configs/            # Configuration files
-│   ├── mihomo.yaml
-│   └── magitrickle.conf
-├── files/              # Additional resources (geoip, etc.)
-└── README.md
+├── deploy.sh          # Master orchestration & diagnostic script
+├── S00ubifs           # RAM-disk management service
+├── 020-bypass_wa.sh   # Netfilter rules for VoIP & policy marking
+└── README.md          # Documentation
 ```
 
 ---
 
 ## ⚙️ Requirements
 
-* Keenetic router with Entware installed
-* Internet access
-* SSH access enabled
+* Keenetic router with **Entware** installed on USB or internal storage.
+* A pre-configured **Mihomo (Clash) YAML** (use any online generator).
+* SSH access enabled.
 
 ---
 
-## 🛠 What the script does
+## 🛠️ What the script does
 
-1. Moves logs and temp files to RAM to reduce flash wear
-2. Installs and configures Mihomo proxy engine
-3. Creates virtual interface (`Proxy0`)
-4. Applies routing rules for selective traffic tunneling
-5. Fixes VoIP traffic handling
-6. Ensures access to blocked resources for updates
+1.  **Environment Check**: Validates `opkg` reachability and enables `bypass_wa` policy routing for the installer.
+2.  **Storage Setup**: Mounts `/tmp`, `/var/log`, and `/var/run` to RAM.
+3.  **Core Install**: Detects CPU architecture and installs the matching `Mihomo` binary from mirrors.
+4.  **Network Integration**: Creates a `Proxy0` virtual interface and binds it to the proxy engine.
+5.  **User Interaction**: Provides an interactive `nano` session for secure configuration entry.
+6.  **Rule Injection**: Injects packet marking rules for UDP/VoIP traffic.
+7.  **Final Audit**: Runs a diagnostic suite to verify service health and JSON parsing (`jq`).
 
 ---
 
 ## ⚠️ Disclaimer
 
-This project is provided "as is".
-Use at your own risk. Make backups before applying.
+This project is provided "as is" for educational purposes. Use at your own risk. The author is not responsible for any network instability or hardware issues.
 
 ---
 
-## 📌 Notes
+## 🌍 Russian Description (RU)
 
-* Designed for personal and small-scale deployments
-* Tested on multiple Keenetic devices
-* Configuration can be customized via `configs/` directory
-
----
-
-## 🌍 Russian description (RU)
-
-Скрипт автоматической настройки роутеров Keenetic “под ключ”.
-Настраивает VPN, маршрутизацию, оптимизации и фиксит проблемы со звонками.
+Скрипт автоматической настройки роутеров Keenetic «под ключ». 
+Настраивает VPN (Mihomo), обход блокировок, оптимизирует работу с памятью (RAM-disk) и исправляет проблемы со звонками в мессенджерах. Включает систему авто-диагностики после установки.
 
 ---
 
 ## 📄 License
 
 MIT License
+```
