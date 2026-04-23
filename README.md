@@ -184,5 +184,3 @@ After installation, the script verifies:
 ## 📄 License
 
 MIT License
-
-```
