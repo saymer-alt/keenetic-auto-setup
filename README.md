@@ -26,14 +26,14 @@ Transforms a stock router into a smart gateway with VPN, intelligent routing and
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
-````
+
 
 ### Full (recommended, with editor)
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh -o deploy.sh
 sh deploy.sh
-```
+
 
 > ⚠️ Nano editor will NOT open if script is executed via pipe (`curl | sh`)
 
@@ -48,7 +48,6 @@ Uses tmpfs to reduce flash wear.
 
 ```bash
 sh deploy.sh
-```
 
 ---
 
@@ -64,7 +63,7 @@ Disables tmpfs to preserve RAM.
 
 ```bash
 sh deploy.sh disk
-```
+
 
 ---
 
