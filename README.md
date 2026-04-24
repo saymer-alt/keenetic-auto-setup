@@ -117,4 +117,3 @@ After installation, the script verifies:
 
 ## 📄 License
 This project is licensed under the MIT License.
-```
