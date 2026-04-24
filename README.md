@@ -1,5 +1,3 @@
----
-
 ````markdown
 # 🛡️ Keenetic Auto-Setup Suite
 
@@ -188,10 +186,3 @@ Use at your own risk.
 ## 📄 License
 
 MIT License
-
-````
-
----
-
-
-````
