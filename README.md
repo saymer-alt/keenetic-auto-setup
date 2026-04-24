@@ -25,6 +25,7 @@ Connect to your router via SSH and run:
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
+```
 ````
 
 ---
