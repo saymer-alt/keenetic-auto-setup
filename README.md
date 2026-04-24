@@ -1,4 +1,3 @@
-markdown
 # 🛡️ Keenetic Auto-Setup Suite
 
 **One-command automation toolkit for Keenetic routers.**
