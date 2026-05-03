@@ -19,29 +19,34 @@ opkg update
 opkg install curl jq nano
 
 # =========================
-# VoIP policy (idempotent)
+# bypass_wa policy
 # =========================
 echo "[*] Configuring bypass_wa policy..."
 
-if ndmc -c "show ip policy" | grep -q "^bypass_wa\b"; then
-    echo "[✓] Policy 'bypass_wa' already exists."
+if ndmc -c "show ip policy" | grep -w -q "bypass_wa"; then
+    echo "[OK] Policy 'bypass_wa' already exists. Skipping creation."
 else
     echo "[+] Creating policy 'bypass_wa'..."
+    ndmc -c "ip policy bypass_wa"
     ndmc -c "ip policy bypass_wa description bypass_wa"
-    echo "[✓] Policy created."
+    echo "[OK] Policy 'bypass_wa' created."
 fi
 
 # =========================
-# TMPFS (RAM mode only)
+# TMPFS optimizer (RAM mode only)
 # =========================
 if [ "$MODE" = "ram" ]; then
     echo "[*] Installing tmpfs optimizer..."
 
-    curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+    curl -fsSL "https://cdn.jsdelivr.net/gh/saymer-alt/keenetic-auto-setup@main/S00ubifs" \
       -o /opt/etc/init.d/S00ubifs
 
-    chmod +x /opt/etc/init.d/S00ubifs
-    /opt/etc/init.d/S00ubifs start
+    if [ -f /opt/etc/init.d/S00ubifs ]; then
+        chmod +x /opt/etc/init.d/S00ubifs
+        /opt/etc/init.d/S00ubifs start
+    else
+        echo "[WARN] Failed to download S00ubifs. Skipping tmpfs setup."
+    fi
 else
     echo "[*] Skipping tmpfs (disk mode)"
 fi
@@ -51,27 +56,35 @@ fi
 # =========================
 echo "[*] Installing Mihomo..."
 
-A=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{sub(/[-_].*/,"",$2);print $2;exit}')
-U=https://sw.ext.io/ent/$A
+ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{sub(/[-_].*/,"",$2);print $2;exit}')
+REPO_URL="https://sw.ext.io/ent/$ARCH"
 
-curl -fsSL "$U/$(curl -fsSL $U/ | grep -o "mihomo_.*_${A}.*\.ipk" | sort -V | tail -1)" \
-  -o /tmp/m.ipk
+LATEST=$(curl -fsSL "$REPO_URL/" | grep -o "mihomo_.*_${ARCH}.*\.ipk" | sort -V | tail -1)
 
-opkg install /tmp/m.ipk
+if [ -n "$LATEST" ]; then
+    curl -fsSL "$REPO_URL/$LATEST" -o /tmp/mihomo.ipk
+    if [ -f /tmp/mihomo.ipk ]; then
+        opkg install /tmp/mihomo.ipk
+    else
+        echo "[WARN] Failed to download Mihomo package. Skipping."
+    fi
+else
+    echo "[WARN] Could not find Mihomo package for architecture '$ARCH'. Skipping."
+fi
 
 # =========================
-# Proxy0 config (idempotent)
+# Proxy0 interface
 # =========================
 echo "[*] Configuring Proxy0..."
 
-if ndmc -c "show interface" | grep -q "^Proxy0\b"; then
-    echo "[✓] Interface Proxy0 already exists. Updating..."
+if ndmc -c "show interface" | grep -w -q "Proxy0"; then
+    echo "[OK] Interface Proxy0 already exists. Updating parameters..."
 else
     echo "[+] Creating interface Proxy0..."
 fi
 
-i="interface Proxy0"
-for x in "" \
+IFACE="interface Proxy0"
+for CMD in "" \
 "proxy protocol socks5" \
 "proxy socks5-udp" \
 "proxy upstream 127.0.0.1 7890" \
@@ -79,7 +92,7 @@ for x in "" \
 "ip global auto" \
 "up"
 do
-    ndmc -c "$i $x" >/dev/null 2>&1
+    ndmc -c "$IFACE $CMD" >/dev/null 2>&1
 done
 
 ndmc -c "system configuration save"
@@ -107,25 +120,37 @@ wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
 opkg update
 opkg install magitrickle
 
-/opt/etc/init.d/S99magitrickle start
+if [ -f /opt/etc/init.d/S99magitrickle ]; then
+    /opt/etc/init.d/S99magitrickle start
+else
+    echo "[WARN] MagiTrickle init script not found."
+fi
 
 # =========================
-# VoIP rules (iptables hook)
+# VoIP bypass rules
 # =========================
 echo "[*] Installing VoIP bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
+curl -fsSL "https://cdn.jsdelivr.net/gh/saymer-alt/keenetic-auto-setup@main/020-bypass_wa.sh" \
   -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
-chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+if [ -f /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
+    chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+else
+    echo "[WARN] Failed to download 020-bypass_wa.sh. Skipping."
+fi
 
 # =========================
 # Restart services
 # =========================
 echo "[*] Restarting Mihomo..."
-/opt/etc/init.d/S99mihomo restart
+if [ -f /opt/etc/init.d/S99mihomo ]; then
+    /opt/etc/init.d/S99mihomo restart
+else
+    echo "[WARN] Mihomo init script not found. Skipping restart."
+fi
 
 # =========================
 # Diagnostics
@@ -135,22 +160,34 @@ echo "=== Diagnostics ==="
 
 echo "[*] tmpfs status:"
 if [ "$MODE" = "ram" ]; then
-    /opt/etc/init.d/S00ubifs status
+    if [ -f /opt/etc/init.d/S00ubifs ]; then
+        /opt/etc/init.d/S00ubifs status
+    else
+        echo "Not installed"
+    fi
 else
-    echo "skipped (disk mode)"
+    echo "Skipped (disk mode)"
 fi
 
 echo "[*] Mihomo status:"
-/opt/etc/init.d/S99mihomo status
+if [ -f /opt/etc/init.d/S99mihomo ]; then
+    /opt/etc/init.d/S99mihomo status
+else
+    echo "Not installed"
+fi
 
 echo "[*] MagiTrickle status:"
-/opt/etc/init.d/S99magitrickle status
+if [ -f /opt/etc/init.d/S99magitrickle ]; then
+    /opt/etc/init.d/S99magitrickle status
+else
+    echo "Not installed"
+fi
 
 echo "[*] curl test:"
-curl -I https://ipinfo.io | head -n 1
+curl -I -s https://ipinfo.io | head -n 1
 
 echo "[*] jq test:"
 echo '{"test":123}' | jq '.test'
 
 echo ""
-echo "[✓] Setup complete"
+echo "[OK] Setup complete"
