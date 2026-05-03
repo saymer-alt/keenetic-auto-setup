@@ -18,14 +18,21 @@ echo "[*] Installing base packages..."
 opkg update
 opkg install curl jq nano
 
-echo "[*] Checking bypass_wa policy..."
-ndmc -c "ip policy bypass_wa" >/dev/null 2>&1 || {
-    echo "[!] Policy 'bypass_wa' not found"
-    echo "[!] Create it manually in Web UI if needed"
-}
+# =========================
+# VoIP policy (idempotent)
+# =========================
+echo "[*] Configuring bypass_wa policy..."
+
+if ndmc -c "show ip policy" | grep -q "^bypass_wa\b"; then
+    echo "[✓] Policy 'bypass_wa' already exists."
+else
+    echo "[+] Creating policy 'bypass_wa'..."
+    ndmc -c "ip policy bypass_wa description bypass_wa"
+    echo "[✓] Policy created."
+fi
 
 # =========================
-# TMPFS (only in RAM mode)
+# TMPFS (RAM mode only)
 # =========================
 if [ "$MODE" = "ram" ]; then
     echo "[*] Installing tmpfs optimizer..."
@@ -53,9 +60,15 @@ curl -fsSL "$U/$(curl -fsSL $U/ | grep -o "mihomo_.*_${A}.*\.ipk" | sort -V | ta
 opkg install /tmp/m.ipk
 
 # =========================
-# Proxy0 config
+# Proxy0 config (idempotent)
 # =========================
 echo "[*] Configuring Proxy0..."
+
+if ndmc -c "show interface" | grep -q "^Proxy0\b"; then
+    echo "[✓] Interface Proxy0 already exists. Updating..."
+else
+    echo "[+] Creating interface Proxy0..."
+fi
 
 i="interface Proxy0"
 for x in "" \
@@ -66,7 +79,7 @@ for x in "" \
 "ip global auto" \
 "up"
 do
-  ndmc -c "$i $x"
+    ndmc -c "$i $x" >/dev/null 2>&1
 done
 
 ndmc -c "system configuration save"
@@ -97,7 +110,7 @@ opkg install magitrickle
 /opt/etc/init.d/S99magitrickle start
 
 # =========================
-# VoIP rules
+# VoIP rules (iptables hook)
 # =========================
 echo "[*] Installing VoIP bypass rules..."
 
