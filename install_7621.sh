@@ -2,7 +2,6 @@
 
 # =========================================================
 # Keenetic Auto Setup Script (LEGACY - MT7621)
-# Workaround for broken HTTPS / curl / TLS
 # =========================================================
 
 set -e
@@ -25,32 +24,26 @@ detect_arch() {
 }
 
 install_base() {
-    log "Updating opkg..."
     opkg update || warn "opkg update failed"
-
-    log "Installing curl..."
     opkg install curl || warn "curl install failed"
 }
 
 download_mihomo() {
 
-    # HTTP first (dirty but works)
     URL_HTTP="http://sw.ext.io/ent/mipsel/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-
-    # GitHub fallback (may fail)
     URL_GH="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
 
-    log "Downloading Mihomo via HTTP..."
+    log "Downloading Mihomo (HTTP)..."
 
     if curl -L --insecure "$URL_HTTP" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Downloaded via HTTP"
+        log "HTTP OK"
         return
     fi
 
-    warn "HTTP failed → trying GitHub"
+    warn "HTTP failed → GitHub"
 
     if curl -L --insecure "$URL_GH" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Downloaded via GitHub"
+        log "GitHub OK"
         return
     fi
 
@@ -59,10 +52,7 @@ download_mihomo() {
 }
 
 install_mihomo() {
-    log "Installing Mihomo..."
     opkg install "$TMP_DIR/mihomo.ipk"
-
-    log "Configuring Proxy0..."
 
     ndmc -c "interface Proxy0"
     ndmc -c "interface Proxy0 proxy protocol socks5"
@@ -75,10 +65,21 @@ install_mihomo() {
     ndmc -c "system configuration save"
 }
 
-post_checks() {
-    echo ""
-    log "Checks:"
-    command -v mihomo >/dev/null && echo "[OK] mihomo" || echo "[FAIL] mihomo"
+install_watchdog() {
+    WD_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
+    WD_PATH="/opt/etc/cron.5mins/mihomo_watchdog"
+
+    curl -L --insecure "$WD_URL" -o "$WD_PATH" || return
+
+    chmod +x "$WD_PATH"
+
+    touch /opt/var/log/mihomo_watchdog.log
+    chmod 666 /opt/var/log/mihomo_watchdog.log
+
+    grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || \
+        echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
+
+    /opt/etc/init.d/S10cron restart
 }
 
 cleanup() {
@@ -92,8 +93,8 @@ main() {
     install_base
     download_mihomo
     install_mihomo
+    install_watchdog
     cleanup
-    post_checks
 
     log "Done"
 }
