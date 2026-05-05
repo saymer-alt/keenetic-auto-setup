@@ -9,11 +9,11 @@ MIHOMO_VERSION="1.19.23-1"
 log() { echo "[7621] $1"; }
 
 opkg update
-opkg install curl jq nano
+opkg install curl cron
 
 # TMPFS
 if [ "$MODE" = "ram" ]; then
-    curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs  \
+    curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
         -o /opt/etc/init.d/S00ubifs && \
     chmod +x /opt/etc/init.d/S00ubifs && \
     /opt/etc/init.d/S00ubifs start
@@ -44,8 +44,6 @@ fi
 opkg install "$TMP_DIR/mihomo.ipk"
 
 # Proxy0
-log "Configuring Proxy0..."
-
 i="interface Proxy0"
 for x in "" \
 "proxy protocol socks5" \
@@ -60,8 +58,10 @@ done
 
 ndmc -c "system configuration save"
 
-# Watchdog
-curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh  \
+# WATCHDOG (FIXED)
+mkdir -p /opt/etc/cron.5mins
+
+curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
   -o /opt/etc/cron.5mins/mihomo_watchdog
 
 chmod +x /opt/etc/cron.5mins/mihomo_watchdog
@@ -69,11 +69,10 @@ chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 touch /opt/var/log/mihomo_watchdog.log
 chmod 666 /opt/var/log/mihomo_watchdog.log
 
-# Прямой вызов в crontab (надёжнее run-parts)
 grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
 echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
 
-/opt/etc/init.d/S10cron restart
+[ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
 
 /opt/etc/init.d/S99mihomo restart
 
