@@ -162,8 +162,9 @@ chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 touch /opt/var/log/mihomo_watchdog.log
 chmod 666 /opt/var/log/mihomo_watchdog.log
 
-grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || \
-echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
+# Прямой вызов в crontab (надёжнее run-parts)
+grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
+echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
 
 /opt/etc/init.d/S10cron restart
 
