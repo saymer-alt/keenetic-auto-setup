@@ -22,7 +22,7 @@ PIDOF_BIN="/opt/bin/pidof"
 # -----------------------------
 # JITTER (avoid mass restart)
 # -----------------------------
-sleep $((RANDOM % 20))
+sleep $(( $(date +%s) % 25 ))
 
 # -----------------------------
 # PROCESS CHECK
@@ -79,6 +79,8 @@ if [ "$OK" -ne 1 ]; then
     echo "$(date '+%F %T'): proxy fail [$CODES], restart" >> "$LOG_FILE"
     date +%s > "$LOCK_FILE"
     $RESTART_CMD >> "$LOG_FILE" 2>&1
+else
+    echo "$(date '+%F %T'): OK" >> "$LOG_FILE"
 fi
 
 # -----------------------------
