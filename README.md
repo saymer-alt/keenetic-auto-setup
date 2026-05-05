@@ -1,58 +1,76 @@
 # 🛡️ Keenetic Auto-Setup Suite
 
-**One-command automation toolkit for Keenetic routers.**
+**One-command automation toolkit for Keenetic routers (ARM + MT7621).**
 
-Transforms a stock router into a high-performance smart gateway with VPN, intelligent routing and system optimizations.
+Transforms a stock router into a high-performance smart gateway with VPN, smart routing, VoIP fixes and system optimizations.
 
 ---
 
 ## ✨ Features
 
-- 🔒 **Modern VPN stack** — Mihomo (Clash Meta) with VLESS / Reality support  
-- 🧠 **Smart routing** — split tunneling via MagiTrickle  
-- 📞 **VoIP stabilization** — fixes Telegram / WhatsApp call issues  
-- 💾 **Flash protection** — RAM-based tmpfs (`S00ubifs`) reduces storage wear  
-- 🌐 **Bypass ISP restrictions** during setup and operation  
-- ⚡ **One-command deployment** (~2–3 minutes setup)  
+* 🔒 **Modern VPN stack** — Mihomo (Clash Meta) with VLESS / Reality
+* 🧠 **Smart routing** — MagiTrickle (split tunneling via DNS)
+* 📞 **VoIP stabilization** — fixes Telegram / WhatsApp calls
+* 💾 **Flash protection** — tmpfs (`S00ubifs`) reduces flash wear
+* 🔄 **Self-healing** — watchdog auto-restarts Mihomo
+* 🌐 **Bypass ISP restrictions** during setup and usage
+* ⚡ **One-command deployment** (~2–3 minutes)
 
 ---
 
 ## 🚀 Installation
 
-Connect to your router via SSH and run:
-
+### 🟢 Modern routers (ARM — recommended)
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
+
+### 💾 Install to external disk
+
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/deploy.sh | sh -s -- disk
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
 ---
 
-## 🧩 Next Steps (IMPORTANT)
+### 🟡 Old routers (MT7621 / mipsel)
 
-After installation, you must add your Mihomo config manually:
+Use legacy installer (fixes broken HTTPS / curl):
+
+```bash
+opkg update && opkg install curl && \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
+```
+
+---
+
+## ⚙️ Modes
+
+| Mode            | Description                          |
+| --------------- | ------------------------------------ |
+| `ram` (default) | Uses tmpfs → protects internal flash |
+| `disk`          | For USB / SSD storage (no tmpfs)     |
+
+---
+
+## 🧩 After Installation (IMPORTANT)
+
+Add your Mihomo config:
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Paste your config, then:
-
-* Save: `Ctrl + O` → Enter
-* Exit: `Ctrl + X`
-
-Then restart Mihomo:
+Then restart:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
 ```
 
-Check status:
+Check:
 
 ```bash
 /opt/etc/init.d/S99mihomo status
@@ -60,20 +78,23 @@ Check status:
 
 ---
 
-## ⚙️ Modes
+## 🔄 Watchdog (auto-recovery)
 
-By default, installation uses **RAM mode** (recommended for internal storage).
+Installed automatically.
 
-You can also run:
+Checks every 5 minutes:
+
+* Mihomo process
+* proxy availability
+* WAN connectivity
+
+If something breaks → auto restart.
+
+Logs:
 
 ```bash
-sh deploy.sh disk
+cat /opt/var/log/mihomo_watchdog.log
 ```
-
-### Modes explained:
-
-* `ram` — uses tmpfs (reduces flash wear, recommended for internal storage)
-* `disk` — disables tmpfs (recommended for external SSD / USB storage)
 
 ---
 
@@ -81,9 +102,11 @@ sh deploy.sh disk
 
 ```
 .
-├── deploy.sh            # Main installer (entry point)
-├── S00ubifs             # RAM tmpfs service (flash wear protection)
-├── 020-bypass_wa.sh     # VoIP traffic marking (Telegram/WhatsApp)
+├── install.sh              # Main installer (ARM)
+├── install_7621.sh         # Legacy installer (MT7621)
+├── mihomo_watchdog.sh      # Auto-restart watchdog
+├── S00ubifs                # tmpfs (flash protection)
+├── 020-bypass_wa.sh        # VoIP bypass rules
 └── README.md
 ```
 
@@ -95,22 +118,22 @@ sh deploy.sh disk
 * Entware installed
 * Internet access
 * SSH access
-* Mihomo config (generate here):
-
-👉 [https://spatiumstas.github.io/web4core/](https://spatiumstas.github.io/web4core/)
 
 ---
 
 ## 🛠 What the script does
 
-1. Installs required packages (`curl`, `jq`, `nano`)
-2. Checks `bypass_wa` policy (non-destructive)
-3. (RAM mode) mounts `/tmp`, `/var/log`, `/var/run` to RAM
-4. Installs Mihomo (auto-detect CPU architecture)
-5. Creates and configures `Proxy0` interface
-6. Prepares config file
-7. Installs and starts MagiTrickle
-8. Deploys VoIP bypass rules (`020-bypass_wa.sh`)
+1. Installs base packages (`curl`, `jq`, `nano`)
+2. Creates `bypass_wa` policy (safe, non-destructive)
+3. (RAM mode) enables tmpfs (`S00ubifs`)
+4. Installs Mihomo:
+
+   * tries latest version automatically
+   * fallback to GitHub release
+5. Configures `Proxy0` interface
+6. Installs MagiTrickle
+7. Deploys VoIP bypass rules (`020-bypass_wa.sh`)
+8. Installs watchdog (auto-restart system)
 9. Restarts services
 10. Runs diagnostics
 
@@ -118,13 +141,12 @@ sh deploy.sh disk
 
 ## 📊 Diagnostics
 
-After installation, the script verifies:
+After install:
 
-* tmpfs status
-* Mihomo service
-* MagiTrickle service
-* Internet connectivity (`curl`)
-* JSON parsing (`jq`)
+* Mihomo status
+* MagiTrickle status
+* Watchdog presence
+* tmpfs status (RAM mode)
 
 ---
 
@@ -142,48 +164,71 @@ nano /opt/etc/mihomo/config.yaml
 /opt/etc/init.d/S99mihomo restart
 ```
 
-### Check status
+### Status
 
 ```bash
 /opt/etc/init.d/S99mihomo status
 ```
 
-### Clear config (fast reset)
+### Watchdog logs
 
 ```bash
-> /opt/etc/mihomo/config.yaml
+cat /opt/var/log/mihomo_watchdog.log
 ```
 
-### Remove and recreate config
+### Check proxy
 
 ```bash
-rm /opt/etc/mihomo/config.yaml && touch /opt/etc/mihomo/config.yaml
+curl --proxy 127.0.0.1:7890 http://google.com/generate_204
 ```
 
 ---
 
 ## ❗ Notes
 
-* `nano` does **not open automatically** when running via `curl | sh`
-* This is expected behavior (non-interactive shell)
-* Edit config manually using commands above
+* `nano` does NOT open automatically (non-interactive shell)
+* This is expected when using `curl | sh`
+* Always edit config manually
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Known Issues
 
-This project is provided "as is".
-Use at your own risk.
+### MT7621 (old routers)
+
+* Broken HTTPS / TLS
+* curl may fail on modern servers
+
+👉 Use `install_7621.sh`
+
+---
+
+## 🧠 Roadmap (next steps)
+
+* auto-update scripts from GitHub
+* centralized router control
+* remote monitoring
 
 ---
 
 ## 🌍 Russian Description (RU)
 
-Скрипт автоматической настройки роутеров Keenetic «под ключ».
+Скрипт автоматической настройки роутеров Keenetic.
 
-Устанавливает VPN (Mihomo), настраивает маршрутизацию, переносит логи в RAM и исправляет проблемы со звонками в мессенджерах.
+Устанавливает:
 
-После установки требуется вручную вставить конфиг Mihomo через nano.
+* Mihomo (VPN)
+* MagiTrickle (маршрутизация)
+* watchdog (авто-перезапуск)
+* tmpfs (защита флеша)
+* обход блокировок и VoIP проблем
+
+Поддерживает:
+
+* ARM (основной)
+* MT7621 (legacy режим)
+
+После установки нужно вручную вставить конфиг Mihomo.
 
 ---
 
