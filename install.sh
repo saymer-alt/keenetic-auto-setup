@@ -2,13 +2,13 @@
 
 # =========================================================
 # Keenetic Auto Setup Script (MAIN)
-# Optimized for modern Keenetic devices (ARM)
+# Production-ready installer for modern devices
 # =========================================================
 
 set -e
 
 # -----------------------------
-# CONFIGURATION
+# CONFIG
 # -----------------------------
 
 TMP_DIR="/tmp"
@@ -24,7 +24,7 @@ warn() { echo "$LOG_TAG [WARN] $1"; }
 error() { echo "$LOG_TAG [ERROR] $1"; }
 
 # -----------------------------
-# RETRY FUNCTION
+# RETRY
 # -----------------------------
 
 retry() {
@@ -62,7 +62,7 @@ install_base() {
     log "Updating opkg..."
     retry opkg update
 
-    log "Installing curl + certs..."
+    log "Installing base packages..."
     retry opkg install curl ca-bundle
 }
 
@@ -87,10 +87,10 @@ download_mihomo() {
             ;;
     esac
 
-    log "Downloading Mihomo (primary)..."
+    log "Downloading Mihomo..."
 
     if retry curl -fL --connect-timeout 10 "$URL_PRIMARY" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Primary download OK"
+        log "Primary OK"
     else
         warn "Primary failed → fallback GitHub"
 
@@ -120,6 +120,36 @@ install_mihomo() {
     ndmc -c "interface Proxy0 up"
 
     ndmc -c "system configuration save"
+}
+
+# -----------------------------
+# INSTALL WATCHDOG
+# -----------------------------
+
+install_watchdog() {
+    log "Installing watchdog..."
+
+    WD_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
+    WD_PATH="/opt/etc/cron.5mins/mihomo_watchdog"
+
+    retry curl -fL "$WD_URL" -o "$WD_PATH" || {
+        error "Failed to download watchdog"
+        return
+    }
+
+    chmod +x "$WD_PATH"
+
+    touch /opt/var/log/mihomo_watchdog.log
+    chmod 666 /opt/var/log/mihomo_watchdog.log
+
+    if ! grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null; then
+        warn "Adding cron entry..."
+        echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
+    fi
+
+    /opt/etc/init.d/S10cron restart
+
+    log "Watchdog installed"
 }
 
 # -----------------------------
@@ -167,6 +197,7 @@ main() {
     install_base
     download_mihomo
     install_mihomo
+    install_watchdog
     cleanup
     post_checks
 
