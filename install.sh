@@ -1,10 +1,8 @@
 #!/bin/sh
 
 # =========================================================
-# Keenetic Auto Setup Script
-# Author: Saymer
-# Description: Automated installation of required packages
-#              and Mihomo on Keenetic routers
+# Keenetic Auto Setup Script (MAIN)
+# Optimized for modern Keenetic devices (ARM)
 # =========================================================
 
 set -e
@@ -13,31 +11,38 @@ set -e
 # CONFIGURATION
 # -----------------------------
 
-REPO="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main"
 TMP_DIR="/tmp"
 LOG_TAG="[keenetic-setup]"
-
-# Mihomo version (manual control)
 MIHOMO_VERSION="1.19.23-1"
 
 # -----------------------------
-# LOGGING FUNCTIONS
+# LOGGING
 # -----------------------------
 
-log() {
-    echo "$LOG_TAG [INFO] $1"
-}
+log() { echo "$LOG_TAG [INFO] $1"; }
+warn() { echo "$LOG_TAG [WARN] $1"; }
+error() { echo "$LOG_TAG [ERROR] $1"; }
 
-warn() {
-    echo "$LOG_TAG [WARN] $1"
-}
+# -----------------------------
+# RETRY FUNCTION
+# -----------------------------
 
-error() {
-    echo "$LOG_TAG [ERROR] $1"
+retry() {
+    ATTEMPTS=3
+    COUNT=1
+
+    while [ $COUNT -le $ATTEMPTS ]; do
+        "$@" && return 0
+        warn "Attempt $COUNT failed..."
+        COUNT=$((COUNT + 1))
+        sleep 2
+    done
+
+    return 1
 }
 
 # -----------------------------
-# DETECT ARCHITECTURE
+# DETECT ARCH
 # -----------------------------
 
 detect_arch() {
@@ -45,26 +50,20 @@ detect_arch() {
         sub(/[-_].*/,"",$2); print $2; exit
     }')
 
-    if [ -z "$ARCH" ]; then
-        error "Failed to detect architecture"
-        exit 1
-    fi
-
-    log "Detected architecture: $ARCH"
+    [ -z "$ARCH" ] && error "Cannot detect architecture" && exit 1
+    log "Architecture: $ARCH"
 }
 
 # -----------------------------
-# INSTALL BASE PACKAGES
+# BASE PACKAGES
 # -----------------------------
 
 install_base() {
-    log "Updating package lists..."
-    opkg update
+    log "Updating opkg..."
+    retry opkg update
 
-    log "Installing base packages..."
-    opkg install curl ca-bundle
-
-    log "Base packages installed"
+    log "Installing curl + certs..."
+    retry opkg install curl ca-bundle
 }
 
 # -----------------------------
@@ -76,31 +75,29 @@ download_mihomo() {
     case "$ARCH" in
         aarch64)
             URL_PRIMARY="https://sw.ext.io/ent/aarch64/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
-            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_aarch64.ipk"
+            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
             ;;
         mipsel)
             URL_PRIMARY="https://sw.ext.io/ent/mipsel/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel.ipk"
+            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
             ;;
         *)
-            error "Unsupported architecture: $ARCH"
+            error "Unsupported arch: $ARCH"
             exit 1
             ;;
     esac
 
-    log "Downloading Mihomo (primary source)..."
+    log "Downloading Mihomo (primary)..."
 
-    if curl -fL --connect-timeout 10 "$URL_PRIMARY" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Downloaded Mihomo from primary source"
+    if retry curl -fL --connect-timeout 10 "$URL_PRIMARY" -o "$TMP_DIR/mihomo.ipk"; then
+        log "Primary download OK"
     else
-        warn "Primary download failed, trying fallback..."
+        warn "Primary failed → fallback GitHub"
 
-        if curl -fL --connect-timeout 10 "$URL_FALLBACK" -o "$TMP_DIR/mihomo.ipk"; then
-            log "Downloaded Mihomo from fallback (GitHub)"
-        else
-            error "Failed to download Mihomo"
+        retry curl -fL --connect-timeout 10 "$URL_FALLBACK" -o "$TMP_DIR/mihomo.ipk" || {
+            error "Download failed"
             exit 1
-        fi
+        }
     fi
 }
 
@@ -109,10 +106,10 @@ download_mihomo() {
 # -----------------------------
 
 install_mihomo() {
-    log "Installing Mihomo package..."
+    log "Installing Mihomo..."
     opkg install "$TMP_DIR/mihomo.ipk"
 
-    log "Configuring interface Proxy0..."
+    log "Configuring Proxy0..."
 
     ndmc -c "interface Proxy0"
     ndmc -c "interface Proxy0 proxy protocol socks5"
@@ -123,12 +120,10 @@ install_mihomo() {
     ndmc -c "interface Proxy0 up"
 
     ndmc -c "system configuration save"
-
-    log "Mihomo installed and interface configured"
 }
 
 # -----------------------------
-# POST-INSTALL CHECKS
+# CHECKS
 # -----------------------------
 
 check_bin() {
@@ -139,20 +134,18 @@ check_bin() {
 
 post_checks() {
     echo ""
-    log "Running post-install checks..."
-    echo "--------------------------------"
+    log "Post-checks:"
+    echo "------------------------"
 
     check_bin curl
     check_bin mihomo
     check_bin opkg
 
-    if pgrep mihomo >/dev/null 2>&1; then
-        echo "$LOG_TAG [OK] mihomo running"
-    else
+    pgrep mihomo >/dev/null 2>&1 && \
+        echo "$LOG_TAG [OK] mihomo running" || \
         echo "$LOG_TAG [WARN] mihomo not running"
-    fi
 
-    echo "--------------------------------"
+    echo "------------------------"
 }
 
 # -----------------------------
@@ -160,16 +153,15 @@ post_checks() {
 # -----------------------------
 
 cleanup() {
-    log "Cleaning up temporary files..."
     rm -f "$TMP_DIR/mihomo.ipk"
 }
 
 # -----------------------------
-# MAIN EXECUTION
+# MAIN
 # -----------------------------
 
 main() {
-    log "Starting Keenetic setup..."
+    log "Start setup"
 
     detect_arch
     install_base
@@ -178,7 +170,7 @@ main() {
     cleanup
     post_checks
 
-    log "Setup completed"
+    log "Done"
 }
 
 main "$@"
