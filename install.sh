@@ -83,7 +83,7 @@ if [ -n "$LATEST" ]; then
     log "Latest: $LATEST"
 
     if ! retry curl -fL "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Dynamic failed → fallback"
+        log "Dynamic failed -> fallback"
         LATEST=""
     fi
 fi
