@@ -1,102 +1,74 @@
 #!/bin/sh
 
-# =========================================================
-# Keenetic Auto Setup Script (LEGACY - MT7621)
-# =========================================================
+echo "=== Keenetic Auto Setup (7621) ==="
 
-set -e
-
+MODE="${1:-ram}"
 TMP_DIR="/tmp"
-LOG_TAG="[keenetic-7621]"
 MIHOMO_VERSION="1.19.23-1"
 
-log() { echo "$LOG_TAG [INFO] $1"; }
-warn() { echo "$LOG_TAG [WARN] $1"; }
-error() { echo "$LOG_TAG [ERROR] $1"; }
+log() { echo "[7621] $1"; }
 
-detect_arch() {
-    ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel)/{
-        sub(/[-_].*/,"",$2); print $2; exit
-    }')
+opkg update
+opkg install curl
 
-    [ -z "$ARCH" ] && error "Cannot detect arch" && exit 1
-    log "Architecture: $ARCH"
-}
+# TMPFS
+if [ "$MODE" = "ram" ]; then
+    curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+        -o /opt/etc/init.d/S00ubifs && \
+    chmod +x /opt/etc/init.d/S00ubifs && \
+    /opt/etc/init.d/S00ubifs start
+fi
 
-install_base() {
-    opkg update || warn "opkg update failed"
-    opkg install curl || warn "curl install failed"
-}
+ARCH="mipsel"
 
-download_mihomo() {
+log "Installing Mihomo..."
 
-    URL_HTTP="http://sw.ext.io/ent/mipsel/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-    URL_GH="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
+BASE_URL="http://sw.ext.io/ent/$ARCH"
 
-    log "Downloading Mihomo (HTTP)..."
+LATEST=$(curl -s "$BASE_URL/" | \
+    grep -o "mihomo_.*_${ARCH}.*\.ipk" | \
+    sort -V | tail -1)
 
-    if curl -L --insecure "$URL_HTTP" -o "$TMP_DIR/mihomo.ipk"; then
-        log "HTTP OK"
-        return
+if [ -n "$LATEST" ]; then
+    if ! curl -L --insecure "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
+        LATEST=""
     fi
+fi
 
-    warn "HTTP failed → GitHub"
+if [ -z "$LATEST" ]; then
+    curl -L --insecure \
+    "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk" \
+    -o "$TMP_DIR/mihomo.ipk" || exit 1
+fi
 
-    if curl -L --insecure "$URL_GH" -o "$TMP_DIR/mihomo.ipk"; then
-        log "GitHub OK"
-        return
-    fi
+opkg install "$TMP_DIR/mihomo.ipk"
 
-    error "Download failed"
-    exit 1
-}
+# Proxy0
+i="interface Proxy0"
+for x in "" \
+"proxy protocol socks5" \
+"proxy socks5-udp" \
+"proxy upstream 127.0.0.1 7890" \
+"description mihomo" \
+"ip global auto" \
+"up"
+do
+    ndmc -c "$i $x"
+done
 
-install_mihomo() {
-    opkg install "$TMP_DIR/mihomo.ipk"
+ndmc -c "system configuration save"
 
-    ndmc -c "interface Proxy0"
-    ndmc -c "interface Proxy0 proxy protocol socks5"
-    ndmc -c "interface Proxy0 proxy socks5-udp"
-    ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 7890"
-    ndmc -c "interface Proxy0 description mihomo"
-    ndmc -c "interface Proxy0 ip global auto"
-    ndmc -c "interface Proxy0 up"
+# Watchdog
+curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
+  -o /opt/etc/cron.5mins/mihomo_watchdog
 
-    ndmc -c "system configuration save"
-}
+chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 
-install_watchdog() {
-    WD_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
-    WD_PATH="/opt/etc/cron.5mins/mihomo_watchdog"
+touch /opt/var/log/mihomo_watchdog.log
+chmod 666 /opt/var/log/mihomo_watchdog.log
 
-    curl -L --insecure "$WD_URL" -o "$WD_PATH" || return
+/opt/etc/init.d/S10cron restart
 
-    chmod +x "$WD_PATH"
+/opt/etc/init.d/S99mihomo restart
 
-    touch /opt/var/log/mihomo_watchdog.log
-    chmod 666 /opt/var/log/mihomo_watchdog.log
-
-    grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || \
-        echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
-
-    /opt/etc/init.d/S10cron restart
-}
-
-cleanup() {
-    rm -f "$TMP_DIR/mihomo.ipk"
-}
-
-main() {
-    log "Start LEGACY setup"
-
-    detect_arch
-    install_base
-    download_mihomo
-    install_mihomo
-    install_watchdog
-    cleanup
-
-    log "Done"
-}
-
-main "$@"
+echo "[OK] Done"
