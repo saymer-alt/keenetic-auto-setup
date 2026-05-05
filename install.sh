@@ -69,7 +69,7 @@ ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
 log "Arch: $ARCH"
 
 # -----------------------------
-# MIHOMO INSTALL (dynamic + fallback)
+# MIHOMO INSTALL
 # -----------------------------
 log "Installing Mihomo..."
 
@@ -83,7 +83,7 @@ if [ -n "$LATEST" ]; then
     log "Latest: $LATEST"
 
     if ! retry curl -fL "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Dynamic failed -> fallback"
+        log "Dynamic failed → fallback"
         LATEST=""
     fi
 fi
@@ -150,23 +150,30 @@ curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
 # -----------------------------
-# WATCHDOG
+# WATCHDOG (FIXED)
 # -----------------------------
 log "Installing watchdog..."
 
-curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
-  -o /opt/etc/cron.5mins/mihomo_watchdog
+opkg install cron
 
-chmod +x /opt/etc/cron.5mins/mihomo_watchdog
+mkdir -p /opt/etc/cron.5mins
 
-touch /opt/var/log/mihomo_watchdog.log
-chmod 666 /opt/var/log/mihomo_watchdog.log
+if curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
+  -o /opt/etc/cron.5mins/mihomo_watchdog; then
 
-# Прямой вызов в crontab (надёжнее run-parts)
-grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
-echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
+    chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 
-/opt/etc/init.d/S10cron restart
+    touch /opt/var/log/mihomo_watchdog.log
+    chmod 666 /opt/var/log/mihomo_watchdog.log
+
+    grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
+    echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
+
+    [ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
+
+else
+    log "Watchdog download failed"
+fi
 
 # -----------------------------
 # RESTART
@@ -182,7 +189,7 @@ echo "=== Diagnostics ==="
 [ "$MODE" = "ram" ] && /opt/etc/init.d/S00ubifs status || echo "[tmpfs] skip"
 echo "[mihomo]" && /opt/etc/init.d/S99mihomo status
 echo "[magitrickle]" && /opt/etc/init.d/S99magitrickle status
-echo "[watchdog]" && ls /opt/etc/cron.5mins/mihomo_watchdog
+echo "[watchdog]" && ls /opt/etc/cron.5mins/mihomo_watchdog 2>/dev/null || echo "missing"
 echo "[bypass]" && ls /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
 echo "[OK] Done"
