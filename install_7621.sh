@@ -9,7 +9,7 @@ MIHOMO_VERSION="1.19.23-1"
 log() { echo "[7621] $1"; }
 
 opkg update
-opkg install curl nano
+opkg install curl jq nano
 
 # TMPFS
 if [ "$MODE" = "ram" ]; then
