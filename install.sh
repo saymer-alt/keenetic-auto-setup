@@ -1,207 +1,187 @@
 #!/bin/sh
 
-# =========================================================
-# Keenetic Auto Setup Script (MAIN)
-# Production-ready installer for modern devices
-# =========================================================
+echo "=== Keenetic Auto Setup ==="
 
-set -e
+MODE="${1:-ram}"
 
-# -----------------------------
-# CONFIG
-# -----------------------------
+if [ "$MODE" != "ram" ] && [ "$MODE" != "disk" ]; then
+    echo "Usage: sh install.sh [ram|disk]"
+    exit 1
+fi
+
+echo "[*] Mode: $MODE"
 
 TMP_DIR="/tmp"
-LOG_TAG="[keenetic-setup]"
 MIHOMO_VERSION="1.19.23-1"
 
-# -----------------------------
-# LOGGING
-# -----------------------------
-
-log() { echo "$LOG_TAG [INFO] $1"; }
-warn() { echo "$LOG_TAG [WARN] $1"; }
-error() { echo "$LOG_TAG [ERROR] $1"; }
-
-# -----------------------------
-# RETRY
-# -----------------------------
+log() { echo "[setup] $1"; }
 
 retry() {
-    ATTEMPTS=3
-    COUNT=1
-
-    while [ $COUNT -le $ATTEMPTS ]; do
+    for i in 1 2 3; do
         "$@" && return 0
-        warn "Attempt $COUNT failed..."
-        COUNT=$((COUNT + 1))
         sleep 2
     done
-
     return 1
-}
-
-# -----------------------------
-# DETECT ARCH
-# -----------------------------
-
-detect_arch() {
-    ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
-        sub(/[-_].*/,"",$2); print $2; exit
-    }')
-
-    [ -z "$ARCH" ] && error "Cannot detect architecture" && exit 1
-    log "Architecture: $ARCH"
 }
 
 # -----------------------------
 # BASE PACKAGES
 # -----------------------------
-
-install_base() {
-    log "Updating opkg..."
-    retry opkg update
-
-    log "Installing base packages..."
-    retry opkg install curl ca-bundle
-}
+log "Installing base packages..."
+opkg update
+opkg install curl jq nano
 
 # -----------------------------
-# DOWNLOAD MIHOMO
+# bypass_wa policy
 # -----------------------------
+log "Configuring bypass_wa..."
 
-download_mihomo() {
+if ! ndmc -c "show ip policy" | grep -w -q "bypass_wa"; then
+    ndmc -c "ip policy bypass_wa"
+    ndmc -c "ip policy bypass_wa description bypass_wa"
+fi
+
+# -----------------------------
+# TMPFS (RAM only)
+# -----------------------------
+if [ "$MODE" = "ram" ]; then
+    log "Installing S00ubifs..."
+
+    if curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+        -o /opt/etc/init.d/S00ubifs; then
+
+        chmod +x /opt/etc/init.d/S00ubifs
+        /opt/etc/init.d/S00ubifs start
+    else
+        log "S00ubifs download failed"
+    fi
+else
+    log "Skip S00ubifs"
+fi
+
+# -----------------------------
+# DETECT ARCH
+# -----------------------------
+ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
+    sub(/[-_].*/,"",$2); print $2; exit
+}')
+
+log "Arch: $ARCH"
+
+# -----------------------------
+# MIHOMO INSTALL (dynamic + fallback)
+# -----------------------------
+log "Installing Mihomo..."
+
+BASE_URL="https://sw.ext.io/ent/$ARCH"
+
+LATEST=$(curl -fsSL "$BASE_URL/" 2>/dev/null | \
+    grep -o "mihomo_.*_${ARCH}.*\.ipk" | \
+    sort -V | tail -1)
+
+if [ -n "$LATEST" ]; then
+    log "Latest: $LATEST"
+
+    if ! retry curl -fL "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
+        log "Dynamic failed → fallback"
+        LATEST=""
+    fi
+fi
+
+if [ -z "$LATEST" ]; then
+    log "Fallback version..."
 
     case "$ARCH" in
         aarch64)
-            URL_PRIMARY="https://sw.ext.io/ent/aarch64/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
-            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
+            URL="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
             ;;
         mipsel)
-            URL_PRIMARY="https://sw.ext.io/ent/mipsel/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-            URL_FALLBACK="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-            ;;
-        *)
-            error "Unsupported arch: $ARCH"
-            exit 1
+            URL="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
             ;;
     esac
 
-    log "Downloading Mihomo..."
-
-    if retry curl -fL --connect-timeout 10 "$URL_PRIMARY" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Primary OK"
-    else
-        warn "Primary failed → fallback GitHub"
-
-        retry curl -fL --connect-timeout 10 "$URL_FALLBACK" -o "$TMP_DIR/mihomo.ipk" || {
-            error "Download failed"
-            exit 1
-        }
-    fi
-}
-
-# -----------------------------
-# INSTALL MIHOMO
-# -----------------------------
-
-install_mihomo() {
-    log "Installing Mihomo..."
-    opkg install "$TMP_DIR/mihomo.ipk"
-
-    log "Configuring Proxy0..."
-
-    ndmc -c "interface Proxy0"
-    ndmc -c "interface Proxy0 proxy protocol socks5"
-    ndmc -c "interface Proxy0 proxy socks5-udp"
-    ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 7890"
-    ndmc -c "interface Proxy0 description mihomo"
-    ndmc -c "interface Proxy0 ip global auto"
-    ndmc -c "interface Proxy0 up"
-
-    ndmc -c "system configuration save"
-}
-
-# -----------------------------
-# INSTALL WATCHDOG
-# -----------------------------
-
-install_watchdog() {
-    log "Installing watchdog..."
-
-    WD_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
-    WD_PATH="/opt/etc/cron.5mins/mihomo_watchdog"
-
-    retry curl -fL "$WD_URL" -o "$WD_PATH" || {
-        error "Failed to download watchdog"
-        return
+    retry curl -fL "$URL" -o "$TMP_DIR/mihomo.ipk" || {
+        echo "[ERROR] Mihomo download failed"
+        exit 1
     }
+fi
 
-    chmod +x "$WD_PATH"
-
-    touch /opt/var/log/mihomo_watchdog.log
-    chmod 666 /opt/var/log/mihomo_watchdog.log
-
-    if ! grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null; then
-        warn "Adding cron entry..."
-        echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
-    fi
-
-    /opt/etc/init.d/S10cron restart
-
-    log "Watchdog installed"
-}
+opkg install "$TMP_DIR/mihomo.ipk"
 
 # -----------------------------
-# CHECKS
+# Proxy0
 # -----------------------------
+log "Configuring Proxy0..."
 
-check_bin() {
-    command -v "$1" >/dev/null 2>&1 && \
-        echo "$LOG_TAG [OK] $1" || \
-        echo "$LOG_TAG [FAIL] $1"
-}
+IFACE="interface Proxy0"
+for CMD in "" \
+"proxy protocol socks5" \
+"proxy socks5-udp" \
+"proxy upstream 127.0.0.1 7890" \
+"description mihomo" \
+"ip global auto" \
+"up"
+do
+    ndmc -c "$IFACE $CMD" >/dev/null 2>&1
+done
 
-post_checks() {
-    echo ""
-    log "Post-checks:"
-    echo "------------------------"
-
-    check_bin curl
-    check_bin mihomo
-    check_bin opkg
-
-    pgrep mihomo >/dev/null 2>&1 && \
-        echo "$LOG_TAG [OK] mihomo running" || \
-        echo "$LOG_TAG [WARN] mihomo not running"
-
-    echo "------------------------"
-}
+ndmc -c "system configuration save"
 
 # -----------------------------
-# CLEANUP
+# MAGITRICKLE
 # -----------------------------
+log "Installing MagiTrickle..."
 
-cleanup() {
-    rm -f "$TMP_DIR/mihomo.ipk"
-}
+wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
+opkg update
+opkg install magitrickle
+/opt/etc/init.d/S99magitrickle start
 
 # -----------------------------
-# MAIN
+# BYPASS RULES
 # -----------------------------
+log "Installing bypass rules..."
 
-main() {
-    log "Start setup"
+mkdir -p /opt/etc/ndm/netfilter.d
 
-    detect_arch
-    install_base
-    download_mihomo
-    install_mihomo
-    install_watchdog
-    cleanup
-    post_checks
+curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
+  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
-    log "Done"
-}
+chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
-main "$@"
+# -----------------------------
+# WATCHDOG
+# -----------------------------
+log "Installing watchdog..."
+
+curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
+  -o /opt/etc/cron.5mins/mihomo_watchdog
+
+chmod +x /opt/etc/cron.5mins/mihomo_watchdog
+
+touch /opt/var/log/mihomo_watchdog.log
+chmod 666 /opt/var/log/mihomo_watchdog.log
+
+grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || \
+echo "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins" >> /opt/etc/crontab
+
+/opt/etc/init.d/S10cron restart
+
+# -----------------------------
+# RESTART
+# -----------------------------
+/opt/etc/init.d/S99mihomo restart
+
+# -----------------------------
+# DIAGNOSTICS
+# -----------------------------
+echo ""
+echo "=== Diagnostics ==="
+
+[ "$MODE" = "ram" ] && /opt/etc/init.d/S00ubifs status || echo "[tmpfs] skip"
+echo "[mihomo]" && /opt/etc/init.d/S99mihomo status
+echo "[magitrickle]" && /opt/etc/init.d/S99magitrickle status
+echo "[watchdog]" && ls /opt/etc/cron.5mins/mihomo_watchdog
+echo "[bypass]" && ls /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+
+echo "[OK] Done"
