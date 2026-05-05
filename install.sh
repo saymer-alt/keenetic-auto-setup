@@ -150,7 +150,7 @@ curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
 # -----------------------------
-# WATCHDOG (FIXED)
+# WATCHDOG (run-parts ONLY)
 # -----------------------------
 log "Installing watchdog..."
 
@@ -165,9 +165,6 @@ if curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/m
 
     touch /opt/var/log/mihomo_watchdog.log
     chmod 666 /opt/var/log/mihomo_watchdog.log
-
-    grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
-    echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
 
     [ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
 
