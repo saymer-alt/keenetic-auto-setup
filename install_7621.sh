@@ -8,17 +8,45 @@ MIHOMO_VERSION="1.19.23-1"
 
 log() { echo "[7621] $1"; }
 
+retry() {
+    for i in 1 2 3; do
+        "$@" && return 0
+        sleep 2
+    done
+    return 1
+}
+
+# -----------------------------
+# CHECK ENV
+# -----------------------------
+if ! command -v opkg >/dev/null 2>&1; then
+    echo "[ERROR] Entware (opkg) not found!"
+    exit 1
+fi
+
+# -----------------------------
+# BASE
+# -----------------------------
 opkg update
 opkg install curl cron
 
+# -----------------------------
 # TMPFS
+# -----------------------------
 if [ "$MODE" = "ram" ]; then
-    curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+    log "Installing S00ubifs..."
+
+    retry curl -L --insecure \
+        https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
         -o /opt/etc/init.d/S00ubifs && \
     chmod +x /opt/etc/init.d/S00ubifs && \
-    /opt/etc/init.d/S00ubifs start
+    /opt/etc/init.d/S00ubifs start || \
+    log "S00ubifs failed"
 fi
 
+# -----------------------------
+# MIHOMO
+# -----------------------------
 ARCH="mipsel"
 
 log "Installing Mihomo..."
@@ -30,20 +58,29 @@ LATEST=$(curl -s "$BASE_URL/" | \
     sort -V | tail -1)
 
 if [ -n "$LATEST" ]; then
-    if ! curl -L --insecure "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
+    if ! retry curl -L --insecure "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
+        log "Dynamic failed → fallback"
         LATEST=""
     fi
 fi
 
 if [ -z "$LATEST" ]; then
-    curl -L --insecure \
+    retry curl -L --insecure \
     "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk" \
-    -o "$TMP_DIR/mihomo.ipk" || exit 1
+    -o "$TMP_DIR/mihomo.ipk" || {
+        echo "[ERROR] Mihomo download failed"
+        exit 1
+    }
 fi
 
-opkg install "$TMP_DIR/mihomo.ipk"
+opkg install "$TMP_DIR/mihomo.ipk" || {
+    echo "[ERROR] Mihomo install failed"
+    exit 1
+}
 
+# -----------------------------
 # Proxy0
+# -----------------------------
 i="interface Proxy0"
 for x in "" \
 "proxy protocol socks5" \
@@ -53,27 +90,39 @@ for x in "" \
 "ip global auto" \
 "up"
 do
-    ndmc -c "$i $x"
+    ndmc -c "$i $x" >/dev/null 2>&1
 done
 
 ndmc -c "system configuration save"
 
-# WATCHDOG (FIXED)
-mkdir -p /opt/etc/cron.5mins
+# -----------------------------
+# WATCHDOG
+# -----------------------------
+log "Installing watchdog..."
 
-curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
-  -o /opt/etc/cron.5mins/mihomo_watchdog
+mkdir -p /opt/etc/cron.5mins
+mkdir -p /opt/var/log
+
+retry curl -L --insecure \
+  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
+  -o /opt/etc/cron.5mins/mihomo_watchdog || {
+    log "watchdog download failed"
+}
 
 chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 
 touch /opt/var/log/mihomo_watchdog.log
 chmod 666 /opt/var/log/mihomo_watchdog.log
 
+# добавляем в cron (без дублей)
 grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
 echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
 
 [ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
 
+# -----------------------------
+# RESTART
+# -----------------------------
 /opt/etc/init.d/S99mihomo restart
 
 echo "[OK] Done"
