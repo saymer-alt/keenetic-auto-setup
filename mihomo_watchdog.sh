@@ -1,76 +1,47 @@
 #!/bin/sh
 
-echo "=== Keenetic Auto Setup (7621) ==="
+LOG="/opt/var/log/mihomo_watchdog.log"
+PROXY="socks5://127.0.0.1:7890"
+STATE="/opt/var/run/mihomo_fail"
 
-MODE="${1:-ram}"
-TMP_DIR="/tmp"
-MIHOMO_VERSION="1.19.23-1"
+MAX_FAIL=3
 
-log() { echo "[7621] $1"; }
+log() {
+    echo "$(date '+%F %T') $1" >> "$LOG"
+}
 
-opkg update
-opkg install curl cron
+# jitter
+sleep $(( $(date +%s) % 25 ))
 
-# TMPFS
-if [ "$MODE" = "ram" ]; then
-    curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
-        -o /opt/etc/init.d/S00ubifs && \
-    chmod +x /opt/etc/init.d/S00ubifs && \
-    /opt/etc/init.d/S00ubifs start
+# WAN check
+if ! ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+    log "[WARN] WAN unreachable"
+    exit 0
 fi
 
-ARCH="mipsel"
+# читаем счётчик
+FAIL=0
+[ -f "$STATE" ] && FAIL=$(cat "$STATE")
 
-log "Installing Mihomo..."
-
-BASE_URL="http://sw.ext.io/ent/$ARCH"
-
-LATEST=$(curl -s "$BASE_URL/" | \
-    grep -o "mihomo_.*_${ARCH}.*\.ipk" | \
-    sort -V | tail -1)
-
-if [ -n "$LATEST" ]; then
-    if ! curl -L --insecure "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
-        LATEST=""
-    fi
+# proxy check
+if ! curl -x "$PROXY" -m 5 -s https://ipinfo.io >/dev/null 2>&1; then
+    FAIL=$((FAIL + 1))
+    echo "$FAIL" > "$STATE"
+    log "[FAIL] Proxy not responding ($FAIL/$MAX_FAIL)"
+else
+    echo "0" > "$STATE"
+    log "[OK] Proxy alive"
+    exit 0
 fi
 
-if [ -z "$LATEST" ]; then
-    curl -L --insecure \
-    "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk" \
-    -o "$TMP_DIR/mihomo.ipk" || exit 1
+# restart
+if [ "$FAIL" -ge "$MAX_FAIL" ]; then
+    log "[ACTION] Restarting Mihomo"
+    /opt/etc/init.d/S99mihomo restart
+    echo "0" > "$STATE"
+    sleep 10
 fi
 
-opkg install "$TMP_DIR/mihomo.ipk"
-
-# Proxy0
-i="interface Proxy0"
-for x in "" \
-"proxy protocol socks5" \
-"proxy socks5-udp" \
-"proxy upstream 127.0.0.1 7890" \
-"description mihomo" \
-"ip global auto" \
-"up"
-do
-    ndmc -c "$i $x"
-done
-
-ndmc -c "system configuration save"
-
-# WATCHDOG (run-parts)
-mkdir -p /opt/etc/cron.5mins
-
-curl -L --insecure https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
-  -o /opt/etc/cron.5mins/mihomo_watchdog
-
-chmod +x /opt/etc/cron.5mins/mihomo_watchdog
-
-touch /opt/var/log/mihomo_watchdog.log
-chmod 666 /opt/var/log/mihomo_watchdog.log
-
-[ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
-
-/opt/etc/init.d/S99mihomo restart
-
-echo "[OK] Done"
+# log rotate
+LINES=$(wc -l < "$LOG" 2>/dev/null)
+[ "$LINES" -gt 200 ] && tail -n 100 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
