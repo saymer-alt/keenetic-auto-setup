@@ -11,6 +11,15 @@ fi
 
 echo "[*] Mode: $MODE"
 
+# -----------------------------
+# CHECK ENV
+# -----------------------------
+if ! command -v opkg >/dev/null 2>&1; then
+    echo "[ERROR] Entware (opkg) not found!"
+    echo "Install Entware first."
+    exit 1
+fi
+
 TMP_DIR="/tmp"
 MIHOMO_VERSION="1.19.23-1"
 
@@ -47,7 +56,7 @@ fi
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
 
-    if curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+    if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
         -o /opt/etc/init.d/S00ubifs; then
 
         chmod +x /opt/etc/init.d/S00ubifs
@@ -65,6 +74,11 @@ fi
 ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
     sub(/[-_].*/,"",$2); print $2; exit
 }')
+
+[ -z "$ARCH" ] && {
+    echo "[ERROR] Cannot detect architecture"
+    exit 1
+}
 
 log "Arch: $ARCH"
 
@@ -98,6 +112,10 @@ if [ -z "$LATEST" ]; then
         mipsel)
             URL="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
             ;;
+        *)
+            echo "[ERROR] Unsupported arch: $ARCH"
+            exit 1
+            ;;
     esac
 
     retry curl -fL "$URL" -o "$TMP_DIR/mihomo.ipk" || {
@@ -106,7 +124,10 @@ if [ -z "$LATEST" ]; then
     }
 fi
 
-opkg install "$TMP_DIR/mihomo.ipk"
+opkg install "$TMP_DIR/mihomo.ipk" || {
+    echo "[ERROR] Mihomo install failed"
+    exit 1
+}
 
 # -----------------------------
 # Proxy0
@@ -132,7 +153,9 @@ ndmc -c "system configuration save"
 # -----------------------------
 log "Installing MagiTrickle..."
 
+curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || \
 wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
+
 opkg update
 opkg install magitrickle
 /opt/etc/init.d/S99magitrickle start
@@ -144,8 +167,10 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
-  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
+  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh || {
+    log "bypass rules download failed"
+}
 
 chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 
@@ -154,15 +179,16 @@ chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 # -----------------------------
 log "Installing watchdog..."
 
-opkg install cron
+opkg install cron || log "cron install failed"
 
 mkdir -p /opt/etc/cron.5mins
 
-if curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
+if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
   -o /opt/etc/cron.5mins/mihomo_watchdog; then
 
     chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 
+    mkdir -p /opt/var/log
     touch /opt/var/log/mihomo_watchdog.log
     chmod 666 /opt/var/log/mihomo_watchdog.log
 
@@ -188,5 +214,8 @@ echo "[mihomo]" && /opt/etc/init.d/S99mihomo status
 echo "[magitrickle]" && /opt/etc/init.d/S99magitrickle status
 echo "[watchdog]" && ls /opt/etc/cron.5mins/mihomo_watchdog 2>/dev/null || echo "missing"
 echo "[bypass]" && ls /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+
+echo "[watchdog log]"
+tail -n 5 /opt/var/log/mihomo_watchdog.log 2>/dev/null || echo "no log yet"
 
 echo "[OK] Done"
