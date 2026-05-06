@@ -11,15 +11,6 @@ fi
 
 echo "[*] Mode: $MODE"
 
-# -----------------------------
-# CHECK ENV
-# -----------------------------
-if ! command -v opkg >/dev/null 2>&1; then
-    echo "[ERROR] Entware (opkg) not found!"
-    echo "Install Entware first."
-    exit 1
-fi
-
 TMP_DIR="/tmp"
 MIHOMO_VERSION="1.19.23-1"
 
@@ -34,11 +25,36 @@ retry() {
 }
 
 # -----------------------------
+# CHECK BASE
+# -----------------------------
+command -v opkg >/dev/null 2>&1 || {
+    echo "[ERROR] opkg not found"
+    exit 1
+}
+
+# -----------------------------
 # BASE PACKAGES
 # -----------------------------
 log "Installing base packages..."
-opkg update
-opkg install curl jq nano
+
+opkg update || {
+    echo "[ERROR] opkg update failed"
+    exit 1
+}
+
+pkg_install() {
+    opkg list-installed | grep -q "^$1 " || opkg install "$1"
+}
+
+pkg_install curl
+pkg_install jq
+pkg_install nano
+pkg_install cron
+
+command -v jq >/dev/null || {
+    echo "[ERROR] jq not installed"
+    exit 1
+}
 
 # -----------------------------
 # bypass_wa policy
@@ -51,7 +67,7 @@ if ! ndmc -c "show ip policy" | grep -w -q "bypass_wa"; then
 fi
 
 # -----------------------------
-# TMPFS (RAM only)
+# TMPFS
 # -----------------------------
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
@@ -157,7 +173,8 @@ curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || 
 wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
 
 opkg update
-opkg install magitrickle
+pkg_install magitrickle
+
 /opt/etc/init.d/S99magitrickle start
 
 # -----------------------------
@@ -167,19 +184,18 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
-  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh || {
-    log "bypass rules download failed"
-}
+if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
+  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
 
-chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+    chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+else
+    log "bypass download failed"
+fi
 
 # -----------------------------
-# WATCHDOG (run-parts ONLY)
+# WATCHDOG
 # -----------------------------
 log "Installing watchdog..."
-
-opkg install cron || log "cron install failed"
 
 mkdir -p /opt/etc/cron.5mins
 
@@ -192,8 +208,15 @@ if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-s
     touch /opt/var/log/mihomo_watchdog.log
     chmod 666 /opt/var/log/mihomo_watchdog.log
 
-    [ -f /opt/etc/init.d/S10cron ] && /opt/etc/init.d/S10cron restart
+    if grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null; then
+        log "Using run-parts"
+    else
+        log "Fallback to crontab"
+        grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
+        echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
+    fi
 
+    /opt/etc/init.d/S10cron restart
 else
     log "Watchdog download failed"
 fi
@@ -203,19 +226,11 @@ fi
 # -----------------------------
 /opt/etc/init.d/S99mihomo restart
 
+sleep 2
+netstat -tln 2>/dev/null | grep -q 7890 || \
+echo "[WARN] Mihomo may not be running"
+
 # -----------------------------
-# DIAGNOSTICS
+# DONE
 # -----------------------------
-echo ""
-echo "=== Diagnostics ==="
-
-[ "$MODE" = "ram" ] && /opt/etc/init.d/S00ubifs status || echo "[tmpfs] skip"
-echo "[mihomo]" && /opt/etc/init.d/S99mihomo status
-echo "[magitrickle]" && /opt/etc/init.d/S99magitrickle status
-echo "[watchdog]" && ls /opt/etc/cron.5mins/mihomo_watchdog 2>/dev/null || echo "missing"
-echo "[bypass]" && ls /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
-
-echo "[watchdog log]"
-tail -n 5 /opt/var/log/mihomo_watchdog.log 2>/dev/null || echo "no log yet"
-
 echo "[OK] Done"
