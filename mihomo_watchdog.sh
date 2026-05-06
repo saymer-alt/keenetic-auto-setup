@@ -4,7 +4,9 @@ LOG="/opt/var/log/mihomo_watchdog.log"
 WAN_TARGET="1.1.1.1"
 PROXY="127.0.0.1:7890"
 
-# jitter (распределение нагрузки)
+# -----------------------------
+# JITTER (распределение нагрузки)
+# -----------------------------
 sleep $(( $(date +%s) % 25 ))
 
 log() {
@@ -20,30 +22,32 @@ if ! ping -c 2 -W 2 $WAN_TARGET >/dev/null 2>&1; then
 fi
 
 # -----------------------------
-# PROXY CHECK
+# PORT CHECK (через curl, без netcat)
 # -----------------------------
-if ! nc -z 127.0.0.1 7890 >/dev/null 2>&1; then
-    log "[FAIL] Mihomo port dead → restarting"
+if ! curl -s --connect-timeout 3 http://127.0.0.1:7890 >/dev/null 2>&1; then
+    log "[FAIL] Mihomo port unreachable → restarting"
     /opt/etc/init.d/S99mihomo restart
     exit 0
 fi
 
 # -----------------------------
-# HTTP CHECK (через proxy)
+# PROXY CHECK (через SOCKS5)
 # -----------------------------
-if ! curl -x socks5h://$PROXY -m 5 -s https://www.google.com >/dev/null; then
+if ! curl -x socks5h://$PROXY -m 5 -s https://www.google.com >/dev/null 2>&1; then
     log "[FAIL] Proxy check failed → restarting"
     /opt/etc/init.d/S99mihomo restart
     exit 0
 fi
 
 # -----------------------------
-# LOG ROTATION (очень важно)
+# LOG ROTATION
 # -----------------------------
-LINES=$(wc -l < "$LOG")
-if [ "$LINES" -gt 200 ]; then
-    tail -n 100 "$LOG" > "$LOG.tmp"
-    mv "$LOG.tmp" "$LOG"
+if [ -f "$LOG" ]; then
+    LINES=$(wc -l < "$LOG")
+    if [ "$LINES" -gt 200 ]; then
+        tail -n 100 "$LOG" > "$LOG.tmp"
+        mv "$LOG.tmp" "$LOG"
+    fi
 fi
 
 log "[OK] All good"
