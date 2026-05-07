@@ -1,5 +1,3 @@
-## 📄 `docs/06-s00ubifs.md`
-
 ```markdown
 # S00ubifs — защита флешки и RAM-режим
 
