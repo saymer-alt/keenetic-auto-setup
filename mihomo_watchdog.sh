@@ -35,9 +35,9 @@ log() {
 
 # =========================================================
 # WAN CHECK
-# Skips restart if global internet connection is down
+# Using absolute path to system ping to avoid PATH issues
 # =========================================================
-if ! ping -c 2 -W 2 "$WAN_TARGET" >/dev/null 2>&1; then
+if ! /bin/ping -c 2 -W 2 "$WAN_TARGET" >/dev/null 2>&1; then
     log "[WARN] WAN unreachable"
     exit 0
 fi
