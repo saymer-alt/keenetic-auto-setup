@@ -35,9 +35,9 @@ log() {
 
 # =========================================================
 # WAN CHECK
-# Using absolute path to system ping to avoid PATH issues
+# Use curl to check internet connectivity (more reliable than ping)
 # =========================================================
-if ! /bin/ping -c 2 -W 2 "$WAN_TARGET" >/dev/null 2>&1; then
+if ! curl -s --connect-timeout 3 --head http://1.1.1.1 >/dev/null 2>&1; then
     log "[WARN] WAN unreachable"
     exit 0
 fi
