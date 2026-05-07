@@ -1,5 +1,3 @@
-## 📄 `docs/08-troubleshooting.md`
-
 ````markdown id="u8k3xq"
 # Troubleshooting
 
@@ -456,7 +454,3 @@ iptables -t mangle -L | grep _CUST_BYPASS_WA_
 5. Проверить RAM
 
 👉 90% проблем найдутся здесь
-
-```
-
----
