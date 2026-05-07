@@ -1,4 +1,3 @@
-```sh
 #!/bin/sh
 
 LOG="/opt/var/log/mihomo_watchdog.log"
@@ -73,4 +72,3 @@ if [ -f "$LOG" ]; then
 fi
 
 log "[OK] All good"
-```
