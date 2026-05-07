@@ -7,8 +7,8 @@ WAN_TARGET="1.1.1.1"
 PROXY="127.0.0.1:7890"
 
 # =========================================================
-# LOCK
-# Защита от наложения запусков watchdog
+# LOCK MECHANISM
+# Prevents multiple instances of the script from running
 # =========================================================
 if [ -f "$LOCK_FILE" ]; then
     exit 0
@@ -20,11 +20,12 @@ cleanup() {
     rm -f "$LOCK_FILE"
 }
 
+# Ensure lock file is removed on script exit/interruption
 trap cleanup EXIT INT TERM
 
 # =========================================================
 # JITTER
-# Распределение нагрузки между роутерами
+# Distributes load to prevent simultaneous requests from multiple devices
 # =========================================================
 sleep $(( $(date +%s) % 25 ))
 
@@ -34,6 +35,7 @@ log() {
 
 # =========================================================
 # WAN CHECK
+# Skips restart if global internet connection is down
 # =========================================================
 if ! ping -c 2 -W 2 "$WAN_TARGET" >/dev/null 2>&1; then
     log "[WARN] WAN unreachable"
@@ -42,9 +44,9 @@ fi
 
 # =========================================================
 # PORT CHECK
-# Проверка что порт Mihomo слушается
+# Verifies that Mihomo process is listening on the local port
 # =========================================================
-if ! curl -s --connect-timeout 3 http://127.0.0.1:7890 >/dev/null 2>&1; then
+if ! curl -s --connect-timeout 3 "http://$PROXY" >/dev/null 2>&1; then
     log "[FAIL] Mihomo port unreachable -> restarting"
     /opt/etc/init.d/S99mihomo restart
     exit 0
@@ -52,9 +54,9 @@ fi
 
 # =========================================================
 # PROXY CHECK
-# Проверка SOCKS5 прокси
+# Full end-to-end check via SOCKS5h protocol
 # =========================================================
-if ! curl -x socks5h://$PROXY -m 5 -s https://www.google.com >/dev/null 2>&1; then
+if ! curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1; then
     log "[FAIL] Proxy check failed -> restarting"
     /opt/etc/init.d/S99mihomo restart
     exit 0
@@ -62,6 +64,7 @@ fi
 
 # =========================================================
 # LOG ROTATION
+# Keeps the log file small (max 200 lines)
 # =========================================================
 if [ -f "$LOG" ]; then
     LINES=$(wc -l < "$LOG")
