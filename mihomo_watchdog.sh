@@ -8,7 +8,6 @@ PROXY="127.0.0.1:7890"
 
 # =========================================================
 # LOCK MECHANISM
-# Prevents multiple instances of the script from running
 # =========================================================
 if [ -f "$LOCK_FILE" ]; then
     exit 0
@@ -20,12 +19,10 @@ cleanup() {
     rm -f "$LOCK_FILE"
 }
 
-# Ensure lock file is removed on script exit/interruption
 trap cleanup EXIT INT TERM
 
 # =========================================================
 # JITTER
-# Distributes load to prevent simultaneous requests from multiple devices
 # =========================================================
 sleep $(( $(date +%s) % 25 ))
 
@@ -35,7 +32,6 @@ log() {
 
 # =========================================================
 # WAN CHECK
-# Use curl to check internet connectivity (more reliable than ping)
 # =========================================================
 if ! curl -s --connect-timeout 3 --head http://1.1.1.1 >/dev/null 2>&1; then
     log "[WARN] WAN unreachable"
@@ -44,7 +40,6 @@ fi
 
 # =========================================================
 # PORT CHECK
-# Verifies that Mihomo process is listening on the local port
 # =========================================================
 if ! curl -s --connect-timeout 3 "http://$PROXY" >/dev/null 2>&1; then
     log "[FAIL] Mihomo port unreachable -> restarting"
@@ -54,7 +49,6 @@ fi
 
 # =========================================================
 # PROXY CHECK
-# Full end-to-end check via SOCKS5h protocol
 # =========================================================
 if ! curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1; then
     log "[FAIL] Proxy check failed -> restarting"
@@ -63,14 +57,12 @@ if ! curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1; 
 fi
 
 # =========================================================
-# LOG ROTATION
-# Keeps the log file small (max 200 lines)
+# LOG ROTATION (500 lines max, keeps last 300)
 # =========================================================
 if [ -f "$LOG" ]; then
     LINES=$(wc -l < "$LOG")
-
-    if [ "$LINES" -gt 200 ]; then
-        tail -n 100 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+    if [ "$LINES" -gt 500 ]; then
+        tail -n 300 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
     fi
 fi
 
