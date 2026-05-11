@@ -1,3 +1,4 @@
+```markdown
 # 🛡️ Keenetic Auto-Setup Suite
 
 **One-command automation toolkit for Keenetic routers (ARM + MT7621).**
@@ -13,6 +14,7 @@ Transforms a stock router into a high-performance smart gateway with VPN, smart 
 * 📞 **VoIP stabilization** — fixes Telegram / WhatsApp calls
 * 💾 **Flash protection** — tmpfs (`S00ubifs`) reduces flash wear
 * 🔄 **Self-healing** — watchdog auto-restarts Mihomo
+* ⬆️ **One-click updates** — auto-update Mihomo to latest release
 * 🌐 **Bypass ISP restrictions** during setup and usage
 * ⚡ **One-command deployment** (~2–3 minutes)
 
@@ -34,9 +36,6 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
-```
 ---
 
 ### 🟡 Old routers (MT7621 / mipsel)
@@ -50,12 +49,38 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 ---
 
+## ⬆️ Update Mihomo
+
+After initial installation, update Mihomo to the latest release without reinstalling everything:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+```
+
+Force reinstall even if the version hasn't changed:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh -s -- --force
+```
+
+**What it does:**
+1. Detects router architecture (ARM64 / ARMv7)
+2. Fetches the latest Mihomo release from GitHub
+3. Downloads and tests the binary
+4. Backs up the old version
+5. Replaces the binary and restarts the service
+6. Verifies the new version works — **auto-rollback on failure**
+
+> ⚠️ **MIPS (MT7621) is not supported** by official Mihomo binaries. Use `opkg` or build manually.
+
+---
+
 ## ⚙️ Modes
 
-| Mode            | Description                          |
-| --------------- | ------------------------------------ |
+| Mode | Description |
+| ----------------- | ----------------------------------------- |
 | `ram` (default) | Uses tmpfs → protects internal flash |
-| `disk`          | For USB / SSD storage (no tmpfs)     |
+| `disk` | For USB / SSD storage (no tmpfs) |
 
 ---
 
@@ -107,6 +132,7 @@ cat /opt/var/log/mihomo_watchdog.log
 .
 ├── install.sh              # Main installer (ARM)
 ├── install_7621.sh         # Legacy installer (MT7621)
+├── update-mihomo.sh        # Auto-update Mihomo to latest release
 ├── mihomo_watchdog.sh      # Auto-restart watchdog
 ├── S00ubifs                # tmpfs (flash protection)
 ├── 020-bypass_wa.sh        # VoIP bypass rules
@@ -130,7 +156,6 @@ cat /opt/var/log/mihomo_watchdog.log
 2. Creates `bypass_wa` policy (safe, non-destructive)
 3. (RAM mode) enables tmpfs (`S00ubifs`)
 4. Installs Mihomo:
-
    * tries latest version automatically
    * fallback to GitHub release
 5. Configures `Proxy0` interface
@@ -173,6 +198,20 @@ nano /opt/etc/mihomo/config.yaml
 /opt/etc/init.d/S99mihomo status
 ```
 
+### Update Mihomo to latest
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+```
+
+### Rollback Mihomo (if update broke)
+
+```bash
+mv /opt/sbin/mihomo.backup /opt/sbin/mihomo
+chmod +x /opt/sbin/mihomo
+/opt/etc/init.d/S99mihomo restart
+```
+
 ### Watchdog logs
 
 ```bash
@@ -208,7 +247,6 @@ curl --proxy 127.0.0.1:7890 http://google.com/generate_204
 
 ## 🧠 Roadmap (next steps)
 
-* auto-update scripts from GitHub
 * centralized router control
 * remote monitoring
 
@@ -233,8 +271,8 @@ curl --proxy 127.0.0.1:7890 http://google.com/generate_204
 
 После установки нужно вручную вставить конфиг Mihomo.
 
----
+Обновление Mihomo:
 
-## 📄 License
-
-MIT License
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+```
