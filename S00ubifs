@@ -2,25 +2,27 @@
 
 # SPDX-License-Identifier: MIT
 #
-# Based on original Entware UBIFS helper
-# Enhanced for Keenetic routers
+# Based on original Entware UBIFS helper by Entware team
+# Original source: https://pastebin.com/6SyQqPHJ
+#
+# Enhanced for Keenetic routers by Saymer / community
 #
 # Features:
-# - Moves runtime/log/temp directories to tmpfs (RAM)
-# - Reduces flash wear on USB/UBIFS storage
-# - Helps prevent PID/socket issues with Entware services
-# - Adaptive RAM-aware tmpfs sizing
-# - BusyBox / ash compatible
+#   - Moves runtime/log/temp directories to tmpfs (RAM)
+#   - Reduces flash wear on USB/UBIFS storage
+#   - Helps prevent PID/socket issues with Entware services
+#   - Adaptive RAM-aware tmpfs sizing (low / medium / high profiles)
+#   - BusyBox / ash compatible (POSIX sh)
 #
-# Recommended:
-# Place as:
+# Recommended installation:
 #   /opt/etc/init.d/S00ubifs
+#   chmod +x /opt/etc/init.d/S00ubifs
 #
-# Author modifications:
-#   Saymer / community enhancements
+# Usage:
+#   /opt/etc/init.d/S00ubifs {start|stop|restart|reload|status|enable|disable}
 
 #######################################
-# Colors
+# Colors for terminal output
 #######################################
 
 ansi_std="\033[0m"
@@ -31,7 +33,7 @@ ansi_cyan="\033[1;36m"
 ansi_white="\033[1;37m"
 
 #######################################
-# Layout
+# Layout / formatting
 #######################################
 
 COLUMNS="48"
@@ -43,7 +45,7 @@ COLUMNS="48"
 ACTION="$1"
 
 #######################################
-# Directories
+# Directories to mount as tmpfs
 #######################################
 
 TMP_DIR="/opt/tmp"
@@ -53,39 +55,50 @@ RUN_DIR="/opt/var/run"
 DIRS="$TMP_DIR $LOG_DIR $RUN_DIR"
 
 #######################################
-# Service config
+# Service configuration
 #######################################
 
 ENABLED=yes
 DESC="Entware tmpfs optimizer"
 
 #######################################
-# PATH
+# PATH (ensure Entware binaries are found)
 #######################################
 
 PATH="/opt/bin:/opt/sbin:/opt/usr/bin:/opt/usr/sbin:$PATH"
 
 #######################################
-# Detect available RAM
+# Detect available RAM and select profile
+#
+# Reads MemAvailable (kernel 3.14+) or falls back to MemFree.
+# If neither exists, assumes 64 MB as safe default.
+# Profiles:
+#   low    : < 40 MB free  (minimal tmpfs)
+#   medium : < 80 MB free  (balanced tmpfs)
+#   high   : >= 80 MB free (default tmpfs)
 #######################################
 
 set_adaptive_sizes() {
 
-    FREE_RAM_KB="$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null)"
+    # Try MemAvailable first (accounts for caches/buffers)
+    FREE_RAM_KB="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)"
 
+    # Fallback to MemFree on older kernels
     [ -n "$FREE_RAM_KB" ] || \
-    FREE_RAM_KB="$(awk '/MemFree/ {print $2}' /proc/meminfo)"
+    FREE_RAM_KB="$(awk '/^MemFree:/ {print $2}' /proc/meminfo 2>/dev/null)"
+
+    # Ultimate fallback: assume 64 MB if /proc/meminfo unreadable
+    [ -n "$FREE_RAM_KB" ] || FREE_RAM_KB="65536"
 
     FREE_RAM_MB=$((FREE_RAM_KB / 1024))
 
     ###################################
-    # RAM profiles
+    # Select profile based on free RAM
     ###################################
 
     if [ "$FREE_RAM_MB" -lt 40 ]; then
 
         PROFILE="low"
-
         TMP_SIZE="5M"
         LOG_SIZE="2M"
         RUN_SIZE="512k"
@@ -93,7 +106,6 @@ set_adaptive_sizes() {
     elif [ "$FREE_RAM_MB" -lt 80 ]; then
 
         PROFILE="medium"
-
         TMP_SIZE="10M"
         LOG_SIZE="5M"
         RUN_SIZE="1M"
@@ -101,7 +113,6 @@ set_adaptive_sizes() {
     else
 
         PROFILE="high"
-
         TMP_SIZE="20M"
         LOG_SIZE="10M"
         RUN_SIZE="1M"
@@ -109,7 +120,11 @@ set_adaptive_sizes() {
 }
 
 #######################################
-# Select mount size/mode
+# Select mount size and mode per directory
+#
+# Defaults: RUN_SIZE + mode 1755 (owner full, group/others read+execute)
+# TMP_DIR:  TMP_SIZE + mode 1777 (sticky bit, world-writable)
+# LOG_DIR:  LOG_SIZE + mode 1755
 #######################################
 
 mode_size() {
@@ -118,18 +133,18 @@ mode_size() {
     MODE="1755"
 
     if [ "$d" = "$TMP_DIR" ]; then
-
         SIZE="$TMP_SIZE"
         MODE="1777"
 
     elif [ "$d" = "$LOG_DIR" ]; then
-
         SIZE="$LOG_SIZE"
     fi
 }
 
 #######################################
-# Check mount state
+# Check if a directory is already mounted as tmpfs
+#
+# Uses /proc/mounts (no external dependencies)
 #######################################
 
 is_mounted() {
@@ -138,6 +153,9 @@ is_mounted() {
 
 #######################################
 # Status check
+#
+# Prints mount state for each managed directory.
+# If ENABLED=no, prints "disabled" and exits.
 #######################################
 
 do_check() {
@@ -146,7 +164,6 @@ do_check() {
     "Checking tmpfs mounts..."
 
     if [ "$ENABLED" = "no" ]; then
-
         printf "$ansi_cyan disabled $ansi_std\n"
         return 0
     fi
@@ -166,7 +183,14 @@ do_check() {
 }
 
 #######################################
-# Mount tmpfs
+# Mount tmpfs directories
+#
+# 1. Detects RAM profile
+# 2. Ensures directories exist
+# 3. Mounts with size/mode/noatime/nosuid/nodev
+#    - noatime  : reduces flash/RAM writeback
+#    - nosuid   : ignores setuid binaries
+#    - nodev    : prevents device files
 #######################################
 
 do_start() {
@@ -181,7 +205,13 @@ do_start() {
 
     for d in $DIRS; do
 
-        [ -d "$d" ] || mkdir -p "$d"
+        # Create directory if missing (e.g. after factory reset)
+        if [ ! -d "$d" ]; then
+            mkdir -p "$d" || {
+                printf "$ansi_red failed to create $d $ansi_std\n"
+                return 1
+            }
+        fi
 
         mode_size
 
@@ -189,7 +219,6 @@ do_start() {
         "Mounting $d ..."
 
         if is_mounted "$d"; then
-
             printf "$ansi_yellow already mounted $ansi_std\n"
             continue
         fi
@@ -201,7 +230,6 @@ do_start() {
             printf "$ansi_green done $ansi_std\n"
 
         else
-
             printf "$ansi_red failed $ansi_std\n"
             return 1
         fi
@@ -209,13 +237,18 @@ do_start() {
 }
 
 #######################################
-# Unmount tmpfs
+# Unmount tmpfs directories
+#
+# 1. Syncs filesystem buffers
+# 2. Unmounts each directory
+# 3. Skips if not mounted
 #######################################
 
 do_stop() {
 
     [ "$ENABLED" = "yes" ] || return 1
 
+    # Flush pending writes before unmounting
     sync
 
     for d in $DIRS; do
@@ -224,17 +257,13 @@ do_stop() {
         "Unmounting $d ..."
 
         if ! is_mounted "$d"; then
-
             printf "$ansi_yellow not mounted $ansi_std\n"
             continue
         fi
 
         if umount "$d"; then
-
             printf "$ansi_green done $ansi_std\n"
-
         else
-
             printf "$ansi_red failed $ansi_std\n"
             return 1
         fi
@@ -243,46 +272,49 @@ do_stop() {
 
 #######################################
 # Enable autorun
+#
+# Modifies this script in-place to set ENABLED=yes.
+# Uses robust sed pattern (handles optional whitespace).
 #######################################
 
 do_enable() {
 
     printf "$ansi_white Enabling $DESC ... $ansi_std"
 
-    if grep -q '^ENABLED=no' "$0"; then
+    if grep -qE '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*no' "$0"; then
 
-        sed -i 's/^ENABLED=no/ENABLED=yes/' "$0"
+        sed -i 's/^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*no/ENABLED=yes/' "$0"
 
         printf "$ansi_green done $ansi_std\n"
 
     else
-
         printf "$ansi_yellow already enabled $ansi_std\n"
     fi
 }
 
 #######################################
 # Disable autorun
+#
+# Modifies this script in-place to set ENABLED=no.
 #######################################
 
 do_disable() {
 
     printf "$ansi_white Disabling $DESC ... $ansi_std"
 
-    if grep -q '^ENABLED=yes' "$0"; then
+    if grep -qE '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes' "$0"; then
 
-        sed -i 's/^ENABLED=yes/ENABLED=no/' "$0"
+        sed -i 's/^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes/ENABLED=no/' "$0"
 
         printf "$ansi_green done $ansi_std\n"
 
     else
-
         printf "$ansi_yellow already disabled $ansi_std\n"
     fi
 }
 
 #######################################
-# Main
+# Main dispatcher
 #######################################
 
 case "$ACTION" in
@@ -320,7 +352,7 @@ case "$ACTION" in
     ;;
 
     *)
-        echo "Usage: $0 {start|stop|restart|status|enable|disable}"
+        echo "Usage: $0 {start|stop|restart|reload|status|enable|disable}"
         exit 1
     ;;
 
