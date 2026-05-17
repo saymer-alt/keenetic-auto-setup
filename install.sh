@@ -60,6 +60,12 @@ command -v jq >/dev/null || {
 }
 
 # -----------------------------
+# SYSTEM INFO
+# -----------------------------
+log "Router: $(ndmc -c "show version" 2>/dev/null | grep -Ei 'model|hw id' | head -1 || echo "unknown")"
+log "Free space on /opt: $(df -h /opt 2>/dev/null | awk 'NR==2 {print $4}' || echo "unknown")"
+
+# -----------------------------
 # bypass_wa policy
 # -----------------------------
 log "Configuring bypass_wa..."
@@ -100,7 +106,6 @@ ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/
 }
 
 log "Arch: $ARCH"
-log "Router: $(ndmc -c "show version" 2>/dev/null | grep -i model | head -1 || echo "unknown")"
 
 # -----------------------------
 # MIHOMO INSTALL
@@ -149,7 +154,7 @@ if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     log "API unavailable or rate limited, trying HTML fallback..."
     HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
     REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
-        grep -oE 'href="[^"]*releases/download/[^"]*mihomo[^"]*_'${IPK_SUFFIX}'\.ipk"' | \
+        grep -oE 'href="[^"]*releases/download/[^"]*mihomo_.*_'${IPK_SUFFIX}'\.ipk"' | \
         head -n 1 | cut -d'"' -f2)
 
     if [ -n "$REL_PATH" ]; then
@@ -179,7 +184,9 @@ opkg install "$TMP_DIR/mihomo.ipk" || {
 
 rm -f "$TMP_DIR/mihomo.ipk"
 
-log "Mihomo version: $(mihomo -v 2>/dev/null | head -1 || echo "unknown")"
+# Safe version check (binary may not be in PATH immediately after install)
+MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
+log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
 
 # -----------------------------
 # Proxy0
