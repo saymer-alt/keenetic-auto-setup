@@ -103,43 +103,58 @@ log "Arch: $ARCH"
 # -----------------------------
 log "Installing Mihomo..."
 
-BASE_URL="https://sw.ext.io/ent/$ARCH"
+REPO_OWNER="saymer-alt"
+REPO_NAME="entware-go"
+RELEASE_TAG="latest"
 
-LATEST=$(curl -fsSL "$BASE_URL/" 2>/dev/null | \
-    grep -o "mihomo_.*_${ARCH}.*\.ipk" | \
-    sort -V | tail -1)
-
-if [ -n "$LATEST" ]; then
-    log "Latest: $LATEST"
-
-    if ! retry curl -fL "$BASE_URL/$LATEST" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Dynamic failed → fallback"
-        LATEST=""
-    fi
-fi
-
-if [ -z "$LATEST" ]; then
-    log "Fallback version..."
-
-    case "$ARCH" in
-        aarch64)
-            URL="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_aarch64-3.10.ipk"
-            ;;
-        mipsel)
-            URL="https://github.com/saymer-alt/keenetic-auto-setup/releases/download/mihomo/mihomo_${MIHOMO_VERSION}_mipsel-3.4.ipk"
-            ;;
-        *)
-            echo "[ERROR] Unsupported arch: $ARCH"
-            exit 1
-            ;;
-    esac
-
-    retry curl -fL "$URL" -o "$TMP_DIR/mihomo.ipk" || {
-        echo "[ERROR] Mihomo download failed"
+# Map Entware arch to ipk suffix in your repo
+case "$ARCH" in
+    aarch64)
+        IPK_SUFFIX="aarch64-3.10"
+        ;;
+    arm|armv7)
+        IPK_SUFFIX="armv7-3.2"
+        ;;
+    mipsel)
+        IPK_SUFFIX="mipsel-3.4"
+        ;;
+    mips)
+        IPK_SUFFIX="mips-3.4"
+        ;;
+    *)
+        echo "[ERROR] Unsupported arch: $ARCH"
         exit 1
-    }
+        ;;
+esac
+
+log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
+
+# Fetch release assets via GitHub API
+ASSETS_JSON=$(retry curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${RELEASE_TAG}" 2>/dev/null) || {
+    echo "[ERROR] Failed to fetch release info from GitHub API"
+    exit 1
+}
+
+# Extract matching asset download URL
+DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
+    .assets[] | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
+' | head -n 1)
+
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    echo "[ERROR] No mihomo ipk found for arch suffix: ${IPK_SUFFIX}"
+    echo "[ERROR] Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${RELEASE_TAG}"
+    exit 1
 fi
 
+log "Found: $(basename "$DOWNLOAD_URL")"
+log "Downloading..."
+
+retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk" || {
+    echo "[ERROR] Failed to download mihomo ipk"
+    exit 1
+}
+
+log "Installing package..."
 opkg install "$TMP_DIR/mihomo.ipk" || {
     echo "[ERROR] Mihomo install failed"
     exit 1
