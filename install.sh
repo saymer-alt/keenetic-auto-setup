@@ -12,7 +12,6 @@ fi
 echo "[*] Mode: $MODE"
 
 TMP_DIR="/tmp"
-MIHOMO_VERSION="1.19.23-1"
 
 log() { echo "[setup] $1"; }
 
@@ -167,12 +166,12 @@ log "Configuring Proxy0..."
 
 IFACE="interface Proxy0"
 for CMD in "" \
-"proxy protocol socks5" \
-"proxy socks5-udp" \
-"proxy upstream 127.0.0.1 7890" \
-"description mihomo" \
-"ip global auto" \
-"up"
+    "proxy protocol socks5" \
+    "proxy socks5-udp" \
+    "proxy upstream 127.0.0.1 7890" \
+    "description mihomo" \
+    "ip global auto" \
+    "up"
 do
     ndmc -c "$IFACE $CMD" >/dev/null 2>&1
 done
@@ -185,7 +184,7 @@ ndmc -c "system configuration save"
 log "Installing MagiTrickle..."
 
 curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || \
-wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
+    wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
 
 opkg update
 pkg_install magitrickle
@@ -200,7 +199,7 @@ log "Installing bypass rules..."
 mkdir -p /opt/etc/ndm/netfilter.d
 
 if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
-  -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
+    -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
 
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 else
@@ -215,7 +214,7 @@ log "Installing watchdog..."
 mkdir -p /opt/etc/cron.5mins
 
 if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
-  -o /opt/etc/cron.5mins/mihomo_watchdog; then
+    -o /opt/etc/cron.5mins/mihomo_watchdog; then
 
     chmod +x /opt/etc/cron.5mins/mihomo_watchdog
 
@@ -228,7 +227,7 @@ if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-s
     else
         log "Fallback to crontab"
         grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
-        echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
+            echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
     fi
 
     /opt/etc/init.d/S10cron restart
@@ -243,7 +242,7 @@ fi
 
 sleep 2
 netstat -tln 2>/dev/null | grep -q 7890 || \
-echo "[WARN] Mihomo may not be running"
+    echo "[WARN] Mihomo may not be running"
 
 # -----------------------------
 # DONE
