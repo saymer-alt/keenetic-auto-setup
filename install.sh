@@ -23,6 +23,9 @@ retry() {
     return 1
 }
 
+# Cleanup temp files on exit
+trap 'rm -f "$TMP_DIR/mihomo.ipk"' EXIT
+
 # -----------------------------
 # CHECK BASE
 # -----------------------------
@@ -41,8 +44,9 @@ opkg update || {
     exit 1
 }
 
+# Faster than opkg list-installed | grep
 pkg_install() {
-    opkg list-installed | grep -q "^$1 " || opkg install "$1"
+    opkg status "$1" >/dev/null 2>&1 || opkg install "$1"
 }
 
 pkg_install curl
@@ -86,7 +90,7 @@ fi
 # -----------------------------
 # DETECT ARCH
 # -----------------------------
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
+ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
     sub(/[-_].*/,"",$2); print $2; exit
 }')
 
@@ -104,20 +108,19 @@ log "Installing Mihomo..."
 
 REPO_OWNER="saymer-alt"
 REPO_NAME="entware-go"
-RELEASE_TAG="latest"
 
 # Map Entware arch to ipk suffix in your repo
 case "$ARCH" in
-    aarch64)
+    aarch64*)
         IPK_SUFFIX="aarch64-3.10"
         ;;
-    arm|armv7)
+    armv7*|arm*)
         IPK_SUFFIX="armv7-3.2"
         ;;
-    mipsel)
+    mipsel*)
         IPK_SUFFIX="mipsel-3.4"
         ;;
-    mips)
+    mips*)
         IPK_SUFFIX="mips-3.4"
         ;;
     *)
@@ -128,20 +131,30 @@ esac
 
 log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
 
-# Fetch release assets via GitHub API
-ASSETS_JSON=$(retry curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${RELEASE_TAG}" 2>/dev/null) || {
-    echo "[ERROR] Failed to fetch release info from GitHub API"
-    exit 1
-}
+# --- Primary: GitHub API (correct endpoint) ---
+API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
 
-# Extract matching asset download URL
-DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-    .assets[] | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
-' | head -n 1)
+DOWNLOAD_URL=""
+if [ -n "$ASSETS_JSON" ]; then
+    DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
+        .assets[] | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
+    ' 2>/dev/null | head -n 1)
+fi
+
+# --- Fallback: HTML page parsing (bypasses API rate limits) ---
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    log "API unavailable or rate limited, trying HTML fallback..."
+    HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+    REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | grep -o "href=\"[^\"]*releases/download/[^\"]*mihomo[^\"]*_${IPK_SUFFIX}\\.ipk\"" | head -n 1 | sed 's/href="//;s/"$//')
+    if [ -n "$REL_PATH" ]; then
+        DOWNLOAD_URL="https://github.com${REL_PATH}"
+    fi
+fi
 
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     echo "[ERROR] No mihomo ipk found for arch suffix: ${IPK_SUFFIX}"
-    echo "[ERROR] Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${RELEASE_TAG}"
+    echo "[ERROR] Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
     exit 1
 fi
 
@@ -164,19 +177,22 @@ opkg install "$TMP_DIR/mihomo.ipk" || {
 # -----------------------------
 log "Configuring Proxy0..."
 
-IFACE="interface Proxy0"
-for CMD in "" \
-    "proxy protocol socks5" \
-    "proxy socks5-udp" \
-    "proxy upstream 127.0.0.1 7890" \
-    "description mihomo" \
-    "ip global auto" \
-    "up"
-do
-    ndmc -c "$IFACE $CMD" >/dev/null 2>&1
-done
-
-ndmc -c "system configuration save"
+if ! ndmc -c "show interface Proxy0" >/dev/null 2>&1; then
+    IFACE="interface Proxy0"
+    for CMD in "" \
+        "proxy protocol socks5" \
+        "proxy socks5-udp" \
+        "proxy upstream 127.0.0.1 7890" \
+        "description mihomo" \
+        "ip global auto" \
+        "up"
+    do
+        ndmc -c "$IFACE $CMD" >/dev/null 2>&1
+    done
+    ndmc -c "system configuration save"
+else
+    log "Proxy0 already exists, skipping creation"
+fi
 
 # -----------------------------
 # MAGITRICKLE
