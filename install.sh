@@ -23,8 +23,8 @@ retry() {
     return 1
 }
 
-# Cleanup temp files on exit
-trap 'rm -f "$TMP_DIR/mihomo.ipk"' EXIT
+# Cleanup temp files on any exit, including Ctrl+C
+trap 'rm -f "$TMP_DIR/mihomo.ipk"' EXIT INT TERM
 
 # -----------------------------
 # CHECK BASE
@@ -100,6 +100,7 @@ ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/
 }
 
 log "Arch: $ARCH"
+log "Router: $(ndmc -c "show version" 2>/dev/null | grep -i model | head -1 || echo "unknown")"
 
 # -----------------------------
 # MIHOMO INSTALL
@@ -131,7 +132,7 @@ esac
 
 log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
 
-# --- Primary: GitHub API (correct endpoint) ---
+# --- Primary: GitHub API (correct endpoint, no /tags/) ---
 API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
 ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
 
@@ -143,10 +144,14 @@ if [ -n "$ASSETS_JSON" ]; then
 fi
 
 # --- Fallback: HTML page parsing (bypasses API rate limits) ---
+# NOTE: GitHub HTML layout may change in future; this is a best-effort fallback.
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     log "API unavailable or rate limited, trying HTML fallback..."
     HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
-    REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | grep -o "href=\"[^\"]*releases/download/[^\"]*mihomo[^\"]*_${IPK_SUFFIX}\\.ipk\"" | head -n 1 | sed 's/href="//;s/"$//')
+    REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
+        grep -oE 'href="[^"]*releases/download/[^"]*mihomo[^"]*_'${IPK_SUFFIX}'\.ipk"' | \
+        head -n 1 | cut -d'"' -f2)
+
     if [ -n "$REL_PATH" ]; then
         DOWNLOAD_URL="https://github.com${REL_PATH}"
     fi
@@ -171,6 +176,10 @@ opkg install "$TMP_DIR/mihomo.ipk" || {
     echo "[ERROR] Mihomo install failed"
     exit 1
 }
+
+rm -f "$TMP_DIR/mihomo.ipk"
+
+log "Mihomo version: $(mihomo -v 2>/dev/null | head -1 || echo "unknown")"
 
 # -----------------------------
 # Proxy0
