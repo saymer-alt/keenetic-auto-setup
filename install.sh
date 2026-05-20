@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -e
+
 echo "=== Keenetic Auto Setup ==="
 
 MODE="${1:-ram}"
@@ -14,70 +16,89 @@ echo "[*] Mode: $MODE"
 TMP_DIR="/tmp"
 
 log() { echo "[setup] $1"; }
+warn() { echo "[WARN] $1"; }
+err() { echo "[ERROR] $1"; exit 1; }
 
 retry() {
     for i in 1 2 3; do
         "$@" && return 0
+        warn "Retry $i/3 failed for: $*"
         sleep 2
     done
     return 1
 }
 
-# Cleanup temp files on any exit, including Ctrl+C
+# Cleanup temp files on any exit
 trap 'rm -f "$TMP_DIR/mihomo.ipk"' EXIT INT TERM
 
-# -----------------------------
+# ---------------------------
 # CHECK BASE
-# -----------------------------
-command -v opkg >/dev/null 2>&1 || {
-    echo "[ERROR] opkg not found"
-    exit 1
-}
+# ---------------------------
+command -v opkg >/dev/null 2>&1 || err "opkg not found"
 
-# -----------------------------
-# BASE PACKAGES
-# -----------------------------
+# ---------------------------
+# OPKG UPDATE
+# ---------------------------
+log "Updating opkg..."
+retry opkg update || err "opkg update failed"
+
+# ---------------------------
+# BASE PACKAGES (strict install)
+# ---------------------------
 log "Installing base packages..."
 
-opkg update || {
-    echo "[ERROR] opkg update failed"
-    exit 1
+# Проверяет установлен ли пакет. Для бинарных — через command -v, для остальных — через opkg
+pkg_is_installed() {
+    case "$1" in
+        curl|jq|nano)
+            command -v "$1" >/dev/null 2>&1
+            ;;
+        *)
+            opkg list-installed 2>/dev/null | grep -q "^$1 "
+            ;;
+    esac
 }
 
-# Faster than opkg list-installed | grep
-pkg_install() {
-    opkg status "$1" >/dev/null 2>&1 || opkg install "$1"
+# Ставит пакет если не установлен. Если opkg install упал — скрипт падает сразу (set -e + || err)
+pkg_ensure() {
+    _pkg="$1"
+    if pkg_is_installed "$_pkg"; then
+        log "$_pkg already installed"
+        return 0
+    fi
+    log "Installing $_pkg..."
+    opkg install "$_pkg" || err "Failed to install $_pkg"
 }
 
-pkg_install curl
-pkg_install jq
-pkg_install nano
-pkg_install cron
+# Обязательные базовые пакеты
+pkg_ensure ca-bundle
+pkg_ensure curl
+pkg_ensure jq
+pkg_ensure nano
+pkg_ensure cron
 
-command -v jq >/dev/null || {
-    echo "[ERROR] jq not installed"
-    exit 1
-}
+# Финальная проверка jq (на всякий случай)
+command -v jq >/dev/null 2>&1 || err "jq not available after install"
 
-# -----------------------------
+# ---------------------------
 # SYSTEM INFO
-# -----------------------------
+# ---------------------------
 log "Router: $(ndmc -c "show version" 2>/dev/null | grep -Ei 'model|hw id' | head -1 || echo "unknown")"
 log "Free space on /opt: $(df -h /opt 2>/dev/null | awk 'NR==2 {print $4}' || echo "unknown")"
 
-# -----------------------------
+# ---------------------------
 # bypass_wa policy
-# -----------------------------
+# ---------------------------
 log "Configuring bypass_wa..."
 
-if ! ndmc -c "show ip policy" | grep -w -q "bypass_wa"; then
-    ndmc -c "ip policy bypass_wa"
-    ndmc -c "ip policy bypass_wa description bypass_wa"
+if ! ndmc -c "show ip policy" 2>/dev/null | grep -w -q "bypass_wa"; then
+    ndmc -c "ip policy bypass_wa" >/dev/null 2>&1 || warn "Failed to create bypass_wa policy"
+    ndmc -c "ip policy bypass_wa description bypass_wa" >/dev/null 2>&1
 fi
 
-# -----------------------------
+# ---------------------------
 # TMPFS
-# -----------------------------
+# ---------------------------
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
 
@@ -85,71 +106,55 @@ if [ "$MODE" = "ram" ]; then
         -o /opt/etc/init.d/S00ubifs; then
 
         chmod +x /opt/etc/init.d/S00ubifs
-        /opt/etc/init.d/S00ubifs start
+        /opt/etc/init.d/S00ubifs start || warn "S00ubifs start failed"
     else
-        log "S00ubifs download failed"
+        warn "S00ubifs download failed"
     fi
 else
-    log "Skip S00ubifs"
+    log "Skip S00ubifs (disk mode)"
 fi
 
-# -----------------------------
+# ---------------------------
 # DETECT ARCH
-# -----------------------------
+# ---------------------------
 ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
     sub(/[-_].*/,"",$2); print $2; exit
 }')
 
-[ -z "$ARCH" ] && {
-    echo "[ERROR] Cannot detect architecture"
-    exit 1
-}
+[ -z "$ARCH" ] && err "Cannot detect architecture"
 
 log "Arch: $ARCH"
 
-# -----------------------------
+# ---------------------------
 # MIHOMO INSTALL
-# -----------------------------
+# ---------------------------
 log "Installing Mihomo..."
 
 REPO_OWNER="saymer-alt"
 REPO_NAME="entware-go"
 
-# Map Entware arch to ipk suffix in your repo
 case "$ARCH" in
-    aarch64*)
-        IPK_SUFFIX="aarch64-3.10"
-        ;;
-    armv7*|arm*)
-        IPK_SUFFIX="armv7-3.2"
-        ;;
-    mipsel*)
-        IPK_SUFFIX="mipsel-3.4"
-        ;;
-    mips*)
-        IPK_SUFFIX="mips-3.4"
-        ;;
-    *)
-        echo "[ERROR] Unsupported arch: $ARCH"
-        exit 1
-        ;;
+    aarch64*) IPK_SUFFIX="aarch64-3.10" ;;
+    armv7*|arm*) IPK_SUFFIX="armv7-3.2" ;;
+    mipsel*) IPK_SUFFIX="mipsel-3.4" ;;
+    mips*) IPK_SUFFIX="mips-3.4" ;;
+    *) err "Unsupported arch: $ARCH" ;;
 esac
 
 log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
 
-# --- Primary: GitHub API (correct endpoint, no /tags/) ---
+# Primary: GitHub API
 API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
 ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
 
 DOWNLOAD_URL=""
 if [ -n "$ASSETS_JSON" ]; then
     DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-        .assets[] | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
+        .assets[]? | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
     ' 2>/dev/null | head -n 1)
 fi
 
-# --- Fallback: HTML page parsing (bypasses API rate limits) ---
-# NOTE: GitHub HTML layout may change in future; this is a best-effort fallback.
+# Fallback: HTML parsing (bypasses API rate limits)
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     log "API unavailable or rate limited, trying HTML fallback..."
     HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
@@ -162,70 +167,60 @@ if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     fi
 fi
 
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    echo "[ERROR] No mihomo ipk found for arch suffix: ${IPK_SUFFIX}"
-    echo "[ERROR] Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
-    exit 1
-fi
+[ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ] && \
+    err "No mihomo ipk found for arch suffix: ${IPK_SUFFIX}. Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
 
 log "Found: $(basename "$DOWNLOAD_URL")"
 log "Downloading..."
 
-retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk" || {
-    echo "[ERROR] Failed to download mihomo ipk"
-    exit 1
-}
+retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk" || err "Failed to download mihomo ipk"
 
 log "Installing package..."
-opkg install "$TMP_DIR/mihomo.ipk" || {
-    echo "[ERROR] Mihomo install failed"
-    exit 1
-}
+opkg install "$TMP_DIR/mihomo.ipk" || err "Mihomo install failed"
 
 rm -f "$TMP_DIR/mihomo.ipk"
 
-# Safe version check (binary may not be in PATH immediately after install)
+# Safe version check
 MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
 log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
 
-# -----------------------------
+# ---------------------------
 # Proxy0
-# -----------------------------
+# ---------------------------
 log "Configuring Proxy0..."
 
 if ! ndmc -c "show interface Proxy0" >/dev/null 2>&1; then
-    IFACE="interface Proxy0"
-    for CMD in "" \
-        "proxy protocol socks5" \
-        "proxy socks5-udp" \
-        "proxy upstream 127.0.0.1 7890" \
-        "description mihomo" \
-        "ip global auto" \
-        "up"
-    do
-        ndmc -c "$IFACE $CMD" >/dev/null 2>&1
-    done
-    ndmc -c "system configuration save"
+    ndmc -c "interface Proxy0" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 proxy protocol socks5" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 proxy socks5-udp" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 7890" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 description mihomo" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 ip global auto" >/dev/null 2>&1
+    ndmc -c "interface Proxy0 up" >/dev/null 2>&1
+    ndmc -c "system configuration save" >/dev/null 2>&1
 else
     log "Proxy0 already exists, skipping creation"
 fi
 
-# -----------------------------
+# ---------------------------
 # MAGITRICKLE
-# -----------------------------
+# ---------------------------
 log "Installing MagiTrickle..."
 
 curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || \
-    wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh
+    wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh || \
+    warn "MagiTrickle repo add failed"
 
-opkg update
-pkg_install magitrickle
+opkg update || warn "opkg update after magitrickle failed"
+pkg_ensure magitrickle || warn "MagiTrickle install failed"
 
-/opt/etc/init.d/S99magitrickle start
+if [ -x /opt/etc/init.d/S99magitrickle ]; then
+    /opt/etc/init.d/S99magitrickle start || warn "MagiTrickle start failed"
+fi
 
-# -----------------------------
+# ---------------------------
 # BYPASS RULES
-# -----------------------------
+# ---------------------------
 log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
@@ -235,12 +230,12 @@ if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-s
 
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 else
-    log "bypass download failed"
+    warn "bypass download failed"
 fi
 
-# -----------------------------
+# ---------------------------
 # WATCHDOG
-# -----------------------------
+# ---------------------------
 log "Installing watchdog..."
 
 mkdir -p /opt/etc/cron.5mins
@@ -262,21 +257,28 @@ if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-s
             echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
     fi
 
-    /opt/etc/init.d/S10cron restart
+    /opt/etc/init.d/S10cron restart || warn "Cron restart failed"
 else
-    log "Watchdog download failed"
+    warn "Watchdog download failed"
 fi
 
-# -----------------------------
+# ---------------------------
 # RESTART
-# -----------------------------
-/opt/etc/init.d/S99mihomo restart
+# ---------------------------
+if [ -x /opt/etc/init.d/S99mihomo ]; then
+    /opt/etc/init.d/S99mihomo restart || warn "Mihomo restart failed"
+else
+    warn "S99mihomo not found, cannot restart"
+fi
 
 sleep 2
-netstat -tln 2>/dev/null | grep -q 7890 || \
-    echo "[WARN] Mihomo may not be running"
+if command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | grep -q 7890 || warn "Mihomo may not be running (port 7890 not listening)"
+elif command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -q 7890 || warn "Mihomo may not be running (port 7890 not listening)"
+fi
 
-# -----------------------------
+# ---------------------------
 # DONE
-# -----------------------------
+# ---------------------------
 echo "[OK] Done"
