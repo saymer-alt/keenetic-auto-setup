@@ -47,7 +47,6 @@ retry opkg update || err "opkg update failed"
 # ---------------------------
 log "Installing base packages..."
 
-# Проверяет установлен ли пакет. Для бинарных — через command -v, для остальных — через opkg
 pkg_is_installed() {
     case "$1" in
         curl|jq|nano)
@@ -59,7 +58,6 @@ pkg_is_installed() {
     esac
 }
 
-# Ставит пакет если не установлен. Если opkg install упал — скрипт падает сразу (set -e + || err)
 pkg_ensure() {
     _pkg="$1"
     if pkg_is_installed "$_pkg"; then
@@ -70,14 +68,12 @@ pkg_ensure() {
     opkg install "$_pkg" || err "Failed to install $_pkg"
 }
 
-# Обязательные базовые пакеты
 pkg_ensure ca-bundle
 pkg_ensure curl
 pkg_ensure jq
 pkg_ensure nano
 pkg_ensure cron
 
-# Финальная проверка jq (на всякий случай)
 command -v jq >/dev/null 2>&1 || err "jq not available after install"
 
 # ---------------------------
@@ -143,25 +139,44 @@ esac
 
 log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
 
-# Primary: GitHub API
 API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
 ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
 
 DOWNLOAD_URL=""
+
+# Primary: GitHub API + jq (без regex)
 if [ -n "$ASSETS_JSON" ]; then
     DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-        .assets[]? | select(.name | test("mihomo_.*_" + $suffix + "\\.ipk$")) | .browser_download_url
+        .assets[]? 
+        | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk")) 
+        | .browser_download_url
     ' 2>/dev/null | head -n 1)
 fi
 
-# Fallback: HTML parsing (bypasses API rate limits)
+# Fallback 1: grep/sed на API JSON
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    log "API unavailable or rate limited, trying HTML fallback..."
+    log "jq filter empty, trying grep fallback on API response..."
+    if [ -n "$ASSETS_JSON" ]; then
+        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
+    fi
+fi
+
+# Fallback 2: повторный API fetch + grep (если первый был пустым)
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    log "API failed, trying direct API grep..."
+    ASSETS_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+    if [ -n "$ASSETS_JSON" ]; then
+        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
+    fi
+fi
+
+# Fallback 3: HTML scraping
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    log "Trying HTML scraping..."
     HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
     REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
-        grep -oE 'href="[^"]*releases/download/[^"]*mihomo_.*_'${IPK_SUFFIX}'\.ipk"' | \
+        grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | \
         head -n 1 | cut -d'"' -f2)
-
     if [ -n "$REL_PATH" ]; then
         DOWNLOAD_URL="https://github.com${REL_PATH}"
     fi
@@ -180,7 +195,6 @@ opkg install "$TMP_DIR/mihomo.ipk" || err "Mihomo install failed"
 
 rm -f "$TMP_DIR/mihomo.ipk"
 
-# Safe version check
 MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
 log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
 
@@ -278,7 +292,4 @@ elif command -v ss >/dev/null 2>&1; then
     ss -tln 2>/dev/null | grep -q 7890 || warn "Mihomo may not be running (port 7890 not listening)"
 fi
 
-# ---------------------------
-# DONE
-# ---------------------------
 echo "[OK] Done"
