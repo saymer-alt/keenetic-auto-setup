@@ -20,15 +20,17 @@ apt install -y curl wget git htop nano net-tools ufw fail2ban chrony
 # =============================================
 # 2. SWAP 1.5 ГБ (проверенный тобой объём)
 # =============================================
-echo "Создаём SWAP 1.5 ГБ..."
-fallocate -l 1536M /swapfile
-chmod 600 /swapfile
-mkswap /swapfile
-swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
+# echo "Создаём SWAP 1.5 ГБ..."
+# fallocate -l 1536M /swapfile
+# chmod 600 /swapfile
+# mkswap /swapfile
+# swapon /swapfile
+# echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 echo 'vm.swappiness = 10' >> /etc/sysctl.conf
 echo 'vm.overcommit_memory = 1' >> /etc/sysctl.conf
+
+sysctl -p
 
 # =============================================
 # 3. SSH: ПОРТ 2222, ТОЛЬКО КЛЮЧИ, ROOT-ONLY
