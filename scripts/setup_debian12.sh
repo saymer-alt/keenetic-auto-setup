@@ -52,16 +52,33 @@ systemctl restart sshd
 # =============================================
 # 4. UFW: МИНИМАЛЬНЫЙ НАБОР ПОРТОВ
 # =============================================
+
+# Сброс и настройка UFW
 ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
 
+# Основные порты
 ufw allow 2222/tcp comment 'SSH'
-ufw allow 443/tcp comment 'TeleMT + 3XUI'
-ufw allow 80/tcp comment 'HTTP LE'
-ufw allow 2000/tcp comment 'Mieru/Mita'
-# ufw allow 39551/udp comment 'AmneziaWG'
+ufw allow 443/tcp comment 'TeleMT'
+ufw allow 32926/udp comment 'AmneziaWG'
+
+# 3X-UI + Протоколы
+ufw allow 8443/tcp comment '3X-UI Panel'
+ufw allow 2053/tcp comment 'VLESS Reality'
+ufw allow 2096/tcp comment 'VLESS gRPC'
+ufw allow 2083/udp comment 'Hysteria2 QUIC'
+
+# Mieru (диапазон)
+ufw allow 52001:54000/tcp comment 'Mieru Range'
+
+# Опционально (если будешь использовать)
+# ufw allow 80/tcp comment 'HTTP for LetsEncrypt'
+
 ufw --force enable
+
+# Проверка
+ufw status verbose
 
 # =============================================
 # 5. SYSCTL: СЕТЬ + СКРЫТНОСТЬ
