@@ -1,16 +1,21 @@
 #!/bin/sh
 #
-# mihomo-interface-check.sh v1.0
+# mihomo-interface-check.sh v1.0.1
 # Diagnostic tool for Keenetic NDMS + Entware
 # GitHub: https://github.com/saymer-alt/keenetic-auto-setup
 #
 
 echo "======================================"
-echo " Mihomo interface-name check v1.0"
+echo " Mihomo interface-name check v1.0.1"
 echo "======================================"
 
-# Информация о системе и прошивке Keenetic
-OS_VER=$(ndm -V 2>/dev/null | head -1)
+# Получаем красивую версию Keenetic OS через ndmc/ndmq
+OS_VER=$(ndmc -c "show version" 2>/dev/null | awk '/title:/ {for(i=2;i<=NF;i++) printf "%s ", $i; print ""}')
+
+if [ -z "$OS_VER" ]; then
+    OS_VER=$(ndmq -p 'show version' -f json 2>/dev/null | grep -o '"title":"[^"]*"' | cut -d'"' -f4)
+fi
+
 if [ -n "$OS_VER" ]; then
     echo " System: $OS_VER"
 else
