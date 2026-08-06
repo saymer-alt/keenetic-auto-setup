@@ -1,54 +1,38 @@
 #!/bin/sh
 
 echo "======================================"
-echo " Mihomo interface-name check v0.6"
+echo " Mihomo interface-name check v0.7"
 echo "======================================"
 echo
 
 DEFAULT_IF=$(ip route | awk '/default/ {print $5; exit}')
 
 echo "[DEFAULT ROUTE]"
-echo " $DEFAULT_IF"
+echo " ⭐ $DEFAULT_IF"
 echo
 
 
-get_status() {
-    ip link show "$1" 2>/dev/null | grep -q "UP" \
-        && echo "UP" \
-        || echo "DOWN"
-}
-
-
-show_iface() {
-
+show_iface()
+{
     IFACE="$1"
+    TYPE="$2"
 
-    STATUS=$(get_status "$IFACE")
+    STATE=$(ip link show "$IFACE" 2>/dev/null | grep -o "state [A-Z]*" | awk '{print $2}')
+
+    [ "$STATE" != "UP" ] && return
 
     IP=$(ip addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2; exit}')
-    MTU=$(ip link show "$IFACE" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="mtu") print $(i+1)}')
 
     [ -z "$IP" ] && IP="none"
 
+    MTU=$(ip link show "$IFACE" 2>/dev/null | awk '/mtu/ {print $5}')
+
     echo "--------------------------------------"
     echo "$IFACE"
+    echo " Type: $TYPE"
 
-    case "$IFACE" in
-        eth*)
-            echo " Type: Ethernet"
-            ;;
-        ppp*)
-            echo " Type: PPP tunnel"
-            ;;
-        nwg*)
-            echo " Type: WireGuard"
-            ;;
-        *)
-            echo " Type: Other"
-            ;;
-    esac
+    [ "$IFACE" = "$DEFAULT_IF" ] && echo " ⭐ Default route"
 
-    echo " Status: $STATUS"
     echo " IP:   $IP"
     echo " MTU:  $MTU"
     echo
@@ -59,49 +43,43 @@ show_iface() {
 
 
 echo "======================================"
-echo "[ACTIVE WireGuard]"
+echo "[WireGuard]"
 echo "======================================"
-echo
 
-for IFACE in $(ip -o link show | awk -F': ' '/nwg[0-9]+/ {print $2}' | cut -d'@' -f1 | sort -u); do
-    if [ "$(get_status "$IFACE")" = "UP" ]; then
-        show_iface "$IFACE"
-    fi
+for i in $(ip link | grep -o "nwg[0-9]*"); do
+    show_iface "$i" "WireGuard"
 done
 
 
 echo "======================================"
-echo "[DOWN WireGuard]"
+echo "[PPP VPN]"
 echo "======================================"
-echo
 
-for IFACE in $(ip -o link show | awk -F': ' '/nwg[0-9]+/ {print $2}' | cut -d'@' -f1 | sort -u); do
-    if [ "$(get_status "$IFACE")" = "DOWN" ]; then
-        show_iface "$IFACE"
-    fi
+for i in $(ip link | grep -o "ppp[0-9]*"); do
+    show_iface "$i" "PPP tunnel"
 done
 
 
 echo "======================================"
-echo "[WAN Ethernet]"
+echo "[Ethernet]"
 echo "======================================"
-echo
 
-for IFACE in $(ip -o link show | awk -F': ' '/eth[0-9]+:/ {print $2}' | cut -d'@' -f1 | sort -u); do
-    show_iface "$IFACE"
+for i in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | grep "^eth[0-9]*$"); do
+    show_iface "$i" "Ethernet"
 done
 
 
 echo "======================================"
-echo "[PPP VPN tunnels]"
+echo " Ready for mihomo config"
 echo "======================================"
 echo
 
-for IFACE in $(ip -o link show | awk -F': ' '/ppp[0-9]+:/ {print $2}' | cut -d'@' -f1 | sort -u); do
-    show_iface "$IFACE"
+for i in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | grep -E "^(nwg|ppp|eth[0-9])"); do
+    STATE=$(ip link show "$i" | grep -o "state [A-Z]*" | awk '{print $2}')
+    [ "$STATE" = "UP" ] && echo " interface-name: $i"
 done
 
-
+echo
 echo "======================================"
 echo " Finished"
 echo "======================================"
