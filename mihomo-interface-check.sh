@@ -1,78 +1,46 @@
 #!/bin/sh
 
 echo "======================================"
-echo " Mihomo interface-name check v0.2"
+echo " Mihomo interface-name check v0.3"
 echo "======================================"
 echo
 
-# Default route
 DEFAULT_IF=$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}')
 
 echo "[DEFAULT ROUTE]"
-if [ -n "$DEFAULT_IF" ]; then
-    echo " $DEFAULT_IF"
-else
-    echo " none"
-fi
+echo " $DEFAULT_IF"
 
 echo
 echo "======================================"
-echo " Available interfaces"
+echo " Available Mihomo interfaces"
 echo "======================================"
 
-show_interface() {
+show_interface()
+{
     IFACE="$1"
+    TYPE="$2"
 
-    # Skip empty
-    [ -z "$IFACE" ] && return
-
-    # Skip unwanted interfaces
-    case "$IFACE" in
-        lo|br*|mitun*|dummy*|tunl*|ip6tnl*|sit*|gre*|gretap*|ethoip*|\
-        ra*|apcli*|eth*.1|eth*.2|eth*.3|eth*.4|\
-        vpn*)
-            return
-            ;;
-    esac
-
-    # Interface exists?
+    # Проверяем наличие интерфейса
     ip link show "$IFACE" >/dev/null 2>&1 || return
+
+    # Проверяем UP
+    ip link show "$IFACE" | grep -q "UP" || return
 
     INFO=$(ip addr show "$IFACE" 2>/dev/null)
 
     IP=$(echo "$INFO" | awk '/inet / {print $2; exit}')
+
+    # Нет IPv4 - пропускаем
+    [ -z "$IP" ] && return
+
     MTU=$(ip link show "$IFACE" | awk '/mtu/ {for(i=1;i<=NF;i++) if($i=="mtu"){print $(i+1); exit}}')
-
-    TYPE=""
-
-    case "$IFACE" in
-        ppp*)
-            TYPE="PPP tunnel"
-            ;;
-        nwg*|wg*)
-            TYPE="WireGuard"
-            ;;
-        eth*)
-            TYPE="Ethernet"
-            ;;
-        *)
-            TYPE="Other"
-            ;;
-    esac
 
     echo
     echo "--------------------------------------"
     echo "$IFACE"
     echo " Type: $TYPE"
-
-    if [ -n "$IP" ]; then
-        echo " IP:   $IP"
-    else
-        echo " IP:   none"
-    fi
-
-    echo " MTU:  ${MTU:-unknown}"
-
+    echo " IP:   $IP"
+    echo " MTU:  $MTU"
     echo
     echo " Mihomo:"
     echo " interface-name: $IFACE"
@@ -80,22 +48,26 @@ show_interface() {
 
 
 echo
-echo "[Ethernet/WAN]"
-for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+echo "[WAN / Ethernet]"
+
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//')
+do
     case "$IF" in
         eth*)
-            show_interface "$IF"
+            show_interface "$IF" "Ethernet"
             ;;
     esac
 done
 
 
 echo
-echo "[PPP]"
-for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+echo "[PPP tunnels]"
+
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//')
+do
     case "$IF" in
         ppp*)
-            show_interface "$IF"
+            show_interface "$IF" "PPP tunnel"
             ;;
     esac
 done
@@ -103,10 +75,12 @@ done
 
 echo
 echo "[WireGuard]"
-for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//')
+do
     case "$IF" in
         nwg*|wg*)
-            show_interface "$IF"
+            show_interface "$IF" "WireGuard"
             ;;
     esac
 done
