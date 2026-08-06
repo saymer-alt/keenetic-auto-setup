@@ -1,12 +1,11 @@
 #!/bin/sh
 #
-# mihomo-interface-check.sh v1.0.1
+# mihomo-interface-check.sh v1.0.2
 # Diagnostic tool for Keenetic NDMS + Entware
-# GitHub: https://github.com/saymer-alt/keenetic-auto-setup
 #
 
 echo "======================================"
-echo " Mihomo interface-name check v1.0.1"
+echo " Mihomo interface-name check v1.0.2"
 echo "======================================"
 
 # Получаем красивую версию Keenetic OS через ndmc/ndmq
@@ -89,6 +88,28 @@ get_ifaces() {
 }
 
 echo "======================================"
+echo "[LTE / 3G / 4G Modems]"
+echo "======================================"
+for i in $(get_ifaces "^(lte|usb|wwan|cdc|qmi)[a-zA-Z0-9_-]*"); do
+    show_iface "$i" "Cellular Modem"
+done
+
+echo "======================================"
+echo "[WISP / Wi-Fi Client]"
+echo "======================================"
+for i in $(get_ifaces "^apcli[a-z0-9]+"); do
+    show_iface "$i" "WISP (Wi-Fi WAN)"
+done
+
+echo "======================================"
+echo "[Ethernet / VLAN WAN]"
+echo "======================================"
+# Регулярка изменена, чтобы ловить не только eth3, но и eth2.1, eth4.2 и т.д.
+for i in $(get_ifaces "^(eth|vlan)[0-9]+(\.[0-9]+)?"); do
+    show_iface "$i" "Ethernet or VLAN"
+done
+
+echo "======================================"
 echo "[WireGuard]"
 echo "======================================"
 for i in $(get_ifaces "^(nwg|wg)[0-9]+"); do
@@ -100,13 +121,6 @@ echo "[PPP VPN]"
 echo "======================================"
 for i in $(get_ifaces "^ppp[0-9]+"); do
     show_iface "$i" "PPP tunnel"
-done
-
-echo "======================================"
-echo "[Ethernet / WAN]"
-echo "======================================"
-for i in $(get_ifaces "^eth[0-9]+$"); do
-    show_iface "$i" "Ethernet"
 done
 
 echo "======================================"
