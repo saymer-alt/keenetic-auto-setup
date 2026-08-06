@@ -1,11 +1,12 @@
 #!/bin/sh
 #
-# mihomo-interface-check.sh v1.0.2
+# mihomo-interface-check.sh v1.0.3
 # Diagnostic tool for Keenetic NDMS + Entware
+# GitHub: https://github.com/saymer-alt/keenetic-auto-setup
 #
 
 echo "======================================"
-echo " Mihomo interface-name check v1.0.2"
+echo " Mihomo interface-name check v1.0.3"
 echo "======================================"
 
 # Получаем красивую версию Keenetic OS через ndmc/ndmq
@@ -27,14 +28,21 @@ DEFAULT_IF=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
 
 echo "[DEFAULT ROUTE]"
 if [ -n "$DEFAULT_IF" ]; then
-    echo " ⭐ $DEFAULT_IF (Current Internet route)"
+    # Пробуем получить имя дефолтного интерфейса
+    DEF_NAME=$(ndmc -c "show interface $DEFAULT_IF" 2>/dev/null | awk -F': ' '/description:/ {print $2; exit}' | tr -d '\r')
+    if [ -n "$DEF_NAME" ]; then
+        echo " ⭐ $DEFAULT_IF ($DEF_NAME) - Current Internet route"
+    else
+        echo " ⭐ $DEFAULT_IF (Current Internet route)"
+    fi
 else
     echo " none"
 fi
 echo
 
-# Глобальная переменная для сбора готовности
-READY_IFACES=""
+# Переменные для сбора итогового списка
+SEEN_IFACES=""
+READY_BLOCK=""
 
 # Функция обработки и вывода интерфейса
 show_iface() {
@@ -61,8 +69,16 @@ show_iface() {
 
     MTU=$(echo "$LINK_INFO" | awk '/mtu/ {for(i=1;i<=NF;i++) if($i=="mtu"){print $(i+1); exit}}')
 
+    # Получаем пользовательское имя (description) интерфейса из Keenetic OS
+    SYS_NAME=$(ndmc -c "show interface $REAL_IFACE" 2>/dev/null | awk -F': ' '/description:/ {print $2; exit}' | tr -d '\r')
+
     echo "--------------------------------------"
-    echo "$REAL_IFACE"
+    if [ -n "$SYS_NAME" ]; then
+        echo "$REAL_IFACE ($SYS_NAME)"
+    else
+        echo "$REAL_IFACE"
+    fi
+    
     echo " Type: $TYPE"
     if [ "$REAL_IFACE" = "$DEFAULT_IF" ]; then
         echo " ⭐ Recommended (Current Internet route)"
@@ -71,13 +87,24 @@ show_iface() {
     echo " MTU:  ${MTU:-unknown}"
     echo
     echo " Mihomo:"
-    echo " interface-name: $REAL_IFACE"
+    if [ -n "$SYS_NAME" ]; then
+        echo " interface-name: $REAL_IFACE # $SYS_NAME"
+    else
+        echo " interface-name: $REAL_IFACE"
+    fi
     echo
 
-    # Сохраняем в итоговый список без повторных вызовов ip link
-    case " $READY_IFACES " in
+    # Сохраняем в итоговый список без повторных вызовов
+    case " $SEEN_IFACES " in
         *" $REAL_IFACE "*) ;;
-        *) READY_IFACES="$READY_IFACES $REAL_IFACE" ;;
+        *) 
+            SEEN_IFACES="$SEEN_IFACES $REAL_IFACE" 
+            if [ -n "$SYS_NAME" ]; then
+                READY_BLOCK="${READY_BLOCK}  interface-name: $REAL_IFACE # $SYS_NAME\n"
+            else
+                READY_BLOCK="${READY_BLOCK}  interface-name: $REAL_IFACE\n"
+            fi
+            ;;
     esac
 }
 
@@ -104,7 +131,6 @@ done
 echo "======================================"
 echo "[Ethernet / VLAN WAN]"
 echo "======================================"
-# Регулярка изменена, чтобы ловить не только eth3, но и eth2.1, eth4.2 и т.д.
 for i in $(get_ifaces "^(eth|vlan)[0-9]+(\.[0-9]+)?"); do
     show_iface "$i" "Ethernet or VLAN"
 done
@@ -128,12 +154,10 @@ echo " Ready for mihomo config"
 echo "======================================"
 echo
 
-if [ -n "$READY_IFACES" ]; then
-    for i in $READY_IFACES; do
-        echo " interface-name: $i"
-    done
+if [ -n "$READY_BLOCK" ]; then
+    printf "%b" "$READY_BLOCK"
 else
-    echo " No active interfaces found."
+    echo "  No active interfaces found."
 fi
 
 echo
