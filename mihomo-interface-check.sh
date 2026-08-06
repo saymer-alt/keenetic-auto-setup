@@ -1,34 +1,28 @@
 #!/bin/sh
 
 echo "======================================"
-echo " Mihomo interface-name check v0.4"
+echo " Mihomo interface-name check v0.5"
 echo "======================================"
 echo
 
-# Default route
 DEFAULT_IF=$(ip route | awk '/default/ {print $5; exit}')
 
 echo "[DEFAULT ROUTE]"
 echo " $DEFAULT_IF"
 echo
 
-echo "======================================"
-echo " Mihomo interface candidates"
-echo "======================================"
-echo
-
 
 show_iface() {
     IFACE="$1"
 
-    INFO=$(ip addr show "$IFACE" 2>/dev/null)
+    LINK=$(ip link show "$IFACE" 2>/dev/null)
 
-    IP=$(echo "$INFO" | awk '/inet / {print $2; exit}')
-    MTU=$(ip link show "$IFACE" | awk '/mtu/ {print $5}')
-    STATE=$(ip link show "$IFACE" | awk '/state/ {print $9}')
+    [ -z "$LINK" ] && return
 
-    [ -z "$STATE" ] && STATE="DOWN"
-    [ -z "$IP" ] && IP="none"
+    FLAGS=$(echo "$LINK" | head -1)
+
+    IP=$(ip addr show "$IFACE" 2>/dev/null | awk '/inet / {print $2; exit}')
+    MTU=$(echo "$LINK" | awk '{for(i=1;i<=NF;i++) if($i=="mtu") print $(i+1)}')
 
     echo "--------------------------------------"
     echo "$IFACE"
@@ -51,21 +45,28 @@ show_iface() {
             ;;
     esac
 
-    echo " Status: $STATE"
+
+    echo "$FLAGS" | grep -q "UP" \
+        && echo " Status: UP" \
+        || echo " Status: DOWN"
+
+    [ -z "$IP" ] && IP="none"
+
     echo " IP:   $IP"
     echo " MTU:  $MTU"
     echo
-
     echo " Mihomo:"
     echo " interface-name: $IFACE"
     echo
 }
 
 
-echo "[Recommended WireGuard]"
+echo "======================================"
+echo "[WireGuard]"
+echo "======================================"
 echo
 
-for IFACE in $(ip link | grep -o "nwg[0-9]*"); do
+for IFACE in $(ip link show | grep -o "nwg[0-9][0-9]*"); do
     show_iface "$IFACE"
 done
 
@@ -75,7 +76,7 @@ echo "[WAN / Ethernet]"
 echo "======================================"
 echo
 
-for IFACE in $(ip link | grep -o "eth[0-9]*" | sort -u); do
+for IFACE in $(ip link show | grep -o "eth[0-9][0-9]*"); do
     show_iface "$IFACE"
 done
 
@@ -85,7 +86,7 @@ echo "[PPP VPN tunnels]"
 echo "======================================"
 echo
 
-for IFACE in $(ip link | grep -o "ppp[0-9]*" | sort -u); do
+for IFACE in $(ip link show | grep -o "ppp[0-9][0-9]*"); do
     show_iface "$IFACE"
 done
 
