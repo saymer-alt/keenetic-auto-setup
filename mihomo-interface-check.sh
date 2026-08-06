@@ -1,91 +1,118 @@
 #!/bin/sh
-#
-# mihomo-interface-check.sh
-#
-# Show network interfaces suitable for Mihomo interface-name option.
-# Designed for Keenetic NDMS + Entware/BusyBox.
-#
-# Read-only diagnostic script.
-#
 
 echo "======================================"
-echo " Mihomo interface-name check"
+echo " Mihomo interface-name check v0.2"
 echo "======================================"
 echo
 
-# Get default route interface
-DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}')
+# Default route
+DEFAULT_IF=$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}')
 
-if [ -n "$DEFAULT_IFACE" ]; then
-    echo "Default route interface: $DEFAULT_IFACE"
+echo "[DEFAULT ROUTE]"
+if [ -n "$DEFAULT_IF" ]; then
+    echo " $DEFAULT_IF"
 else
-    echo "Default route interface: not found"
+    echo " none"
 fi
 
 echo
 echo "======================================"
-echo " Candidate interfaces"
+echo " Available interfaces"
 echo "======================================"
-echo
 
+show_interface() {
+    IFACE="$1"
 
-# Interfaces interesting for Mihomo
-for IFACE in $(ip link 2>/dev/null | grep -E '^[0-9]+:' | awk -F': ' '{print $2}' | sed 's/@.*//')
-do
+    # Skip empty
+    [ -z "$IFACE" ] && return
 
+    # Skip unwanted interfaces
     case "$IFACE" in
-        eth*|ppp*|wg*|nwg*|vpn*)
-            ;;
-
-        *)
-            continue
+        lo|br*|mitun*|dummy*|tunl*|ip6tnl*|sit*|gre*|gretap*|ethoip*|\
+        ra*|apcli*|eth*.1|eth*.2|eth*.3|eth*.4|\
+        vpn*)
+            return
             ;;
     esac
 
+    # Interface exists?
+    ip link show "$IFACE" >/dev/null 2>&1 || return
 
-    echo "--------------------------------------"
+    INFO=$(ip addr show "$IFACE" 2>/dev/null)
 
-    if [ "$IFACE" = "$DEFAULT_IFACE" ]; then
-        echo "Interface: $IFACE  [DEFAULT ROUTE]"
-    else
-        echo "Interface: $IFACE"
-    fi
+    IP=$(echo "$INFO" | awk '/inet / {print $2; exit}')
+    MTU=$(ip link show "$IFACE" | awk '/mtu/ {for(i=1;i<=NF;i++) if($i=="mtu"){print $(i+1); exit}}')
 
+    TYPE=""
 
-    # Link info
-    ip link show "$IFACE" 2>/dev/null | head -1
-
-
-    # Address
-    ADDR=$(ip addr show "$IFACE" 2>/dev/null | \
-        grep -m1 "inet " | \
-        awk '{print $2}')
-
-    if [ -n "$ADDR" ]; then
-        echo "Address:   $ADDR"
-    else
-        echo "Address:   none"
-    fi
-
-
-    # MTU
-    MTU=$(ip link show "$IFACE" 2>/dev/null | \
-        grep -o "mtu [0-9]*" | \
-        awk '{print $2}')
-
-    if [ -n "$MTU" ]; then
-        echo "MTU:       $MTU"
-    fi
-
+    case "$IFACE" in
+        ppp*)
+            TYPE="PPP tunnel"
+            ;;
+        nwg*|wg*)
+            TYPE="WireGuard"
+            ;;
+        eth*)
+            TYPE="Ethernet"
+            ;;
+        *)
+            TYPE="Other"
+            ;;
+    esac
 
     echo
-    echo "Mihomo:"
-    echo "interface-name: $IFACE"
+    echo "--------------------------------------"
+    echo "$IFACE"
+    echo " Type: $TYPE"
 
+    if [ -n "$IP" ]; then
+        echo " IP:   $IP"
+    else
+        echo " IP:   none"
+    fi
+
+    echo " MTU:  ${MTU:-unknown}"
+
+    echo
+    echo " Mihomo:"
+    echo " interface-name: $IFACE"
+}
+
+
+echo
+echo "[Ethernet/WAN]"
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+    case "$IF" in
+        eth*)
+            show_interface "$IF"
+            ;;
+    esac
+done
+
+
+echo
+echo "[PPP]"
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+    case "$IF" in
+        ppp*)
+            show_interface "$IF"
+            ;;
+    esac
+done
+
+
+echo
+echo "[WireGuard]"
+for IF in $(ip link | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//'); do
+    case "$IF" in
+        nwg*|wg*)
+            show_interface "$IF"
+            ;;
+    esac
 done
 
 
 echo
 echo "======================================"
-echo "Finished"
+echo " Finished"
 echo "======================================"
