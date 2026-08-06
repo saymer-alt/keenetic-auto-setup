@@ -1,20 +1,36 @@
 #!/bin/sh
+#
+# mihomo-interface-check.sh v1.0
+# Diagnostic tool for Keenetic NDMS + Entware
+# GitHub: https://github.com/saymer-alt/keenetic-auto-setup
+#
 
 echo "======================================"
-echo " Mihomo interface-name check v0.9"
+echo " Mihomo interface-name check v1.0"
 echo "======================================"
+
+# Информация о системе и прошивке Keenetic
+OS_VER=$(ndm -V 2>/dev/null | head -1)
+if [ -n "$OS_VER" ]; then
+    echo " System: $OS_VER"
+else
+    echo " System: $(uname -sr 2>/dev/null)"
+fi
 echo
 
-# 1. Находим дефолтный маршрут
+# 1. Находим дефолтный маршрут (Основной провайдер)
 DEFAULT_IF=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
 
 echo "[DEFAULT ROUTE]"
 if [ -n "$DEFAULT_IF" ]; then
-    echo " ⭐ $DEFAULT_IF"
+    echo " ⭐ $DEFAULT_IF (Current Internet route)"
 else
     echo " none"
 fi
 echo
+
+# Глобальная переменная для сбора готовности
+READY_IFACES=""
 
 # Функция обработки и вывода интерфейса
 show_iface() {
@@ -23,20 +39,20 @@ show_iface() {
 
     [ -z "$IFACE" ] && return
 
-    # Отрезаем @ifname (например eth2.1@eth2 -> eth2.1)
+    # Отрезаем суффиксы VLAN (@eth2 -> eth2)
     REAL_IFACE=$(echo "$IFACE" | sed 's/@.*//')
 
     # Проверяем существование
     ip link show "$REAL_IFACE" >/dev/null 2>&1 || return
 
-    # Проверяем, подняты ли ссылки (UP / LOWER_UP)
+    # Проверяем, поднята ли ссылка (UP / LOWER_UP)
     LINK_INFO=$(ip link show "$REAL_IFACE" 2>/dev/null)
     echo "$LINK_INFO" | grep -qE "(<|,)(UP|LOWER_UP)(,|>)" || return
 
-    # Получаем IP адрес (только IPv4)
+    # Получаем IPv4 адрес
     IP=$(ip addr show "$REAL_IFACE" 2>/dev/null | awk '/inet / {print $2; exit}')
     
-    # Если нет IP - пропускаем, т.к. Mihomo не сможет выходить через интерфейс без IP
+    # Без IP интерфейс пропускаем (Mihomo не сможет залинковаться)
     [ -z "$IP" ] && return
 
     MTU=$(echo "$LINK_INFO" | awk '/mtu/ {for(i=1;i<=NF;i++) if($i=="mtu"){print $(i+1); exit}}')
@@ -44,16 +60,24 @@ show_iface() {
     echo "--------------------------------------"
     echo "$REAL_IFACE"
     echo " Type: $TYPE"
-    [ "$REAL_IFACE" = "$DEFAULT_IF" ] && echo " ⭐ Default route"
+    if [ "$REAL_IFACE" = "$DEFAULT_IF" ]; then
+        echo " ⭐ Recommended (Current Internet route)"
+    fi
     echo " IP:   $IP"
     echo " MTU:  ${MTU:-unknown}"
     echo
     echo " Mihomo:"
     echo " interface-name: $REAL_IFACE"
     echo
+
+    # Сохраняем в итоговый список без повторных вызовов ip link
+    case " $READY_IFACES " in
+        *" $REAL_IFACE "*) ;;
+        *) READY_IFACES="$READY_IFACES $REAL_IFACE" ;;
+    esac
 }
 
-# Вспомогательная функция для сборки списка уникальных интерфейсов по маске
+# Функция для сборки уникальных интерфейсов по маске
 get_ifaces() {
     PATTERN="$1"
     ip link 2>/dev/null | awk -F': ' '/^[0-9]+:/ {print $2}' | sed 's/@.*//' | grep -E "$PATTERN" | sort -u
@@ -85,14 +109,13 @@ echo " Ready for mihomo config"
 echo "======================================"
 echo
 
-for i in $(get_ifaces "^(nwg|wg|ppp|eth)[0-9]+$"); do
-    IP=$(ip addr show "$i" 2>/dev/null | awk '/inet / {print $2; exit}')
-    LINK_INFO=$(ip link show "$i" 2>/dev/null)
-    
-    if [ -n "$IP" ] && echo "$LINK_INFO" | grep -qE "(<|,)(UP|LOWER_UP)(,|>)"; then
+if [ -n "$READY_IFACES" ]; then
+    for i in $READY_IFACES; do
         echo " interface-name: $i"
-    fi
-done
+    done
+else
+    echo " No active interfaces found."
+fi
 
 echo
 echo "======================================"
