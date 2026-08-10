@@ -1,9 +1,9 @@
 #!/bin/sh
-#
+
 # mihomo-interface-check.sh v1.0.3
 # Diagnostic tool for Keenetic NDMS + Entware
 # GitHub: https://github.com/saymer-alt/keenetic-auto-setup
-#
+
 
 echo "======================================"
 echo " Mihomo interface-name check v1.0.3"
