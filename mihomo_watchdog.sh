@@ -24,7 +24,7 @@
 #
 # Cron: */5 * * * * /opt/bin/mihomo_watchdog.sh
 # =========================================================
-
+#
 # --- FILES ---
 
 LOG="/opt/var/log/mihomo_watchdog.log"
