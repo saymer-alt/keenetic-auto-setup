@@ -111,17 +111,48 @@ Installed automatically.
 
 Checks every 5 minutes:
 
-* Mihomo process
-* proxy availability
-* WAN connectivity
+* 🌐 WAN connectivity
+* 🔌 Mihomo proxy availability
+* 🔗 End-to-end SOCKS5h tunnel
 
-If something breaks → auto restart.
+### WAN check
+
+The watchdog uses a two-stage WAN check:
+
+1. **Primary targets** — normal Internet connectivity:
+
+   * Cloudflare
+   * Google
+
+2. **Whitelist fallback** — checked only when all primary targets fail:
+
+   * Gosuslugi
+   * Yandex
+   * Mail.ru
+   * VK (`vk.ru` / `vk.com`)
+
+If at least one target responds, WAN is considered available and the watchdog continues with the Mihomo checks.
+
+If **none of the targets respond**, the watchdog exits without restarting Mihomo. A WAN outage does not necessarily mean that Mihomo is broken, so restarting it in this situation could make things worse.
+
+### Mihomo recovery
+
+When WAN connectivity is confirmed:
+
+1. Checks that Mihomo's proxy port is available.
+2. Checks the end-to-end SOCKS5h tunnel.
+3. Uses Google through the tunnel as the external endpoint.
+4. Restarts Mihomo if the proxy or tunnel check fails.
+5. Applies a restart cooldown to prevent restart loops.
+
+All WAN checks are performed **directly**, without using Mihomo.
 
 Logs:
 
 ```bash
 cat /opt/var/log/mihomo_watchdog.log
 ```
+
 
 ---
 
