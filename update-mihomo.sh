@@ -1,20 +1,20 @@
 #!/bin/sh
-#
+
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
 # Automatically fetches the latest Mihomo release from GitHub,
 # detects architecture, downloads the correct binary, backs up
 # the old version, replaces it, restarts the service, and rolls
 # back on failure.
-#
+
 # Usage:
 #   sh update-mihomo.sh
 #   sh update-mihomo.sh --force     # skip version check, always update
-#
+
 # Tested on: Keenetic ARM64 (aarch64) with Entware
 # Author: saymer-alt
 # Repository: https://github.com/saymer-alt/keenetic-auto-setup
-#
+
 
 set -e
 
