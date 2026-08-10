@@ -1,17 +1,17 @@
 #!/bin/sh
-#
+
 # =========================================================
 # MIHOMO WATCHDOG SCRIPT - PRODUCTION VERSION
 # ---------------------------------------------------------
 # Embedded Linux watchdog for Mihomo proxy
 # Tested on Keenetic + Entware systems (MT7621 / MIPS).
-#
+
 # All WAN checks are performed DIRECTLY, without Mihomo.
-#
+
 # If no target responds, WAN is considered unavailable.
 # In this case Mihomo is NOT restarted because its actual
 # state cannot be determined.
-#
+
 # Features:
 # - Two-stage WAN connectivity check
 # - Normal Internet targets checked first
@@ -21,10 +21,10 @@
 # - Restart rate limiting (cooldown to prevent loops)
 # - Lock file protection & log rotation
 # - Jitter for multi-router deployments (~20 nodes)
-#
+
 # Cron: */5 * * * * /opt/bin/mihomo_watchdog.sh
 # =========================================================
-#
+
 # --- FILES ---
 
 LOG="/opt/var/log/mihomo_watchdog.log"
