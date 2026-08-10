@@ -153,6 +153,10 @@ Logs:
 cat /opt/var/log/mihomo_watchdog.log
 ```
 
+### Update watchdog
+
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+
 
 ---
 
