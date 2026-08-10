@@ -1,5 +1,5 @@
 #!/bin/sh
-
+#
 # SPDX-License-Identifier: MIT
 #
 # Based on original Entware UBIFS helper by Entware team
@@ -20,7 +20,7 @@
 #
 # Usage:
 #   /opt/etc/init.d/S00ubifs {start|stop|restart|reload|status|enable|disable}
-
+#
 #######################################
 # Colors for terminal output
 #######################################
