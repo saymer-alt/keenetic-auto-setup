@@ -1,26 +1,26 @@
 #!/bin/sh
-#
+
 # SPDX-License-Identifier: MIT
-#
+
 # Based on original Entware UBIFS helper by Entware team
 # Original source: https://pastebin.com/6SyQqPHJ
-#
+
 # Enhanced for Keenetic routers by Saymer / community
-#
+
 # Features:
 #   - Moves runtime/log/temp directories to tmpfs (RAM)
 #   - Reduces flash wear on USB/UBIFS storage
 #   - Helps prevent PID/socket issues with Entware services
 #   - Adaptive RAM-aware tmpfs sizing (low / medium / high profiles)
 #   - BusyBox / ash compatible (POSIX sh)
-#
+
 # Recommended installation:
 #   /opt/etc/init.d/S00ubifs
 #   chmod +x /opt/etc/init.d/S00ubifs
-#
+
 # Usage:
 #   /opt/etc/init.d/S00ubifs {start|stop|restart|reload|status|enable|disable}
-#
+
 #######################################
 # Colors for terminal output
 #######################################
