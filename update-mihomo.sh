@@ -24,6 +24,7 @@ echo "=== Mihomo Auto Updater for Keenetic (storage-safe) ==="
 TMP_DIR="/tmp"
 REPO="MetaCubeX/mihomo"
 FORCE_UPDATE=0
+SERVICE_WAS_STOPPED=0
 
 # Parse arguments
 for arg in "$@"; do
@@ -122,7 +123,8 @@ MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
 MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
-CURRENT_VER=$("$MIHOMO_PATH" -v 2>/dev/null | head -1 | awk '{print $3}')
+# Wrapped in subshell to suppress Segmentation fault message from the shell itself
+CURRENT_VER=$( ( "$MIHOMO_PATH" -v ) 2>/dev/null | head -1 | awk '{print $3}')
 log "Current version: ${CURRENT_VER:-unknown}"
 
 # Skip update if versions match (unless --force)
@@ -206,6 +208,7 @@ if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
   if [ -n "$INIT_SCRIPT" ]; then
     log "Low space. Stopping mihomo to free occupied inode..."
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+    SERVICE_WAS_STOPPED=1
     sleep 2
     AVAIL_KB=$(get_avail_kb)
     log "Free space after stop: ${AVAIL_KB} KB"
@@ -228,9 +231,9 @@ if [ -f "$MIHOMO_PATH" ]; then
 fi
 
 # -----------------------------
-# 10. Stop service, remove old binary, install new one
+# 10. Stop service (if not already stopped), remove old binary, install new one
 # -----------------------------
-if [ -n "$INIT_SCRIPT" ]; then
+if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
   log "Stopping mihomo service..."
   "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
   sleep 1
