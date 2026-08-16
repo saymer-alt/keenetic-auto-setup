@@ -3,7 +3,7 @@
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
 # Low-storage safe edition:
-#   - Temp files and backups live in /tmp (RAM), not /opt
+#   - Temp files and backups live in /tmp (tmpfs/RAM on Keenetic), not /opt
 #   - Service is stopped before replacement to free disk blocks
 #   - Free space is checked before writing
 #   - Automatic rollback on failure
@@ -50,12 +50,17 @@ retry() {
 # Rollback helper: restores old binary and attempts to start service
 rollback_and_exit() {
   log "Rolling back to previous version..."
-  rm -f "$MIHOMO_PATH"
-  if [ -f "$TMP_BACKUP" ]; then
-    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
-    chmod +x "$MIHOMO_PATH"
-    log "Previous binary restored."
+
+  if [ ! -f "$TMP_BACKUP" ]; then
+    error "$1 — rollback impossible: backup is missing"
   fi
+
+  rm -f "$MIHOMO_PATH"
+
+  cp -f "$TMP_BACKUP" "$MIHOMO_PATH" || error "$1 — failed to restore backup"
+  chmod +x "$MIHOMO_PATH"
+  log "Previous binary restored."
+
   if [ -n "$INIT_SCRIPT" ]; then
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     sleep 2
@@ -65,6 +70,7 @@ rollback_and_exit() {
       log "WARNING: Rollback completed, but mihomo process is not detected."
     fi
   fi
+
   error "$1"
 }
 
@@ -317,9 +323,17 @@ fi
 if [ -n "$INIT_SCRIPT" ]; then
   log "Starting mihomo service..."
   "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-  sleep 2
 
-  if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+  SERVICE_OK=0
+  for i in 1 2 3 4 5; do
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      SERVICE_OK=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$SERVICE_OK" -ne 1 ]; then
     rollback_and_exit "Service start failed — rolled back to previous version"
   fi
 else
