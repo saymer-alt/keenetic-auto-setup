@@ -1,268 +1,376 @@
 #!/bin/sh
 
-# =========================================================
-# MIHOMO WATCHDOG SCRIPT - PRODUCTION VERSION
-# ---------------------------------------------------------
-# Embedded Linux watchdog for Mihomo proxy
-# Tested on Keenetic + Entware systems (MT7621 / MIPS).
-
-# All WAN checks are performed DIRECTLY, without Mihomo.
-
-# If no target responds, WAN is considered unavailable.
-# In this case Mihomo is NOT restarted because its actual
-# state cannot be determined.
-
-# Features:
-# - Two-stage WAN connectivity check
-# - Normal Internet targets checked first
-# - Whitelist fallback for restricted/mobile networks
-# - Mihomo port availability check
-# - End-to-end SOCKS5h tunnel check
-# - Restart rate limiting (cooldown to prevent loops)
-# - Lock file protection & log rotation
-# - Jitter for multi-router deployments (~20 nodes)
-
-# Cron: */5 * * * * /opt/bin/mihomo_watchdog.sh
-# =========================================================
-
-# --- FILES ---
-
-LOG="/opt/var/log/mihomo_watchdog.log"
-LOCK_FILE="/tmp/mihomo_watchdog.lock"
-RESTART_STATE="/tmp/mihomo_watchdog.restart"
-
-
-# --- CONFIGURATION ---
-
-# Normal Internet targets.
-# These are checked first.
-# If at least one target responds, WAN is considered available.
-WAN_PRIMARY_TARGETS="http://cp.cloudflare.com http://www.google.com"
-
-# Fallback targets for restricted/whitelist networks.
-# Checked only if ALL primary targets fail.
-# At least one responding target is enough to consider WAN available.
+# Mihomo Auto Updater for Keenetic routers with Entware
+# -----------------------------------------------------
+# Low-storage safe edition:
+#   - Temp files and backups live in /tmp (tmpfs/RAM on Keenetic), not /opt
+#   - Service is stopped before replacement to free disk blocks
+#   - Free space is checked before writing
+#   - Automatic rollback on failure
+#   - GitHub API rate-limit fallback via web redirect
 #
-# For Russian mobile networks these targets provide a
-# practical fallback when normal Internet access is restricted.
-WAN_WHITELIST_TARGETS="http://gosuslugi.ru http://ya.ru http://mail.ru http://vk.ru http://vk.com"
-
-# Mihomo mixed proxy port (HTTP + SOCKS5)
-PROXY="127.0.0.1:7890"
-
-# Minimum seconds between restarts to prevent storm during upstream outage
-MIN_RESTART_INTERVAL=300
-
-# Log rotation thresholds
-LOG_MAX_LINES=500
-LOG_KEEP_LINES=300
-
-
-# =========================================================
-# LOCK MECHANISM
+# Usage:
+#   sh update-mihomo.sh
+#   sh update-mihomo.sh --force     # skip version check
 #
-# Prevents overlapping executions if a previous run hangs.
-# Trap ensures cleanup on any exit path (normal, interrupt, kill).
-# =========================================================
+# Tested on: Keenetic ARM64 (aarch64) with Entware
+# Author: saymer-alt
+# Repository: https://github.com/saymer-alt/keenetic-auto-setup
 
-if [ -f "$LOCK_FILE" ]; then
-    # Another instance is still running; skip silently
-    exit 0
-fi
+set -e
 
-touch "$LOCK_FILE" || exit 0
+echo "=== Mihomo Auto Updater for Keenetic (storage-safe) ==="
 
-cleanup() {
-    rm -f "$LOCK_FILE"
-}
+# Configuration
+TMP_DIR="/tmp"
+REPO="MetaCubeX/mihomo"
+FORCE_UPDATE=0
+SERVICE_WAS_STOPPED=0
+OPKG_UPDATED=0
 
-trap cleanup EXIT INT TERM
-
-
-# =========================================================
-# JITTER (Random delay 0-24s)
-#
-# Desynchronizes multiple routers to avoid thundering herd
-# against upstream check targets and local Mihomo instance.
-# =========================================================
-
-sleep $(( $(date +%s) % 25 ))
-
-
-# =========================================================
-# LOGGING & ROTATION
-# =========================================================
-
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"
-}
-
-rotate_log() {
-    if [ -f "$LOG" ]; then
-        LINES=$(wc -l < "$LOG")
-
-        if [ "$LINES" -gt "$LOG_MAX_LINES" ]; then
-            tail -n "$LOG_KEEP_LINES" "$LOG" > "$LOG.tmp" &&
-                mv "$LOG.tmp" "$LOG"
-        fi
-    fi
-}
-
-# NOTE: Log directory should be created during installation (install.sh).
-# If running standalone, ensure /opt/var/log exists beforehand.
-
-rotate_log
-
-
-# =========================================================
-# RESTART RATE LIMITER
-#
-# Prevents restart loops during upstream outages.
-#
-# Validates state file content to handle corruption/emptiness.
-#
-# Arguments:
-# $1 - reason string for log message
-#
-# Returns:
-# 0 if restart is allowed
-# 1 if rate-limited
-# =========================================================
-
-can_restart() {
-    local reason="$1"
-    local now
-    now=$(date +%s)
-    local last=0
-
-    if [ -f "$RESTART_STATE" ]; then
-        last=$(cat "$RESTART_STATE")
-
-        # Validate: ensure content is numeric to prevent
-        # arithmetic errors on corrupted/empty state file
-        case "$last" in
-            ''|*[!0-9]*) last=0 ;;
-        esac
-
-        local elapsed
-        elapsed=$(( now - last ))
-
-        if [ "$elapsed" -lt "$MIN_RESTART_INTERVAL" ]; then
-            log "[RATE-LIMIT] Restart blocked (${elapsed}s < ${MIN_RESTART_INTERVAL}s) | ${reason}"
-            return 1
-        fi
-    fi
-
-    # Record restart timestamp and proceed
-    echo "$now" > "$RESTART_STATE"
-
-    log "[RESTART] ${reason}"
-    /opt/etc/init.d/S99mihomo restart
-
-    return 0
-}
-
-
-# =========================================================
-# HEALTH CHECKS
-# =========================================================
-
-
-# =========================================================
-# 1. WAN CONNECTIVITY CHECK
-#
-# First check normal Internet targets.
-#
-# If all primary targets fail, check whitelist targets.
-#
-# All WAN checks are performed DIRECTLY, without Mihomo.
-#
-# If no target responds, WAN is considered unavailable.
-# In this case Mihomo is NOT restarted because its actual
-# state cannot be determined.
-# =========================================================
-
-wan_ok=0
-wan_target_ok=""
-
-# ---------------------------------------------------------
-# Primary targets
-# ---------------------------------------------------------
-
-for target in $WAN_PRIMARY_TARGETS; do
-    if curl -s --connect-timeout 3 --head "$target" >/dev/null 2>&1; then
-        wan_ok=1
-        wan_target_ok="$target"
-        break
-    fi
+# Parse arguments
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE_UPDATE=1 ;;
+  esac
 done
 
+# Logging helpers
+log() { echo "[updater] $1"; }
+error() { echo "[ERROR] $1"; exit 1; }
 
-# ---------------------------------------------------------
-# Whitelist fallback
-#
-# Only executed when ALL primary targets fail.
-# ---------------------------------------------------------
+# Retry wrapper: attempts a command up to 3 times with 2s delay
+retry() {
+  for i in 1 2 3; do
+    "$@" && return 0
+    sleep 2
+  done
+  return 1
+}
 
-if [ "$wan_ok" -eq 0 ]; then
-    log "[WAN] Primary targets unavailable, checking whitelist targets"
+# Rollback helper: restores old binary and attempts to start service
+rollback_and_exit() {
+  log "Rolling back to previous version..."
 
-    for target in $WAN_WHITELIST_TARGETS; do
-        if curl -s --connect-timeout 3 --head "$target" >/dev/null 2>&1; then
-            wan_ok=1
-            wan_target_ok="$target"
-            break
-        fi
-    done
+  if [ ! -f "$TMP_BACKUP" ]; then
+    error "$1 — rollback impossible: backup is missing"
+  fi
+
+  rm -f "$MIHOMO_PATH"
+
+  cp -f "$TMP_BACKUP" "$MIHOMO_PATH" || error "$1 — failed to restore backup"
+  chmod +x "$MIHOMO_PATH"
+  log "Previous binary restored."
+
+  if [ -n "$INIT_SCRIPT" ]; then
+    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+    sleep 2
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      log "Rollback successful. Previous mihomo is running."
+    else
+      log "WARNING: Rollback completed, but mihomo process is not detected."
+    fi
+  fi
+
+  error "$1"
+}
+
+# -----------------------------
+# 1. Base checks
+# -----------------------------
+command -v opkg >/dev/null 2>&1 || {
+  error "opkg not found. Is Entware installed?"
+}
+
+# Install required packages if missing
+pkg_install() {
+  if ! opkg list-installed | grep -q "^$1 "; then
+    if [ "$OPKG_UPDATED" -eq 0 ]; then
+      log "Updating package lists..."
+      opkg update || error "opkg update failed"
+      OPKG_UPDATED=1
+    fi
+    opkg install "$1"
+  fi
+}
+
+pkg_install curl
+pkg_install jq
+pkg_install gzip
+pkg_install wget
+
+command -v jq >/dev/null || error "jq is required but not installed"
+command -v curl >/dev/null || error "curl is required but not installed"
+
+# -----------------------------
+# 2. RAM check (prevent OOM on low-memory devices)
+# -----------------------------
+TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+log "Total RAM: ${TOTAL_MEM_KB} KB"
+
+if [ "$TOTAL_MEM_KB" -lt 250000 ]; then
+  error "Device has less than 256MB RAM (${TOTAL_MEM_KB} KB). Update aborted to prevent OOM."
 fi
 
+# -----------------------------
+# 3. Detect router architecture
+# -----------------------------
+ARCH=$(uname -m)
 
-# ---------------------------------------------------------
-# Final WAN result
-# ---------------------------------------------------------
+# Map uname arch to Mihomo release binary name
+case "$ARCH" in
+  aarch64)
+    MIHOMO_ARCH="arm64"
+    ;;
+  armv7l|armv7*)
+    MIHOMO_ARCH="armv7"
+    ;;
+  mips|mipsel)
+    error "MIPS is not supported by official Mihomo binaries. Use opkg package or build manually."
+    ;;
+  *)
+    error "Unsupported architecture: $ARCH"
+    ;;
+esac
 
-if [ "$wan_ok" -eq 0 ]; then
-    log "[WARN] WAN unreachable (primary + whitelist targets failed)"
-    exit 0
+log "Detected arch: $ARCH -> mihomo-$MIHOMO_ARCH"
+
+# -----------------------------
+# 4. Fetch latest release info
+# -----------------------------
+log "Fetching latest release from GitHub API..."
+
+LATEST_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || LATEST_JSON=""
+
+LATEST_TAG=""
+if [ -n "$LATEST_JSON" ]; then
+  LATEST_TAG=$(echo "$LATEST_JSON" | jq -r '.tag_name')
+  if [ "$LATEST_TAG" != "null" ] && [ -n "$LATEST_TAG" ]; then
+    log "Got version via GitHub API: $LATEST_TAG"
+  else
+    LATEST_TAG=""
+  fi
 fi
 
-log "[WAN] Connectivity OK via ${wan_target_ok}"
-
-
-# =========================================================
-# 2. MIHOMO PORT CHECK (TCP listener)
-#
-# Verifies that Mihomo's mixed port accepts TCP connections.
-# We only care that the port is open, not the HTTP response.
-#
-# If port is closed, Mihomo is likely crashed or not started.
-# =========================================================
-
-if ! curl -s --connect-timeout 3 "http://$PROXY" >/dev/null 2>&1; then
-    can_restart "Mihomo port unreachable"
-    exit 0
+if [ -z "$LATEST_TAG" ]; then
+  log "GitHub API failed or rate-limited. Falling back to web redirect..."
+  REDIRECT_URL=$(curl -fsSL -o /dev/null -w '%{url_effective}\n' "https://github.com/$REPO/releases/latest") || REDIRECT_URL=""
+  if [ -n "$REDIRECT_URL" ]; then
+    LATEST_TAG=$(echo "$REDIRECT_URL" | sed 's#.*/tag/##')
+    log "Got version via web redirect: $LATEST_TAG"
+  fi
 fi
 
+[ -z "$LATEST_TAG" ] && error "Failed to determine latest release (both API and web redirect failed)"
 
-# =========================================================
-# 3. END-TO-END PROXY CHECK (Tunnel test)
-#
-# Verifies that SOCKS5 proxy actually forwards traffic.
-#
-# Uses socks5h to force DNS resolution through the tunnel.
-#
-# Tests against a reliable external HTTPS endpoint
-# independently from the direct WAN targets.
-# =========================================================
+LATEST_VER=${LATEST_TAG#v}
 
-if ! curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1; then
-    can_restart "Proxy tunnel check failed"
-    exit 0
+[ -z "$LATEST_VER" ] || [ "$LATEST_VER" = "null" ] && error "Cannot parse version from GitHub response"
+
+log "Latest available version: $LATEST_VER"
+
+# -----------------------------
+# 5. Find currently installed mihomo
+# -----------------------------
+MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
+[ -z "$MIHOMO_PATH" ] && MIHOMO_PATH=$(which mihomo 2>/dev/null)
+[ -z "$MIHOMO_PATH" ] && error "Cannot find installed mihomo binary"
+
+MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
+log "Installed at: $MIHOMO_PATH"
+
+CURRENT_VER=""
+if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
+  CURRENT_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
+fi
+log "Current version: ${CURRENT_VER:-unknown}"
+
+# Skip update if versions match (unless --force)
+if [ "$FORCE_UPDATE" -eq 0 ] && [ "$CURRENT_VER" = "$LATEST_VER" ]; then
+  log "Already up to date ($CURRENT_VER). Use --force to reinstall."
+  exit 0
 fi
 
+# -----------------------------
+# 6. Download new binary to /tmp
+# -----------------------------
+FILENAME="mihomo-linux-${MIHOMO_ARCH}-v${LATEST_VER}.gz"
+URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILENAME"
 
-# =========================================================
-# ALL CHECKS PASSED
-# =========================================================
+log "Downloading: $FILENAME"
 
-log "[OK] All good"
+cd "$TMP_DIR" || error "Cannot change to $TMP_DIR"
+rm -f "$TMP_DIR/mihomo-linux-"* "$TMP_DIR/mihomo.backup."* 2>/dev/null || true
+
+retry curl -fSL "$URL" -o "$TMP_DIR/$FILENAME" || {
+  log "curl failed, trying wget as fallback..."
+  wget -q "$URL" -O "$TMP_DIR/$FILENAME" || error "Download failed (both curl and wget)"
+}
+
+# -----------------------------
+# 7. Extract and test binary
+# -----------------------------
+log "Extracting archive..."
+gzip -df "$TMP_DIR/$FILENAME" || error "Failed to extract $FILENAME"
+
+# After gzip -d, the file name loses the .gz suffix
+BINARY_NAME="mihomo-linux-${MIHOMO_ARCH}-v${LATEST_VER}"
+chmod +x "$TMP_DIR/$BINARY_NAME"
+
+log "Testing binary compatibility..."
+"$TMP_DIR/$BINARY_NAME" -v >/dev/null 2>&1 || error "Binary test failed — architecture mismatch or corrupted file"
+
+log "Testing new binary with current config..."
+if [ -d "/opt/etc/mihomo" ]; then
+  if ! "$TMP_DIR/$BINARY_NAME" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
+    error "Config test failed! New version is incompatible with current config.yaml. Update aborted."
+  fi
+  log "Config test passed."
+else
+  log "WARNING: /opt/etc/mihomo not found, skipping config test."
+fi
+
+# -----------------------------
+# 8. Check free space and clean old backups
+# -----------------------------
+NEW_SIZE_BYTES=$(wc -c < "$TMP_DIR/$BINARY_NAME")
+NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
+NEED_KB=$((NEW_SIZE_KB + 4096))  # 4 MB safety margin
+
+get_avail_kb() {
+  df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
+}
+
+AVAIL_KB=$(get_avail_kb)
+log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB"
+log "New binary size: ${NEW_SIZE_KB} KB (need ~${NEED_KB} KB)"
+
+# Remove stale backups in /opt to reclaim space
+cleaned=0
+for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
+  if [ -f "$bak" ]; then
+    log "Removing old backup: $bak"
+    rm -f "$bak"
+    cleaned=1
+  fi
+done
+
+if [ "$cleaned" -eq 1 ]; then
+  AVAIL_KB=$(get_avail_kb)
+  log "Recalculated free space: ${AVAIL_KB} KB"
+fi
+
+# -----------------------------
+# 9. Find init script
+# -----------------------------
+INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
+
+if [ -n "$INIT_SCRIPT" ]; then
+  log "Found init script: $INIT_SCRIPT"
+else
+  log "WARNING: No init script found in /opt/etc/init.d"
+fi
+
+# If still not enough space, stop the service so the old binary
+# is no longer held open and its disk blocks can be reclaimed.
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  if [ -n "$INIT_SCRIPT" ]; then
+    log "Low space. Stopping mihomo to free disk blocks..."
+    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+    SERVICE_WAS_STOPPED=1
+    sleep 2
+    AVAIL_KB=$(get_avail_kb)
+    log "Free space after stop: ${AVAIL_KB} KB"
+  fi
+fi
+
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  error "Not enough free space on $MIHOMO_DIR (${AVAIL_KB} KB available, ${NEED_KB} KB required).
+Free up space manually or install Mihomo on external storage."
+fi
+
+# -----------------------------
+# 10. Backup old binary to /tmp (RAM), not /opt
+# -----------------------------
+TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
+
+if [ -f "$MIHOMO_PATH" ]; then
+  log "Backing up current binary to $TMP_BACKUP ..."
+  cp -f "$MIHOMO_PATH" "$TMP_BACKUP" || error "Failed to create backup in /tmp"
+fi
+
+# -----------------------------
+# 11. Stop service (if not already stopped), remove old binary, install new one
+# -----------------------------
+if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
+  log "Stopping mihomo service..."
+  "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+  sleep 1
+fi
+
+log "Removing old binary from $MIHOMO_DIR ..."
+if ! rm -f "$MIHOMO_PATH"; then
+  rollback_and_exit "Failed to remove old binary"
+fi
+
+log "Installing new binary..."
+if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
+  rollback_and_exit "Failed to replace binary — rolled back to previous version"
+fi
+
+chmod +x "$MIHOMO_PATH"
+
+# -----------------------------
+# 12. Test new binary in place
+# -----------------------------
+log "Testing installed binary..."
+if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
+  rollback_and_exit "New binary test failed — rolled back to previous version"
+fi
+
+# -----------------------------
+# 13. Start service and verify process
+# -----------------------------
+if [ -n "$INIT_SCRIPT" ]; then
+  log "Starting mihomo service..."
+  "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+
+  SERVICE_OK=0
+  for i in 1 2 3 4 5; do
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      SERVICE_OK=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$SERVICE_OK" -ne 1 ]; then
+    rollback_and_exit "Service start failed — rolled back to previous version"
+  fi
+else
+  log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
+fi
+
+# -----------------------------
+# 14. Final process verification
+# -----------------------------
+if command -v pidof >/dev/null 2>&1; then
+  if pidof mihomo >/dev/null 2>&1; then
+    log "Process is running."
+  else
+    log "WARNING: Binary works, but mihomo process is not detected."
+  fi
+else
+  log "pidof not available, skipping process check"
+fi
+
+# -----------------------------
+# 15. Cleanup
+# -----------------------------
+rm -f "$TMP_BACKUP" "$TMP_DIR/$FILENAME" "$TMP_DIR/$BINARY_NAME" 2>/dev/null || true
+
+# -----------------------------
+# Done
+# -----------------------------
+log "Success! Updated to $LATEST_VER"
+echo "[OK] Mihomo updated successfully"
