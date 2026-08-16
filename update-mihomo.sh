@@ -362,17 +362,21 @@ if [ -n "$INIT_SCRIPT" ]; then
   log "Starting mihomo service..."
   "$INIT_SCRIPT" start >/dev/null 2>&1 || true
 
-  SERVICE_OK=0
-  for i in 1 2 3 4 5; do
-    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-      SERVICE_OK=1
-      break
-    fi
-    sleep 1
-  done
+  if command -v pidof >/dev/null 2>&1; then
+    SERVICE_OK=0
+    for i in 1 2 3 4 5; do
+      if pidof mihomo >/dev/null 2>&1; then
+        SERVICE_OK=1
+        break
+      fi
+      sleep 1
+    done
 
-  if [ "$SERVICE_OK" -ne 1 ]; then
-    rollback_and_exit "Service start failed — rolled back to previous version"
+    if [ "$SERVICE_OK" -ne 1 ]; then
+      rollback_and_exit "Service start failed — rolled back to previous version"
+    fi
+  else
+    log "pidof not available, skipping strict process verification."
   fi
 else
   log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
