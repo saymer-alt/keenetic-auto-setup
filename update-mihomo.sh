@@ -26,6 +26,7 @@ TMP_DIR="/tmp"
 REPO="MetaCubeX/mihomo"
 FORCE_UPDATE=0
 SERVICE_WAS_STOPPED=0
+SERVICE_WAS_RUNNING=0
 OPKG_UPDATED=0
 
 # Parse arguments
@@ -62,7 +63,7 @@ rollback_and_exit() {
   chmod +x "$MIHOMO_PATH"
   log "Previous binary restored."
 
-  if [ -n "$INIT_SCRIPT" ]; then
+  if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     sleep 2
     if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
@@ -206,6 +207,11 @@ log "Current version: ${CURRENT_VER:-unknown}"
 if [ "$FORCE_UPDATE" -eq 0 ] && [ "$CURRENT_VER" = "$LATEST_VER" ]; then
   log "Already up to date ($CURRENT_VER). Use --force to reinstall."
   exit 0
+fi
+
+# Remember whether Mihomo was running before the update
+if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  SERVICE_WAS_RUNNING=1
 fi
 
 # -----------------------------
@@ -360,7 +366,9 @@ log "Installed version verified: $INSTALLED_VER"
 # -----------------------------
 if [ -n "$INIT_SCRIPT" ]; then
   log "Starting mihomo service..."
-  "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+  if ! "$INIT_SCRIPT" start >/dev/null 2>&1; then
+    log "WARNING: Mihomo init script reported start failure. Checking process..."
+  fi
 
   if command -v pidof >/dev/null 2>&1; then
     SERVICE_OK=0
