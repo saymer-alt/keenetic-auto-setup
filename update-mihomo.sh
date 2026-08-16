@@ -2,23 +2,23 @@
 
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
-# Automatically fetches the latest Mihomo release from GitHub,
-# detects architecture, downloads the correct binary, backs up
-# the old version, replaces it, restarts the service, and rolls
-# back on failure.
-
+# Low-storage safe edition:
+#   - Temp files and backups live in /tmp (RAM), not /opt
+#   - Service is stopped before replacement to free inode space
+#   - Free space is checked before writing
+#   - Automatic rollback on failure
+#
 # Usage:
 #   sh update-mihomo.sh
-#   sh update-mihomo.sh --force     # skip version check, always update
-
+#   sh update-mihomo.sh --force     # skip version check
+#
 # Tested on: Keenetic ARM64 (aarch64) with Entware
 # Author: saymer-alt
 # Repository: https://github.com/saymer-alt/keenetic-auto-setup
 
-
 set -e
 
-echo "=== Mihomo Auto Updater for Keenetic ==="
+echo "=== Mihomo Auto Updater for Keenetic (storage-safe) ==="
 
 # Configuration
 TMP_DIR="/tmp"
@@ -119,6 +119,7 @@ MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
 [ -z "$MIHOMO_PATH" ] && MIHOMO_PATH=$(which mihomo 2>/dev/null)
 [ -z "$MIHOMO_PATH" ] && error "Cannot find installed mihomo binary"
 
+MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
 CURRENT_VER=$("$MIHOMO_PATH" -v 2>/dev/null | head -1 | awk '{print $3}')
@@ -131,7 +132,7 @@ if [ "$FORCE_UPDATE" -eq 0 ] && [ "$CURRENT_VER" = "$LATEST_VER" ]; then
 fi
 
 # -----------------------------
-# 5. Download new binary
+# 5. Download new binary to /tmp
 # -----------------------------
 FILENAME="mihomo-linux-${MIHOMO_ARCH}-v${LATEST_VER}.gz"
 URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILENAME"
@@ -139,7 +140,7 @@ URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILENAME"
 log "Downloading: $FILENAME"
 
 cd "$TMP_DIR" || error "Cannot change to $TMP_DIR"
-rm -f "$TMP_DIR/mihomo-linux-"* 2>/dev/null || true
+rm -f "$TMP_DIR/mihomo-linux-"* "$TMP_DIR/mihomo.backup."* 2>/dev/null || true
 
 retry curl -fSL "$URL" -o "$TMP_DIR/$FILENAME" || {
   log "curl failed, trying wget as fallback..."
@@ -160,59 +161,130 @@ log "Testing binary compatibility..."
 "$TMP_DIR/$BINARY_NAME" -v >/dev/null 2>&1 || error "Binary test failed — architecture mismatch or corrupted file"
 
 # -----------------------------
-# 7. Backup old version
+# 7. Check free space and clean old backups
 # -----------------------------
-BACKUP_PATH="${MIHOMO_PATH}.backup"
+NEW_SIZE_BYTES=$(wc -c < "$TMP_DIR/$BINARY_NAME")
+NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
+NEED_KB=$((NEW_SIZE_KB + 2048))  # 2 MB safety margin
 
-if [ -f "$MIHOMO_PATH" ]; then
-  log "Creating backup at $BACKUP_PATH"
-  cp -f "$MIHOMO_PATH" "$BACKUP_PATH" || error "Failed to create backup"
+get_avail_kb() {
+  df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
+}
+
+AVAIL_KB=$(get_avail_kb)
+log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB"
+log "New binary size: ${NEW_SIZE_KB} KB (need ~${NEED_KB} KB)"
+
+# Remove stale backups in /opt to reclaim space
+cleaned=0
+for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
+  if [ -f "$bak" ]; then
+    log "Removing old backup: $bak"
+    rm -f "$bak"
+    cleaned=1
+  fi
+done
+
+if [ "$cleaned" -eq 1 ]; then
+  AVAIL_KB=$(get_avail_kb)
+  log "Recalculated free space: ${AVAIL_KB} KB"
 fi
 
 # -----------------------------
-# 8. Replace binary
-# -----------------------------
-log "Replacing binary..."
-mv -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH" || error "Failed to replace binary"
-chmod +x "$MIHOMO_PATH"
-
-# -----------------------------
-# 9. Restart mihomo service
+# 8. Find init script
 # -----------------------------
 INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
 
 if [ -n "$INIT_SCRIPT" ]; then
-  log "Restarting service: $INIT_SCRIPT"
-  "$INIT_SCRIPT" restart >/dev/null 2>&1 || error "Service restart failed"
-  sleep 2
+  log "Found init script: $INIT_SCRIPT"
 else
-  log "WARNING: No init script found. Please restart manually: mihomo -d /opt/etc/mihomo"
+  log "WARNING: No init script found in /opt/etc/init.d"
+fi
+
+# If still not enough space, try stopping the service to free the occupied inode
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  if [ -n "$INIT_SCRIPT" ]; then
+    log "Low space. Stopping mihomo to free occupied inode..."
+    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+    sleep 2
+    AVAIL_KB=$(get_avail_kb)
+    log "Free space after stop: ${AVAIL_KB} KB"
+  fi
+fi
+
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  error "Not enough free space on $MIHOMO_DIR (${AVAIL_KB} KB available, ${NEED_KB} KB required).
+Free up space manually or install Mihomo on external storage."
 fi
 
 # -----------------------------
-# 10. Verify update
+# 9. Backup old binary to /tmp (RAM), not /opt
 # -----------------------------
-log "Verifying installation..."
+TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
 
-sleep 1
-NEW_VER=$("$MIHOMO_PATH" -v 2>/dev/null | head -1)
+if [ -f "$MIHOMO_PATH" ]; then
+  log "Backing up current binary to $TMP_BACKUP ..."
+  cp -f "$MIHOMO_PATH" "$TMP_BACKUP" || error "Failed to create backup in /tmp"
+fi
 
-if [ -n "$NEW_VER" ]; then
-  log "Success! $NEW_VER"
-else
-  log "New binary is broken! Rolling back..."
+# -----------------------------
+# 10. Stop service, remove old binary, install new one
+# -----------------------------
+if [ -n "$INIT_SCRIPT" ]; then
+  log "Stopping mihomo service..."
+  "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+  sleep 1
+fi
 
-  if [ -f "$BACKUP_PATH" ]; then
-    mv -f "$BACKUP_PATH" "$MIHOMO_PATH"
+log "Removing old binary from $MIHOMO_DIR ..."
+rm -f "$MIHOMO_PATH"
+
+log "Installing new binary..."
+if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
+  log "Failed to copy new binary. Rolling back..."
+  if [ -f "$TMP_BACKUP" ]; then
+    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
     chmod +x "$MIHOMO_PATH"
-    [ -n "$INIT_SCRIPT" ] && "$INIT_SCRIPT" restart >/dev/null 2>&1
-    log "Rolled back to previous version."
   fi
+  if [ -n "$INIT_SCRIPT" ]; then
+    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+  fi
+  error "Failed to replace binary — rolled back to previous version"
+fi
 
+chmod +x "$MIHOMO_PATH"
+
+# -----------------------------
+# 11. Test new binary in place
+# -----------------------------
+log "Testing installed binary..."
+if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
+  log "New binary is broken! Rolling back..."
+  rm -f "$MIHOMO_PATH"
+  if [ -f "$TMP_BACKUP" ]; then
+    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
+    chmod +x "$MIHOMO_PATH"
+  fi
+  if [ -n "$INIT_SCRIPT" ]; then
+    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+  fi
   error "Update failed — rolled back to previous version"
 fi
 
-# Check if process is running (graceful fallback if pgrep missing)
+# -----------------------------
+# 12. Start service
+# -----------------------------
+if [ -n "$INIT_SCRIPT" ]; then
+  log "Starting mihomo service..."
+  "$INIT_SCRIPT" start >/dev/null 2>&1 || error "Service start failed"
+  sleep 2
+else
+  log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
+fi
+
+# -----------------------------
+# 13. Verify process
+# -----------------------------
 if command -v pgrep >/dev/null 2>&1; then
   if pgrep -f "mihomo" >/dev/null 2>&1; then
     log "Process is running."
@@ -224,17 +296,12 @@ else
 fi
 
 # -----------------------------
-# 11. Cleanup
+# 14. Cleanup
 # -----------------------------
-rm -f "$TMP_DIR/$FILENAME" 2>/dev/null || true
-
-# Keep backup for manual rollback, but log its location
-if [ -f "$BACKUP_PATH" ]; then
-  log "Backup kept at: $BACKUP_PATH"
-  log "To rollback manually: mv $BACKUP_PATH $MIHOMO_PATH"
-fi
+rm -f "$TMP_BACKUP" "$TMP_DIR/$FILENAME" "$TMP_DIR/$BINARY_NAME" 2>/dev/null || true
 
 # -----------------------------
 # Done
 # -----------------------------
+log "Success! Updated to $LATEST_VER"
 echo "[OK] Mihomo updated successfully"
