@@ -4,7 +4,7 @@
 # -----------------------------------------------------
 # Low-storage safe edition:
 #   - Temp files and backups live in /tmp (RAM), not /opt
-#   - Service is stopped before replacement to free inode space
+#   - Service is stopped before replacement to free disk blocks
 #   - Free space is checked before writing
 #   - Automatic rollback on failure
 #
@@ -123,8 +123,10 @@ MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
 MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
-# Wrapped in subshell to suppress Segmentation fault message from the shell itself
-CURRENT_VER=$( ( "$MIHOMO_PATH" -v ) 2>/dev/null | head -1 | awk '{print $3}')
+CURRENT_VER=""
+if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
+  CURRENT_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
+fi
 log "Current version: ${CURRENT_VER:-unknown}"
 
 # Skip update if versions match (unless --force)
@@ -203,10 +205,11 @@ else
   log "WARNING: No init script found in /opt/etc/init.d"
 fi
 
-# If still not enough space, try stopping the service to free the occupied inode
+# If still not enough space, stop the service so the old binary
+# is no longer held open and its disk blocks can be reclaimed.
 if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
   if [ -n "$INIT_SCRIPT" ]; then
-    log "Low space. Stopping mihomo to free occupied inode..."
+    log "Low space. Stopping mihomo to free disk blocks..."
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     SERVICE_WAS_STOPPED=1
     sleep 2
