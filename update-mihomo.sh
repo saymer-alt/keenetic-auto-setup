@@ -76,6 +76,23 @@ rollback_and_exit() {
 }
 
 # -----------------------------
+# 0. Prevent parallel updates
+# -----------------------------
+LOCK_FILE="/tmp/mihomo-update.lock"
+
+if [ -e "$LOCK_FILE" ]; then
+  error "Another Mihomo update is already running. Aborting."
+fi
+
+touch "$LOCK_FILE"
+
+cleanup_lock() {
+  rm -f "$LOCK_FILE"
+}
+
+trap cleanup_lock EXIT INT TERM
+
+# -----------------------------
 # 1. Base checks
 # -----------------------------
 command -v opkg >/dev/null 2>&1 || {
@@ -318,7 +335,9 @@ if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
   rollback_and_exit "Failed to replace binary — rolled back to previous version"
 fi
 
-chmod +x "$MIHOMO_PATH"
+if ! chmod +x "$MIHOMO_PATH"; then
+  rollback_and_exit "Failed to set executable permission"
+fi
 
 # -----------------------------
 # 12. Test new binary in place and verify version
