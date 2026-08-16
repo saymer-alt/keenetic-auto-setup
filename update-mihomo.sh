@@ -7,6 +7,7 @@
 #   - Service is stopped before replacement to free disk blocks
 #   - Free space is checked before writing
 #   - Automatic rollback on failure
+#   - GitHub API rate-limit fallback via web redirect
 #
 # Usage:
 #   sh update-mihomo.sh
@@ -69,7 +70,17 @@ command -v jq >/dev/null || error "jq is required but not installed"
 command -v curl >/dev/null || error "curl is required but not installed"
 
 # -----------------------------
-# 2. Detect router architecture
+# 2. RAM check (prevent OOM on low-memory devices)
+# -----------------------------
+TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+log "Total RAM: ${TOTAL_MEM_KB} KB"
+
+if [ "$TOTAL_MEM_KB" -lt 250000 ]; then
+  error "Device has less than 256MB RAM (${TOTAL_MEM_KB} KB). Update aborted to prevent OOM."
+fi
+
+# -----------------------------
+# 3. Detect router architecture
 # -----------------------------
 ARCH=$(opkg print-architecture | awk '\
   /^arch/ && $2 ~ /^(mips|mipsel|aarch64|arm|armv7)/ {
@@ -99,14 +110,24 @@ esac
 log "Detected arch: $ARCH -> mihomo-$MIHOMO_ARCH"
 
 # -----------------------------
-# 3. Fetch latest release info
+# 4. Fetch latest release info
 # -----------------------------
 log "Fetching latest release from GitHub API..."
 
-LATEST_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/latest") || \
-  error "Failed to fetch release info from GitHub API"
+LATEST_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || LATEST_JSON=""
 
-LATEST_TAG=$(echo "$LATEST_JSON" | jq -r '.tag_name')
+if [ -n "$LATEST_JSON" ] && [ "$(echo "$LATEST_JSON" | jq -r '.tag_name')" != "null" ]; then
+  LATEST_TAG=$(echo "$LATEST_JSON" | jq -r '.tag_name')
+  log "Got version via GitHub API: $LATEST_TAG"
+else
+  log "GitHub API failed or rate-limited. Falling back to web redirect..."
+  LATEST_TAG=$(curl -sSI "https://github.com/$REPO/releases/latest" | awk -F'/tag/' '/^[Ll]ocation:/{gsub(/\r/,""); print $2; exit}')
+  if [ -z "$LATEST_TAG" ]; then
+    error "Failed to determine latest release (both API and web redirect failed)"
+  fi
+  log "Got version via web redirect: $LATEST_TAG"
+fi
+
 LATEST_VER=${LATEST_TAG#v}
 
 [ -z "$LATEST_VER" ] || [ "$LATEST_VER" = "null" ] && error "Cannot parse version from GitHub response"
@@ -114,7 +135,7 @@ LATEST_VER=${LATEST_TAG#v}
 log "Latest available version: $LATEST_VER"
 
 # -----------------------------
-# 4. Find currently installed mihomo
+# 5. Find currently installed mihomo
 # -----------------------------
 MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
 [ -z "$MIHOMO_PATH" ] && MIHOMO_PATH=$(which mihomo 2>/dev/null)
@@ -136,7 +157,7 @@ if [ "$FORCE_UPDATE" -eq 0 ] && [ "$CURRENT_VER" = "$LATEST_VER" ]; then
 fi
 
 # -----------------------------
-# 5. Download new binary to /tmp
+# 6. Download new binary to /tmp
 # -----------------------------
 FILENAME="mihomo-linux-${MIHOMO_ARCH}-v${LATEST_VER}.gz"
 URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILENAME"
@@ -152,7 +173,7 @@ retry curl -fSL "$URL" -o "$TMP_DIR/$FILENAME" || {
 }
 
 # -----------------------------
-# 6. Extract and test binary
+# 7. Extract and test binary
 # -----------------------------
 log "Extracting archive..."
 gzip -df "$TMP_DIR/$FILENAME" || error "Failed to extract $FILENAME"
@@ -165,7 +186,7 @@ log "Testing binary compatibility..."
 "$TMP_DIR/$BINARY_NAME" -v >/dev/null 2>&1 || error "Binary test failed — architecture mismatch or corrupted file"
 
 # -----------------------------
-# 7. Check free space and clean old backups
+# 8. Check free space and clean old backups
 # -----------------------------
 NEW_SIZE_BYTES=$(wc -c < "$TMP_DIR/$BINARY_NAME")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
@@ -195,7 +216,7 @@ if [ "$cleaned" -eq 1 ]; then
 fi
 
 # -----------------------------
-# 8. Find init script
+# 9. Find init script
 # -----------------------------
 INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
 
@@ -224,7 +245,7 @@ Free up space manually or install Mihomo on external storage."
 fi
 
 # -----------------------------
-# 9. Backup old binary to /tmp (RAM), not /opt
+# 10. Backup old binary to /tmp (RAM), not /opt
 # -----------------------------
 TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
 
@@ -234,7 +255,7 @@ if [ -f "$MIHOMO_PATH" ]; then
 fi
 
 # -----------------------------
-# 10. Stop service (if not already stopped), remove old binary, install new one
+# 11. Stop service (if not already stopped), remove old binary, install new one
 # -----------------------------
 if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
   log "Stopping mihomo service..."
@@ -261,7 +282,7 @@ fi
 chmod +x "$MIHOMO_PATH"
 
 # -----------------------------
-# 11. Test new binary in place
+# 12. Test new binary in place
 # -----------------------------
 log "Testing installed binary..."
 if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
@@ -278,7 +299,7 @@ if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
 fi
 
 # -----------------------------
-# 12. Start service
+# 13. Start service
 # -----------------------------
 if [ -n "$INIT_SCRIPT" ]; then
   log "Starting mihomo service..."
@@ -289,20 +310,20 @@ else
 fi
 
 # -----------------------------
-# 13. Verify process
+# 14. Verify process
 # -----------------------------
-if command -v pgrep >/dev/null 2>&1; then
-  if pgrep -f "mihomo" >/dev/null 2>&1; then
+if command -v pidof >/dev/null 2>&1; then
+  if pidof mihomo >/dev/null 2>&1; then
     log "Process is running."
   else
     log "WARNING: Binary works, but mihomo process is not detected."
   fi
 else
-  log "pgrep not available, skipping process check"
+  log "pidof not available, skipping process check"
 fi
 
 # -----------------------------
-# 14. Cleanup
+# 15. Cleanup
 # -----------------------------
 rm -f "$TMP_BACKUP" "$TMP_DIR/$FILENAME" "$TMP_DIR/$BINARY_NAME" 2>/dev/null || true
 
