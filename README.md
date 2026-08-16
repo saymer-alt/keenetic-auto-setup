@@ -239,13 +239,22 @@ nano /opt/etc/mihomo/config.yaml
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
 ```
 
-### Rollback Mihomo (if update broke)
+### Rollback Mihomo
 
-```bash
-mv /opt/sbin/mihomo.backup /opt/sbin/mihomo
-chmod +x /opt/sbin/mihomo
-/opt/etc/init.d/S99mihomo restart
-```
+The updater performs **automatic rollback** if any critical step fails:
+
+* New binary incompatible with current architecture
+* New binary rejects current `config.yaml`
+* Not enough free space to install
+* Service fails to start after replacement
+
+The previous binary is temporarily stored in `/tmp` during the update
+and is removed automatically after a successful upgrade.
+
+No permanent backup is stored on `/opt`.
+
+If you need to manually downgrade to a specific version,
+download and install the desired release binary directly.
 
 ### Watchdog logs
 
@@ -305,6 +314,24 @@ curl --proxy 127.0.0.1:7890 http://google.com/generate_204
 * MT7621 (legacy режим)
 
 После установки нужно вручную вставить конфиг Mihomo.
+
+### Откат Mihomo
+
+При сбое на любом критическом этапе updater **автоматически откатывает**
+предыдущую рабочую версию:
+
+* несовместимая архитектура нового бинарника
+* новая версия не принимает текущий `config.yaml`
+* не хватает места для установки
+* сервис не запускается после замены
+
+Резервная копия временно хранится в `/tmp` и автоматически
+удаляется после успешного обновления.
+
+Постоянный backup на `/opt` не создаётся.
+
+Если требуется вручную установить конкретную предыдущую версию,
+скачайте и установите нужный бинарник напрямую.
 
 ### Watchdog
 
