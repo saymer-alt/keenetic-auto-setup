@@ -47,6 +47,27 @@ retry() {
   return 1
 }
 
+# Rollback helper: restores old binary and attempts to start service
+rollback_and_exit() {
+  log "Rolling back to previous version..."
+  rm -f "$MIHOMO_PATH"
+  if [ -f "$TMP_BACKUP" ]; then
+    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
+    chmod +x "$MIHOMO_PATH"
+    log "Previous binary restored."
+  fi
+  if [ -n "$INIT_SCRIPT" ]; then
+    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+    sleep 2
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      log "Rollback successful. Previous mihomo is running."
+    else
+      log "WARNING: Rollback completed, but mihomo process is not detected."
+    fi
+  fi
+  error "$1"
+}
+
 # -----------------------------
 # 1. Base checks
 # -----------------------------
@@ -277,21 +298,7 @@ rm -f "$MIHOMO_PATH"
 
 log "Installing new binary..."
 if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
-  log "Failed to copy new binary. Rolling back..."
-  if [ -f "$TMP_BACKUP" ]; then
-    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
-    chmod +x "$MIHOMO_PATH"
-  fi
-  if [ -n "$INIT_SCRIPT" ]; then
-    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-    sleep 2
-    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-      log "Rollback successful. Previous mihomo is running."
-    else
-      log "WARNING: Rollback completed, but mihomo process is not detected."
-    fi
-  fi
-  error "Failed to replace binary — rolled back to previous version"
+  rollback_and_exit "Failed to replace binary — rolled back to previous version"
 fi
 
 chmod +x "$MIHOMO_PATH"
@@ -301,37 +308,26 @@ chmod +x "$MIHOMO_PATH"
 # -----------------------------
 log "Testing installed binary..."
 if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
-  log "New binary is broken! Rolling back..."
-  rm -f "$MIHOMO_PATH"
-  if [ -f "$TMP_BACKUP" ]; then
-    cp -f "$TMP_BACKUP" "$MIHOMO_PATH"
-    chmod +x "$MIHOMO_PATH"
-  fi
-  if [ -n "$INIT_SCRIPT" ]; then
-    "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-    sleep 2
-    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-      log "Rollback successful. Previous mihomo is running."
-    else
-      log "WARNING: Rollback completed, but mihomo process is not detected."
-    fi
-  fi
-  error "Update failed — rolled back to previous version"
+  rollback_and_exit "New binary test failed — rolled back to previous version"
 fi
 
 # -----------------------------
-# 13. Start service
+# 13. Start service and verify process
 # -----------------------------
 if [ -n "$INIT_SCRIPT" ]; then
   log "Starting mihomo service..."
-  "$INIT_SCRIPT" start >/dev/null 2>&1 || error "Service start failed"
+  "$INIT_SCRIPT" start >/dev/null 2>&1 || true
   sleep 2
+
+  if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+    rollback_and_exit "Service start failed — rolled back to previous version"
+  fi
 else
   log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
 fi
 
 # -----------------------------
-# 14. Verify process
+# 14. Final process verification
 # -----------------------------
 if command -v pidof >/dev/null 2>&1; then
   if pidof mihomo >/dev/null 2>&1; then
