@@ -116,17 +116,26 @@ log "Fetching latest release from GitHub API..."
 
 LATEST_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || LATEST_JSON=""
 
-if [ -n "$LATEST_JSON" ] && [ "$(echo "$LATEST_JSON" | jq -r '.tag_name')" != "null" ]; then
+LATEST_TAG=""
+if [ -n "$LATEST_JSON" ]; then
   LATEST_TAG=$(echo "$LATEST_JSON" | jq -r '.tag_name')
-  log "Got version via GitHub API: $LATEST_TAG"
-else
-  log "GitHub API failed or rate-limited. Falling back to web redirect..."
-  LATEST_TAG=$(curl -sSI "https://github.com/$REPO/releases/latest" | awk -F'/tag/' '/^[Ll]ocation:/{gsub(/\r/,""); print $2; exit}')
-  if [ -z "$LATEST_TAG" ]; then
-    error "Failed to determine latest release (both API and web redirect failed)"
+  if [ "$LATEST_TAG" != "null" ] && [ -n "$LATEST_TAG" ]; then
+    log "Got version via GitHub API: $LATEST_TAG"
+  else
+    LATEST_TAG=""
   fi
-  log "Got version via web redirect: $LATEST_TAG"
 fi
+
+if [ -z "$LATEST_TAG" ]; then
+  log "GitHub API failed or rate-limited. Falling back to web redirect..."
+  REDIRECT_URL=$(curl -fsSL -o /dev/null -w '%{url_effective}\n' "https://github.com/$REPO/releases/latest") || REDIRECT_URL=""
+  if [ -n "$REDIRECT_URL" ]; then
+    LATEST_TAG=$(echo "$REDIRECT_URL" | sed 's#.*/tag/##')
+    log "Got version via web redirect: $LATEST_TAG"
+  fi
+fi
+
+[ -z "$LATEST_TAG" ] && error "Failed to determine latest release (both API and web redirect failed)"
 
 LATEST_VER=${LATEST_TAG#v}
 
@@ -275,6 +284,12 @@ if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
   fi
   if [ -n "$INIT_SCRIPT" ]; then
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+    sleep 2
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      log "Rollback successful. Previous mihomo is running."
+    else
+      log "WARNING: Rollback completed, but mihomo process is not detected."
+    fi
   fi
   error "Failed to replace binary — rolled back to previous version"
 fi
@@ -294,6 +309,12 @@ if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
   fi
   if [ -n "$INIT_SCRIPT" ]; then
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+    sleep 2
+    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+      log "Rollback successful. Previous mihomo is running."
+    else
+      log "WARNING: Rollback completed, but mihomo process is not detected."
+    fi
   fi
   error "Update failed — rolled back to previous version"
 fi
