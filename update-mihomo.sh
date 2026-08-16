@@ -220,6 +220,16 @@ chmod +x "$TMP_DIR/$BINARY_NAME"
 log "Testing binary compatibility..."
 "$TMP_DIR/$BINARY_NAME" -v >/dev/null 2>&1 || error "Binary test failed — architecture mismatch or corrupted file"
 
+log "Testing new binary with current config..."
+if [ -d "/opt/etc/mihomo" ]; then
+  if ! "$TMP_DIR/$BINARY_NAME" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
+    error "Config test failed! New version is incompatible with current config.yaml. Update aborted."
+  fi
+  log "Config test passed."
+else
+  log "WARNING: /opt/etc/mihomo not found, skipping config test."
+fi
+
 # -----------------------------
 # 8. Check free space and clean old backups
 # -----------------------------
@@ -299,7 +309,9 @@ if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
 fi
 
 log "Removing old binary from $MIHOMO_DIR ..."
-rm -f "$MIHOMO_PATH"
+if ! rm -f "$MIHOMO_PATH"; then
+  rollback_and_exit "Failed to remove old binary"
+fi
 
 log "Installing new binary..."
 if ! cp -f "$TMP_DIR/$BINARY_NAME" "$MIHOMO_PATH"; then
@@ -309,12 +321,20 @@ fi
 chmod +x "$MIHOMO_PATH"
 
 # -----------------------------
-# 12. Test new binary in place
+# 12. Test new binary in place and verify version
 # -----------------------------
 log "Testing installed binary..."
 if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
   rollback_and_exit "New binary test failed — rolled back to previous version"
 fi
+
+INSTALLED_VER=$("$MIHOMO_PATH" -v 2>/dev/null | head -1 | awk '{print $3}')
+
+if [ "$INSTALLED_VER" != "$LATEST_VER" ]; then
+  rollback_and_exit "Installed version mismatch: expected $LATEST_VER, got ${INSTALLED_VER:-unknown}"
+fi
+
+log "Installed version verified: $INSTALLED_VER"
 
 # -----------------------------
 # 13. Start service and verify process
