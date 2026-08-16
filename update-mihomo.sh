@@ -364,43 +364,49 @@ log "Installed version verified: $INSTALLED_VER"
 # -----------------------------
 # 13. Start service and verify process
 # -----------------------------
-if [ -n "$INIT_SCRIPT" ]; then
-  log "Starting mihomo service..."
-  if ! "$INIT_SCRIPT" start >/dev/null 2>&1; then
-    log "WARNING: Mihomo init script reported start failure. Checking process..."
-  fi
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+  if [ -n "$INIT_SCRIPT" ]; then
+    log "Starting mihomo service..."
+    if ! "$INIT_SCRIPT" start >/dev/null 2>&1; then
+      log "WARNING: Mihomo init script reported start failure. Checking process..."
+    fi
 
-  if command -v pidof >/dev/null 2>&1; then
-    SERVICE_OK=0
-    for i in 1 2 3 4 5; do
-      if pidof mihomo >/dev/null 2>&1; then
-        SERVICE_OK=1
-        break
+    if command -v pidof >/dev/null 2>&1; then
+      SERVICE_OK=0
+      for i in 1 2 3 4 5; do
+        if pidof mihomo >/dev/null 2>&1; then
+          SERVICE_OK=1
+          break
+        fi
+        sleep 1
+      done
+
+      if [ "$SERVICE_OK" -ne 1 ]; then
+        rollback_and_exit "Service start failed — rolled back to previous version"
       fi
-      sleep 1
-    done
-
-    if [ "$SERVICE_OK" -ne 1 ]; then
-      rollback_and_exit "Service start failed — rolled back to previous version"
+    else
+      log "pidof not available, skipping strict process verification."
     fi
   else
-    log "pidof not available, skipping strict process verification."
+    log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
   fi
 else
-  log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
+  log "Service was stopped prior to update. Leaving it stopped."
 fi
 
 # -----------------------------
 # 14. Final process verification
 # -----------------------------
-if command -v pidof >/dev/null 2>&1; then
-  if pidof mihomo >/dev/null 2>&1; then
-    log "Process is running."
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+  if command -v pidof >/dev/null 2>&1; then
+    if pidof mihomo >/dev/null 2>&1; then
+      log "Process is running."
+    else
+      log "WARNING: Binary works, but mihomo process is not detected."
+    fi
   else
-    log "WARNING: Binary works, but mihomo process is not detected."
+    log "pidof not available, skipping process check"
   fi
-else
-  log "pidof not available, skipping process check"
 fi
 
 # -----------------------------
