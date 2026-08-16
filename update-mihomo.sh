@@ -26,6 +26,7 @@ TMP_DIR="/tmp"
 REPO="MetaCubeX/mihomo"
 FORCE_UPDATE=0
 SERVICE_WAS_STOPPED=0
+OPKG_UPDATED=0
 
 # Parse arguments
 for arg in "$@"; do
@@ -81,17 +82,22 @@ command -v opkg >/dev/null 2>&1 || {
   error "opkg not found. Is Entware installed?"
 }
 
-log "Updating package lists..."
-opkg update || error "opkg update failed"
-
 # Install required packages if missing
 pkg_install() {
-  opkg list-installed | grep -q "^$1 " || opkg install "$1"
+  if ! opkg list-installed | grep -q "^$1 "; then
+    if [ "$OPKG_UPDATED" -eq 0 ]; then
+      log "Updating package lists..."
+      opkg update || error "opkg update failed"
+      OPKG_UPDATED=1
+    fi
+    opkg install "$1"
+  fi
 }
 
 pkg_install curl
 pkg_install jq
 pkg_install gzip
+pkg_install wget
 
 command -v jq >/dev/null || error "jq is required but not installed"
 command -v curl >/dev/null || error "curl is required but not installed"
@@ -109,24 +115,17 @@ fi
 # -----------------------------
 # 3. Detect router architecture
 # -----------------------------
-ARCH=$(opkg print-architecture | awk '\
-  /^arch/ && $2 ~ /^(mips|mipsel|aarch64|arm|armv7)/ {
-    sub(/[-_].*/, "", $2)
-    print $2
-    exit
-  }')
+ARCH=$(uname -m)
 
-[ -z "$ARCH" ] && error "Cannot detect architecture from opkg"
-
-# Map Entware arch to Mihomo release binary name
+# Map uname arch to Mihomo release binary name
 case "$ARCH" in
   aarch64)
     MIHOMO_ARCH="arm64"
     ;;
-  arm|armv7)
+  armv7l|armv7*)
     MIHOMO_ARCH="armv7"
     ;;
-  mipsel|mips)
+  mips|mipsel)
     error "MIPS is not supported by official Mihomo binaries. Use opkg package or build manually."
     ;;
   *)
@@ -226,7 +225,7 @@ log "Testing binary compatibility..."
 # -----------------------------
 NEW_SIZE_BYTES=$(wc -c < "$TMP_DIR/$BINARY_NAME")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
-NEED_KB=$((NEW_SIZE_KB + 2048))  # 2 MB safety margin
+NEED_KB=$((NEW_SIZE_KB + 4096))  # 4 MB safety margin
 
 get_avail_kb() {
   df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
