@@ -260,13 +260,16 @@ NEW_SIZE_BYTES=$(wc -c < "$TMP_DIR/$BINARY_NAME")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
 NEED_KB=$((NEW_SIZE_KB + 4096))  # 4 MB safety margin
 
+# Calculate the size of the old binary that will be deleted
+OLD_SIZE_BYTES=0
+if [ -f "$MIHOMO_PATH" ]; then
+  OLD_SIZE_BYTES=$(wc -c < "$MIHOMO_PATH" 2>/dev/null || echo 0)
+fi
+OLD_SIZE_KB=$(( (OLD_SIZE_BYTES + 1023) / 1024 ))
+
 get_avail_kb() {
   df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
 }
-
-AVAIL_KB=$(get_avail_kb)
-log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB"
-log "New binary size: ${NEW_SIZE_KB} KB (need ~${NEED_KB} KB)"
 
 # Remove stale backups in /opt to reclaim space
 cleaned=0
@@ -278,10 +281,13 @@ for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
   fi
 done
 
-if [ "$cleaned" -eq 1 ]; then
-  AVAIL_KB=$(get_avail_kb)
-  log "Recalculated free space: ${AVAIL_KB} KB"
-fi
+AVAIL_KB=$(get_avail_kb)
+# Projected space includes the blocks we will get back after removing the old binary
+PROJECTED_KB=$(( AVAIL_KB + OLD_SIZE_KB ))
+
+log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB"
+log "Old binary size to be freed: ${OLD_SIZE_KB} KB"
+log "New binary size: ${NEW_SIZE_KB} KB (need ~${NEED_KB} KB)"
 
 # -----------------------------
 # 9. Find init script
@@ -294,22 +300,21 @@ else
   log "WARNING: No init script found in /opt/etc/init.d"
 fi
 
-# If still not enough space, stop the service so the old binary
-# is no longer held open and its disk blocks can be reclaimed.
-if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
-  if [ -n "$INIT_SCRIPT" ]; then
-    log "Low space. Stopping mihomo to free disk blocks..."
+# If projected space is still not enough, stop the service to release "ghost" blocks
+if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
+  if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+    log "Low space. Stopping mihomo to free ghost disk blocks..."
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     SERVICE_WAS_STOPPED=1
     sleep 2
     AVAIL_KB=$(get_avail_kb)
-    log "Free space after stop: ${AVAIL_KB} KB"
+    PROJECTED_KB=$(( AVAIL_KB + OLD_SIZE_KB ))
+    log "Free space after stop: ${AVAIL_KB} KB (Projected: ${PROJECTED_KB} KB)"
   fi
 fi
 
-if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
-  error "Not enough free space on $MIHOMO_DIR (${AVAIL_KB} KB available, ${NEED_KB} KB required).
-Free up space manually or install Mihomo on external storage."
+if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
+  error "Not enough free space on $MIHOMO_DIR (Projected: ${PROJECTED_KB} KB, Required: ${NEED_KB} KB). Free up space manually."
 fi
 
 # -----------------------------
@@ -325,7 +330,7 @@ fi
 # -----------------------------
 # 11. Stop service (if not already stopped), remove old binary, install new one
 # -----------------------------
-if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
+if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   log "Stopping mihomo service..."
   "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
   sleep 1
