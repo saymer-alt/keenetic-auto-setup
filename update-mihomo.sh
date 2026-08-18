@@ -200,6 +200,7 @@ log "Installed at: $MIHOMO_PATH"
 CURRENT_VER=""
 if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
   CURRENT_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
+  CURRENT_VER=${CURRENT_VER#v}
 fi
 log "Current version: ${CURRENT_VER:-unknown}"
 
@@ -359,6 +360,7 @@ if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
 fi
 
 INSTALLED_VER=$("$MIHOMO_PATH" -v 2>/dev/null | head -1 | awk '{print $3}')
+INSTALLED_VER=${INSTALLED_VER#v}
 
 if [ "$INSTALLED_VER" != "$LATEST_VER" ]; then
   rollback_and_exit "Installed version mismatch: expected $LATEST_VER, got ${INSTALLED_VER:-unknown}"
