@@ -35,17 +35,19 @@ done
 
 ## Решение
 
-```id="cronflow"
+```bash
 cron → каждые 5 минут → watchdog → завершился
 ```
 
-* скрипт живёт ~10–20 секунд
+* скрипт живёт секунды
 * не нагружает систему
 * работает предсказуемо
 
 ---
 
 ## Где находится
+
+Установщик (install.sh) кладёт скрипт сюда:
 
 ```bash
 /opt/etc/cron.5mins/mihomo_watchdog
@@ -57,60 +59,58 @@ cron → каждые 5 минут → watchdog → завершился
 */5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog
 ```
 
+⚠️ Важно: `update-watchdog.sh` обновляет ДРУГУЮ копию:
+
+```bash
+/opt/bin/mihomo_watchdog.sh
+```
+
+👉 Перед обновлением проверь, какая копия реально запускается:
+
+```bash
+grep mihomo_watchdog /opt/etc/crontab
+```
+
 ---
 
 ## Основные параметры
 
-```bash id="params"
-PROXY_URL=127.0.0.1:7890
-CHECK_URLS="http://google.com/generate_204 http://connectivitycheck.gstatic.com/generate_204"
-WAN_CHECK_URL=http://1.1.1.1
-COOLDOWN=300
-LOCK_FILE=/tmp/mihomo_watchdog.lock
+```bash
+WAN_PRIMARY_TARGETS="http://cp.cloudflare.com http://www.google.com"
+WAN_WHITELIST_TARGETS="http://gosuslugi.ru http://ya.ru http://mail.ru http://vk.ru http://vk.com"
+PROXY="127.0.0.1:7890"
+MIN_RESTART_INTERVAL=300
+LOG_MAX_LINES=500
+LOG_KEEP_LINES=300
+LOCK_FILE="/tmp/mihomo_watchdog.lock"
 ```
 
 ---
 
 ## Что именно проверяется
 
-### 1. Жив ли процесс
+Все WAN-проверки идут напрямую, без Mihomo.
 
-```bash id="check1"
-pidof mihomo
-```
+### 1. WAN (двухступенчатая проверка)
 
-Если нет:
+Сначала обычные цели:
 
-```id="action1"
-→ restart
-```
+* cp.cloudflare.com
+* www.google.com
 
----
+Если недоступны ВСЕ — whitelist:
 
-### 2. Cooldown (защита от циклов)
+* gosuslugi.ru
+* ya.ru
+* mail.ru
+* vk.ru / vk.com
 
-```bash id="check2"
-NOW - LAST < 300
-```
+Ответил хотя бы один = WAN есть.
 
-Если недавно был рестарт:
+Если не ответил никто:
 
-```id="action2"
-→ ничего не делать
-```
-
----
-
-### 3. Есть ли интернет (WAN)
-
-```bash id="check3"
-curl http://1.1.1.1
-```
-
-Если нет:
-
-```id="action3"
-→ skip
+```bash
+→ выход без рестарта
 ```
 
 👉 важно:
@@ -119,56 +119,70 @@ curl http://1.1.1.1
 
 ---
 
-### 4. Работает ли прокси
+### 2. Порт Mihomo
 
-```bash id="check4"
-curl -x socks5://127.0.0.1:7890 ...
+```bash
+curl -s --connect-timeout 3 http://127.0.0.1:7890
 ```
 
-Проверяется 2 URL:
+Важно только, что порт принимает TCP-соединения.
 
-* google.com/generate_204
-* gstatic generate_204
+Если порт закрыт — Mihomo, скорее всего, упал:
 
----
-
-## Почему именно generate_204
-
-* возвращает HTTP 204 (без тела)
-* минимальный трафик
-* быстро
-* почти не блокируется
+```bash
+→ рестарт
+```
 
 ---
 
-## Логика результата
+### 3. Сквозной туннель
 
-| Код | Значение                      |
-| --- | ----------------------------- |
-| 204 | всё ок                        |
-| 000 | таймаут / нет ответа          |
-| 502 | прокси жив, но upstream мёртв |
-| 403 | Google заблокировал           |
+```bash
+curl -x socks5h://127.0.0.1:7890 -m 5 -s https://www.google.com
+```
+
+* socks5h — DNS тоже через туннель
+* проверяет, что прокси реально пропускает трафик
+
+Если туннель не работает:
+
+```bash
+→ рестарт
+```
 
 ---
 
 ## Когда происходит рестарт
 
-```id="logic"
+```bash
 если:
-  mihomo жив
-  И cooldown прошёл
-  И WAN есть
-  НО proxy check fail
+  WAN подтверждён
+  И (порт недоступен ИЛИ туннель сломан)
+  И прошло > 300 сек с прошлого рестарта
 
-→ restart
+→ /opt/etc/init.d/S99mihomo restart
 ```
+
+---
+
+## Rate limiting (защита от циклов)
+
+* время последнего рестарта хранится в `/tmp/mihomo_watchdog.restart`
+* содержимое файла валидируется (мусор в файле = считаем 0)
+* рестарт раньше 300 сек блокируется с записью `[RATE-LIMIT]`
+
+---
+
+## Lock-файл
+
+* `/tmp/mihomo_watchdog.lock` не даёт двум копиям работать одновременно
+* trap гарантирует удаление при любом выходе
 
 ---
 
 ## Jitter (разнос по времени)
 
-```bash id="jitter"
+```bash
 sleep $(( $(date +%s) % 25 ))
 ```
 
@@ -183,13 +197,13 @@ sleep $(( $(date +%s) % 25 ))
 
 Без jitter:
 
-```id="ddos"
+```bash
 все одновременно → запрос → пик нагрузки
 ```
 
 С jitter:
 
-```id="spread"
+```bash
 запросы распределены на 0–25 сек
 ```
 
@@ -214,30 +228,27 @@ BusyBox:
 /opt/var/log/mihomo_watchdog.log
 ```
 
-Примеры:
+Реальные строки:
 
-```id="log1"
-proxy fail [000/000], restart
-```
-
-```id="log2"
-WAN unreachable, skip
-```
-
-```id="log3"
-OK
+```bash
+[WAN] Connectivity OK via http://cp.cloudflare.com
+[WAN] Primary targets unavailable, checking whitelist targets
+[WARN] WAN unreachable (primary + whitelist targets failed)
+[RATE-LIMIT] Restart blocked (120s < 300s) | Mihomo port unreachable
+[RESTART] Proxy tunnel check failed
+[OK] All good
 ```
 
 ---
 
 ## Ротация логов
 
-```bash id="rotate"
-tail -n 100
+```bash
+tail -n 300
 ```
 
-Если лог > ~120 строк:
-→ оставляет последние 100
+Если лог > 500 строк:
+→ остаётся последние 300
 
 ---
 
@@ -251,58 +262,73 @@ tail -n 100
 
 ## Ручной запуск (очень важно)
 
-```bash id="debug"
+```bash
 sh -x /opt/etc/cron.5mins/mihomo_watchdog
 ```
 
 Показывает:
 
 * jitter
-* коды ответов
-* cooldown
-* решения
+* выбор WAN-цели
+* решения (рестарт / rate-limit / выход)
 
 👉 основной инструмент дебага
+
+⚠️ При запуске вне установки убедись, что `/opt/var/log` существует (каталог создаёт install.sh)
 
 ---
 
 ## Частые проблемы
 
-### `proxy fail [000/000]`
+### `[WARN] WAN unreachable`
 
 Причина:
 
-* Mihomo не слушает порт
-* или завис
+* интернет реально пропал (не ответили ни основные, ни whitelist-цели)
+
+👉 watchdog ПРАВИЛЬНО ничего не делает
 
 ---
 
-### `proxy fail [502/502]`
+### `[RESTART] Mihomo port unreachable`
 
 Причина:
 
-* сервер VPN недоступен
+* Mihomo не слушает порт 7890 — упал или не стартовал
 
 ---
 
-### `WAN unreachable`
+### `[RESTART] Proxy tunnel check failed`
 
 Причина:
 
-* интернет реально пропал
+* порт открыт, но туннель не работает
+* часто проблема на стороне VPN-сервера или в config.yaml
+
+---
+
+### `[RATE-LIMIT] Restart blocked`
+
+Причина:
+
+* рестарт уже был меньше 300 сек назад
+
+👉 это защита от цикла, а не ошибка
 
 ---
 
 ### лог пустой
 
-Причина:
+Причины:
 
 * cron не работает
+* запись в crontab указывает на другую копию
 
 Проверка:
 
 ```bash
 ps | grep cron
+grep mihomo_watchdog /opt/etc/crontab
 ```
 
 ---
@@ -315,15 +341,17 @@ ps | grep cron
   * VPN сервер
   * DNS
   * провайдера
+* при полном отказе WAN — не рестартит (осознанно)
 
 ---
 
 ## Что можно менять
 
-```bash id="tune"
-COOLDOWN=300
-CHECK_URLS=...
-PROXY_URL=...
+```bash
+WAN_PRIMARY_TARGETS=...
+WAN_WHITELIST_TARGETS=...
+PROXY=127.0.0.1:7890
+MIN_RESTART_INTERVAL=300
 ```
 
 ---
@@ -333,6 +361,7 @@ PROXY_URL=...
 * порядок проверок
 * lock-файл
 * jitter
+* логика «нет WAN → нет рестарта»
 
 ---
 
@@ -341,6 +370,8 @@ PROXY_URL=...
 Watchdog — это:
 
 > **не мониторинг, а механизм самовосстановления**
+
+который отличает «сломался Mihomo» от «сломался интернет»
 
 ---
 

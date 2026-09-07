@@ -159,6 +159,14 @@ cat /opt/var/log/mihomo_watchdog.log
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
+> ⚠️ **Note:** `install.sh` places the watchdog in `/opt/etc/cron.5mins/mihomo_watchdog`,
+> while `update-watchdog.sh` updates the copy at `/opt/bin/mihomo_watchdog.sh`.
+> Before updating, check which path your cron actually runs:
+>
+> ```bash
+> grep mihomo_watchdog /opt/etc/crontab
+> ```
+
 ---
 
 ## 📂 Project Structure
@@ -182,17 +190,18 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 * Entware installed
 * Internet access
 * SSH access
+* 256 MB RAM minimum (128 MB devices are not supported)
 
 ---
 
 ## 🛠 What the script does
 
-1. Installs base packages (`curl`, `jq`, `nano`)
+1. Installs base packages (`curl`, `jq`, `nano`, `ca-bundle`, `cron`)
 2. Creates `bypass_wa` policy (safe, non-destructive)
 3. (RAM mode) enables tmpfs (`S00ubifs`)
 4. Installs Mihomo:
-   * tries latest version automatically
-   * fallback to GitHub release
+   * latest `.ipk` from `saymer-alt/entware-go` releases (GitHub API)
+   * fallbacks if the API fails (grep, HTML scraping)
 5. Configures `Proxy0` interface
 6. Installs MagiTrickle
 7. Deploys VoIP bypass rules (`020-bypass_wa.sh`)

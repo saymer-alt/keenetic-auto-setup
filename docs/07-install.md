@@ -30,9 +30,7 @@ opkg print-architecture | awk '/^arch/{print $2}'
 
 ## Общая логика установки
 
-Оба скрипта делают одно и то же:
-
-````
+install.sh делает всё:
 
 1. opkg update
 2. Установка базовых пакетов
@@ -42,7 +40,15 @@ opkg print-architecture | awk '/^arch/{print $2}'
 6. Настройка Proxy0
 7. Установка MagiTrickle
 8. Установка watchdog
-9. Диагностика
+9. Финальная проверка (порт 7890)
+
+install_7621.sh — сокращённая версия:
+
+* базовые пакеты: только `curl` и `cron`
+* S00ubifs + Mihomo + Proxy0 + watchdog
+* ❌ НЕ ставит MagiTrickle
+* ❌ НЕ создаёт policy bypass_wa
+* ❌ НЕ ставит 020-bypass_wa.sh (VoIP-обход)
 
 ````id="c9q2bm"
 
@@ -74,7 +80,7 @@ curl -fSsL https://...
 #### 2. Автоопределение архитектуры
 
 ```bash id="o4u3s9"
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
+ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
     sub(/[-_].*/,"",$2); print $2; exit
 }')
 ```
@@ -83,8 +89,10 @@ ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64)/{
 
 #### 3. Получение последней версии Mihomo
 
+Пакет берётся из релизов `saymer-alt/entware-go`:
+
 ```bash id="a2l9re"
-curl https://sw.ext.io/... | grep mihomo
+https://api.github.com/repos/saymer-alt/entware-go/releases/latest
 ```
 
 ✔ всегда свежая версия
@@ -94,9 +102,9 @@ curl https://sw.ext.io/... | grep mihomo
 
 #### 4. Fallback
 
-Если `sw.ext.io` не отвечает:
+Если GitHub API не отвечает или jq не нашёл пакет:
 
-👉 скачивание с GitHub
+👉 grep по JSON → повторный запрос → парсинг HTML-страницы релизов
 
 ---
 
@@ -150,6 +158,7 @@ curl --insecure
 | ----------- | ---------- | --------------- |
 | TLS         | строгий    | insecure        |
 | Архитектура | авто       | mipsel          |
+| Состав      | полный (MagiTrickle, bypass_wa, VoIP) | только Mihomo + Proxy0 + S00ubifs + watchdog |
 | Fallback    | есть       | минимальный     |
 | Надёжность  | высокая    | компромисс      |
 
@@ -296,15 +305,11 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 
 ## Диагностика из install.sh
 
-В конце скрипт проверяет:
+В конце скрипт перезапускает Mihomo и проверяет, что порт 7890 слушает (`netstat`/`ss`).
 
-* mount points
-* mihomo
-* magitrickle
-* watchdog
-* bypass
+👉 если порт слушает — установка успешна
 
-👉 если здесь OK — установка успешна
+⚠️ Полная диагностика (tmpfs, MagiTrickle, bypass) отдельно не выполняется — см. `08-troubleshooting.md`
 
 ---
 

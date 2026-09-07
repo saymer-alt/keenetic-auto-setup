@@ -58,10 +58,16 @@ Entware активно пишет:
 
 ### При старте
 
+Размеры подбираются автоматически по свободной RAM (профили):
+
+| Профиль | Свободная RAM | /opt/tmp | /opt/var/log | /opt/var/run |
+| ------- | ------------- | -------- | ------------ | ------------ |
+| low     | < 40 МБ       | 5M       | 2M           | 512k         |
+| medium  | < 80 МБ       | 10M      | 5M           | 1M           |
+| high    | ≥ 80 МБ       | 20M      | 10M          | 1M           |
+
 ```bash
-mount -t tmpfs -o size=20M tmpfs /opt/tmp
-mount -t tmpfs -o size=10M tmpfs /opt/var/log
-mount -t tmpfs -o size=1M  tmpfs /opt/var/run
+mount -t tmpfs -o size=$SIZE,mode=$MODE,noatime,nosuid,nodev tmpfs "$d"
 ````
 
 ---
@@ -142,6 +148,8 @@ mount -t tmpfs -o size=1M  tmpfs /opt/var/run
 ---
 
 ## Почему именно такие размеры tmpfs
+
+Значения ниже — профиль high (≥ 80 МБ свободной RAM); при меньшем объёме скрипт уменьшает размеры сам (см. выше).
 
 | Директория   | Размер | Почему          |
 | ------------ | ------ | --------------- |
