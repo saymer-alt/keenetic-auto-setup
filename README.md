@@ -144,7 +144,7 @@ Watchdog запускается из cron каждые 5 минут и пров�
 | | |
 | --- | --- |
 | **ARM / aarch64** | `install.sh` — основной установщик: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** | `install_7621.sh` — установщик для устройств на MT7621: тот же общий порядок установки, с источником пакетов Mihomo и обработкой TLS, адаптированными под платформу (MagiTrickle и VoIP-обход в этот путь не входят) |
+| **MT7621 / mipsel** | `install_7621.sh` — установщик для устройств на MT7621: тот же общий порядок установки, с источником пакетов Mihomo, адаптированным под архитектуру платформы (MagiTrickle и VoIP-обход в этот путь не входят) |
 | **RAM** | минимум 256 МБ. **128 МБ не поддерживаются** (tmpfs дестабилизирует систему — проверено в продакшене) |
 | **Режимы** | `ram` (по умолчанию; tmpfs защищает внутренний флеш) · `disk` (USB/SSD-накопитель) |
 | **Проверено на** | Keenetic KN-1810, KN-3811, KN-1913 |
@@ -184,7 +184,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 Без `disk` тулкит устанавливается во внутреннее хранилище роутера; с `disk` — на подключённый USB/SSD-накопитель.
 
-> **Если универсальный установщик на вашем MT7621 не проходит:** для совместимых MT7621-устройств предусмотрен отдельный `install_7621.sh` — он учитывает особенности этой платформы и может использоваться как альтернативный способ установки.
+> **Если универсальный установщик на вашем MT7621 не проходит:** для совместимых MT7621-устройств предусмотрен отдельный `install_7621.sh` — он учитывает особенности этой платформы и может использоваться как альтернативный способ установки. Если в конкретной сети не проходят HTTPS/сертификаты — причина может быть не только в роутере или платформе, но и в сетевых ограничениях/провайдере; сначала проверьте доступ к HTTPS-ресурсам отдельно.
 
 > Перехват транзитного DNS настраивается установщиком автоматически — ручного post-install шага для DNS нет. Почему это важно — в разделе «Архитектура» выше.
 
@@ -452,7 +452,7 @@ Enable `allow-lan: true` in Mihomo's config, set FoxyProxy to `<router-ip>:7890`
 | | |
 | --- | --- |
 | **ARM / aarch64** | `install.sh` — the main installer: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** | `install_7621.sh` — the installer for MT7621 devices: same general flow, with the Mihomo package source and TLS handling adapted to the platform (MagiTrickle and the VoIP bypass are not part of this path) |
+| **MT7621 / mipsel** | `install_7621.sh` — the installer for MT7621 devices: same general flow, with the Mihomo package source adapted to the platform's architecture (MagiTrickle and the VoIP bypass are not part of this path) |
 | **RAM** | 256 MB minimum. **128 MB devices are not supported** (tmpfs destabilizes them — verified in production) |
 | **Modes** | `ram` (default; tmpfs protects internal flash) · `disk` (USB/SSD storage) |
 | **Tested on** | Keenetic KN-1810, KN-3811, KN-1913 |
@@ -492,7 +492,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 Without `disk` the toolkit installs into the router's internal storage; with `disk` it installs onto the attached USB/SSD drive.
 
-> **If the universal installer doesn't pass on your MT7621:** compatible MT7621 devices have a dedicated `install_7621.sh` — it accounts for the platform's specifics and can be used as an alternative install path.
+> **If the universal installer doesn't pass on your MT7621:** compatible MT7621 devices have a dedicated `install_7621.sh` — it accounts for the platform's specifics and can be used as an alternative install path. If HTTPS/certificate errors show up in a specific network, check HTTPS reachability separately first — the cause can be network-side (provider or filtering), not necessarily the device.
 
 > DNS transit interception is configured by the installer automatically — there is no manual post-install DNS step. See the architecture section above for why.
 
