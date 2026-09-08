@@ -143,13 +143,15 @@ Watchdog запускается из cron каждые 5 минут и пров�
 
 | | |
 | --- | --- |
-| **ARM / aarch64** (рекомендуется) | `install.sh` — полный стек: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** (legacy) | `install_7621.sh` — сокращённый стек (без MagiTrickle и VoIP-обхода), обходит сломанный TLS через `--insecure` |
+| **ARM / aarch64** | `install.sh` — основной установщик: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
+| **MT7621 / mipsel** | `install_7621.sh` — установщик для устройств на MT7621: тот же общий порядок установки, с источником пакетов Mihomo и обработкой TLS, адаптированными под платформу (MagiTrickle и VoIP-обход в этот путь не входят) |
 | **RAM** | минимум 256 МБ. **128 МБ не поддерживаются** (tmpfs дестабилизирует систему — проверено в продакшене) |
 | **Режимы** | `ram` (по умолчанию; tmpfs защищает внутренний флеш) · `disk` (USB/SSD-накопитель) |
 | **Проверено на** | Keenetic KN-1810, KN-3811, KN-1913 |
 
 Не уверены, какой установщик нужен? Выполните на роутере `opkg print-architecture`: `aarch64-3.10` → `install.sh`, `mipsel-3.4` → `install_7621.sh`.
+
+**MT7621:** для устройств на MT7621 в проекте есть отдельный установщик `install_7621.sh` — полноценный способ установки на совместимых устройствах. Универсальный `install.sh` не ограничен ARM: определение архитектуры охватывает и mipsel/mips (устройства класса MT7621/MT7628), однако этот путь на MT7621 давно не проходил повторное тестирование — не считайте его актуально проверенным. У MT7621 также свои особенности по пакетам и ресурсам — перед установкой проверьте модель и доступное хранилище.
 
 ---
 
@@ -162,7 +164,7 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-Старый MT7621 со сломанным TLS:
+**Устройства MT7621** — отдельный установщик, адаптированный под платформу:
 
 ```bash
 curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
@@ -439,13 +441,15 @@ Enable `allow-lan: true` in Mihomo's config, set FoxyProxy to `<router-ip>:7890`
 
 | | |
 | --- | --- |
-| **ARM / aarch64** (recommended) | `install.sh` — full stack: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** (legacy) | `install_7621.sh` — reduced stack (no MagiTrickle, no VoIP bypass), works around broken TLS with `--insecure` |
+| **ARM / aarch64** | `install.sh` — the main installer: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
+| **MT7621 / mipsel** | `install_7621.sh` — the installer for MT7621 devices: same general flow, with the Mihomo package source and TLS handling adapted to the platform (MagiTrickle and the VoIP bypass are not part of this path) |
 | **RAM** | 256 MB minimum. **128 MB devices are not supported** (tmpfs destabilizes them — verified in production) |
 | **Modes** | `ram` (default; tmpfs protects internal flash) · `disk` (USB/SSD storage) |
 | **Tested on** | Keenetic KN-1810, KN-3811, KN-1913 |
 
 Not sure which installer you need? Run `opkg print-architecture` on the router: `aarch64-3.10` → `install.sh`, `mipsel-3.4` → `install_7621.sh`.
+
+**MT7621:** for MT7621 devices the project ships a dedicated installer, `install_7621.sh` — a full way to install the project on compatible devices. The universal `install.sh` is not ARM-limited: its architecture detection covers mipsel/mips too (MT7621/MT7628-class), but that path has not been re-tested on MT7621 recently — treat it as unverified rather than actively tested. MT7621 also has its own package and resource considerations (including available storage), so check your model and free storage before installing.
 
 ---
 
@@ -458,7 +462,7 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-Old MT7621 router with broken TLS:
+**MT7621 devices** — dedicated installer, adapted to the platform:
 
 ```bash
 curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
