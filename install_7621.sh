@@ -63,18 +63,25 @@ opkg install "$TMP_DIR/mihomo.ipk" || {
     exit 1
 }
 
-# Proxy0
+# Proxy0 (internal id stays Proxy0; description maps to MagiTrickle's t2s numbering)
 i="interface Proxy0"
 for x in "" \
 "proxy protocol socks5" \
 "proxy socks5-udp" \
 "proxy upstream 127.0.0.1 7890" \
-"description mihomo" \
+"description mihomo t2s0" \
 "ip global auto" \
 "up"
 do
     ndmc -c "$i $x" >/dev/null 2>&1
 done
+
+# DNS transit interception: classic (port 53) DNS from clients must pass
+# through the router's DNS proxy instead of bypassing it via external
+# resolvers. Not a DoH/DoT protection.
+if ! ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
+    ndmc -c "dns-proxy intercept enable" >/dev/null 2>&1
+fi
 
 ndmc -c "system configuration save"
 

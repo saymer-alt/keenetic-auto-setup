@@ -93,6 +93,23 @@ if ! ndmc -c "show ip policy" 2>/dev/null | grep -w -q "bypass_wa"; then
 fi
 
 # ---------------------------
+# DNS TRANSIT INTERCEPTION
+# ---------------------------
+# Clients' classic (port 53) DNS must go through Keenetic's DNS proxy so
+# MagiTrickle sees every query and can classify routes. Enabling transit
+# interception redirects queries addressed straight to external resolvers
+# into the system DNS profile instead of letting them bypass the router.
+# This is not a DoH/DoT protection: encrypted DNS is not affected.
+log "Configuring DNS transit interception..."
+
+if ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
+    log "DNS transit interception already enabled, skipping"
+else
+    ndmc -c "dns-proxy intercept enable" >/dev/null 2>&1 || warn "Failed to enable DNS transit interception"
+    ndmc -c "system configuration save" >/dev/null 2>&1
+fi
+
+# ---------------------------
 # TMPFS
 # ---------------------------
 if [ "$MODE" = "ram" ]; then
@@ -201,16 +218,21 @@ log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")
 # ---------------------------
 # Proxy0
 # ---------------------------
+# Internal Keenetic id stays Proxy0/Proxy1/... — only the human-readable
+# description is set, mapped to MagiTrickle's t2s numbering (ProxyN -> t2sN).
+PROXY_IFACE="Proxy0"
+PROXY_DESC="mihomo t2s${PROXY_IFACE#Proxy}"
+
 log "Configuring Proxy0..."
 
-if ! ndmc -c "show interface Proxy0" >/dev/null 2>&1; then
-    ndmc -c "interface Proxy0" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 proxy protocol socks5" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 proxy socks5-udp" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 7890" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 description mihomo" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 ip global auto" >/dev/null 2>&1
-    ndmc -c "interface Proxy0 up" >/dev/null 2>&1
+if ! ndmc -c "show interface ${PROXY_IFACE}" >/dev/null 2>&1; then
+    ndmc -c "interface ${PROXY_IFACE}" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} proxy protocol socks5" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} proxy socks5-udp" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} proxy upstream 127.0.0.1 7890" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} description ${PROXY_DESC}" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} ip global auto" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1
     ndmc -c "system configuration save" >/dev/null 2>&1
 else
     log "Proxy0 already exists, skipping creation"

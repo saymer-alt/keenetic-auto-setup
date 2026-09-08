@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Added
+- `docs/HOWTO.md` and `docs/HOWTO_RU.md`: complete step-by-step usage guide (preparation, Entware, installation, modes, Mihomo config, MagiTrickle, watchdog operation, update/rollback, diagnostics, MT7621 specifics, troubleshooting)
+- README: Use Cases section (whole-network split tunneling, browser-only via FoxyProxy/SOCKS5, VoIP stabilization, small fleets) and Ecosystem section for `saymer-alt/link-generators`
+- `install.sh` / `install_7621.sh`: DNS transit interception (`dns-proxy intercept enable`) is now part of the automatic installation — classic port-53 queries from clients are redirected into Keenetic's DNS proxy where MagiTrickle classifies them. Idempotent (state checked before applying, config saved only on change); classic DNS only, not a DoH/DoT protection. HOWTO: WebRTC caveat and browser-specific advice for the browser-only (FoxyProxy) scenario
+
+### Changed
+- `README.md` fully reworked: English (primary) + full Russian version, conceptual project intro, architecture overview ("Mihomo is a router inside the router"), watchdog principle, hardware/modes table
+- `install.sh` / `install_7621.sh`: Proxy0 human-readable description is now `mihomo t2s0` (mapped to MagiTrickle's `t2sN` numbering). Cosmetic only: the internal `Proxy0` id and all routing logic are unchanged; existing installs keep their current description
+
+---
+
 ## [1.1.0] - 2026-08-10
 
 ### Added
