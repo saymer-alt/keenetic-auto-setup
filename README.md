@@ -149,7 +149,7 @@ Watchdog запускается из cron каждые 5 минут и пров�
 | **Режимы** | `ram` (по умолчанию; tmpfs защищает внутренний флеш) · `disk` (USB/SSD-накопитель) |
 | **Проверено на** | Keenetic KN-1810, KN-3811, KN-1913 |
 
-Не уверены, какой установщик нужен? Выполните на роутере `opkg print-architecture`: `aarch64-3.10` → `install.sh`, `mipsel-3.4` → `install_7621.sh`.
+Не уверены, какой установщик нужен? Выполните на роутере `opkg print-architecture`: `aarch64-3.10` → `install.sh` (основной путь). Для `mipsel-3.4` тоже начните с универсального `install.sh` — если на вашем MT7621 он не пройдёт, переходите на отдельный `install_7621.sh` (см. примечание про MT7621 выше).
 
 **MT7621:** для устройств на MT7621 в проекте есть отдельный установщик `install_7621.sh` — полноценный способ установки на совместимых устройствах. Универсальный `install.sh` не ограничен ARM: определение архитектуры охватывает и mipsel/mips (устройства класса MT7621/MT7628), однако этот путь на MT7621 давно не проходил повторное тестирование — не считайте его актуально проверенным. У MT7621 также свои особенности по пакетам и ресурсам — перед установкой проверьте модель и доступное хранилище.
 
@@ -157,24 +157,34 @@ Watchdog запускается из cron каждые 5 минут и пров�
 
 ## Быстрый старт
 
-**1. Установка** (SSH на роутер, требуется Entware):
+**1. Установка** (SSH на роутер, требуется Entware) — основной способ: универсальный `install.sh`. Он поддерживает модели/архитектуры проекта, включая обработку mipsel/mips. Сначала выберите место установки:
 
-```bash
+```text
+          ┌──────────────────────────┐
+          │   Куда устанавливаем?    │
+          └──────────────────────────┘
+            ↓                   ↓
+   внутренняя память       диск / USB
+   (по умолчанию)          ключ `disk`
+```
+
+**Внутренняя память (по умолчанию):**
+
+```bash id="q5l3hc"
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-**Устройства MT7621** — отдельный установщик, адаптированный под платформу:
+**Диск / USB — добавьте ключ `disk`:**
 
-```bash
-curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
-```
-
-Установка на внешний диск вместо RAM:
-
-```bash
+```bash id="j7h2kf"
+opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
+
+Без `disk` тулкит устанавливается во внутреннее хранилище роутера; с `disk` — на подключённый USB/SSD-накопитель.
+
+> **Если универсальный установщик на вашем MT7621 не проходит:** для совместимых MT7621-устройств предусмотрен отдельный `install_7621.sh` — он учитывает особенности этой платформы и может использоваться как альтернативный способ установки.
 
 > Перехват транзитного DNS настраивается установщиком автоматически — ручного post-install шага для DNS нет. Почему это важно — в разделе «Архитектура» выше.
 
@@ -447,7 +457,7 @@ Enable `allow-lan: true` in Mihomo's config, set FoxyProxy to `<router-ip>:7890`
 | **Modes** | `ram` (default; tmpfs protects internal flash) · `disk` (USB/SSD storage) |
 | **Tested on** | Keenetic KN-1810, KN-3811, KN-1913 |
 
-Not sure which installer you need? Run `opkg print-architecture` on the router: `aarch64-3.10` → `install.sh`, `mipsel-3.4` → `install_7621.sh`.
+Not sure which installer you need? Run `opkg print-architecture` on the router: `aarch64-3.10` → `install.sh` (the primary path). For `mipsel-3.4` start with the universal `install.sh` too — if it doesn't pass on your MT7621, switch to the dedicated `install_7621.sh` (see the MT7621 note above).
 
 **MT7621:** for MT7621 devices the project ships a dedicated installer, `install_7621.sh` — a full way to install the project on compatible devices. The universal `install.sh` is not ARM-limited: its architecture detection covers mipsel/mips too (MT7621/MT7628-class), but that path has not been re-tested on MT7621 recently — treat it as unverified rather than actively tested. MT7621 also has its own package and resource considerations (including available storage), so check your model and free storage before installing.
 
@@ -455,24 +465,34 @@ Not sure which installer you need? Run `opkg print-architecture` on the router: 
 
 ## Quick start
 
-**1. Install** (SSH into the router, Entware required):
+**1. Install** (SSH into the router, Entware required) — the universal `install.sh` is the primary way to install: it handles the project's models/architectures, including mipsel/mips. First choose the install location:
 
-```bash
+```text
+          ┌──────────────────────────┐
+          │    Where to install?     │
+          └──────────────────────────┘
+            ↓                   ↓
+   internal memory         disk / USB
+   (default)               add the `disk` key
+```
+
+**Internal memory (default):**
+
+```bash id="q5l3hc"
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-**MT7621 devices** — dedicated installer, adapted to the platform:
+**Disk / USB — add the `disk` key:**
 
-```bash
-curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
-```
-
-Install to external disk instead of RAM:
-
-```bash
+```bash id="j7h2kf"
+opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
+
+Without `disk` the toolkit installs into the router's internal storage; with `disk` it installs onto the attached USB/SSD drive.
+
+> **If the universal installer doesn't pass on your MT7621:** compatible MT7621 devices have a dedicated `install_7621.sh` — it accounts for the platform's specifics and can be used as an alternative install path.
 
 > DNS transit interception is configured by the installer automatically — there is no manual post-install DNS step. See the architecture section above for why.
 
