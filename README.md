@@ -1,4 +1,4 @@
-# 🛡️ Keenetic Auto Setup
+# 🛡 Keenetic Auto Setup
 
 **One-command toolkit that turns a Keenetic router into a self-healing smart gateway.**
 
@@ -277,7 +277,7 @@ Everything runs in your browser: private keys, links and configs are never sent 
 
 ---
 
-# 🛡️ Русская версия
+# 🛡 Русская версия
 
 **Один запуск — и Keenetic превращается в самовосстанавливающийся умный шлюз.**
 
