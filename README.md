@@ -75,6 +75,36 @@ Not everything goes through the proxy, and that's by design: different traffic t
 
 ---
 
+## How traffic routing actually works
+
+The one-line model:
+
+```
+Client → Keenetic → MagiTrickle (which exit for this traffic?) → Internet
+```
+
+- **MagiTrickle is not a VPN.** It never carries traffic; it reads DNS queries, matches domains against your rules and sends each destination toward a chosen exit.
+- **Exits are interchangeable.** The two paths into Mihomo: **Proxy0** — a Keenetic proxy interface (SOCKS5), convenient as a destination in per-client/per-segment rules — and **Mihomo's TUN interface** (`mitun0` is the common name for it) — a transparent IP-level path. Direct ISP, AWG, SSTP, OpenConnect and other interfaces are exits too.
+- **Classification only sees domains that reach Keenetic's DNS.** That's why the installer keeps clients' DNS on the router (see [DNS and whitelist networks](#dns-and-whitelist-networks) below).
+- **If a device builds its own VPN tunnel, Keenetic sees the tunnel — not the sites inside it.** Router-side selective routing can't pick per-site exits for traffic that never appears as individual connections.
+- **Mihomo's own interface setting binds its outbound connections — it is not a router-wide WAN switch.** Traffic entering Mihomo via the TUN still leaves through the usual Keenetic routing (the WAN1/WAN2 example is in the HOWTO).
+
+The full explanation — client VPN vs router routing, Proxy0 vs TUN, additional Wi-Fi segments as a practical per-segment use case, and why DNS ≠ routing — is in [docs/HOWTO.md](docs/HOWTO.md), section "How traffic routing actually works".
+
+---
+
+## DNS and whitelist networks
+
+- In this project, DNS is **part of the routing**: MagiTrickle classifies traffic by domain, so *which resolver Keenetic uses* is configuration, not a detail.
+- In whitelist-style networks (where only approved resources are reachable), the DNS choice becomes critical: a resolver can be technically excellent and still be **unreachable from your network**, and operator-side interference with DNS answers is possible.
+- The provider's DNS is usually the **most compatible** option in restricted networks — but it can be filtered or substituted, so it is not automatically the preferred choice in an ordinary network.
+- Keenetic supports DoH and DoT natively (OS 3.0+). Encrypted upstreams are the better tool **when the chosen service is actually reachable from your network**; in Russian networks Yandex DNS is often a practical compromise, but availability is per-network and nobody can guarantee it for a specific operator.
+- Even correct encrypted DNS does not mean the operator cannot affect access to specific resources at other levels.
+
+The full resolver matrix, configuration steps and a dedicated troubleshooting scenario are in [docs/HOWTO.md](docs/HOWTO.md), section 6.2.
+
+---
+
 ## Watchdog: it fixes itself
 
 The watchdog runs from cron every 5 minutes and checks, in order:
@@ -321,6 +351,36 @@ AWG / SSTP / OpenConnect / Proxy0 / MASQUE / …
 - **Транспорты взаимозаменяемы.** Вход и выход не обязаны совпадать: можно входить одним типом туннеля, а выходить в интернет другим. Любой транспорт заменяется без перестройки всей системы.
 
 Не всё идёт через прокси — так задумано: разные типы трафика идут разными путями. VoIP идёт мимо прокси напрямую через VPN (звонки без лагов), локальные ресурсы — напрямую, остальное — по правилам.
+
+---
+
+## Как на самом деле работает маршрутизация
+
+Модель в одну строку:
+
+```
+Клиент → Keenetic → MagiTrickle (какой выход для этого трафика?) → Интернет
+```
+
+- **MagiTrickle — не VPN.** Он не передаёт трафик; он читает DNS-запросы, сверяет домены с вашими правилами и направляет каждое назначение к выбранному выходу.
+- **Выходы взаимозаменяемы.** Два пути в Mihomo: **Proxy0** — прокси-интерфейс Keenetic (SOCKS5), удобный как точка назначения в правилах для отдельных клиентов/сетей, и **TUN-интерфейс Mihomo** (`mitun0` — распространённое имя для него) — прозрачный путь на уровне IP. Прямой ISP, AWG, SSTP, OpenConnect и другие интерфейсы — тоже выходы.
+- **Классификация видит только домены, дошедшие до DNS Keenetic.** Поэтому установщик удерживает DNS клиентов на роутере (см. [DNS и сети с белыми списками](#dns-и-сети-с-белыми-списками) ниже).
+- **Если устройство само строит VPN-туннель, Keenetic видит туннель — а не сайты внутри него.** Точечная маршрутизация на роутере не может выбирать посайтовые выходы для трафика, который не появляется в виде отдельных соединений.
+- **Настройка интерфейса самого Mihomo привязывает его исходящие соединения — это не переключатель WAN для роутера.** Трафик, вошедший в Mihomo через TUN, дальше выходит через обычную маршрутизацию Keenetic (пример WAN1/WAN2 — в HOWTO).
+
+Полное объяснение — клиентский VPN против роутерной маршрутизации, Proxy0 против TUN, дополнительные Wi-Fi-сети как практический посегментный use case и почему DNS ≠ маршрутизация — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел «Как на самом деле работает маршрутизация».
+
+---
+
+## DNS и сети с белыми списками
+
+- В этом проекте DNS — **часть маршрутизации**: MagiTrickle классифицирует трафик по доменам, поэтому *какой резолвер использует Keenetic* — это конфигурация, а не деталь.
+- В сетях с белыми списками (где доступны только разрешённые ресурсы) выбор DNS становится критичным: резолвер может быть технически безупречным и при этом **недоступен из вашей сети**, а вмешательство оператора в DNS-ответы возможно.
+- DNS провайдера — обычно **самый совместимый** вариант в ограниченных сетях, но он может подвергаться фильтрации и подмене, поэтому в обычной сети он не обязательно предпочтителен.
+- Keenetic нативно поддерживает DoH и DoT (с OS 3.0). Шифрованные upstream'ы — лучший инструмент, **когда выбранный сервис реально доступен из вашей сети**; в российских сетях часто практичным компромиссом оказывается Yandex DNS, но доступность зависит от конкретной сети, и гарантировать её для конкретного оператора нельзя.
+- Даже корректный шифрованный DNS не означает, что оператор не может влиять на доступность отдельных ресурсов на других уровнях.
+
+Полная матрица резолверов, настройка и отдельный troubleshooting-сценарий — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел 6.2.
 
 ---
 
