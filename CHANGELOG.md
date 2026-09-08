@@ -6,19 +6,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-08
+
 ### Added
-- `docs/HOWTO.md` and `docs/HOWTO_RU.md`: complete step-by-step usage guide (preparation, Entware, installation, modes, Mihomo config, MagiTrickle, watchdog operation, update/rollback, diagnostics, MT7621 specifics, troubleshooting)
-- README: Use Cases section (whole-network split tunneling, browser-only via FoxyProxy/SOCKS5, VoIP stabilization, small fleets) and Ecosystem section for `saymer-alt/link-generators`
-- `install.sh` / `install_7621.sh`: DNS transit interception (`dns-proxy intercept enable`) is now part of the automatic installation — classic port-53 queries from clients are redirected into Keenetic's DNS proxy where MagiTrickle classifies them. Idempotent (state checked before applying, config saved only on change); classic DNS only, not a DoH/DoT protection. HOWTO: WebRTC caveat and browser-specific advice for the browser-only (FoxyProxy) scenario
-- README/HOWTO: DNS in whitelist networks — upstream resolver choice as part of the routing (Keenetic-native DoT/DoH, provider/Yandex/foreign resolvers comparison table with documented endpoints, availability diagnostics via `show dns-proxy` per-server stats, DNS-substitution warning, dedicated whitelist troubleshooting scenario)
-- README/HOWTO: "How traffic routing actually works" — explanatory mental-model section: MagiTrickle as the decision layer (not a VPN), why clients must use the router's DNS, why client-side VPN tunnels bypass router routing, Proxy0 vs Mihomo's TUN (`mitun0`), extra Wi-Fi/LAN segments as a per-segment use case (incl. the MagiTrickle `link:`/`br0`/`br1` coverage caveat), DNS ≠ routing; plus MagiTrickle 101 (Group → Interface → Rule → Type/Condition) and Mihomo basics (role, outbounds, TUN vs Proxy0) with links to official documentation
-- README/HOWTO: Mihomo `interface-name` binds only Mihomo's outbound connections — it is not a router-wide WAN switch (TUN traffic follows Keenetic kernel routing; dual-WAN example, `auto-detect-interface` note); Mihomo runs without any web UI (dashboard is optional tooling, remote hosting + SSH-tunnel security guidance); RAM measurement command in diagnostics
-- README/HOWTO: final consistency pass — `ProxyN` terminology (Proxy0 is the clean-router example, not the only possible ID; `mihomo t2sN` follows the number), `allow-lan: true` rationale (for LAN clients, not for the router; firewall boundary for 7890/API), intentional IPv6-off note, explicit "no Docker in this stack" statement, advanced notes (router-side tunnels chained through Mihomo with chain-specific MTU; WARP colo ≠ exit country + [warpscout](https://github.com/vernette/warpscout) link), Quick MT smoke test and a universal 10-step diagnostic flow
-- `ARCHITECTURE.md` reworked into the project's main architecture document (RU): three traffic paths (DNS classification / direct :7890 / TUN), MagiTrickle decision model (Group → Interface → Rule → Condition, `link`), ProxyN vs mitun0, MetaCubeX interface ≠ WAN, DNS architecture (client path / interception / upstream / DoH-DoT / whitelist), extra segments, browser mode (allow-lan, WebRTC), client VPN & nested tunnels, intentional IPv6-off, WARP/colo, MT TEST smoke test, diagnostics tree, security boundaries; README navigation updated to point at it
+
+- Universal `install.sh` is now the primary installation path: architecture detection covers mipsel/mips as well as ARM. Actively tested on ARM/aarch64 — the mipsel path has not been re-tested recently and should not be treated as verified until checked on a clean device.
+- Dedicated `install_7621.sh` for MT7621 devices: a full project installer with the Mihomo package source adapted to the platform's architecture (MagiTrickle and the VoIP bypass are not part of this path).
+- DNS transit interception (`dns-proxy intercept enable`) is enabled automatically by both installers: classic port-53 queries from LAN clients are redirected into Keenetic's DNS proxy where MagiTrickle classifies them. Idempotent (state checked first, config saved only on change); classic DNS only — not a DoH/DoT protection.
+- The Mihomo proxy interface is created with the human-readable label `mihomo t2sN` (`Proxy0` → `mihomo t2s0`), matching MagiTrickle's `t2sN` numbering.
 
 ### Changed
-- `README.md` fully reworked: English (primary) + full Russian version, conceptual project intro, architecture overview ("Mihomo is a router inside the router"), watchdog principle, hardware/modes table
-- `install.sh` / `install_7621.sh`: Proxy0 human-readable description is now `mihomo t2s0` (mapped to MagiTrickle's `t2sN` numbering). Cosmetic only: the internal `Proxy0` id and all routing logic are unchanged; existing installs keep their current description
+
+- Quick Start reordered around the universal installer: both install locations are shown up front — internal memory (default) and disk/USB (`disk` key) — with `install_7621.sh` as the alternative for MT7621 devices where the universal installer doesn't pass.
+- `update-mihomo.sh` hardened into a storage-safe, fail-safe updater: downloads to `/tmp` with a RAM gate, binary and config tests before touching the service, free-space check, automatic rollback on any failed step, `--force` reinstall, intentional MIPS refusal.
+
+### Documentation
+
+- README rebuilt: Russian primary + full English version; architecture model; use cases (browser-only proxy via FoxyProxy with WebRTC caveats); DNS guidance for whitelist networks (resolver table with documented endpoints, availability diagnostics, substitution warning); daily operational commands (`mihomo -t -f` config validation, status/logs).
+- `ARCHITECTURE.md` reworked into the main architecture document: three traffic paths, MagiTrickle decision model (`link`, DNS interception), `ProxyN` vs `mitun0`, MetaCubeX `interface-name` ≠ WAN, security boundaries.
+- New complete guides `docs/HOWTO.md` (EN) and `docs/HOWTO_RU.md` (RU): preparation, installation, modes, Mihomo config, MagiTrickle, watchdog, update/rollback, diagnostics, MT7621, troubleshooting; documentation table completed (`docs/07`, `docs/10`).
+- Operational/security notes: `allow-lan` rationale and the port `7890` firewall boundary; controller API security (localhost/LAN binding, `secret`, VPN/SSH tunnel); intentional IPv6-off in the base configuration; no Docker in the Keenetic stack; MT TEST smoke test; universal step-by-step diagnostic flow.
 
 ---
 
