@@ -89,7 +89,7 @@ Client → Keenetic → MagiTrickle (which exit for this traffic?) → Internet
 - **If a device builds its own VPN tunnel, Keenetic sees the tunnel — not the sites inside it.** Router-side selective routing can't pick per-site exits for traffic that never appears as individual connections.
 - **Mihomo's own interface setting binds its outbound connections — it is not a router-wide WAN switch.** Traffic entering Mihomo via the TUN still leaves through the usual Keenetic routing (the WAN1/WAN2 example is in the HOWTO).
 
-The full explanation — client VPN vs router routing, Proxy0 vs TUN, additional Wi-Fi segments as a practical per-segment use case, and why DNS ≠ routing — is in [docs/HOWTO.md](docs/HOWTO.md), section "How traffic routing actually works".
+The full story — the three traffic paths, why MagiTrickle/`mitun0`/`ProxyN`/`7890`/DNS interception/Mihomo's interface setting are different levels of one design — is in **[ARCHITECTURE.md](ARCHITECTURE.md)** (RU). The practical walkthrough of the same topics is in [docs/HOWTO.md](docs/HOWTO.md), section "How traffic routing actually works".
 
 ---
 
@@ -266,7 +266,7 @@ Everything runs in your browser: private keys, links and configs are never sent 
 | [docs/06-s00ubifs.md](docs/06-s00ubifs.md) | tmpfs profiles and RAM limits (RU) |
 | [docs/08-troubleshooting.md](docs/08-troubleshooting.md) | Symptom → cause → fix (RU) |
 | [docs/09-limitations.md](docs/09-limitations.md) | Hard limits and honest boundaries (RU) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | The layered philosophy (RU) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | **The main architecture document (RU)** — how the routing actually works |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ---
@@ -368,7 +368,7 @@ AWG / SSTP / OpenConnect / Proxy0 / MASQUE / …
 - **Если устройство само строит VPN-туннель, Keenetic видит туннель — а не сайты внутри него.** Точечная маршрутизация на роутере не может выбирать посайтовые выходы для трафика, который не появляется в виде отдельных соединений.
 - **Настройка интерфейса самого Mihomo привязывает его исходящие соединения — это не переключатель WAN для роутера.** Трафик, вошедший в Mihomo через TUN, дальше выходит через обычную маршрутизацию Keenetic (пример WAN1/WAN2 — в HOWTO).
 
-Полное объяснение — клиентский VPN против роутерной маршрутизации, Proxy0 против TUN, дополнительные Wi-Fi-сети как практический посегментный use case и почему DNS ≠ маршрутизация — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел «Как на самом деле работает маршрутизация».
+Полная картина — три пути трафика и почему MagiTrickle/`mitun0`/`ProxyN`/`7890`/DNS-перехват/настройка интерфейса Mihomo являются разными уровнями одного дизайна — в **[ARCHITECTURE.md](ARCHITECTURE.md)**. Практический разбор тех же тем — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел «Как на самом деле работает маршрутизация».
 
 ---
 
@@ -545,7 +545,7 @@ Updater построен так, чтобы безопасно падать: о�
 | [docs/06-s00ubifs.md](docs/06-s00ubifs.md) | Профили tmpfs и лимиты RAM |
 | [docs/08-troubleshooting.md](docs/08-troubleshooting.md) | Симптом → причина → решение |
 | [docs/09-limitations.md](docs/09-limitations.md) | Жёсткие границы проекта |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Философия слоёв |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | **Главная архитектурная глава** — как реально устроена маршрутизация |
 | [CHANGELOG.md](CHANGELOG.md) | История изменений |
 
 ---
