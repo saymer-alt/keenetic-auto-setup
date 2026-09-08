@@ -4,7 +4,7 @@
 
 Современный VPN/proxy-стек (Mihomo + VLESS/Reality), DNS-сплит-роутинг (MagiTrickle), стабилизация VoIP-звонков, защита флеш-памяти и watchdog, который сам чинит туннель. Установка и настройка — одна команда, ~2–3 минуты.
 
-**Русский** · [English](#-keenetic-auto-setup)
+**Русский** · [Быстрый старт](#быстрый-старт) · [English](#-keenetic-auto-setup) · [Quick start](#quick-start)
 
 ---
 
@@ -300,7 +300,7 @@ Updater построен так, чтобы безопасно падать: о�
 
 Modern VPN/proxy stack (Mihomo + VLESS/Reality), DNS-based split tunneling (MagiTrickle), VoIP call stabilization, flash wear protection and a watchdog that repairs the tunnel on its own — installed and configured in one shot, ~2–3 minutes.
 
-[Русский](#-русская-версия) · **English**
+[Русский](#-русская-версия) · [Быстрый старт](#быстрый-старт) · **English** · [Quick start](#quick-start)
 
 ---
 
