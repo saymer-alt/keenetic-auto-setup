@@ -188,13 +188,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 > Перехват транзитного DNS настраивается установщиком автоматически — ручного post-install шага для DNS нет. Почему это важно — в разделе «Архитектура» выше.
 
-**2. Добавьте конфиг Mihomo** (обязательный шаг — без него ничего не заработает):
+**2. Добавьте конфиг Mihomo** (обязательный шаг — без него ничего не заработает). Установщик ставит Mihomo и всю инфраструктуру, но **полноценного конфига после установки ещё нет**: в `/opt/etc/mihomo/config.yaml` лежит минимальный placeholder — замените его своим конфигом:
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
-*`nano` — быстрый и привычный редактор на роутере, но он не обязателен: подойдёт любой доступный редактор, либо можно изменить/подготовить файл другим способом, например на внешнем диске.*
+*`nano` — пример редактора; подойдёт любой удобный способ редактирования.*
 
 Минимальный рабочий пример:
 
@@ -226,10 +226,17 @@ rules:
 **3. Перезапустите и проверьте:**
 
 ```bash
+mihomo -t -f /opt/etc/mihomo/config.yaml
 /opt/etc/init.d/S99mihomo restart
 /opt/etc/init.d/S99mihomo status
-curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # ожидаем 204
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  --proxy 127.0.0.1:7890 \
+  http://google.com/generate_204
 ```
+
+- `mihomo -t` проверяет конфигурацию без запуска Mihomo;
+- `status` должен показать `alive`;
+- ожидаемый вывод последней команды — `204`: HTTP-запрос действительно прошёл через локальный прокси `127.0.0.1:7890`.
 
 **4. Проверка watchdog** — через пять минут после установки:
 
@@ -240,13 +247,12 @@ cat /opt/var/log/mihomo_watchdog.log    # ожидаем "[OK] All good"
 ### Основные команды
 
 ```bash
-nano /opt/etc/mihomo/config.yaml                      # правка конфига (подойдёт любой редактор)
-mihomo -t -f /opt/etc/mihomo/config.yaml              # проверка конфига БЕЗ запуска Mihomo (-t = test)
-/usr/bin/mihomo -t -f /etc/mihomo/config.yaml         # явные пути к бинарнику/конфигу — примеры, подставьте свои
-/opt/etc/init.d/S99mihomo status                      # статус сервиса
-curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # прокси отвечает сквозным запросом
-cat /opt/var/log/mihomo_watchdog.log                  # решения watchdog
+/opt/etc/init.d/S99mihomo status      # статус сервиса
+/opt/etc/init.d/S99mihomo restart     # применить изменённый конфиг
+cat /opt/var/log/mihomo_watchdog.log  # решения watchdog
 ```
+
+Проверка конфига (`mihomo -t`) и сквозная проверка прокси (`curl --proxy …`, ожидаем `204`) — в Quick Start выше.
 
 Если Mihomo не запускается или падает после изменения `config.yaml` — первым делом выполните проверку `mihomo -t`: она валидирует конфигурацию без запуска сервиса. Она не диагностирует все возможные причины падения (сеть, MTU, сам upstream), но битый конфиг находит сразу. Для конфигов из [link-generators](https://github.com/saymer-alt/link-generators) эта проверка — более авторитетная runtime-валидация, чем базовая браузерная проверка генератора. Куда копать дальше: [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел Диагностика.
 
@@ -496,13 +502,13 @@ Without `disk` the toolkit installs into the router's internal storage; with `di
 
 > DNS transit interception is configured by the installer automatically — there is no manual post-install DNS step. See the architecture section above for why.
 
-**2. Add your Mihomo config** (this step is mandatory — without it nothing will work):
+**2. Add your Mihomo config** (this step is mandatory — without it nothing will work). The installer puts Mihomo and the whole infrastructure in place, but **there is no full config after install yet**: `/opt/etc/mihomo/config.yaml` holds a minimal placeholder — replace it with your own config:
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
-*`nano` is just the familiar on-router editor — it is not mandatory: any available editor works, or you can edit/prepare the file another way (for example, on an external disk) and copy it to the router.*
+*`nano` is just an example editor; any convenient way of editing works.*
 
 A minimal working example:
 
@@ -534,10 +540,17 @@ rules:
 **3. Restart and verify:**
 
 ```bash
+mihomo -t -f /opt/etc/mihomo/config.yaml
 /opt/etc/init.d/S99mihomo restart
 /opt/etc/init.d/S99mihomo status
-curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # expect 204
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  --proxy 127.0.0.1:7890 \
+  http://google.com/generate_204
 ```
+
+- `mihomo -t` validates the configuration without starting Mihomo;
+- `status` should report `alive`;
+- the expected output of the last command is `204`: the HTTP request has actually passed through the local proxy on `127.0.0.1:7890`.
 
 **4. Watchdog check** — five minutes after install:
 
@@ -548,13 +561,12 @@ cat /opt/var/log/mihomo_watchdog.log    # expect "[OK] All good"
 ### Useful daily commands
 
 ```bash
-nano /opt/etc/mihomo/config.yaml                      # edit the config (any editor will do)
-mihomo -t -f /opt/etc/mihomo/config.yaml              # validate the config WITHOUT starting Mihomo (-t = test)
-/usr/bin/mihomo -t -f /etc/mihomo/config.yaml         # explicit binary/config paths — examples, adjust to your install
-/opt/etc/init.d/S99mihomo status                      # service status
-curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # proxy answers an end-to-end request
-cat /opt/var/log/mihomo_watchdog.log                  # watchdog decisions
+/opt/etc/init.d/S99mihomo status      # service status
+/opt/etc/init.d/S99mihomo restart     # apply a changed config
+cat /opt/var/log/mihomo_watchdog.log  # watchdog decisions
 ```
+
+The config check (`mihomo -t`) and the end-to-end proxy check (`curl --proxy …`, expect `204`) are in the Quick Start above.
 
 If Mihomo won't start or dies after a `config.yaml` change — run the `mihomo -t` check first: it validates the configuration without starting the service. It does not diagnose every possible failure cause (network, MTU, the upstream server), but a broken config is caught immediately. For configs generated by [link-generators](https://github.com/saymer-alt/link-generators), this check is the more authoritative runtime validation compared to the generator's basic in-browser check. Where to dig next: [docs/HOWTO.md](docs/HOWTO.md), Diagnostics.
 
