@@ -230,7 +230,7 @@ if ! ndmc -c "show interface ${PROXY_IFACE}" >/dev/null 2>&1; then
     ndmc -c "interface ${PROXY_IFACE} proxy protocol socks5" >/dev/null 2>&1
     ndmc -c "interface ${PROXY_IFACE} proxy socks5-udp" >/dev/null 2>&1
     ndmc -c "interface ${PROXY_IFACE} proxy upstream 127.0.0.1 7890" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} description ${PROXY_DESC}" >/dev/null 2>&1
+    ndmc -c "interface ${PROXY_IFACE} description \"${PROXY_DESC}\"" >/dev/null 2>&1 || warn "Failed to set ProxyN description"
     ndmc -c "interface ${PROXY_IFACE} ip global auto" >/dev/null 2>&1
     ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1
     ndmc -c "system configuration save" >/dev/null 2>&1

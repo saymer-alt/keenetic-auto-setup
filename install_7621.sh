@@ -69,7 +69,7 @@ for x in "" \
 "proxy protocol socks5" \
 "proxy socks5-udp" \
 "proxy upstream 127.0.0.1 7890" \
-"description mihomo t2s0" \
+"description \"mihomo t2s0\"" \
 "ip global auto" \
 "up"
 do
