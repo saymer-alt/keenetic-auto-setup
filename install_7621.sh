@@ -108,4 +108,114 @@ fi
 
 /opt/etc/init.d/S99mihomo restart
 
-echo "[OK] Done"
+sleep 2
+
+# ---------------------------
+# POST-INSTALL SELF-CHECK
+# ---------------------------
+# Validates what this installer promises to install (7621 subset: no
+# MagiTrickle, bypass rules or S00ubifs here). Missing config.yaml on a fresh
+# router is expected: WARN, not FAIL; port 7890 only checked when it exists.
+FAILS=0
+WARNS=0
+
+check_ok()   { echo "[ok] $1"; }
+check_warn() { echo "[WARN] $1"; WARNS=$((WARNS+1)); }
+check_fail() { echo "[FAIL] $1"; FAILS=$((FAILS+1)); }
+
+CONFIG="/opt/etc/mihomo/config.yaml"
+
+if [ -x /opt/bin/mihomo ] || command -v mihomo >/dev/null 2>&1; then
+    MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
+    if ${MIHOMO_BIN} -v >/dev/null 2>&1; then
+        check_ok "Mihomo binary: $(${MIHOMO_BIN} -v 2>/dev/null | head -1)"
+    else
+        check_fail "Mihomo binary exists but 'mihomo -v' failed"
+    fi
+else
+    check_fail "Mihomo binary not found (/opt/bin/mihomo)"
+fi
+
+if [ -x /opt/etc/init.d/S99mihomo ]; then
+    check_ok "Mihomo init script present"
+else
+    check_fail "Mihomo init script /opt/etc/init.d/S99mihomo missing"
+fi
+
+if ndmc -c "show interface Proxy0" >/dev/null 2>&1; then
+    check_ok "Proxy0 interface present"
+    if ndmc -c "show running-config" 2>/dev/null | grep -q "mihomo t2s0"; then
+        check_ok "Proxy0 description: mihomo t2s0"
+    else
+        check_fail "Proxy0 description is not 'mihomo t2s0'"
+    fi
+else
+    check_fail "Proxy0 interface missing"
+fi
+
+if ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
+    check_ok "DNS transit interception enabled"
+else
+    check_fail "DNS transit interception (dns-proxy intercept enable) not found"
+fi
+
+if [ -x /opt/etc/cron.5mins/mihomo_watchdog ]; then
+    check_ok "watchdog present"
+else
+    check_fail "watchdog /opt/etc/cron.5mins/mihomo_watchdog missing or not executable"
+fi
+if grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null; then
+    check_ok "watchdog scheduled in crontab"
+else
+    check_fail "watchdog not scheduled (no cron.5mins/mihomo_watchdog entry in /opt/etc/crontab)"
+fi
+
+if [ -x /opt/etc/init.d/S10cron ]; then
+    check_ok "cron init script present"
+    if ps 2>/dev/null | grep -q "[c]ron"; then
+        check_ok "cron is running"
+    else
+        check_warn "cron process not visible in ps (init script present)"
+    fi
+else
+    check_fail "cron init script /opt/etc/init.d/S10cron missing"
+fi
+
+if [ -f "$CONFIG" ]; then
+    if ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
+        check_ok "Mihomo config syntax valid"
+    else
+        check_warn "Mihomo config syntax check (mihomo -t) failed"
+    fi
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening (config exists)"
+    elif command -v ss >/dev/null 2>&1; then
+        ss -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening (config exists)"
+    fi
+else
+    check_warn "config.yaml not found — expected on a fresh router; add it at the configuration stage (7890 stays down until then)"
+fi
+
+AVAIL_KB=$(df -k /opt 2>/dev/null | awk 'NR==2 {print $4}')
+case "$AVAIL_KB" in
+    ''|*[!0-9]*)
+        check_warn "Cannot determine free space on /opt"
+        ;;
+    *)
+        if [ "$AVAIL_KB" -lt 32768 ]; then
+            check_warn "Low free space on /opt: ${AVAIL_KB} KB"
+        else
+            check_ok "Free space on /opt: ${AVAIL_KB} KB"
+        fi
+        ;;
+esac
+
+if [ "$FAILS" -gt 0 ]; then
+    echo "[FAIL] $FAILS check(s) failed, $WARNS warning(s) — installation incomplete"
+    exit 1
+fi
+if [ "$WARNS" -gt 0 ]; then
+    echo "[OK] Done ($WARNS warning(s))"
+else
+    echo "[OK] Done"
+fi
