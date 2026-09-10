@@ -206,13 +206,15 @@ In other words: **the MetaCubeX interface setting is not a WAN selector for the 
 
 ### Mihomo runs fine without a web UI
 
-Mihomo is the network daemon; MetaCubeX-style dashboards (metacubexd, yacd, zashboard) are only control/monitoring interfaces on top of its REST API (`external-controller`, by default bound to `127.0.0.1:9090`). The daemon works perfectly with no dashboard at all — and this project's default installation sets up exactly that: the daemon, no web UI on the router.
+Three things must not be conflated: the **core** (the Mihomo daemon), the **controller** (a REST API the core exposes only when explicitly configured via `external-controller`), and the **web UI** (MetaCubeX-style dashboards — metacubexd, yacd, zashboard; separate interfaces on top of that API). The daemon works perfectly with no dashboard at all — and this project's default installation sets up exactly that: the daemon, no web UI on the router.
 
+- **If `external-controller` is not set, the API is off and nothing listens on port 9090.** The controller has no default address — the default in Mihomo's code is empty; the familiar `127.0.0.1:9090` is a convention from examples, not a built-in default.
+- Address semantics for `external-controller`: `127.0.0.1:9090` binds to the loopback of the device Mihomo runs on (a dashboard from another device cannot connect); `192.168.1.1:9090` binds to the router's specific LAN address (the working option for a dashboard from a PC); `0.0.0.0:9090` binds to all IPv4 interfaces at once — not something to offer a beginner as a "safe default".
 - A dashboard can live **on the router** (`external-ui`: static page files served by Mihomo's API at `/ui`) — disk space, not a separate process.
 - Or **on another device entirely**: public dashboards (e.g. metacubexd's hosted pages) can connect to the router's API remotely — the router then hosts nothing but the daemon.
 - Either way, the UI is optional tooling, not a part of Mihomo that must be installed.
 
-**Security:** the controller API can change Mihomo's runtime behavior — do not expose it to the WAN. Keep the default localhost binding or LAN-only, always set `secret:`, and for remote management reach the API through a VPN or an SSH tunnel (`ssh -L 9090:127.0.0.1:9090 root@router`) instead of opening the port.
+**Security:** the controller API can change Mihomo's runtime behavior — do not expose it to the WAN. Keep a loopback or LAN-only binding (leaving the controller disabled entirely is also a valid choice), always set `secret:` when it is LAN-reachable, and for remote management reach the API through a VPN or an SSH tunnel (`ssh -L 9090:127.0.0.1:9090 root@router`) instead of opening the port.
 
 ### Separate Wi-Fi/LAN segments as a practical use case
 
@@ -286,7 +288,7 @@ opkg print-architecture | awk '/^arch/{print $2}'
 ```
 
 - `aarch64-3.10` (or `armv7-3.2`) → **`install.sh`** (full stack)
-- `mipsel-3.4` → **`install_7621.sh`** (legacy, reduced stack — see [section 13](#13-mt7621--mipsel-specifics))
+- `mipsel-3.4` → start with the universal **`install.sh`** as well (it declares mipsel/mips support, but that path has not been re-tested recently); if it doesn't pass on your MT7621 — **`install_7621.sh`** (see [section 13](#13-mt7621--mipsel-specifics))
 
 ---
 
@@ -312,14 +314,14 @@ If `opkg update` fails: fix DNS (`cat /opt/etc/resolv.conf`, try `echo "nameserv
 
 ### 3.1 The command
 
-**Modern routers (ARM, recommended):**
+**The primary path is the universal installer** (architecture auto-detection: aarch64/armv7, plus mipsel/mips; the mipsel path has not been re-tested recently):
 
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-**Old routers (MT7621/mipsel)** — use the legacy installer, it works around broken TLS:
+**MT7621, if the universal installer doesn't pass** — a dedicated installer for these devices; it works through `--insecure` and an HTTP mirror (certificate checking is traded for compatibility — the trade-off is described in [section 13](#13-mt7621--mipsel-specifics)):
 
 ```bash
 curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
@@ -780,13 +782,13 @@ The classic trap — do not start with Mihomo. In a whitelist network this patte
 
 ## 13. MT7621 / mipsel specifics
 
-`install_7621.sh` exists because MT7621 routers ship a TLS stack that can't talk to modern servers ("`curl: (60)` and friends"). It works around that with `--insecure` and an HTTP mirror, which **trades certificate checking for compatibility** — MITM is theoretically possible; downloads come only from fixed, known sources and the fallback package is version-pinned, which keeps the practical risk low, but understand the trade.
+The universal `install.sh` declares mipsel/mips support, but that path has not been re-tested on MT7621 recently. Compatible MT7621 devices have a dedicated `install_7621.sh`: it appeared because of TLS download failures observed on these devices ("`curl: (60)` and friends"; whether they are a platform trait is unconfirmed). It works around that with `--insecure` and an HTTP mirror, which **trades certificate checking for compatibility** — MITM is theoretically possible; downloads come only from fixed, known sources and the fallback package is version-pinned, which keeps the practical risk low, but understand the trade.
 
 Differences from `install.sh`:
 
 | | install.sh | install_7621.sh |
 | --- | --- | --- |
-| Architecture | auto (aarch64/armv7) | mipsel |
+| Architecture | auto (aarch64/armv7/mipsel/mips) | mipsel (compatible MT7621) |
 | TLS | verified | `--insecure` + HTTP mirror |
 | MagiTrickle | ✅ | ❌ not installed |
 | bypass_wa (VoIP) | ✅ | ❌ not installed |

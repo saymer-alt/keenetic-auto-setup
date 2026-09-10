@@ -1,4 +1,3 @@
-````markdown id="u8k3xq"
 # Troubleshooting
 
 Если что-то не работает — смотри сюда.

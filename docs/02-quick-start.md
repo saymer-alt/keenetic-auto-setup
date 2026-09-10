@@ -20,7 +20,9 @@
 
 ## 🚀 Установка
 
-### Современные роутеры (ARM)
+### Основной путь — универсальный `install.sh`
+
+Автоопределение архитектуры: aarch64/armv7, а также mipsel/mips (mipsel-путь давно не проходил повторное тестирование).
 
 ```bash
 opkg update && opkg install curl && \
@@ -29,7 +31,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 ---
 
-### Старые роутеры (MT7621)
+### MT7621: если универсальный не проходит
 
 Если предыдущая команда падает (SSL / curl ошибки):
 

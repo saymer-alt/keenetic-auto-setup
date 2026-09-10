@@ -11,9 +11,9 @@
 ```
 Клиент (LAN)
       ↓
-Keenetic
+Keenetic + MagiTrickle      ← решение по домену: куда идёт этот трафик?
       ↓
-Proxy0 (127.0.0.1:7890)
+Proxy0 (SOCKS5 на 127.0.0.1:7890)   ← или mitun0 (TUN-интерфейс Mihomo)
       ↓
 Mihomo (Clash Meta)
       ↓
@@ -21,6 +21,10 @@ VPN (VLESS / Reality / etc.)
       ↓
 Интернет
 ```
+
+Это упрощённая однопутевая схема. Полная модель — три пути трафика (DNS-классификация
+MagiTrickle, прямой proxy-inbound, TUN `mitun0`), перехват транзитного DNS и роли всех
+компонентов — в [ARCHITECTURE.md](../ARCHITECTURE.md), главном архитектурном документе.
 
 Параллельно:
 
@@ -114,7 +118,7 @@ LAN → Keenetic → провайдер
 Слушает:
 
 ```
-127.0.0.1:7890 (SOCKS5)
+127.0.0.1:7890 (mixed-порт: HTTP + SOCKS5)
 ```
 
 ---
@@ -139,7 +143,10 @@ LAN → Keenetic → провайдер
 * `youtube.com` → через VPN
 * `local` → напрямую
 
-Работает через DNS и policy routing.
+Работает через DNS и policy routing. Чтобы MagiTrickle видел DNS клиентов, установщик
+включает перехват транзитного DNS (`dns-proxy intercept enable`): классические
+(port-53) запросы, адресованные напрямую внешним резолверам, перенаправляются
+в DNS-прокси роутера. DoH/DoT это не затрагивает.
 
 ---
 
