@@ -262,4 +262,6 @@ default-nameserver:
   не DNS Mihomo.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — раздел DNS-архитектуры: почему
   DNS-решения в этой системе независимы.
-- TUN/dns-hijack и правила (`rules`) — темы следующих статей Part II.
+- [30-rules.md](30-rules.md) и [31-tun.md](31-tun.md) — правила и TUN (включая
+  dns-hijack); [32-kak-sobrat-kartinu.md](32-kak-sobrat-kartinu.md) — вся картина
+  вместе.
