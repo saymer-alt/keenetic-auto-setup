@@ -291,6 +291,7 @@ Updater построен так, чтобы безопасно падать: о�
 
 | Документ | О чём |
 | --- | --- |
+| **[docs/encyclopedia/00-karta-sistemy.md](docs/encyclopedia/00-karta-sistemy.md)** | 📚 Энциклопедия Mihomo для новичков: карта системы, первый вход в панель, DNS/fake-ip, правила, TUN (RU, пополняется) |
 | **[docs/HOWTO_RU.md](docs/HOWTO_RU.md)** / [HOWTO.md](docs/HOWTO.md) | Полное пошаговое руководство: подготовка → установка → конфигурация → MagiTrickle → watchdog → обновления → диагностика |
 | [docs/00-intro.md](docs/00-intro.md) | Зачем всё это |
 | [docs/01-architecture.md](docs/01-architecture.md) | Потоки трафика и принятие решений |
@@ -607,6 +608,7 @@ Everything runs in your browser: private keys, links and configs are never sent 
 
 | Document | What's inside |
 | --- | --- |
+| **[docs/encyclopedia/00-karta-sistemy.md](docs/encyclopedia/00-karta-sistemy.md)** | 📚 Beginner-friendly Mihomo encyclopedia: system map, dashboard login, DNS/fake-ip, rules, TUN (RU, work in progress) |
 | **[docs/HOWTO.md](docs/HOWTO.md)** / [HOWTO_RU.md](docs/HOWTO_RU.md) | The complete step-by-step guide: preparation → install → config → MagiTrickle → watchdog → updates → troubleshooting |
 | [docs/00-intro.md](docs/00-intro.md) | Why this project exists |
 | [docs/01-architecture.md](docs/01-architecture.md) | Traffic flows and how decisions are made |
