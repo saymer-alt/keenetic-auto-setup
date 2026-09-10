@@ -107,8 +107,9 @@ mixed-порт `7890` и/или TUN (`mitun0`). *Не путать:* вход �
 интерфейс Keenetic по происхождению.
 
 **mixed-port** — один порт сразу для HTTP- и SOCKS5-прокси. *В нашем проекте:* это
-`7890`; к нему подключаются и Proxy0 со стороны Keenetic, и браузерные расширения
-типа FoxyProxy.
+`7890`; к нему подключается Proxy0 со стороны Keenetic, а браузерные расширения типа
+FoxyProxy — после включения `allow-lan: true`
+([27-porty-i-config-yaml.md](27-porty-i-config-yaml.md)).
 
 ---
 
