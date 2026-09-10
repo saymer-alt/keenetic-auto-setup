@@ -135,6 +135,8 @@ REST API Mihomo (обычно на порту 9090). Через этот API п�
 ## Куда идти дальше
 
 - [01-slovar.md](01-slovar.md) — минимальный словарь новичка.
+- [10-mihomo-eto.md](10-mihomo-eto.md) — что такое Mihomo и где он в системе.
+- [11-metacubex-eto.md](11-metacubex-eto.md) — что такое MetaCubeX и зачем он рядом с Mihomo.
 - [12-pervyj-vhod-v-ui.md](12-pervyj-vhod-v-ui.md) — включить панель и подключить её.
 - [13-127-0-0-1-i-ip-routera.md](13-127-0-0-1-i-ip-routera.md) — про 127.0.0.1 и IP роутера.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — полная архитектура: три пути трафика,
