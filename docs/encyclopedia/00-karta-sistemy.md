@@ -139,6 +139,7 @@ REST API Mihomo (обычно на порту 9090). Через этот API п�
 - [11-metacubex-eto.md](11-metacubex-eto.md) — что такое MetaCubeX и зачем он рядом с Mihomo.
 - [12-pervyj-vhod-v-ui.md](12-pervyj-vhod-v-ui.md) — включить панель и подключить её.
 - [13-127-0-0-1-i-ip-routera.md](13-127-0-0-1-i-ip-routera.md) — про 127.0.0.1 и IP роутера.
+- [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) — DNS Mihomo и fake-ip (Part II).
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — полная архитектура: три пути трафика,
   ProxyN vs mitun0, DNS-перехват, границы проекта.
 - [../HOWTO_RU.md](../HOWTO_RU.md) — полное практическое руководство.
