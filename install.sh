@@ -216,27 +216,201 @@ MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
 log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
 
 # ---------------------------
-# Proxy0
+# MIHOMO BOOTSTRAP CONFIG
 # ---------------------------
-# Internal Keenetic id stays Proxy0/Proxy1/... — only the human-readable
-# description is set, mapped to MagiTrickle's t2s numbering (ProxyN -> t2sN).
-PROXY_IFACE="Proxy0"
-PROXY_DESC="mihomo t2s${PROXY_IFACE#Proxy}"
+# The mihomo ipk ships its own placeholder config.yaml (a conffile) with no
+# mixed-port: 7890 — the project contract port (Proxy0 upstream, watchdog,
+# self-check). Provide a project bootstrap instead:
+#   - config.yaml missing -> create it;
+#   - config.yaml still identical to the conffile md5 recorded by opkg at
+#     package install time (untouched package placeholder) -> replace it;
+#   - anything else is a user config -> never modified.
+# Once replaced, the file differs from the recorded conffile md5, so future
+# package upgrades preserve it exactly like a user config.
+ensure_bootstrap_config() {
+    _config="$1"
 
-log "Configuring Proxy0..."
+    mkdir -p "${_config%/*}" || { warn "Cannot create ${_config%/*}"; return 0; }
 
-if ! ndmc -c "show interface ${PROXY_IFACE}" >/dev/null 2>&1; then
-    ndmc -c "interface ${PROXY_IFACE}" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} proxy protocol socks5" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} proxy socks5-udp" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} proxy upstream 127.0.0.1 7890" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} description \"${PROXY_DESC}\"" >/dev/null 2>&1 || warn "Failed to set ProxyN description"
-    ndmc -c "interface ${PROXY_IFACE} ip global auto" >/dev/null 2>&1
-    ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1
-    ndmc -c "system configuration save" >/dev/null 2>&1
-else
-    log "Proxy0 already exists, skipping creation"
-fi
+    _replace=0
+    if [ ! -f "$_config" ]; then
+        _replace=1
+    elif command -v md5sum >/dev/null 2>&1; then
+        _pkg_md5=$(opkg status mihomo 2>/dev/null | awk -v cf="$_config" '$1 == cf {print $2}' | head -n 1)
+        _file_md5=$(md5sum "$_config" 2>/dev/null | awk '{print $1}')
+        if [ -n "$_pkg_md5" ] && [ "$_pkg_md5" = "$_file_md5" ]; then
+            log "Untouched package placeholder detected, replacing with bootstrap"
+            _replace=1
+        fi
+    fi
+
+    if [ "$_replace" -eq 1 ]; then
+        log "Writing bootstrap config (mixed-port 7890)..."
+        cat > "$_config" <<'EOF' || warn "Failed to write bootstrap config"
+# Bootstrap config installed by keenetic-auto-setup.
+# mixed-port 7890 is the project contract port (Proxy0, watchdog, self-check);
+# until it listens, Proxy0 and the watchdog tunnel check stay down.
+# Replace this file with your real Mihomo config (docs/HOWTO, or build one at
+# https://github.com/saymer-alt/link-generators), then:
+#   /opt/etc/init.d/S99mihomo restart
+mixed-port: 7890
+EOF
+    else
+        log "Existing Mihomo config left untouched"
+    fi
+}
+
+ensure_bootstrap_config "/opt/etc/mihomo/config.yaml"
+
+# ---------------------------
+# PROJECT PROXY INTERFACE
+# ---------------------------
+# The project proxy is a Keenetic Proxy-class interface pointing at Mihomo's
+# local SOCKS5 upstream (127.0.0.1:7890 — fixed project contract). It is
+# identified by BOTH markers in running-config:
+#   description "mihomo t2sN"      (N = interface number; project convention)
+#   proxy upstream 127.0.0.1 7890
+# A Proxy interface matching only one marker (or neither) is foreign and is
+# never modified. Preference order: reuse an existing project ProxyN (lowest
+# number first); otherwise create Proxy0 when absent; otherwise — Proxy0 is
+# foreign — create the first free ProxyN and leave Proxy0 exactly as is.
+MAX_PROXY_PROBE=32   # Protective scan cap ONLY: KeeneticOS documents no limit
+                     # for Proxy instances; the cap bounds ndmc probing cost
+                     # in a pathological setup and is not an OS maximum.
+
+proxy_exists() {
+    ndmc -c "show interface $1" >/dev/null 2>&1
+}
+
+proxy_is_project() {
+    ndmc -c "show running-config" 2>/dev/null | awk -v iface="$1" -v num="$2" '
+        $0 == "interface " iface {pdesc=0; pup=0; inblk=1; next}
+        inblk && /^!/ {if (pdesc && pup) found=1; inblk=0; next}
+        inblk && $0 ~ "^ *description \"?mihomo t2s" num "\"? *$" {pdesc=1}
+        inblk && /^ *proxy upstream 127\.0\.0\.1 7890 *$/ {pup=1}
+        END {if (inblk && pdesc && pup) found=1; exit !found}
+    '
+}
+
+create_project_proxy() {
+    _iface="$1"
+    _num="${_iface#Proxy}"
+    # Every step is best-effort (the pre-function block relied on its
+    # if-context for the same); the self-check reports any missed delivery.
+    ndmc -c "interface ${_iface}" >/dev/null 2>&1 || true
+    ndmc -c "interface ${_iface} proxy protocol socks5" >/dev/null 2>&1 || true
+    ndmc -c "interface ${_iface} proxy socks5-udp" >/dev/null 2>&1 || true
+    ndmc -c "interface ${_iface} proxy upstream 127.0.0.1 7890" >/dev/null 2>&1 || true
+    ndmc -c "interface ${_iface} description \"mihomo t2s${_num}\"" >/dev/null 2>&1 || warn "Failed to set ${_iface} description"
+    ndmc -c "interface ${_iface} ip global auto" >/dev/null 2>&1 || true
+    ndmc -c "interface ${_iface} up" >/dev/null 2>&1 || true
+    ndmc -c "system configuration save" >/dev/null 2>&1 || true
+}
+
+select_project_proxy() {
+    PROXY_IFACE=""
+
+    # 1) Reuse an existing project proxy (lowest number first).
+    _n=0
+    while [ "$_n" -lt "$MAX_PROXY_PROBE" ]; do
+        if proxy_exists "Proxy$_n" && proxy_is_project "Proxy$_n" "$_n"; then
+            PROXY_IFACE="Proxy$_n"
+            log "Using existing project proxy ${PROXY_IFACE}"
+            return 0
+        fi
+        _n=$((_n+1))
+    done
+
+    # 2) No project proxy exists: create Proxy0 when the slot is free.
+    if ! proxy_exists "Proxy0"; then
+        log "Creating project proxy Proxy0..."
+        create_project_proxy "Proxy0"
+        PROXY_IFACE="Proxy0"
+        return 0
+    fi
+
+    # 3) Proxy0 is foreign: leave it untouched, take the first free ProxyN.
+    _n=1
+    while [ "$_n" -lt "$MAX_PROXY_PROBE" ] && proxy_exists "Proxy$_n"; do
+        _n=$((_n+1))
+    done
+
+    if [ "$_n" -ge "$MAX_PROXY_PROBE" ]; then
+        warn "No free ProxyN within the ${MAX_PROXY_PROBE}-interface scan cap; existing proxy interfaces left untouched"
+        # Empty PROXY_IFACE is the "no proxy" signal for the caller; the
+        # function itself returns 0 so the bare top-level call stays
+        # set -e-safe.
+        return 0
+    fi
+
+    log "Proxy0 is not project-managed, creating project proxy Proxy${_n}..."
+    create_project_proxy "Proxy${_n}"
+    PROXY_IFACE="Proxy${_n}"
+}
+
+select_project_proxy
+
+# ---------------------------
+# BYPASS_WA POLICY EXIT
+# ---------------------------
+# Keenetic routes traffic marked with a policy mark through the interfaces in
+# that policy's permit list (permit global <iface>); an empty policy has no
+# default route, so the VoIP bypass silently goes nowhere (docs/05). Add the
+# selected project proxy (Proxy0 or a free ProxyN) to the bypass_wa permit
+# list. Existing permits are never removed or reordered: if the policy
+# already permits other interfaces (e.g. a VPN tunnel bound manually), they
+# keep working and the route order remains the user's choice.
+ensure_bypass_policy_exit() {
+    _px="$1"
+
+    if [ -z "$_px" ]; then
+        warn "No project proxy selected, bypass_wa exit binding skipped"
+        return 0
+    fi
+    _num="${_px#Proxy}"
+
+    if ! proxy_exists "$_px"; then
+        warn "${_px} not available, bypass_wa exit binding skipped"
+        return 0
+    fi
+
+    # Bind only a project-managed proxy interface. Both markers are checked
+    # in running-config: the upstream port is not visible in "show interface".
+    # A foreign Proxy interface is never modified and never used as the
+    # bypass_wa exit — the policy keeps exactly the exits its owner configured.
+    if ! proxy_is_project "$_px" "$_num"; then
+        warn "Existing ${_px} does not match the project profile (mihomo t2s${_num} / 127.0.0.1:7890), bypass_wa exit binding skipped"
+        return 0
+    fi
+
+    # Find the policy block by its description (the policy NAME may differ,
+    # e.g. Policy0 when created via web UI). Prints the policy name when it
+    # lacks the project permit, "BOUND" when the permit already exists, and
+    # nothing when no bypass_wa policy exists. Running-config nests policy
+    # directives, so a plain grep would false-positive on other policies'
+    # permit lists; block state is evaluated when each block closes, not at END.
+    _pol_state=$(ndmc -c "show running-config" 2>/dev/null | awk -v px="$_px" '
+        /^ip policy / {if (inblk && pdesc && !ppermit) target=pname; if (inblk && pdesc && ppermit) bound=1; pname=$3; pdesc=0; ppermit=0; inblk=1; next}
+        inblk && /^ *description bypass_wa *$/ {pdesc=1}
+        inblk && $0 ~ "^ *permit global " px " *$" {ppermit=1}
+        /^!/ {if (inblk && pdesc) {if (!ppermit) target=pname; else bound=1} inblk=0}
+        END {if (inblk && pdesc) {if (!ppermit) target=pname; else bound=1}; if (target != "") print target; else if (bound) print "BOUND"}
+    ')
+
+    case "$_pol_state" in
+        "")    warn "bypass_wa policy not found, exit binding skipped" ; return 0 ;;
+        BOUND) log "bypass_wa policy exit already set" ; return 0 ;;
+    esac
+
+    if ndmc -c "ip policy ${_pol_state} permit global ${_px}" >/dev/null 2>&1; then
+        log "bypass_wa policy bound to ${_px} (mihomo t2s${_num})"
+        ndmc -c "system configuration save" >/dev/null 2>&1 || warn "Failed to save configuration"
+    else
+        warn "Failed to bind bypass_wa policy to ${_px}"
+    fi
+}
+
+ensure_bypass_policy_exit "$PROXY_IFACE"
 
 # ---------------------------
 # MAGITRICKLE
@@ -312,9 +486,13 @@ sleep 2
 # ---------------------------
 # POST-INSTALL SELF-CHECK
 # ---------------------------
-# Validates what this installer promises to install. Missing config.yaml on a
-# fresh router is expected (added at the configuration stage): that is WARN,
-# not FAIL, and port 7890 is only checked when a config exists.
+# Validates what this installer promises to install. install.sh leaves a
+# bootstrap config.yaml (mixed-port 7890) in place unless a user config
+# already exists. Missing config.yaml means bootstrap creation failed — WARN,
+# not FAIL. Port 7890 is checked whenever a config exists: the bootstrap must
+# listen on 7890, so a miss here means Mihomo is not running properly (or a
+# user config does not define the contract port) — never a package
+# placeholder, which install.sh replaces.
 FAILS=0
 WARNS=0
 
@@ -343,16 +521,14 @@ else
     check_fail "Mihomo init script /opt/etc/init.d/S99mihomo missing"
 fi
 
-# Proxy0 + description (checked in running-config: deterministic text output)
-if ndmc -c "show interface Proxy0" >/dev/null 2>&1; then
-    check_ok "Proxy0 interface present"
-    if ndmc -c "show running-config" 2>/dev/null | grep -q "mihomo t2s0"; then
-        check_ok "Proxy0 description: mihomo t2s0"
-    else
-        check_fail "Proxy0 description is not 'mihomo t2s0'"
-    fi
+# Project proxy — Proxy0 or a free ProxyN when Proxy0 is foreign; both project
+# markers are verified in running-config (deterministic text output)
+if [ -z "$PROXY_IFACE" ]; then
+    check_fail "No project proxy (Proxy0 is foreign and no free ProxyN found)"
+elif proxy_exists "$PROXY_IFACE" && proxy_is_project "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
+    check_ok "Project proxy ${PROXY_IFACE}: mihomo t2s${PROXY_IFACE#Proxy} -> 127.0.0.1:7890"
 else
-    check_fail "Proxy0 interface missing"
+    check_fail "Project proxy ${PROXY_IFACE} missing or does not match the project profile"
 fi
 
 # DNS transit interception
@@ -368,6 +544,23 @@ if [ -x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
 else
     check_fail "bypass rules: /opt/etc/ndm/netfilter.d/020-bypass_wa.sh missing or not executable"
 fi
+
+# bypass_wa policy exit: report specifically whether the selected project
+# proxy is permitted; other permits (e.g. a manually bound VPN) are fine and
+# preserved
+_bp_state=$(ndmc -c "show running-config" 2>/dev/null | awk -v px="${PROXY_IFACE:-__none__}" '
+    /^ip policy / {pdesc=0; ppermit=0; pother=0; inblk=1; next}
+    inblk && /^ *description bypass_wa *$/ {pdesc=1}
+    inblk && $0 ~ "^ *permit global " px " *$" {ppermit=1}
+    inblk && /^ *permit global [A-Za-z0-9_-]+ *$/ {pother=1}
+    /^!/ {if (inblk && pdesc) {if (ppermit) st="bound"; else if (pother) st="other"} inblk=0}
+    END {if (inblk && pdesc) {if (ppermit) st="bound"; else if (pother) st="other"}; print st""}
+')
+case "$_bp_state" in
+    bound) check_ok "bypass_wa policy has permit global ${PROXY_IFACE}" ;;
+    other) check_warn "bypass_wa policy has interface permits but not ${PROXY_IFACE:-the project proxy} — VoIP exit is not the project proxy" ;;
+    *)     check_warn "bypass_wa policy missing or has no interface permit — VoIP bypass has no exit route" ;;
+esac
 
 # Watchdog + cron registration
 if [ -x /opt/etc/cron.5mins/mihomo_watchdog ]; then
@@ -414,8 +607,8 @@ if [ "$MODE" = "ram" ]; then
     fi
 fi
 
-# Config.yaml: absence on a fresh router is expected; port 7890 only matters
-# when a config exists.
+# Config.yaml: the bootstrap (mixed-port 7890) should always be present;
+# port 7890 is checked whenever a config exists.
 if [ -f "$CONFIG" ]; then
     if ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
         check_ok "Mihomo config syntax valid"
@@ -423,12 +616,12 @@ if [ -f "$CONFIG" ]; then
         check_warn "Mihomo config syntax check (mihomo -t) failed"
     fi
     if command -v netstat >/dev/null 2>&1; then
-        netstat -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening (config exists)"
+        netstat -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening — Mihomo may not be running, or config.yaml does not define mixed-port 7890"
     elif command -v ss >/dev/null 2>&1; then
-        ss -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening (config exists)"
+        ss -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening — Mihomo may not be running, or config.yaml does not define mixed-port 7890"
     fi
 else
-    check_warn "config.yaml not found — expected on a fresh router; add it at the configuration stage (7890 stays down until then)"
+    check_warn "config.yaml not found (bootstrap missing) — 7890 stays down until a config exists"
 fi
 
 # Free space on /opt (critical low)
