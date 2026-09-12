@@ -1,206 +1,73 @@
-# 🛡 Русская версия
+# Keenetic Auto Setup
 
-**Один запуск — и Keenetic превращается в самовосстанавливающийся умный шлюз.**
+Набор POSIX-скриптов, превращающий Keenetic-роутер с Entware в самонастраивающийся шлюз: прокси-ядро Mihomo (Clash Meta), DNS-сплит-роутинг MagiTrickle, автоматический VoIP-обход и watchdog, который сам перезапускает Mihomo при сбое.
 
-Современный VPN/proxy-стек (Mihomo + VLESS/Reality), DNS-сплит-роутинг (MagiTrickle), стабилизация VoIP-звонков, защита флеш-памяти и watchdog, который сам чинит туннель. Установка и настройка — одна команда, ~2–3 минуты.
+Русский — основной язык документации. Английская версия этого README: [docs/EN/README.md](docs/EN/README.md); английское руководство — [docs/HOWTO.md](docs/HOWTO.md).
 
-**Русский** · [Быстрый старт](#быстрый-старт) · [English](#-keenetic-auto-setup) · [Quick start](#quick-start)
+## Что это
 
----
-
-## Зачем я сделал Keenetic Auto Setup
-
-Всё началось с простого желания: один раз поставить на Keenetic рабочий VPN — и перестать постоянно проверять, жив ли туннель. Чтобы не было «что-то не открывается», вечерних перезагрузок роутера и ручных правок конфигов после каждой смены сервера.
-
-Простым это не осталось. Чем дальше, тем понятнее становилось: настоящая проблема не в «отсутствии VPN», а в том, что обычный домашний роутер жёстко сварил маршрутизацию, VPN и выход в интернет в одну цепочку:
-
-```
-Клиент → Роутер → Провайдер → Интернет
-```
-
-Одна труба, одна политика — и никакой возможности решать, *что* куда отправлять.
-
-Так проект вырос в полноценный сетевой комплекс, построенный на одной идее: **Keenetic становится самостоятельным сетевым узлом, который сам принимает решения о маршрутизации**. Внутри него MagiTrickle решает, какой трафик куда идёт, а Mihomo выступает маршрутизатором внутри маршрутизатора. Через разные интерфейсы и политики трафик можно отправлять напрямую, через AWG, SSTP, OpenConnect, Proxy0/Mihomo и любые другие доступные механизмы. Сам Mihomo может содержать множество серверов и целых подписок — а Keenetic видит лишь локальный SOCKS5-прокси на `127.0.0.1:7890`.
-
-Ключевая мысль всей архитектуры:
-
-> **Mihomo — это маршрутизатор внутри маршрутизатора.**
-> Keenetic просто передаёт ему трафик. Какие серверы, протоколы, балансировка и резервирование стоят за этой передачей — целиком забота Mihomo, и это можно перестраивать, не трогая Keenetic.
-
-Всё остальное в проекте — watchdog, защита флешки, VoIP-фиксы — существует, чтобы этот узел был *скучным*: маршрутизирует, лечит себя сам и не требует присмотра.
-
----
-
-## Что устанавливается
+После установки на роутере работают:
 
 | Компонент | Роль |
 | --- | --- |
-| **Mihomo** (Clash Meta) | Ядро маршрутизации. Rule-based прокси-движок: VLESS/Reality, подписки, балансировка. Слушает `127.0.0.1:7890`. |
-| **Proxy0** | Прокси-интерфейс Keenetic, мост Keenetic → Mihomo (подпись `mihomo t2s0` — в соответствии с нумерацией t2s в MagiTrickle). Единственная точка входа от роутера к прокси-ядру. |
-| **MagiTrickle** | Уровень принятия решений. DNS-сплит-роутинг: по домену/подсети решает, куда идёт трафик — напрямую или через туннель/политику. Установщик автоматически включает перехват транзитного DNS на Keenetic, чтобы обычный DNS клиентов не обходил этот уровень (DoH/DoT не затрагиваются). |
-| **Watchdog** | Самовосстановление. Каждые 5 минут проверяет WAN, порт прокси и сквозной туннель; перезапускает Mihomo только когда проблема действительно в нём. |
-| **bypass_wa** | VoIP-фикс. Помечает UDP Telegram/WhatsApp/WebRTC (порты 1400/3478/3482) и отправляет его напрямую через VPN, минуя прокси. |
-| **S00ubifs** | Защита флешки (RAM-режим). Переносит `/opt/tmp`, `/opt/var/log`, `/opt/var/run` в tmpfs, чтобы Entware не убивал флеш-память. |
+| **Mihomo** (Clash Meta) | прокси-ядро: rule-based маршрутизация исходящего трафика (VLESS/Reality, подписки, группы). Управляется конфигом `/opt/etc/mihomo/config.yaml` |
+| **Proxy-интерфейс Keenetic** (`ProxyN`) | мост Keenetic → Mihomo: SOCKS5-подключение к `127.0.0.1:7890` |
+| **MagiTrickle** | DNS-сплит-роутинг: по домену решает, какой трафик и куда направить |
+| **bypass_wa** | политика + firewall-хук: VoIP-трафик (Telegram/WhatsApp/WebRTC, UDP 1400/3478/3482) идёт через проектный Proxy-интерфейс, минуя DNS-классификацию |
+| **Watchdog** | cron каждые 5 минут: проверяет WAN, порт 7890 и сквозной туннель; перезапускает Mihomo только когда сломан именно он |
+| **S00ubifs** (режим `ram`) | переносит `/opt/tmp`, `/opt/var/log`, `/opt/var/run` в tmpfs, защищая флеш-память |
 
----
+Требования: Keenetic с установленной Entware, доступ в интернет, SSH. Минимум 256 МБ RAM — 128 МБ не поддерживаются, tmpfs дестабилизирует такие устройства ([docs/09-limitations.md](docs/09-limitations.md)). Архитектуры: aarch64, armv7, mipsel, mips.
 
-## Архитектура
+## Как установить
 
-У классической домашней сети ровно один путь и ноль решений:
+SSH на роутер. Установка во внутреннюю память (по умолчанию):
 
-```
-Клиент → Роутер → Провайдер → Интернет
-```
-
-Keenetic Auto Setup превращает роутер в многоуровневый узел, где каждый уровень занимается своим делом:
-
-```
-Клиент (LAN)
-      ↓
-Keenetic ── MagiTrickle решает по доменам/подсетям
-      ↓
-Mihomo — маршрутизатор внутри маршрутизатора (127.0.0.1:7890)
-      ↓
-AWG / SSTP / OpenConnect / Proxy0 / MASQUE / …
-      ↓
-Интернет
-```
-
-- **Keenetic** — платформа: policy-роутинг, интерфейсы, хуки firewall, cron. Тулкит интегрируется через механизмы самой KeeneticOS (`ndmc`/RCI, `netfilter.d`), а не борется с ними.
-- **MagiTrickle** — уровень принятия решений. Он не передаёт трафик; он смотрит на DNS-запросы и отправляет каждый домен нужным путём: YouTube — через туннель, локальный банк — напрямую, остальное — по вашим правилам. Чтобы это работало, установщик автоматически включает перехват транзитного DNS на Keenetic: классические (порт 53) запросы, адресованные напрямую внешнему резолверу, перенаправляются в DNS Keenetic, где их видит MagiTrickle, — `Клиент → DNS Keenetic → MagiTrickle → решение о маршруте` — вместо тихого обхода уровня принятия решений. Это касается только классического DNS; браузеры с DoH/DoT проходят мимо порта 53 в любом случае.
-- **Mihomo** — полноценный движок маршрутизации за одним локальным SOCKS5-портом: десятки серверов, несколько подписок одновременно, health-check'и, резервные маршруты, балансировка. Поменяли его конфиг — поменяли всю исходящую инфраструктуру, а Keenetic этого даже не заметил.
-- **Транспорты взаимозаменяемы.** Вход и выход не обязаны совпадать: можно входить одним типом туннеля, а выходить в интернет другим. Любой транспорт заменяется без перестройки всей системы.
-
-Не всё идёт через прокси — так задумано: разные типы трафика идут разными путями. VoIP идёт мимо прокси напрямую через VPN (звонки без лагов), локальные ресурсы — напрямую, остальное — по правилам.
-
----
-
-## Как на самом деле работает маршрутизация
-
-Модель в одну строку:
-
-```
-Клиент → Keenetic → MagiTrickle (какой выход для этого трафика?) → Интернет
-```
-
-- **MagiTrickle — не VPN.** Он не передаёт трафик; он читает DNS-запросы, сверяет домены с вашими правилами и направляет каждое назначение к выбранному выходу.
-- **Выходы взаимозаменяемы.** Два пути в Mihomo: **Proxy0** — прокси-интерфейс Keenetic (SOCKS5), удобный как точка назначения в правилах для отдельных клиентов/сетей, и **TUN-интерфейс Mihomo** (`mitun0` — распространённое имя для него) — прозрачный путь на уровне IP. Прямой ISP, AWG, SSTP, OpenConnect и другие интерфейсы — тоже выходы.
-- **Классификация видит только домены, дошедшие до DNS Keenetic.** Поэтому установщик удерживает DNS клиентов на роутере (см. [DNS и сети с белыми списками](#dns-и-сети-с-белыми-списками) ниже).
-- **Если устройство само строит VPN-туннель, Keenetic видит туннель — а не сайты внутри него.** Точечная маршрутизация на роутере не может выбирать посайтовые выходы для трафика, который не появляется в виде отдельных соединений.
-- **Настройка интерфейса самого Mihomo привязывает его исходящие соединения — это не переключатель WAN для роутера.** Трафик, вошедший в Mihomo через TUN, дальше выходит через обычную маршрутизацию Keenetic (пример WAN1/WAN2 — в HOWTO).
-
-Полная картина — три пути трафика и почему MagiTrickle/`mitun0`/`ProxyN`/`7890`/DNS-перехват/настройка интерфейса Mihomo являются разными уровнями одного дизайна — в **[ARCHITECTURE.md](ARCHITECTURE.md)**. Практический разбор тех же тем — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел «Как на самом деле работает маршрутизация».
-
----
-
-## DNS и сети с белыми списками
-
-- В этом проекте DNS — **часть маршрутизации**: MagiTrickle классифицирует трафик по доменам, поэтому *какой резолвер использует Keenetic* — это конфигурация, а не деталь.
-- В сетях с белыми списками (где доступны только разрешённые ресурсы) выбор DNS становится критичным: резолвер может быть технически безупречным и при этом **недоступен из вашей сети**, а вмешательство оператора в DNS-ответы возможно.
-- DNS провайдера — обычно **самый совместимый** вариант в ограниченных сетях, но он может подвергаться фильтрации и подмене, поэтому в обычной сети он не обязательно предпочтителен.
-- Keenetic нативно поддерживает DoH и DoT (с OS 3.0). Шифрованные upstream'ы — лучший инструмент, **когда выбранный сервис реально доступен из вашей сети**; в российских сетях часто практичным компромиссом оказывается Yandex DNS, но доступность зависит от конкретной сети, и гарантировать её для конкретного оператора нельзя.
-- Даже корректный шифрованный DNS не означает, что оператор не может влиять на доступность отдельных ресурсов на других уровнях.
-
-Полная матрица резолверов, настройка и отдельный troubleshooting-сценарий — в [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел 6.2.
-
----
-
-## Watchdog: чинит себя сам
-
-Watchdog запускается из cron каждые 5 минут и проверяет по порядку:
-
-1. **WAN** — напрямую, без Mihomo. Сначала обычные цели (Cloudflare, Google); если недоступны все — whitelist-fallback (gosuslugi.ru, ya.ru, mail.ru, vk.ru/vk.com), который отличает «ограниченная сеть» от «интернета нет вообще».
-2. **Порт прокси** — принимает ли Mihomo соединения на `127.0.0.1:7890`?
-3. **Сквозной туннель** — доходит ли реальный запрос через `socks5h://` до интернета?
-
-Важный принцип: **отсутствие WAN не означает, что сломан Mihomo.** Если не ответила ни одна WAN-цель, watchdog выходит, ничего не перезапуская, и ждёт провайдера. Рестарт происходит только когда сеть подтверждённо работает, **а** проблема подтверждённо в Mihomo или его туннеле — с cooldown'ом между рестартами, чтобы нестабильный upstream не устроил шторм перезапусков.
-
-Логи: `cat /opt/var/log/mihomo_watchdog.log`
-
----
-
-## Сценарии использования
-
-**Сплит-роутинг для всей сети.** Сценарий по умолчанию: каждое устройство за роутером получает маршрутизацию по доменам без каких-либо клиентских программ. Установили один раз, добавили домены в MagiTrickle — телевизоры, телефоны и ноутбуки даже не знают, что существует прокси.
-
-**Только браузер через прокси (FoxyProxy).** Не хотите заворачивать что-либо системно на компьютере? Направьте браузерное расширение на прокси-порт роутера:
-
-```
-Браузер → FoxyProxy (SOCKS5) → Keenetic :7890 → Mihomo → Интернет
-```
-
-Включите `allow-lan: true` в конфиге Mihomo, в FoxyProxy укажите `<ip-роутера>:7890` (SOCKS5) и добавьте шаблоны только для нужных сайтов — например ChatGPT, YouTube, Telegram Web, Gemini, Grok, Copilot, Threads, Instagram. Всё остальное в браузере — и на всём компьютере — ходит напрямую. VPN-клиент на ПК не нужен. Учтите: этот путь идёт мимо MagiTrickle (расширение обращается к Mihomo напрямую), поэтому выбор сайтов здесь делают шаблоны расширения плюс собственные правила Mihomo. Сценарий покрывает веб-трафик; «тяжёлому» UDP лучше подходит сетевой уровень из пункта выше.
-
-**Предупреждение про WebRTC:** SOCKS5 покрывает обычный веб-трафик браузера — это не означает автоматически, что все сетевые механизмы браузера идут тем же путём. WebRTC может открыть собственный UDP-путь мимо прокси, поэтому в прокси-сценарии сайт может узнать о вашей сети информацию, отличающуюся от выхода прокси (что именно он узнает — зависит от браузера, его версии и вашей сети). Проверьте настройки WebRTC вашего браузера и убедитесь с помощью тестовой страницы WebRTC, что ничего нежелательного не раскрывается, — настройки для конкретных браузеров разобраны в [HOWTO](docs/HOWTO_RU.md). Это касается именно браузерного сценария: при маршрутизации всей сети через Keenetic UDP следует политикам роутера.
-
-**Стабильный VoIP за прокси.** Звонки Telegram/WhatsApp умирают, когда их заставляют идти через TCP-прокси. `bypass_wa` помечает этот UDP и отправляет через VPN напрямую — звонки соединяются быстро и не отваливаются.
-
-**Небольшие парки (10–20 роутеров).** В watchdog специально заложены jitter, rate limiting и lock-защита, чтобы парк роутеров за одним сервером не устроил ему шторм, — выросло из эксплуатации ~20 устройств.
-
----
-
-## Поддерживаемое железо и режимы
-
-| | |
-| --- | --- |
-| **ARM / aarch64** | `install.sh` — основной установщик: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** | `install_7621.sh` — установщик для устройств на MT7621: тот же общий порядок установки, с источником пакетов Mihomo, адаптированным под архитектуру платформы (MagiTrickle и VoIP-обход в этот путь не входят) |
-| **RAM** | минимум 256 МБ. **128 МБ не поддерживаются** (tmpfs дестабилизирует систему — проверено в продакшене) |
-| **Режимы** | `ram` (по умолчанию; tmpfs защищает внутренний флеш) · `disk` (USB/SSD-накопитель) |
-| **Проверено на** | Keenetic KN-1810, KN-3811, KN-1913 |
-
-Не уверены, какой установщик нужен? Выполните на роутере `opkg print-architecture`: `aarch64-3.10` → `install.sh` (основной путь). Для `mipsel-3.4` тоже начните с универсального `install.sh` — если на вашем MT7621 он не пройдёт, переходите на отдельный `install_7621.sh` (см. примечание про MT7621 выше).
-
-**MT7621:** для устройств на MT7621 в проекте есть отдельный установщик `install_7621.sh` — полноценный способ установки на совместимых устройствах. Универсальный `install.sh` не ограничен ARM: определение архитектуры охватывает и mipsel/mips (устройства класса MT7621/MT7628), однако этот путь на MT7621 давно не проходил повторное тестирование — не считайте его актуально проверенным. У MT7621 также свои особенности по пакетам и ресурсам — перед установкой проверьте модель и доступное хранилище.
-
----
-
-## Быстрый старт
-
-**1. Установка** (SSH на роутер, требуется Entware) — основной способ: универсальный `install.sh`. Он поддерживает модели/архитектуры проекта, включая обработку mipsel/mips. Сначала выберите место установки:
-
-```text
-          ┌──────────────────────────┐
-          │   Куда устанавливаем?    │
-          └──────────────────────────┘
-            ↓                   ↓
-   внутренняя память       диск / USB
-   (по умолчанию)          ключ `disk`
-```
-
-**Внутренняя память (по умолчанию):**
-
-```bash id="q5l3hc"
+```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-**Диск / USB — добавьте ключ `disk`:**
+Установка на USB/SSD-накопитель — добавьте аргумент `disk`:
 
-```bash id="j7h2kf"
+```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-Без `disk` тулкит устанавливается во внутреннее хранилище роутера; с `disk` — на подключённый USB/SSD-накопитель.
+- режим `ram` (по умолчанию) включает tmpfs-защиту флеша; `disk` — отключает её (для накопителя);
+- Entware установщик не ставит — предполагается, что она уже развёрнута ([docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел 2);
+- повторный запуск идемпотентен: установленные компоненты пропускаются, пользовательские настройки не перезаписываются ([docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел 3.3).
 
-> **Если универсальный установщик на вашем MT7621 не проходит:** для совместимых MT7621-устройств предусмотрен отдельный `install_7621.sh` — он учитывает особенности этой платформы и может использоваться как альтернативный способ установки. Если в конкретной сети не проходят HTTPS/сертификаты — причина может быть не только в роутере или платформе, но и в сетевых ограничениях/провайдере; сначала проверьте доступ к HTTPS-ресурсам отдельно.
+## Что происходит при установке
 
-> Перехват транзитного DNS настраивается установщиком автоматически — ручного post-install шага для DNS нет. Почему это важно — в разделе «Архитектура» выше.
+1. Обновление opkg, установка базовых пакетов (`curl`, `jq`, `nano`, `ca-bundle`, `cron`).
+2. Создание политики `bypass_wa`, если её ещё нет.
+3. Включение перехвата транзитного DNS (`dns-proxy intercept enable`) — чтобы классические DNS-запросы клиентов попадали в MagiTrickle. Это не защита от DoH/DoT.
+4. Только в режиме `ram` — установка tmpfs-скрипта S00ubifs.
+5. Установка Mihomo из пакетного репозитория [saymer-alt/entware-go](https://github.com/saymer-alt/entware-go/releases).
+6. **Bootstrap `config.yaml`**: если рабочего конфига нет — создаётся минимальный с `mixed-port: 7890`. Существующий пользовательский конфиг никогда не изменяется.
+7. **Выбор проектного Proxy-интерфейса**: инсталлятор сам находит или создаёт проектный Proxy-интерфейс Keenetic. Если существующий `Proxy0` принадлежит другой конфигурации, он его не изменяет, а использует первый свободный `ProxyN`.
 
-**2. Добавьте конфиг Mihomo** (обязательный шаг — без него ничего не заработает). Установщик ставит Mihomo и всю инфраструктуру, но **полноценного конфига после установки ещё нет**: в `/opt/etc/mihomo/config.yaml` лежит минимальный placeholder — замените его своим конфигом:
+   > Proxy0 на живом роутере нередко принадлежит чему-то ещё: прошлому эксперименту, другому набору скриптов или просто человеку, который однажды тоже решил «быстро проверить». Установщик не угадывает, чей он: не совпали описание и порт — Proxy0 объявляется чужим и обходится стороной.
+
+8. **Привязка `bypass_wa`**: политика автоматически направляется через выбранный проектный Proxy-интерфейс.
+9. Установка MagiTrickle и VoIP-хука `020-bypass_wa.sh`.
+10. Установка watchdog в cron (каждые 5 минут).
+11. Перезапуск Mihomo и самопроверка: `[OK] Done` — готово; `[WARN]` — установлено, но есть на что посмотреть (раздел «Диагностика»); `[FAIL]` — установка не завершена, смотрите текст проверки.
+
+## Как настроить Mihomo
+
+Без рабочего конфига прокси не работает: bootstrap только поднимает контрактный порт. Замените `/opt/etc/mihomo/config.yaml` своим конфигом:
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
-
-*`nano` — пример редактора; подойдёт любой удобный способ редактирования.*
 
 Минимальный рабочий пример:
 
 ```yaml
 mixed-port: 7890
-allow-lan: true
 mode: rule
 log-level: info
 
@@ -215,417 +82,116 @@ proxies:
 proxy-groups:
   - name: "Proxy"
     type: select
-    proxies:
-      - "server"
+    proxies: ["server"]
 
 rules:
   - GEOIP,private,DIRECT
   - MATCH,Proxy
 ```
 
-**3. Перезапустите и проверьте:**
+Собрать конфиг можно в браузере: [saymer-alt/link-generators](https://github.com/saymer-alt/link-generators) — клиентское веб-приложение без сервера.
+
+**Mihomo использует фиксированный локальный порт `127.0.0.1:7890`.** Это контракт проекта: на нём слушает Mihomo, на него смотрят Proxy-интерфейс и watchdog. Выбрать другой порт нельзя.
+
+> Параметра `--port` не будет. Это не злой умысел, а контракт: `7890` согласован между компонентами проекта, и плодить ещё одну точку рассинхронизации никто не собирается.
+
+Проверка и применение:
 
 ```bash
-mihomo -t -f /opt/etc/mihomo/config.yaml
+mihomo -t -f /opt/etc/mihomo/config.yaml   # валидация без запуска
 /opt/etc/init.d/S99mihomo restart
 /opt/etc/init.d/S99mihomo status
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  --proxy 127.0.0.1:7890 \
-  http://google.com/generate_204
 ```
 
-- `mihomo -t` проверяет конфигурацию без запуска Mihomo;
-- `status` должен показать `alive`;
-- ожидаемый вывод последней команды — `204`: HTTP-запрос действительно прошёл через локальный прокси `127.0.0.1:7890`.
+Веб-панель (MetaCubeX) по умолчанию не устанавливается; как включить — [docs/encyclopedia/12-pervyj-vhod-v-ui.md](docs/encyclopedia/12-pervyj-vhod-v-ui.md).
 
-**4. Проверка watchdog** — через пять минут после установки:
+## bypass_wa
+
+Звонки в Telegram/WhatsApp и WebRTC (UDP-порты 1400, 3478, 3482) выводятся из DNS-классификации MagiTrickle: firewall-хук помечает этот трафик, а политика `bypass_wa` направляет его через проектный Proxy-интерфейс в Mihomo — дальше трафик идёт по правилам Mihomo.
+
+- привязка выполняется автоматически при установке;
+- если вы вручную привязали `bypass_wa` к своему VPN-интерфейсу, установка добавит проектный Proxy в политику, но не удалит и не переупорядочет вашу привязку;
+- механизм и типичные проблемы: [docs/05-bypass-wa.md](docs/05-bypass-wa.md).
+
+> Историческая справка: раньше политика `bypass_wa` создавалась пустой, и её предлагалось вручную навести на VPN. Теперь установщик делает это сам; ручная привязка по-прежнему допустима и не будет уничтожена.
+
+## Проверка после установки
 
 ```bash
-cat /opt/var/log/mihomo_watchdog.log    # ожидаем "[OK] All good"
+/opt/etc/init.d/S99mihomo status                # сервис запущен
+curl -sS -o /dev/null -w '%{http_code}\n' --proxy 127.0.0.1:7890 http://google.com/generate_204
+cat /opt/var/log/mihomo_watchdog.log            # через ~5 минут: "[OK] All good"
 ```
 
-### Основные команды
+Ожидаемый код ответа — `204`: запрос действительно прошёл через локальный прокси.
 
-```bash
-/opt/etc/init.d/S99mihomo status      # статус сервиса
-/opt/etc/init.d/S99mihomo restart     # применить изменённый конфиг
-cat /opt/var/log/mihomo_watchdog.log  # решения watchdog
-```
+Watchdog проверяет по порядку: доступность WAN напрямую (Cloudflare/Google; при их недоступности — fallback-список gosuslugi/ya.ru/mail.ru/vk, отличающий ограниченную сеть от полного отсутствия интернета), локальный порт 7890, сквозной запрос через SOCKS5. Если WAN недоступен — Mihomo не перезапускается: нет сети ≠ сломан Mihomo. Рестарт выполняется только при подтверждённой сети и подтверждённой проблеме в Mihomo, с паузой 300 секунд между рестартами. Детали: [docs/04-watchdog.md](docs/04-watchdog.md).
 
-Проверка конфига (`mihomo -t`) и сквозная проверка прокси (`curl --proxy …`, ожидаем `204`) — в Quick Start выше.
+## Обновление
 
-Если Mihomo не запускается или падает после изменения `config.yaml` — первым делом выполните проверку `mihomo -t`: она валидирует конфигурацию без запуска сервиса. Она не диагностирует все возможные причины падения (сеть, MTU, сам upstream), но битый конфиг находит сразу. Для конфигов из [link-generators](https://github.com/saymer-alt/link-generators) эта проверка — более авторитетная runtime-валидация, чем базовая браузерная проверка генератора. Куда копать дальше: [docs/HOWTO_RU.md](docs/HOWTO_RU.md), раздел Диагностика.
-
-> **Хотите открыть web-панель Mihomo (MetaCubeX) с компьютера?** Установка по умолчанию работает без неё — как включить панель и подключить её к Mihomo: [docs/encyclopedia/12-pervyj-vhod-v-ui.md](docs/encyclopedia/12-pervyj-vhod-v-ui.md). Если в панели видите `127.0.0.1:9090` и непонятно, что дальше: [docs/encyclopedia/13-127-0-0-1-i-ip-routera.md](docs/encyclopedia/13-127-0-0-1-i-ip-routera.md).
-
-Это короткая версия. Полное пошаговое руководство — подготовка, Entware, MagiTrickle, обновления, откат, диагностика — в **[docs/HOWTO_RU.md](docs/HOWTO_RU.md)**.
-
----
-
-## Обновление и откат
-
-Обновите Mihomo до свежего релиза без переустановки всего:
+Обновление Mihomo до свежего релиза (ARM; на MIPS намеренно отказывается — официальных бинарников для MIPS не существует):
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
 ```
 
-Updater построен так, чтобы безопасно падать: он скачивает новый бинарник в `/tmp`, проверяет, что тот запускается, тестирует его с вашим текущим `config.yaml`, проверяет свободное место, заменяет старый бинарник и перезапускает сервис — **с автоматическим откатом** на любом сбойном шаге (несовместимая архитектура, конфиг не принят, нет места, сервис не стартует). Backup временно живёт в RAM (`/tmp`); постоянной копии на `/opt` не создаётся. Ключ `--force` переустанавливает ту же версию. На MIPS (MT7621) updater намеренно отказывается работать — официальных бинарников Mihomo под эту архитектуру не существует.
+Скрипт скачивает бинарник в `/tmp`, проверяет его и совместимость с вашим `config.yaml`, заменяет и перезапускает сервис; на любом сбое — автоматический откат. `--force` переустанавливает ту же версию. Ручная процедура для особых случаев: [mihomo_manual_update_arm.md](mihomo_manual_update_arm.md).
 
-Копию watchdog можно обновить отдельно (`update-watchdog.sh`): проверка sanity-маркера, проверка синтаксиса, backup, атомарная замена. Подробности и ручной даунгрейд — в [HOWTO](docs/HOWTO_RU.md).
+Watchdog обновляется отдельно (`update-watchdog.sh`). Внимание: он обновляет копию в `/opt/bin/mihomo_watchdog.sh`, тогда как установщик кладёт её в `/opt/etc/cron.5mins/mihomo_watchdog`. Перед обновлением проверьте, какой путь реально исполняется: `grep mihomo_watchdog /opt/etc/crontab`.
 
----
+> Классическая ошибка — обновить копию в `/opt/bin`, а исполняется cron.5mins. Сверяйтесь с crontab до обновления, а не после.
 
-## Экосистема: link-generators
+## Диагностика
 
-Подготовка конфигов вынесена в отдельный проект: **[saymer-alt/link-generators](https://github.com/saymer-alt/link-generators)** — статическое полностью клиентское веб-приложение ([saymer-alt.github.io/link-generators](https://saymer-alt.github.io/link-generators/)) с двумя инструментами:
+| Что смотреть | Команда |
+| --- | --- |
+| Статус Mihomo | `/opt/etc/init.d/S99mihomo status` |
+| Решения watchdog | `cat /opt/var/log/mihomo_watchdog.log` |
+| Валидность конфига | `mihomo -t -f /opt/etc/mihomo/config.yaml` |
+| Слушается ли 7890 | `netstat -tln \| grep 7890` |
+| Свободное место и RAM | `df -h /opt`, `free` |
+| Время (сбитое время ломает SSL) | `date` |
+| WAN-интерфейсы для `interface-name` | `sh mihomo-interface-check.sh` |
 
-- **Mihomo Config Builder** — собирает готовый `config.yaml` для Mihomo из proxy-ссылок (vless, vmess, trojan, ss, hysteria2, tuic, anytls, socks5, http и других), HTTP(S)-подписок и файлов WireGuard/AmneziaWG (`.conf`/`.awg`), с базовой структурной проверкой перед копированием.
-- **WARP MASQUE Links** — генерирует пары ссылок `masque://` для Cloudflare WARP из YAML-конфигов, выданных ботом.
+Типовые предупреждения самопроверки:
 
-Всё выполняется прямо в браузере: приватные ключи, ссылки и конфиги никуда не отправляются — у проекта вообще нет сервера. Сгенерировали конфиг там — вставили в `/opt/etc/mihomo/config.yaml` здесь.
+- `Port 7890 not listening` — Mihomo не запустился, либо в конфиге нет `mixed-port: 7890`;
+- `Low free space on /opt` — свободно меньше 32 МБ;
+- `bypass_wa policy has no interface permit` — у политики нет выхода;
+- `Mihomo config syntax check failed` — конфиг не проходит `mihomo -t`.
 
----
+Полный разбор «симптом → причина → решение»: [docs/08-troubleshooting.md](docs/08-troubleshooting.md) и [docs/HOWTO_RU.md](docs/HOWTO_RU.md), разделы 11–12.
 
 ## Документация
 
 | Документ | О чём |
 | --- | --- |
-| **[docs/encyclopedia/00-karta-sistemy.md](docs/encyclopedia/00-karta-sistemy.md)** | 📚 Энциклопедия Mihomo для новичков: карта системы, первый вход в панель, DNS/fake-ip, правила, TUN (RU, пополняется) |
-| **[docs/HOWTO_RU.md](docs/HOWTO_RU.md)** / [HOWTO.md](docs/HOWTO.md) | Полное пошаговое руководство: подготовка → установка → конфигурация → MagiTrickle → watchdog → обновления → диагностика |
-| [docs/00-intro.md](docs/00-intro.md) | Зачем всё это |
-| [docs/01-architecture.md](docs/01-architecture.md) | Потоки трафика и принятие решений |
-| [docs/02-quick-start.md](docs/02-quick-start.md) | Минимальная установка |
-| [docs/03-install.md](docs/03-install.md) | Что именно делает `install.sh` |
-| [docs/04-watchdog.md](docs/04-watchdog.md) | Устройство watchdog |
-| [docs/05-bypass-wa.md](docs/05-bypass-wa.md) | Подробно про VoIP-обход |
-| [docs/06-s00ubifs.md](docs/06-s00ubifs.md) | Профили tmpfs и лимиты RAM |
-| [docs/07-install.md](docs/07-install.md) | install.sh и install_7621.sh — какой установщик и почему (RU) |
-| [docs/08-troubleshooting.md](docs/08-troubleshooting.md) | Симптом → причина → решение |
-| [docs/09-limitations.md](docs/09-limitations.md) | Жёсткие границы проекта |
-| [docs/10-roadmap.md](docs/10-roadmap.md) | Roadmap: направления и приоритеты (RU) |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Главная архитектурная глава: как реально устроена маршрутизация |
-| [CHANGELOG.md](CHANGELOG.md) | История изменений |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | как устроена маршрутизация: три пути трафика, роли Keenetic/MagiTrickle/Mihomo, границы схемы |
+| [docs/HOWTO_RU.md](docs/HOWTO_RU.md) / [docs/HOWTO.md](docs/HOWTO.md) | полное руководство: подготовка, установка, конфигурация, MagiTrickle, обновления, откат, диагностика |
+| [docs/encyclopedia/00-karta-sistemy.md](docs/encyclopedia/00-karta-sistemy.md) | энциклопедия Mihomo для новичков: карта системы, панель, DNS/fake-ip, правила, TUN |
+| [docs/03-install.md](docs/03-install.md) | что именно делает install.sh |
+| [docs/04-watchdog.md](docs/04-watchdog.md) | устройство watchdog |
+| [docs/05-bypass-wa.md](docs/05-bypass-wa.md) | VoIP-обход подробно |
+| [docs/06-s00ubifs.md](docs/06-s00ubifs.md) | tmpfs-профили и лимиты RAM |
+| [docs/07-install.md](docs/07-install.md) | установщики и их различия |
+| [docs/08-troubleshooting.md](docs/08-troubleshooting.md) | симптом → причина → решение |
+| [docs/09-limitations.md](docs/09-limitations.md) | жёсткие ограничения проекта |
+| [docs/10-roadmap.md](docs/10-roadmap.md) | планы развития |
+| [CHANGELOG.md](CHANGELOG.md) | история изменений |
 
----
+## Ограничения и важные особенности
+
+- **RAM**: минимум 256 МБ; на устройствах со 128 МБ установка не поддерживается.
+- **MTU туннелей**: «всё медленно / часть сайтов не открывается» — почти всегда MTU, а не маршрутизация; рабочие значения 1200–1300 ([docs/09-limitations.md](docs/09-limitations.md)).
+- **IPv6** выключен намеренно: MagiTrickle и конфиги проекта рассчитаны на IPv4-схему ([ARCHITECTURE.md](ARCHITECTURE.md)).
+- **DoH/DoT** клиентов проходит мимо перехвата: классифицируется только классический DNS на порту 53.
+- **Логи в RAM** (режим `ram`) пропадают при перезагрузке — осознанный размен ради ресурса флеш-памяти.
+- **Весь трафик не идёт через прокси**: часть трафика всегда ходит напрямую — это основа схемы, а не ошибка ([ARCHITECTURE.md](ARCHITECTURE.md)).
+
+## Legacy
+
+`install_7621.sh` — отдельный установщик для старых устройств на MT7621/mipsel: не ставит MagiTrickle и VoIP-обход. Ставит меньше, доверяет серверу больше. Используйте его, только если универсальный `install.sh` на устройстве не проходит; отличия описаны в [docs/07-install.md](docs/07-install.md).
 
 ## Лицензия
-
-[MIT](LICENSE)
-
----
-
-# 🛡 Keenetic Auto Setup
-
-**One-command toolkit that turns a Keenetic router into a self-healing smart gateway.**
-
-Modern VPN/proxy stack (Mihomo + VLESS/Reality), DNS-based split tunneling (MagiTrickle), VoIP call stabilization, flash wear protection and a watchdog that repairs the tunnel on its own — installed and configured in one shot, ~2–3 minutes.
-
-[Русский](#-русская-версия) · [Быстрый старт](#быстрый-старт) · **English** · [Quick start](#quick-start)
-
----
-
-## Why I built Keenetic Auto Setup
-
-It started with a simple wish: put a working VPN on a Keenetic router once — and stop constantly checking whether the tunnel is still alive. No more "something doesn't open", no more rebooting the router every evening, no more re-configuring things after every server change.
-
-That did not stay simple for long. The more I used it, the clearer it became that the real problem is not "no VPN". It is that an ordinary home router welds routing, VPN and internet access into one rigid chain:
-
-```
-Client → Router → ISP → Internet
-```
-
-One pipe, one policy, no room to decide *what* goes *where*.
-
-So the project grew into a full network complex, built on one idea: **the Keenetic becomes an independent network node that makes its own routing decisions**. Inside it, MagiTrickle decides which traffic goes where, and Mihomo acts as a router inside the router. Through different interfaces and policies, traffic can be sent directly, through AWG, SSTP, OpenConnect, Proxy0/Mihomo or any other available mechanism. Mihomo itself can hold many servers and whole subscriptions — while Keenetic sees nothing but a local SOCKS5 proxy on `127.0.0.1:7890`.
-
-The key mental model:
-
-> **Mihomo is a router inside the router.**
-> Keenetic hands it traffic. What servers, protocols, balancing and failover sit behind that handoff is entirely Mihomo's business — and can be rebuilt without touching Keenetic.
-
-Everything else in this project — the watchdog, the flash protection, the VoIP fixes — exists to make that node *boring*: it routes, it heals itself, and it doesn't need a caretaker.
-
----
-
-## What it installs
-
-| Component | Role |
-| --- | --- |
-| **Mihomo** (Clash Meta) | The routing core. Rule-based proxy engine with VLESS/Reality, subscriptions, load balancing. Listens on `127.0.0.1:7890`. |
-| **Proxy0** | A Keenetic proxy interface bridging Keenetic → Mihomo (labeled `mihomo t2s0`, matching MagiTrickle's `t2s` numbering). The only bridge between the router and the proxy core. |
-| **MagiTrickle** | The decision layer. DNS-based split tunneling: per domain/subnet it decides whether traffic goes direct or through a tunnel/policy. The installer enables Keenetic's DNS transit interception automatically so plain client DNS can't bypass this layer (DoH/DoT are unaffected). |
-| **Watchdog** | Self-healing. Every 5 minutes verifies WAN, the proxy port and the end-to-end tunnel; restarts Mihomo only when Mihomo itself is the problem. |
-| **bypass_wa** | VoIP fix. Marks Telegram/WhatsApp/WebRTC UDP (ports 1400/3478/3482) and routes it straight through the VPN, bypassing the proxy. |
-| **S00ubifs** | Flash protection (RAM mode). Moves `/opt/tmp`, `/opt/var/log`, `/opt/var/run` into tmpfs so Entware stops wearing out the flash. |
-
----
-
-## Architecture
-
-A classic home network has exactly one path and no decisions:
-
-```
-Client → Router → ISP → Internet
-```
-
-Keenetic Auto Setup turns the router into a layered node where each level does one job:
-
-```
-Client (LAN)
-      ↓
-Keenetic ── MagiTrickle decides per domain/subnet
-      ↓
-Mihomo — router inside the router (127.0.0.1:7890)
-      ↓
-AWG / SSTP / OpenConnect / Proxy0 / MASQUE / …
-      ↓
-Internet
-```
-
-- **Keenetic** provides the platform: policy routing, interfaces, firewall hooks, cron. The toolkit integrates through KeeneticOS itself (`ndmc`/RCI, `netfilter.d`) instead of fighting it.
-- **MagiTrickle** is the decision layer. It does not carry traffic; it looks at DNS queries and sends each domain the right way — YouTube through the tunnel, local banking direct, everything else by your rules. For that to hold, the installer enables Keenetic's DNS transit interception automatically: classic (port 53) queries addressed straight to an external resolver are redirected into Keenetic's DNS, where MagiTrickle sees them — `Client → Keenetic DNS → MagiTrickle → routing decision` — instead of silently skipping the decision layer. This covers classic DNS only; browsers using DoH/DoT bypass port 53 regardless.
-- **Mihomo** is a full routing engine behind a single local SOCKS5 port: dozens of servers, multiple subscriptions at once, health checks, fallbacks, load balancing. Swap its config and you have swapped the entire egress infrastructure — Keenetic doesn't even notice.
-- **Transports are interchangeable.** Entry and exit don't have to match: you can enter through one tunnel type and exit through another. Replace any transport without rebuilding the system.
-
-Not everything goes through the proxy, and that's by design: different traffic types take different paths. VoIP goes around the proxy directly through the VPN (no laggy calls), local resources go direct, everything else follows your rules.
-
----
-
-## How traffic routing actually works
-
-The one-line model:
-
-```
-Client → Keenetic → MagiTrickle (which exit for this traffic?) → Internet
-```
-
-- **MagiTrickle is not a VPN.** It never carries traffic; it reads DNS queries, matches domains against your rules and sends each destination toward a chosen exit.
-- **Exits are interchangeable.** The two paths into Mihomo: **Proxy0** — a Keenetic proxy interface (SOCKS5), convenient as a destination in per-client/per-segment rules — and **Mihomo's TUN interface** (`mitun0` is the common name for it) — a transparent IP-level path. Direct ISP, AWG, SSTP, OpenConnect and other interfaces are exits too.
-- **Classification only sees domains that reach Keenetic's DNS.** That's why the installer keeps clients' DNS on the router (see [DNS and whitelist networks](#dns-and-whitelist-networks) below).
-- **If a device builds its own VPN tunnel, Keenetic sees the tunnel — not the sites inside it.** Router-side selective routing can't pick per-site exits for traffic that never appears as individual connections.
-- **Mihomo's own interface setting binds its outbound connections — it is not a router-wide WAN switch.** Traffic entering Mihomo via the TUN still leaves through the usual Keenetic routing (the WAN1/WAN2 example is in the HOWTO).
-
-The full story — the three traffic paths, why MagiTrickle/`mitun0`/`ProxyN`/`7890`/DNS interception/Mihomo's interface setting are different levels of one design — is in **[ARCHITECTURE.md](ARCHITECTURE.md)** (RU). The practical walkthrough of the same topics is in [docs/HOWTO.md](docs/HOWTO.md), section "How traffic routing actually works".
-
----
-
-## DNS and whitelist networks
-
-- In this project, DNS is **part of the routing**: MagiTrickle classifies traffic by domain, so *which resolver Keenetic uses* is configuration, not a detail.
-- In whitelist-style networks (where only approved resources are reachable), the DNS choice becomes critical: a resolver can be technically excellent and still be **unreachable from your network**, and operator-side interference with DNS answers is possible.
-- The provider's DNS is usually the **most compatible** option in restricted networks — but it can be filtered or substituted, so it is not automatically the preferred choice in an ordinary network.
-- Keenetic supports DoH and DoT natively (OS 3.0+). Encrypted upstreams are the better tool **when the chosen service is actually reachable from your network**; in Russian networks Yandex DNS is often a practical compromise, but availability is per-network and nobody can guarantee it for a specific operator.
-- Even correct encrypted DNS does not mean the operator cannot affect access to specific resources at other levels.
-
-The full resolver matrix, configuration steps and a dedicated troubleshooting scenario are in [docs/HOWTO.md](docs/HOWTO.md), section 6.2.
-
----
-
-## Watchdog: it fixes itself
-
-The watchdog runs from cron every 5 minutes and checks, in order:
-
-1. **WAN** — directly, without Mihomo. Primary targets (Cloudflare, Google) first; if all of them fail, a whitelist fallback (gosuslugi.ru, ya.ru, mail.ru, vk.ru/vk.com) distinguishes "restricted network" from "no internet at all".
-2. **Proxy port** — is Mihomo accepting connections on `127.0.0.1:7890`?
-3. **End-to-end tunnel** — does a real request through `socks5h://` actually reach the internet?
-
-The important principle: **a WAN outage does not mean Mihomo is broken.** If none of the WAN targets respond, the watchdog exits without restarting anything and waits for the ISP. A restart happens only when the network is confirmed up **and** the problem is confirmed to be in Mihomo or its tunnel — with a cooldown between restarts so a flaky upstream can't cause a restart storm.
-
-Logs: `cat /opt/var/log/mihomo_watchdog.log`
-
----
-
-## Use cases
-
-**Split tunneling for the whole network.** The default scenario: every device behind the router gets per-domain routing without any client software. Install once, add domains to MagiTrickle, done — TVs, phones and laptops don't know a proxy exists.
-
-**Browser-only proxy (FoxyProxy).** Don't want to route anything system-wide on your computer? Point a browser extension at the router's proxy port:
-
-```
-Browser → FoxyProxy (SOCKS5) → Keenetic :7890 → Mihomo → Internet
-```
-
-Enable `allow-lan: true` in Mihomo's config, set FoxyProxy to `<router-ip>:7890` (SOCKS5), and add patterns for just the sites you want proxied — for example ChatGPT, YouTube, Telegram Web, Gemini, Grok, Copilot, Threads, Instagram. Everything else in the browser — and on the whole computer — goes direct. No VPN client on the PC. Note this path bypasses MagiTrickle (the extension talks to Mihomo directly), so site selection here is done by the extension's patterns plus Mihomo's own rules. It covers web traffic; heavy UDP apps are better served by the network-level routing above.
-
-**WebRTC caveat:** a SOCKS5 proxy covers the browser's ordinary web traffic — it does not automatically put every browser network mechanism on the same path. WebRTC can open its own UDP media path outside the proxy, so in a proxy scenario a site may learn network information that differs from the proxy exit (whether and what it learns depends on the browser, its version and your network). Check your browser's WebRTC settings and verify with a WebRTC test page — browser-specific advice is in the [HOWTO](docs/HOWTO.md). This applies to the browser-only scenario: with whole-network routing through Keenetic, UDP follows the router's policies.
-
-**Stable VoIP behind a proxy.** Telegram/WhatsApp calls die when forced through a TCP proxy. `bypass_wa` marks that UDP and sends it through the VPN directly — calls connect fast and stop dropping.
-
-**Small fleets (10–20 routers).** The watchdog has jitter, rate limiting and lock protection specifically so that a fleet of routers behind one server doesn't stampede it — born from operating ~20 devices.
-
----
-
-## Supported hardware & modes
-
-| | |
-| --- | --- |
-| **ARM / aarch64** | `install.sh` — the main installer: Mihomo, MagiTrickle, bypass_wa, watchdog, tmpfs |
-| **MT7621 / mipsel** | `install_7621.sh` — the installer for MT7621 devices: same general flow, with the Mihomo package source adapted to the platform's architecture (MagiTrickle and the VoIP bypass are not part of this path) |
-| **RAM** | 256 MB minimum. **128 MB devices are not supported** (tmpfs destabilizes them — verified in production) |
-| **Modes** | `ram` (default; tmpfs protects internal flash) · `disk` (USB/SSD storage) |
-| **Tested on** | Keenetic KN-1810, KN-3811, KN-1913 |
-
-Not sure which installer you need? Run `opkg print-architecture` on the router: `aarch64-3.10` → `install.sh` (the primary path). For `mipsel-3.4` start with the universal `install.sh` too — if it doesn't pass on your MT7621, switch to the dedicated `install_7621.sh` (see the MT7621 note above).
-
-**MT7621:** for MT7621 devices the project ships a dedicated installer, `install_7621.sh` — a full way to install the project on compatible devices. The universal `install.sh` is not ARM-limited: its architecture detection covers mipsel/mips too (MT7621/MT7628-class), but that path has not been re-tested on MT7621 recently — treat it as unverified rather than actively tested. MT7621 also has its own package and resource considerations (including available storage), so check your model and free storage before installing.
-
----
-
-## Quick start
-
-**1. Install** (SSH into the router, Entware required) — the universal `install.sh` is the primary way to install: it handles the project's models/architectures, including mipsel/mips. First choose the install location:
-
-```text
-          ┌──────────────────────────┐
-          │    Where to install?     │
-          └──────────────────────────┘
-            ↓                   ↓
-   internal memory         disk / USB
-   (default)               add the `disk` key
-```
-
-**Internal memory (default):**
-
-```bash id="q5l3hc"
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
-```
-
-**Disk / USB — add the `disk` key:**
-
-```bash id="j7h2kf"
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
-```
-
-Without `disk` the toolkit installs into the router's internal storage; with `disk` it installs onto the attached USB/SSD drive.
-
-> **If the universal installer doesn't pass on your MT7621:** compatible MT7621 devices have a dedicated `install_7621.sh` — it accounts for the platform's specifics and can be used as an alternative install path. If HTTPS/certificate errors show up in a specific network, check HTTPS reachability separately first — the cause can be network-side (provider or filtering), not necessarily the device.
-
-> DNS transit interception is configured by the installer automatically — there is no manual post-install DNS step. See the architecture section above for why.
-
-**2. Add your Mihomo config** (this step is mandatory — without it nothing will work). The installer puts Mihomo and the whole infrastructure in place, but **there is no full config after install yet**: `/opt/etc/mihomo/config.yaml` holds a minimal placeholder — replace it with your own config:
-
-```bash
-nano /opt/etc/mihomo/config.yaml
-```
-
-*`nano` is just an example editor; any convenient way of editing works.*
-
-A minimal working example:
-
-```yaml
-mixed-port: 7890
-allow-lan: true
-mode: rule
-log-level: info
-
-proxies:
-  - name: "server"
-    type: vless
-    server: "YOUR_SERVER"
-    port: 443
-    uuid: "YOUR_UUID"
-    tls: true
-
-proxy-groups:
-  - name: "Proxy"
-    type: select
-    proxies:
-      - "server"
-
-rules:
-  - GEOIP,private,DIRECT
-  - MATCH,Proxy
-```
-
-**3. Restart and verify:**
-
-```bash
-mihomo -t -f /opt/etc/mihomo/config.yaml
-/opt/etc/init.d/S99mihomo restart
-/opt/etc/init.d/S99mihomo status
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  --proxy 127.0.0.1:7890 \
-  http://google.com/generate_204
-```
-
-- `mihomo -t` validates the configuration without starting Mihomo;
-- `status` should report `alive`;
-- the expected output of the last command is `204`: the HTTP request has actually passed through the local proxy on `127.0.0.1:7890`.
-
-**4. Watchdog check** — five minutes after install:
-
-```bash
-cat /opt/var/log/mihomo_watchdog.log    # expect "[OK] All good"
-```
-
-### Useful daily commands
-
-```bash
-/opt/etc/init.d/S99mihomo status      # service status
-/opt/etc/init.d/S99mihomo restart     # apply a changed config
-cat /opt/var/log/mihomo_watchdog.log  # watchdog decisions
-```
-
-The config check (`mihomo -t`) and the end-to-end proxy check (`curl --proxy …`, expect `204`) are in the Quick Start above.
-
-If Mihomo won't start or dies after a `config.yaml` change — run the `mihomo -t` check first: it validates the configuration without starting the service. It does not diagnose every possible failure cause (network, MTU, the upstream server), but a broken config is caught immediately. For configs generated by [link-generators](https://github.com/saymer-alt/link-generators), this check is the more authoritative runtime validation compared to the generator's basic in-browser check. Where to dig next: [docs/HOWTO.md](docs/HOWTO.md), Diagnostics.
-
-> **Want to open Mihomo's web dashboard (MetaCubeX) from your computer?** The default install runs without one — how to enable it and connect it to Mihomo: [docs/encyclopedia/12-pervyj-vhod-v-ui.md](docs/encyclopedia/12-pervyj-vhod-v-ui.md) (RU). If the panel shows `127.0.0.1:9090` and you are stuck: [docs/encyclopedia/13-127-0-0-1-i-ip-routera.md](docs/encyclopedia/13-127-0-0-1-i-ip-routera.md) (RU).
-
-That's the short version. The complete walkthrough — Entware preparation, MagiTrickle, updates, rollback, diagnostics — is in **[docs/HOWTO.md](docs/HOWTO.md)** (также на русском: [docs/HOWTO_RU.md](docs/HOWTO_RU.md)).
-
----
-
-## Updating & rollback
-
-Update Mihomo to the latest upstream release without reinstalling anything:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
-```
-
-The updater is built to fail safely: it downloads the new binary to `/tmp`, verifies it runs, tests it against your current `config.yaml`, checks free space, replaces the old binary and restarts the service — **rolling back automatically** at any failed step (architecture mismatch, config incompatibility, no space, service won't start). The backup lives temporarily in RAM (`/tmp`); no permanent backup is kept on `/opt`. Add `--force` to reinstall the same version. On MIPS (MT7621) the updater intentionally refuses to run — there are no official Mihomo binaries for that architecture.
-
-The watchdog copy can be updated separately (`update-watchdog.sh`): sanity-marker check, syntax check, backup, atomic replace. See the [HOWTO](docs/HOWTO.md) for the details and for manual downgrade instructions.
-
----
-
-## Ecosystem: link-generators
-
-Config preparation lives in a companion project: **[saymer-alt/link-generators](https://github.com/saymer-alt/link-generators)** — a static, fully client-side web app ([saymer-alt.github.io/link-generators](https://saymer-alt.github.io/link-generators/)) with two tools:
-
-- **Mihomo Config Builder** — assembles a ready `config.yaml` for Mihomo from proxy links (vless, vmess, trojan, ss, hysteria2, tuic, anytls, socks5, http and more), HTTP(S) subscriptions and WireGuard/AmneziaWG `.conf`/`.awg` files, with basic structural validation before you copy the result.
-- **WARP MASQUE Links** — generates `masque://` link pairs for Cloudflare WARP from bot-provided YAML configs.
-
-Everything runs in your browser: private keys, links and configs are never sent anywhere — the project has no server at all. Generate the config there, paste it into `/opt/etc/mihomo/config.yaml` here.
-
----
-
-## Documentation
-
-| Document | What's inside |
-| --- | --- |
-| **[docs/encyclopedia/00-karta-sistemy.md](docs/encyclopedia/00-karta-sistemy.md)** | 📚 Beginner-friendly Mihomo encyclopedia: system map, dashboard login, DNS/fake-ip, rules, TUN (RU, work in progress) |
-| **[docs/HOWTO.md](docs/HOWTO.md)** / [HOWTO_RU.md](docs/HOWTO_RU.md) | The complete step-by-step guide: preparation → install → config → MagiTrickle → watchdog → updates → troubleshooting |
-| [docs/00-intro.md](docs/00-intro.md) | Why this project exists |
-| [docs/01-architecture.md](docs/01-architecture.md) | Traffic flows and how decisions are made |
-| [docs/02-quick-start.md](docs/02-quick-start.md) | Minimal setup (RU) |
-| [docs/03-install.md](docs/03-install.md) | What `install.sh` actually does (RU) |
-| [docs/04-watchdog.md](docs/04-watchdog.md) | Watchdog internals (RU) |
-| [docs/05-bypass-wa.md](docs/05-bypass-wa.md) | VoIP bypass deep dive (RU) |
-| [docs/06-s00ubifs.md](docs/06-s00ubifs.md) | tmpfs profiles and RAM limits (RU) |
-| [docs/07-install.md](docs/07-install.md) | install.sh vs install_7621.sh — which installer and why (RU) |
-| [docs/08-troubleshooting.md](docs/08-troubleshooting.md) | Symptom → cause → fix (RU) |
-| [docs/09-limitations.md](docs/09-limitations.md) | Hard limits and honest boundaries (RU) |
-| [docs/10-roadmap.md](docs/10-roadmap.md) | Roadmap: directions and priorities (RU) |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | The main architecture document (RU): how the routing actually works |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
-
----
-
-## License
 
 [MIT](LICENSE)
