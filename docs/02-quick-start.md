@@ -121,7 +121,7 @@ cat /opt/var/log/mihomo_watchdog.log
 Должно быть:
 
 ```id="ok2"
-OK
+[OK] All good
 ```
 
 ---
@@ -151,9 +151,10 @@ OK
 
 ---
 
-### `proxy fail [000/000]`
+### В логе watchdog: `[RESTART] …`
 
-→ прокси не отвечает
+`[RESTART] Mihomo port unreachable` — Mihomo не слушает `7890`;
+`[RESTART] Proxy tunnel check failed` — порт жив, туннель не проходит.
 
 Проверь:
 
