@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Bootstrap `config.yaml` (`/opt/etc/mihomo/config.yaml`): on fresh installs the installer writes a minimal project bootstrap containing `mixed-port: 7890`. An untouched package placeholder is replaced; an existing user config is never modified.
+- Project proxy selection: the installer reuses an existing project proxy interface matched by both description (`mihomo t2sN`) and upstream (`127.0.0.1 7890`); otherwise it creates `Proxy0` when the slot is free, or the first free `ProxyN` — a foreign `Proxy0` is never modified.
+- Automatic `bypass_wa` binding: the policy (found by its description) is bound to the selected project proxy with `permit global`. Existing permits — e.g. a manual VPN binding — are never removed or reordered; a missing policy produces a warning instead of a silently created one.
+- `docs/EN/README.md`: English entry point, kept in sync with the Russian README.
+
+### Changed
+
+- Installation and architecture documentation aligned with the current installer flow (bootstrap `config.yaml`, project ProxyN selection with foreign-`Proxy0` protection, automatic `bypass_wa` binding, self-check): `docs/03-install.md`, `docs/HOWTO_RU.md`/`HOWTO.md`, `ARCHITECTURE.md`, `docs/01-architecture.md`, `docs/02-quick-start.md`.
+- Component roles clarified across the architecture docs: KeeneticOS provides the routing/firewall/NAT mechanisms, MagiTrickle automates the scheme, Mihomo routes only the traffic that enters it, MetaCubeX UI is optional and hosted by Mihomo when enabled.
+- DNS/ports/bootstrap claims in the encyclopedia updated to the current bootstrap (`10`, `12`, `26`, `27`): the old package placeholder (DNS block with `1053`/fake-ip, commented controller lines) is marked historical.
+- `docs/05-bypass-wa.md`: default path is the project ProxyN binding; a manual VPN permit is documented as an alternative.
+
+### Removed
+
+- VPS/Ubuntu notes and server-side materials (`scripts/ubuntu*.md`, `debian1.md`, `setup_debian12*.sh`, `mieru.md`) moved to `saymer-alt/vps-gateway-bootstrap`.
+- Personal Entware service utility (`scripts/service`) removed from this repository (preserved in `saymer-alt/keenetic-knowledge-base`).
+
 ## [1.2.0] - 2026-09-08
 
 ### Added
