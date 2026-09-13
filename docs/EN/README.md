@@ -49,7 +49,7 @@ Clear the file (`Ctrl+K`) and paste the generated configuration.
 Save: `Ctrl+O` → `Enter`  
 Exit: `Ctrl+X`
 
-The generated configuration creates the `mitun0` interface; it is recommended to use it in MagiTrickle as the interface for redirection.
+If the generated configuration includes TUN, Mihomo creates the `mitun0` interface; it is recommended to use it in MagiTrickle as the interface for redirection. The bootstrap config itself contains only `mixed-port: 7890`.
 
 Details → [Mihomo](../encyclopedia/10-mihomo-eto.md) · [MagiTrickle and routing](../01-architecture.md) · [first UI access](../encyclopedia/12-pervyj-vhod-v-ui.md).
 

@@ -156,10 +156,9 @@ raw.githubusercontent.com/main. Версионирования и стейджи
   значительная часть коммитов — серии мелких правок одного скрипта; причина правки
   важнее самой правки;
 - коммить только по явной инструкции оператора; сообщение — что и зачем; без force-push;
-- scripts/service — Entware-утилита управления сервисами (сторонняя, автор
-  Pavel P.): не переименовывать и не удалять попутно с задачей. VPS-заметки
-  (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) перенесены в репозиторий
-  saymer-alt/vps-gateway-bootstrap (docs/archaeology/).
+- VPS-заметки (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) перенесены
+  в репозиторий saymer-alt/vps-gateway-bootstrap (docs/archaeology/) и больше
+  не являются частью этого репозитория.
 
 ## 8. Документация
 
