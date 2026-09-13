@@ -49,7 +49,7 @@ nano /opt/etc/mihomo/config.yaml
 Сохранить: `Ctrl+O` → `Enter`  
 Выйти: `Ctrl+X`
 
-Сгенерированная конфигурация создаёт интерфейс `mitun0`. Его рекомендуется использовать при настройке MagiTrickle.
+Сгенерированная конфигурация создаёт интерфейс `mitun0`; его рекомендуется использовать в MagiTrickle как интерфейс для перенаправления.
 
 Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [MagiTrickle и маршрутизация](docs/01-architecture.md) · [первый вход в UI](docs/encyclopedia/12-pervyj-vhod-v-ui.md).
 
