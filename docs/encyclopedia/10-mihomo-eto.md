@@ -160,7 +160,7 @@ DIRECT  /  proxy-group  /  proxy
 | TUN (`mitun0`) | В базовой установке **не настроен**; появляется, только если добавить `tun` в свой конфиг | Проверено в проекте (базовый конфиг) |
 | Controller | **Выключен по умолчанию** — в bootstrap-конфиге строк `external-controller`/`secret`/`external-ui` нет вовсе (в старом пакетном placeholder они были закомментированы); включается вручную — [12-pervyj-vhod-v-ui.md](12-pervyj-vhod-v-ui.md) | Проверено в проекте |
 | Связь с DNS/MagiTrickle | Классификацию доменов ведёт MagiTrickle на стороне роутера (наблюдая DNS KeeneticOS). **В текущем bootstrap DNS-блока у Mihomo нет** — без пользовательского `dns:` ядро резолвит через системный резолвер; `1053`/fake-ip относились к историческому пакетному placeholder | Проверено в проекте; разбор — [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) |
-| Что ещё включено в базовом конфиге | `mode: rule`, sniffer, profile-кэши выбранных узлов | Проверено в проекте; mode — [27-porty-i-config-yaml.md](27-porty-i-config-yaml.md), sniffer и DNS — [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) |
+| Что ещё включено | `mode: rule`, sniffer и profile-кэши — только в **историческом пакетном placeholder**; в текущем bootstrap-конфиге этих блоков нет. Без `mode:` ядро работает с документированным дефолтом `rule`, sniffer и profile-кэши не активны | Проверено в проекте (bootstrap); разбор — [27-porty-i-config-yaml.md](27-porty-i-config-yaml.md), [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) |
 
 Важно: всё, что Mihomo умеет *в принципе* (десятки типов прокси, провайдеры, гео-базы,
 разные режимы DNS и т.д.) — это возможности **ядра**, а не части нашей установки.
