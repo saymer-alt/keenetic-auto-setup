@@ -29,7 +29,7 @@ retry() {
 }
 
 # Cleanup temp files on any exit
-trap 'rm -f "$TMP_DIR/mihomo.ipk"' EXIT INT TERM
+trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo_watchdog.new"' EXIT INT TERM
 
 # ---------------------------
 # CHECK BASE
@@ -510,19 +510,55 @@ fi
 # ---------------------------
 # WATCHDOG
 # ---------------------------
+# Layout: the canonical watchdog lives at /opt/bin/mihomo_watchdog.sh;
+# /opt/etc/cron.5mins/mihomo_watchdog is only a thin scheduler wrapper
+# (exec). The installer installs the new layout on a clean router,
+# accepts an existing new layout, and never touches legacy or unknown
+# installations — update-watchdog.sh migrates; the installer installs
+# and recognizes.
 log "Installing watchdog..."
 
-mkdir -p /opt/etc/cron.5mins
+WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
+WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
+WATCHDOG_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
 
-if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh \
-    -o /opt/etc/cron.5mins/mihomo_watchdog; then
+watchdog_is_canonical() {
+    [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null
+}
 
-    chmod +x /opt/etc/cron.5mins/mihomo_watchdog
+install_watchdog_bin() {
+    mkdir -p /opt/bin || return 1
+    if ! retry curl -fsSL "$WATCHDOG_URL" -o "$TMP_DIR/mihomo_watchdog.new"; then
+        warn "Watchdog download failed"
+        return 1
+    fi
+    # Same sanity gates as update-watchdog.sh: marker + syntax.
+    if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_DIR/mihomo_watchdog.new" || \
+       ! sh -n "$TMP_DIR/mihomo_watchdog.new"; then
+        warn "Watchdog sanity check failed, not installed"
+        return 1
+    fi
+    if ! mv -f "$TMP_DIR/mihomo_watchdog.new" "$WATCHDOG_BIN"; then
+        warn "Failed to install $WATCHDOG_BIN"
+        return 1
+    fi
+    chmod +x "$WATCHDOG_BIN"
+}
+
+ensure_watchdog_cron() {
+    mkdir -p /opt/etc/cron.5mins
+    cat > "$WATCHDOG_CRON" <<'EOF' || { warn "Failed to write $WATCHDOG_CRON"; return 1; }
+#!/bin/sh
+exec /opt/bin/mihomo_watchdog.sh "$@"
+EOF
+    chmod +x "$WATCHDOG_CRON"
 
     mkdir -p /opt/var/log
     touch /opt/var/log/mihomo_watchdog.log
     chmod 666 /opt/var/log/mihomo_watchdog.log
 
+    # Exactly one cron route: run-parts on cron.5mins when the crontab
+    # already delegates it, otherwise one direct line (deduplicated).
     if grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null; then
         log "Using run-parts"
     else
@@ -532,8 +568,36 @@ if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-s
     fi
 
     /opt/etc/init.d/S10cron restart || warn "Cron restart failed"
+}
+
+if watchdog_is_canonical "$WATCHDOG_BIN"; then
+    # Canonical binary present: accept the new layout, keep one cron route.
+    # A wrapper is recognized by its exec line, so a full watchdog that
+    # merely mentions the canonical path in its header is not mistaken
+    # for one.
+    if [ -f "$WATCHDOG_CRON" ] && ! grep -q "^exec $WATCHDOG_BIN" "$WATCHDOG_CRON" 2>/dev/null; then
+        warn "Unknown file at $WATCHDOG_CRON, left unchanged"
+    elif [ -f "$WATCHDOG_CRON" ]; then
+        log "New watchdog layout already in place"
+    else
+        log "Canonical watchdog present, installing cron wrapper"
+        ensure_watchdog_cron || warn "Watchdog cron wrapper installation failed"
+    fi
+elif watchdog_is_canonical "$WATCHDOG_CRON"; then
+    # Old project layout (full watchdog in cron.5mins): not the installer's
+    # job to migrate — the updater owns that transition.
+    warn "Legacy watchdog installation detected."
+    warn "Left unchanged."
+    warn "Use update-watchdog.sh to migrate/update it safely."
+elif [ -e "$WATCHDOG_BIN" ] || [ -e "$WATCHDOG_CRON" ]; then
+    warn "Unrecognized watchdog installation, left unchanged"
 else
-    warn "Watchdog download failed"
+    log "Installing canonical watchdog to $WATCHDOG_BIN"
+    if install_watchdog_bin && ensure_watchdog_cron; then
+        log "Watchdog installed (new layout)"
+    else
+        warn "Watchdog installation incomplete"
+    fi
 fi
 
 # ---------------------------
@@ -633,11 +697,18 @@ case "$_bp_state" in
     *)     check_warn "bypass_wa policy missing or has no interface permit — VoIP bypass has no exit route" ;;
 esac
 
-# Watchdog + cron registration
-if [ -x /opt/etc/cron.5mins/mihomo_watchdog ]; then
-    check_ok "watchdog present"
+# Watchdog: canonical binary + cron wrapper (or a legacy layout we left alone)
+if watchdog_is_canonical "$WATCHDOG_BIN"; then
+    check_ok "watchdog canonical present ($WATCHDOG_BIN)"
+    if [ -x "$WATCHDOG_CRON" ] && grep -q "^exec $WATCHDOG_BIN" "$WATCHDOG_CRON" 2>/dev/null; then
+        check_ok "watchdog cron wrapper present"
+    else
+        check_fail "watchdog cron wrapper missing or does not point at $WATCHDOG_BIN"
+    fi
+elif watchdog_is_canonical "$WATCHDOG_CRON"; then
+    check_warn "Legacy watchdog layout (full script in cron.5mins) — left unchanged, update-watchdog.sh migrates"
 else
-    check_fail "watchdog /opt/etc/cron.5mins/mihomo_watchdog missing or not executable"
+    check_fail "watchdog not installed (neither $WATCHDOG_BIN nor legacy cron layout found)"
 fi
 if grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null || grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null; then
     check_ok "watchdog scheduled in crontab"

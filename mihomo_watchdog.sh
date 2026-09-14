@@ -19,17 +19,19 @@
 # - Mihomo port availability check
 # - End-to-end SOCKS5h tunnel check
 # - Restart rate limiting (cooldown to prevent loops)
-# - Stale-safe PID lock: auto-recovers after SIGKILL/hang, PID-reuse aware
+# - Stale-safe mkdir lock: atomic takeover, race-free, recovers after SIGKILL
 # - Hard --max-time on every probe so a stalled target cannot wedge the run
 # - Jitter for multi-router deployments (~20 nodes)
 
-# Cron: */5 * * * * /opt/bin/mihomo_watchdog.sh
+# Canonical location: /opt/bin/mihomo_watchdog.sh (maintained by
+# update-watchdog.sh). Cron runs it through the thin scheduler wrapper
+# /opt/etc/cron.5mins/mihomo_watchdog (exec, every 5 minutes).
 # =========================================================
 
 # --- FILES ---
 
 LOG="/opt/var/log/mihomo_watchdog.log"
-LOCK_FILE="/tmp/mihomo_watchdog.lock"
+LOCK_DIR="/tmp/mihomo_watchdog.lock.d"
 RESTART_STATE="/tmp/mihomo_watchdog.restart"
 
 
@@ -60,32 +62,40 @@ LOG_KEEP_LINES=300
 
 
 # =========================================================
-# LOCK MECHANISM (stale-safe)
+# LOCK MECHANISM (mkdir + atomic takeover)
 #
-# The lock file stores the holder PID. A fresh run:
-#   no lock file                     -> create atomically (noclobber), proceed
-#   lock unreadable/empty/garbage    -> stale, take over
-#   PID dead                         -> stale, take over
-#   PID alive, foreign process       -> stale, take over (covers PID reuse)
-#   PID alive AND its /proc cmdline mentions mihomo_watchdog
-#                                    -> live run in progress, skip silently
+# /tmp/mihomo_watchdog.lock.d is the lock. Ownership truth is the
+# directory itself: mkdir is an atomic test-and-set, so exactly one
+# concurrent process can hold it. The pid/ts files inside serve liveness
+# diagnostics and stale-recovery only — losing or misreading them never
+# weakens mutual exclusion.
 #
-# /proc/<pid>/cmdline is always present on KeeneticOS (Linux kernel); the
-# check uses cat/grep only (BusyBox core, no new dependencies). After a
-# SIGKILL the lock survives, but the next run sees a dead PID and recovers
-# automatically — a live watchdog is never taken over.
+#   mkdir fails + live pid of a mihomo_watchdog -> another run is active,
+#                                                  exit silently
+#   mkdir fails + pid dead/garbage/foreign      -> stale takeover:
+#           mv "$LOCK_DIR" "$LOCK_DIR.stale.$$"
+#   The atomic rename IS the takeover claim: exactly one process can
+#   rename a given directory; the winner removes only the directory it
+#   renamed, every loser exits without deleting anything.
+#   mkdir fails + empty/garbage pid + dir younger than the 60s grace
+#   -> possibly a process between its mkdir and its pid write: skip.
+#   The real mkdir->pid gap is microseconds (adjacent shell operations);
+#   dead holders keep a valid pid and are recovered by liveness
+#   immediately, so SIGKILL recovery stays at the next cron run.
+#
+# The trap is installed only AFTER a successful acquisition, so a loser
+# of acquire or takeover has no cleanup handler and can never delete the
+# winner's lock. While we run, our live pid inside the directory prevents
+# any takeover, so our own cleanup always removes our own lock.
+# /tmp is RAM: leftovers after SIGKILL disappear at reboot.
 # =========================================================
 
-lock_create() {
-    # Atomic create: noclobber redirection fails if the file exists, so a
-    # concurrent winner keeps the lock. $$ inside ( ) is this script's PID.
-    ( set -C; echo "$$" > "$LOCK_FILE" ) 2>/dev/null
+lock_write_owner() {
+    echo "$$" > "$LOCK_DIR/pid"
+    date +%s > "$LOCK_DIR/ts"
 }
 
 lock_is_our_watchdog() {
-    # True only when $1 is a live process whose cmdline mentions
-    # mihomo_watchdog. Anything else (dead PID, garbage, a reused PID now
-    # owned by another program) means the lock is stale.
     case "$1" in
         ''|*[!0-9]*) return 1 ;;
     esac
@@ -93,20 +103,52 @@ lock_is_our_watchdog() {
     grep -q "mihomo_watchdog" "/proc/$1/cmdline" 2>/dev/null
 }
 
-if [ -f "$LOCK_FILE" ]; then
-    _lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+if mkdir "$LOCK_DIR" 2>/dev/null; then
+    lock_write_owner
+else
+    _lock_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null)
     if lock_is_our_watchdog "$_lock_pid"; then
         # Another live watchdog holds the lock; skip silently
         exit 0
     fi
-    # Stale lock: dead, garbage or foreign PID — recover it and take over
-    rm -f "$LOCK_FILE"
+    _lock_fresh=0
+    case "$_lock_pid" in
+        ''|*[!0-9]*)
+            # Garbage/empty pid: the dir may belong to a process that has
+            # just done mkdir but has not written its pid yet. The real
+            # gap is microseconds; one minute of grace is ~4 orders of
+            # magnitude of margin and does not affect SIGKILL recovery
+            # (dead holders keep a valid pid and never reach this branch).
+            _now=$(date +%s)
+            _ts=$(cat "$LOCK_DIR/ts" 2>/dev/null)
+            case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
+            if [ $((_now - _ts)) -lt 60 ]; then
+                _lock_fresh=1
+            fi
+            ;;
+    esac
+    if [ "$_lock_fresh" = "1" ]; then
+        # Too young to judge: never steal a possibly-live starter
+        exit 0
+    fi
+    _claim="$LOCK_DIR.stale.$$"
+    if mv "$LOCK_DIR" "$_claim" 2>/dev/null; then
+        # The atomic rename is the takeover claim: only the mv winner
+        # touches the claimed directory.
+        rm -rf "$_claim"
+        if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+            # A fresh run took the freed path first; it owns the lock now
+            exit 0
+        fi
+        lock_write_owner
+    else
+        # Claim lost: another stale-recoverer won or the holder changed
+        exit 0
+    fi
 fi
 
-lock_create || exit 0
-
 cleanup() {
-    rm -f "$LOCK_FILE"
+    rm -rf "$LOCK_DIR"
 }
 
 trap cleanup EXIT INT TERM
