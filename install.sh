@@ -274,16 +274,54 @@ ensure_bootstrap_config "/opt/etc/mihomo/config.yaml"
 # never modified. Preference order: reuse an existing project ProxyN (lowest
 # number first); otherwise create Proxy0 when absent; otherwise — Proxy0 is
 # foreign — create the first free ProxyN and leave Proxy0 exactly as is.
+# Every Proxy decision reads ONE validated running-config snapshot
+# (load_rc_dump; positive control: a real running-config always contains at
+# least one `interface ` block). A failed or unconvincing ndmc read is
+# UNKNOWN: nothing is created or modified, and UNKNOWN is never treated as
+# NOT_FOUND — a transient ndmc error must not turn an occupied slot into a
+# "free" one.
 MAX_PROXY_PROBE=32   # Protective scan cap ONLY: KeeneticOS documents no limit
                      # for Proxy instances; the cap bounds ndmc probing cost
                      # in a pathological setup and is not an OS maximum.
 
-proxy_exists() {
-    ndmc -c "show interface $1" >/dev/null 2>&1
+load_rc_dump() {
+    # One validated running-config snapshot (RC_DUMP) for every Proxy
+    # decision. Two bounded attempts (an inline loop rather than retry():
+    # retry() prints its WARN to stdout, which would pollute the captured
+    # dump). The positive control separates a trustworthy NOT_FOUND from
+    # an ndmc failure (UNKNOWN). Returns 1 only for UNKNOWN.
+    _attempt=0
+    while [ "$_attempt" -lt 2 ]; do
+        RC_DUMP=$(ndmc -c "show running-config" 2>/dev/null | tr -d '\r')
+        if printf '%s\n' "$RC_DUMP" | grep -q '^interface '; then
+            return 0
+        fi
+        _attempt=$((_attempt + 1))
+        if [ "$_attempt" -lt 2 ]; then
+            sleep 2
+        fi
+    done
+    RC_DUMP=""
+    return 1
+}
+
+proxy_state() {
+    # Classifies one interface against RC_DUMP: sets PROXY_STATE to FOUND
+    # or NOT_FOUND. Must only be called after a successful load_rc_dump;
+    # always returns 0 (callers branch on $PROXY_STATE, keeping bare calls
+    # set -e-safe).
+    if printf '%s\n' "$RC_DUMP" | grep -qx "interface $1"; then
+        PROXY_STATE="FOUND"
+    else
+        PROXY_STATE="NOT_FOUND"
+    fi
+    return 0
 }
 
 proxy_is_project() {
-    ndmc -c "show running-config" 2>/dev/null | awk -v iface="$1" -v num="$2" '
+    # Ownership check against the validated RC_DUMP snapshot: BOTH project
+    # markers must sit in the same interface block.
+    printf '%s\n' "$RC_DUMP" | awk -v iface="$1" -v num="$2" '
         $0 == "interface " iface {pdesc=0; pup=0; inblk=1; next}
         inblk && /^!/ {if (pdesc && pup) found=1; inblk=0; next}
         inblk && $0 ~ "^ *description \"?mihomo t2s" num "\"? *$" {pdesc=1}
@@ -310,10 +348,20 @@ create_project_proxy() {
 select_project_proxy() {
     PROXY_IFACE=""
 
+    # The whole selection runs against one validated snapshot. If the
+    # snapshot cannot be validated the Proxy state is UNKNOWN and nothing
+    # is created or modified: empty PROXY_IFACE is the "no proxy" signal
+    # for the callers, and the self-check reports the undetermined state.
+    if ! load_rc_dump; then
+        warn "Cannot validate running-config, Proxy state UNKNOWN — no Proxy created or modified"
+        return 0
+    fi
+
     # 1) Reuse an existing project proxy (lowest number first).
     _n=0
     while [ "$_n" -lt "$MAX_PROXY_PROBE" ]; do
-        if proxy_exists "Proxy$_n" && proxy_is_project "Proxy$_n" "$_n"; then
+        proxy_state "Proxy$_n"
+        if [ "$PROXY_STATE" = "FOUND" ] && proxy_is_project "Proxy$_n" "$_n"; then
             PROXY_IFACE="Proxy$_n"
             log "Using existing project proxy ${PROXY_IFACE}"
             return 0
@@ -322,16 +370,26 @@ select_project_proxy() {
     done
 
     # 2) No project proxy exists: create Proxy0 when the slot is free.
-    if ! proxy_exists "Proxy0"; then
+    proxy_state "Proxy0"
+    if [ "$PROXY_STATE" = "NOT_FOUND" ]; then
         log "Creating project proxy Proxy0..."
         create_project_proxy "Proxy0"
         PROXY_IFACE="Proxy0"
+        # Refresh the snapshot: the pre-create dump legitimately lacks the
+        # interface this run just created, and ensure_bypass_policy_exit
+        # classifies against it. On a reload failure the downstream binding
+        # is skipped with a warning (safe direction, no mutation).
+        load_rc_dump || warn "Cannot re-validate running-config after create; bypass_wa binding may be skipped"
         return 0
     fi
 
     # 3) Proxy0 is foreign: leave it untouched, take the first free ProxyN.
     _n=1
-    while [ "$_n" -lt "$MAX_PROXY_PROBE" ] && proxy_exists "Proxy$_n"; do
+    while [ "$_n" -lt "$MAX_PROXY_PROBE" ]; do
+        proxy_state "Proxy$_n"
+        if [ "$PROXY_STATE" = "NOT_FOUND" ]; then
+            break
+        fi
         _n=$((_n+1))
     done
 
@@ -346,6 +404,9 @@ select_project_proxy() {
     log "Proxy0 is not project-managed, creating project proxy Proxy${_n}..."
     create_project_proxy "Proxy${_n}"
     PROXY_IFACE="Proxy${_n}"
+    # Same snapshot refresh as in step 2: the new interface must be visible
+    # to ensure_bypass_policy_exit.
+    load_rc_dump || warn "Cannot re-validate running-config after create; bypass_wa binding may be skipped"
 }
 
 select_project_proxy
@@ -369,15 +430,16 @@ ensure_bypass_policy_exit() {
     fi
     _num="${_px#Proxy}"
 
-    if ! proxy_exists "$_px"; then
+    # Bind only a project-managed proxy interface. Both markers are checked
+    # in the validated running-config snapshot: the upstream port is not
+    # visible in "show interface". A foreign Proxy interface is never
+    # modified and never used as the bypass_wa exit — the policy keeps
+    # exactly the exits its owner configured.
+    proxy_state "$_px"
+    if [ "$PROXY_STATE" != "FOUND" ]; then
         warn "${_px} not available, bypass_wa exit binding skipped"
         return 0
     fi
-
-    # Bind only a project-managed proxy interface. Both markers are checked
-    # in running-config: the upstream port is not visible in "show interface".
-    # A foreign Proxy interface is never modified and never used as the
-    # bypass_wa exit — the policy keeps exactly the exits its owner configured.
     if ! proxy_is_project "$_px" "$_num"; then
         warn "Existing ${_px} does not match the project profile (mihomo t2s${_num} / 127.0.0.1:7890), bypass_wa exit binding skipped"
         return 0
@@ -386,10 +448,12 @@ ensure_bypass_policy_exit() {
     # Find the policy block by its description (the policy NAME may differ,
     # e.g. Policy0 when created via web UI). Prints the policy name when it
     # lacks the project permit, "BOUND" when the permit already exists, and
-    # nothing when no bypass_wa policy exists. Running-config nests policy
-    # directives, so a plain grep would false-positive on other policies'
-    # permit lists; block state is evaluated when each block closes, not at END.
-    _pol_state=$(ndmc -c "show running-config" 2>/dev/null | awk -v px="$_px" '
+    # nothing when no bypass_wa policy exists. Read from the same validated
+    # snapshot that approved the ownership check, so both decisions see the
+    # same configuration state. Running-config nests policy directives, so
+    # a plain grep would false-positive on other policies' permit lists;
+    # block state is evaluated when each block closes, not at END.
+    _pol_state=$(printf '%s\n' "$RC_DUMP" | awk -v px="$_px" '
         /^ip policy / {if (inblk && pdesc && !ppermit) target=pname; if (inblk && pdesc && ppermit) bound=1; pname=$3; pdesc=0; ppermit=0; inblk=1; next}
         inblk && /^ *description bypass_wa *$/ {pdesc=1}
         inblk && $0 ~ "^ *permit global " px " *$" {ppermit=1}
@@ -522,13 +586,20 @@ else
 fi
 
 # Project proxy — Proxy0 or a free ProxyN when Proxy0 is foreign; both project
-# markers are verified in running-config (deterministic text output)
+# markers are verified against a freshly validated running-config snapshot.
+# An ndmc failure here is UNKNOWN: reported as FAIL, never misread as an
+# absent or non-project proxy.
 if [ -z "$PROXY_IFACE" ]; then
-    check_fail "No project proxy (Proxy0 is foreign and no free ProxyN found)"
-elif proxy_exists "$PROXY_IFACE" && proxy_is_project "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
-    check_ok "Project proxy ${PROXY_IFACE}: mihomo t2s${PROXY_IFACE#Proxy} -> 127.0.0.1:7890"
+    check_fail "No project proxy (ndmc read failed during selection, or no free ProxyN with foreign Proxy0)"
+elif ! load_rc_dump; then
+    check_fail "Proxy state cannot be determined (running-config read failed)"
 else
-    check_fail "Project proxy ${PROXY_IFACE} missing or does not match the project profile"
+    proxy_state "$PROXY_IFACE"
+    if [ "$PROXY_STATE" = "FOUND" ] && proxy_is_project "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
+        check_ok "Project proxy ${PROXY_IFACE}: mihomo t2s${PROXY_IFACE#Proxy} -> 127.0.0.1:7890"
+    else
+        check_fail "Project proxy ${PROXY_IFACE} missing or does not match the project profile"
+    fi
 fi
 
 # DNS transit interception

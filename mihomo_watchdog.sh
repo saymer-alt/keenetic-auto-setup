@@ -19,7 +19,8 @@
 # - Mihomo port availability check
 # - End-to-end SOCKS5h tunnel check
 # - Restart rate limiting (cooldown to prevent loops)
-# - Lock file protection & log rotation
+# - Stale-safe PID lock: auto-recovers after SIGKILL/hang, PID-reuse aware
+# - Hard --max-time on every probe so a stalled target cannot wedge the run
 # - Jitter for multi-router deployments (~20 nodes)
 
 # Cron: */5 * * * * /opt/bin/mihomo_watchdog.sh
@@ -59,18 +60,50 @@ LOG_KEEP_LINES=300
 
 
 # =========================================================
-# LOCK MECHANISM
+# LOCK MECHANISM (stale-safe)
 #
-# Prevents overlapping executions if a previous run hangs.
-# Trap ensures cleanup on any exit path (normal, interrupt, kill).
+# The lock file stores the holder PID. A fresh run:
+#   no lock file                     -> create atomically (noclobber), proceed
+#   lock unreadable/empty/garbage    -> stale, take over
+#   PID dead                         -> stale, take over
+#   PID alive, foreign process       -> stale, take over (covers PID reuse)
+#   PID alive AND its /proc cmdline mentions mihomo_watchdog
+#                                    -> live run in progress, skip silently
+#
+# /proc/<pid>/cmdline is always present on KeeneticOS (Linux kernel); the
+# check uses cat/grep only (BusyBox core, no new dependencies). After a
+# SIGKILL the lock survives, but the next run sees a dead PID and recovers
+# automatically — a live watchdog is never taken over.
 # =========================================================
 
+lock_create() {
+    # Atomic create: noclobber redirection fails if the file exists, so a
+    # concurrent winner keeps the lock. $$ inside ( ) is this script's PID.
+    ( set -C; echo "$$" > "$LOCK_FILE" ) 2>/dev/null
+}
+
+lock_is_our_watchdog() {
+    # True only when $1 is a live process whose cmdline mentions
+    # mihomo_watchdog. Anything else (dead PID, garbage, a reused PID now
+    # owned by another program) means the lock is stale.
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ -d "/proc/$1" ] || return 1
+    grep -q "mihomo_watchdog" "/proc/$1/cmdline" 2>/dev/null
+}
+
 if [ -f "$LOCK_FILE" ]; then
-    # Another instance is still running; skip silently
-    exit 0
+    _lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    if lock_is_our_watchdog "$_lock_pid"; then
+        # Another live watchdog holds the lock; skip silently
+        exit 0
+    fi
+    # Stale lock: dead, garbage or foreign PID — recover it and take over
+    rm -f "$LOCK_FILE"
 fi
 
-touch "$LOCK_FILE" || exit 0
+lock_create || exit 0
 
 cleanup() {
     rm -f "$LOCK_FILE"
@@ -190,7 +223,7 @@ wan_target_ok=""
 # ---------------------------------------------------------
 
 for target in $WAN_PRIMARY_TARGETS; do
-    if curl -s --connect-timeout 3 --head "$target" >/dev/null 2>&1; then
+    if curl -s --connect-timeout 3 --max-time 6 --head "$target" >/dev/null 2>&1; then
         wan_ok=1
         wan_target_ok="$target"
         break
@@ -208,7 +241,7 @@ if [ "$wan_ok" -eq 0 ]; then
     log "[WAN] Primary targets unavailable, checking whitelist targets"
 
     for target in $WAN_WHITELIST_TARGETS; do
-        if curl -s --connect-timeout 3 --head "$target" >/dev/null 2>&1; then
+        if curl -s --connect-timeout 3 --max-time 6 --head "$target" >/dev/null 2>&1; then
             wan_ok=1
             wan_target_ok="$target"
             break
@@ -238,7 +271,7 @@ log "[WAN] Connectivity OK via ${wan_target_ok}"
 # If port is closed, Mihomo is likely crashed or not started.
 # =========================================================
 
-if ! curl -s --connect-timeout 3 "http://$PROXY" >/dev/null 2>&1; then
+if ! curl -s --connect-timeout 3 --max-time 5 "http://$PROXY" >/dev/null 2>&1; then
     can_restart "Mihomo port unreachable"
     exit 0
 fi
