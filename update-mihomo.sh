@@ -272,6 +272,39 @@ get_avail_kb() {
   df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
 }
 
+# Restore a service that THIS updater stopped only to free space, when the
+# update aborts before the old binary is replaced. The old binary is still
+# in place, so starting it returns the system to its pre-update state.
+# A user-stopped service (SERVICE_WAS_STOPPED=0) is never touched here.
+# Phase-B aborts (old binary already removed) are handled by
+# rollback_and_exit and must not go through this path.
+restore_stopped_service() {
+  if [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
+    return 0
+  fi
+  if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+    log "Mihomo is already running again; nothing to restore."
+    return 0
+  fi
+  log "Update aborted before replacement: restarting Mihomo stopped by this updater..."
+  "$INIT_SCRIPT" start >/dev/null 2>&1 || true
+  if command -v pidof >/dev/null 2>&1; then
+    _i=0
+    while [ "$_i" -lt 5 ]; do
+      if pidof mihomo >/dev/null 2>&1; then
+        log "Old Mihomo is running again."
+        return 0
+      fi
+      sleep 1
+      _i=$((_i + 1))
+    done
+    log "WARNING: could not confirm Mihomo is running after restore."
+  else
+    log "pidof not available, skipping restore verification."
+  fi
+  return 0
+}
+
 # Remove stale backups in /opt to reclaim space
 cleaned=0
 for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
@@ -315,6 +348,9 @@ if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
 fi
 
 if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
+  # Phase-A abort: the old binary was never replaced, so a service this
+  # updater stopped for the recheck must not stay down.
+  restore_stopped_service
   error "Not enough free space on $MIHOMO_DIR (Projected: ${PROJECTED_KB} KB, Required: ${NEED_KB} KB). Free up space manually."
 fi
 
@@ -325,7 +361,11 @@ TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
 
 if [ -f "$MIHOMO_PATH" ]; then
   log "Backing up current binary to $TMP_BACKUP ..."
-  cp -f "$MIHOMO_PATH" "$TMP_BACKUP" || error "Failed to create backup in /tmp"
+  if ! cp -f "$MIHOMO_PATH" "$TMP_BACKUP"; then
+    # Phase-A abort: old binary untouched, restore what this updater stopped
+    restore_stopped_service
+    error "Failed to create backup in /tmp"
+  fi
 fi
 
 # -----------------------------
