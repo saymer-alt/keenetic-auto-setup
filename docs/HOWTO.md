@@ -288,7 +288,7 @@ opkg print-architecture | awk '/^arch/{print $2}'
 ```
 
 - `aarch64-3.10` (or `armv7-3.2`) → **`install.sh`** (full stack)
-- `mipsel-3.4` → start with the universal **`install.sh`** as well (it declares mipsel/mips support, but that path has not been re-tested recently); if it doesn't pass on your MT7621 — **`install_7621.sh`** (see [section 13](#13-mt7621--mipsel-specifics))
+- `mipsel-3.4` (MT7621 and similar) → the same universal **`install.sh`** — it is the single installer for all supported architectures.
 
 ---
 
@@ -314,18 +314,14 @@ If `opkg update` fails: fix DNS (`cat /opt/etc/resolv.conf`, try `echo "nameserv
 
 ### 3.1 The command
 
-**The primary path is the universal installer** (architecture auto-detection: aarch64/armv7, plus mipsel/mips; the mipsel path has not been re-tested recently):
+**The primary path is the universal installer** (architecture auto-detection: aarch64 / armv7 / mipsel / mips):
 
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-**MT7621, if the universal installer doesn't pass** — a dedicated installer for these devices; it works through `--insecure` and an HTTP mirror (certificate checking is traded for compatibility — the trade-off is described in [section 13](#13-mt7621--mipsel-specifics)):
-
-```bash
-curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
-```
+**MT7621 / mipsel devices** run the same universal installer — the same command above; there is no separate installer anymore.
 
 ### 3.2 What `install.sh` actually does
 
@@ -626,7 +622,7 @@ What it does, step by step:
 
 1. Lock file prevents parallel updates.
 2. RAM gate: aborts on devices with less than 256 MB (protects against OOM).
-3. Architecture check: aarch64 → `linux-arm64`, armv7 → `linux-armv7`. **MIPS/mipsel → refuses on purpose** (no official Mihomo binaries exist for it).
+3. Architecture check: aarch64 → `linux-arm64`, armv7 → `linux-armv7`. **MIPS/mipsel → refuses on purpose** — the updater does not support these architectures; update Mihomo there by re-running `install.sh` (fresh package install).
 4. Fetches the latest release tag from `MetaCubeX/mihomo` (GitHub API, web-redirect fallback).
 5. Compares with the installed version; same version → exit (unless `--force`).
 6. Downloads the `.gz` binary to `/tmp` (curl, wget fallback), decompresses, runs `binary -v` (architecture sanity), then a **config test against your live `config.yaml`**.
@@ -753,7 +749,7 @@ Not an error — the 300 s anti-loop protection doing its job.
 Classic MTU symptom on tunnels. Set tunnel MTU to 1200–1300 (1500 breaks under many ISPs' DPI/PPPoE). This is an MTU problem, not a routing problem.
 
 **VoIP still broken**
-Check the hook: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — counters must grow during a call, and the `bypass_wa` policy must point to a working VPN interface. Rebuild firewall or reboot to re-trigger the netfilter hook. Not covered on MT7621 installs (section 13).
+Check the hook: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — counters must grow during a call, and the `bypass_wa` policy must point to a working VPN interface. Rebuild firewall or reboot to re-trigger the netfilter hook.
 
 **Router became unstable after install**
 Almost always a 128 MB device. The toolkit is not supported there; tmpfs pushes such systems over the edge. Use `disk` mode at most — or better hardware.
@@ -782,22 +778,13 @@ The classic trap — do not start with Mihomo. In a whitelist network this patte
 
 ## 13. MT7621 / mipsel specifics
 
-The universal `install.sh` declares mipsel/mips support, but that path has not been re-tested on MT7621 recently. Compatible MT7621 devices have a dedicated `install_7621.sh`: it appeared because of TLS download failures observed on these devices ("`curl: (60)` and friends"; whether they are a platform trait is unconfirmed). It works around that with `--insecure` and an HTTP mirror, which **trades certificate checking for compatibility** — MITM is theoretically possible; downloads come only from fixed, known sources and the fallback package is version-pinned, which keeps the practical risk low, but understand the trade.
+MT7621/mipsel devices use the same universal `install.sh` — same command, same flow, same self-check. It has been live-tested on MT7621. There is no separate installer anymore: the legacy dedicated MT7621 installer (`--insecure` + HTTP mirror + a version-pinned package) was removed; its history lives in git and the CHANGELOG.
 
-Differences from `install.sh`:
+Platform notes that remain:
 
-| | install.sh | install_7621.sh |
-| --- | --- | --- |
-| Architecture | auto (aarch64/armv7/mipsel/mips) | mipsel (compatible MT7621) |
-| TLS | verified | `--insecure` + HTTP mirror |
-| MagiTrickle | ✅ | ❌ not installed |
-| bypass_wa (VoIP) | ✅ | ❌ not installed |
-| Mihomo source | `saymer-alt/entware-go` releases (latest) | HTTP mirror, fallback to a pinned `mihomo_1.19.23-1` ipk from this repo's `mihomo` tag |
-| Watchdog / Proxy0 / S00ubifs | ✅ | ✅ |
-
-Mihomo on MIPS: there are **no official Mihomo binaries** for mipsel — `update-mihomo.sh` intentionally refuses to run there. Do not "fix" it by dropping in random builds; use the opkg package or build manually ([docs/09](09-limitations.md)).
-
-Without MagiTrickle, routing on MT7621 is all-or-nothing (per-interface policies configured in KeeneticOS manually); without `bypass_wa`, VoIP calls ride through the proxy and will be as good (or bad) as your proxy handles UDP.
+- **128 MB RAM models are not supported** ([docs/06](06-s00ubifs.md)) — several MT7621-era devices fall into this group; the installer's RAM gate will stop there.
+- **Updating Mihomo on MIPS/mipsel:** upstream publishes official MIPS/MIPSLE builds (at least since 1.19.31), but `update-mihomo.sh` intentionally does not run on these architectures — the project's update path there is a fresh package install via `install.sh`, not a binary swap. Do not "fix" it by dropping random builds into `/opt`.
+- **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 
 ---
 

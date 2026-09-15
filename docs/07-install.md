@@ -1,6 +1,6 @@
-# install.sh и install_7621.sh
+# Подробно об установке (install.sh)
 
-Как работает установка и какой скрипт использовать.
+Как работает установка через единый `install.sh` и что он делает на роутере.
 
 ---
 
@@ -10,8 +10,10 @@
 
 | Ситуация | Скрипт |
 |----------|--------|
-| Любая поддерживаемая архитектура (aarch64 / armv7 / mipsel / mips) | install.sh |
-| MT7621, если install.sh не проходит | install_7621.sh |
+| Любая поддерживаемая архитектура (aarch64 / armv7 / mipsel / mips, включая MT7621) | install.sh |
+| Режим | по умолчанию `ram` (tmpfs); для внешнего носителя — `sh install.sh disk` |
+
+Установщик один для всех архитектур: команда та же, что в [Quick Start](02-quick-start.md).
 
 ---
 
@@ -22,8 +24,33 @@ opkg print-architecture | awk '/^arch/{print $2}'
 ```
 
 Примеры:
-- `aarch64-3.10` → install.sh (основной путь)
-- `mipsel-3.4` → тоже начните с install.sh; если на вашем MT7621 он не проходит → install_7621.sh
+
+- `aarch64-3.10` → install.sh
+- `armv7-3.2` → install.sh
+- `mipsel-3.4` → install.sh
+- `mips-3.4` → install.sh
+
+---
+
+## Режимы: ram и disk
+
+- `ram` (по умолчанию) — логи и временные файлы в tmpfs, защита флеш-памяти.
+- `disk` — установка с данными на внешнем носителе (USB HDD / NVMe).
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
+```
+
+Подробности tmpfs — [docs/06](06-s00ubifs.md).
+
+---
+
+## Для кого
+
+- Keenetic Giga / Ultra / Hero / Viva и другие совместимые, включая MT7621
+- aarch64 / armv7 / mipsel / mips
+- 256MB+ RAM (128 МБ не поддерживается — см. [docs/09](09-limitations.md))
 
 ---
 
@@ -31,133 +58,71 @@ opkg print-architecture | awk '/^arch/{print $2}'
 
 install.sh делает всё:
 
-1. opkg update
-2. Установка базовых пакетов
-3. Создание bypass_wa
-4. Установка S00ubifs
-5. Установка Mihomo
-6. Настройка Proxy0
-7. Установка MagiTrickle
-8. Установка watchdog
-9. Финальная проверка (порт 7890)
-
-install_7621.sh — сокращённая версия:
-
-* базовые пакеты: только `curl` и `cron`
-* S00ubifs + Mihomo + Proxy0 + watchdog
-* ❌ НЕ ставит MagiTrickle
-* ❌ НЕ создаёт policy bypass_wa
-* ❌ НЕ ставит 020-bypass_wa.sh (VoIP-обход)
+1. `opkg update`
+2. Базовые пакеты (`ca-bundle`, `curl`, `jq`, `nano`, `cron`)
+3. Политика `bypass_wa`
+4. Перехват транзитного DNS (`dns-proxy intercept enable`)
+5. S00ubifs (только ram-режим)
+6. Установка Mihomo
+7. Bootstrap `config.yaml` (`mixed-port: 7890`)
+8. Выбор проектного Proxy-интерфейса (`Proxy0` или первый свободный `ProxyN`)
+9. Привязка `bypass_wa` к проектному Proxy
+10. MagiTrickle
+11. VoIP-хук `020-bypass_wa.sh`
+12. Watchdog
+13. Перезапуск Mihomo и финальный self-check
 
 ---
 
-## install.sh (основной)
+## Проверка сертификатов (HTTPS)
 
-### Для кого
-
-- Keenetic Giga / Ultra / Hero / Viva и другие совместимые
-- aarch64 / armv7 (также mipsel/mips — mipsel-путь давно не проходил повторное тестирование)
-- 256MB+ RAM
-
----
-
-### Что делает лучше
-
-#### 1. Нормальный HTTPS
+Скачивание идёт по HTTPS с проверкой сертификатов:
 
 ```bash
 curl -fSsL https://...
-````
+```
 
 ✔ проверка сертификатов
 ✔ безопасная загрузка
 
 ---
 
-#### 2. Автоопределение архитектуры
+## Автоопределение архитектуры
 
-```bash id="o4u3s9"
+```bash
 ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
     sub(/[-_].*/,"",$2); print $2; exit
 }')
 ```
 
+Поддерживаемые суффиксы пакетов: `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4`.
+
 ---
 
-#### 3. Получение последней версии Mihomo
+## Откуда берётся Mihomo
 
-Пакет берётся из релизов `saymer-alt/entware-go`:
+PRIMARY — актуальный release `saymer-alt/entware-go`:
 
-```bash id="a2l9re"
+```bash
 https://api.github.com/repos/saymer-alt/entware-go/releases/latest
 ```
 
-✔ всегда свежая версия
-✔ без хардкода
+✔ версия из актуального релиза, без хардкода в скрипте
 
----
-
-#### 4. Fallback
+### Fallback-цепочка поиска пакета
 
 Если GitHub API не отвечает или jq не нашёл пакет:
 
 👉 grep по JSON → повторный запрос → парсинг HTML-страницы релизов
 
----
+### Last resort — Entware feed
 
-## install_7621.sh (для MT7621)
+Если весь GitHub-путь провалился до успешной установки (asset не найден,
+скачивание не удалось, пакет не установился):
 
-### Для кого
+👉 `opkg install mihomo` из настроенного Entware feed
 
-* MT7621 / MT7628
-* совместимые старые Keenetic
-* когда универсальный install.sh не проходит (например, ошибки SSL)
-
----
-
-### Наблюдаемая проблема этих роутеров
-
-👉 TLS-сбои при скачивании («curl: (60)» и друзья); подтверждены ли они свойством платформы — нет
-
----
-
-### Поэтому используется
-
-```bash id="y3h8ka"
-curl --insecure
-```
-
----
-
-### Что это значит
-
-* TLS есть
-* НО сертификаты не проверяются
-
----
-
-### Риски
-
-⚠ MITM-атака теоретически возможна
-
----
-
-### Почему это осознанный трейдофф
-
-* скачивание только с известных источников
-* если универсальный install.sh на устройстве проходит — используйте его; install_7621.sh — запасной путь
-
----
-
-## Ключевые отличия
-
-|             | install.sh | install_7621.sh |
-| ----------- | ---------- | --------------- |
-| TLS         | строгий    | insecure        |
-| Архитектура | авто       | mipsel          |
-| Состав      | полный (MagiTrickle, bypass_wa, VoIP) | только Mihomo + Proxy0 + S00ubifs + watchdog |
-| Fallback    | есть       | минимальный     |
-| Надёжность  | высокая    | компромисс      |
+Переход печатается WARN'ом. Версия из Entware feed может быть старее сборки GitHub.
 
 ---
 
@@ -179,7 +144,7 @@ curl: (6) Could not resolve host
 
 ### Решение
 
-```bash id="r8y5dp"
+```bash
 echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf
 echo "nameserver 8.8.8.8" >> /opt/etc/resolv.conf
 ```
@@ -203,17 +168,13 @@ echo "nameserver 8.8.8.8" >> /opt/etc/resolv.conf
 
 ### Решение
 
-```bash id="p6n3vk"
+```bash
 ntpd -q -p pool.ntp.org
 ```
 
 ---
 
 ## Самая частая проблема №3 — DoH/DNS
-
-👉 твой реальный кейс
-
----
 
 ### Симптом
 
@@ -264,7 +225,7 @@ ntpd -q -p pool.ntp.org
 
 ### 1. Добавить config.yaml
 
-```bash id="t5k2ds"
+```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
@@ -272,7 +233,7 @@ nano /opt/etc/mihomo/config.yaml
 
 ### 2. Перезапустить
 
-```bash id="z1x7lw"
+```bash
 /opt/etc/init.d/S99mihomo restart
 ```
 
@@ -280,7 +241,7 @@ nano /opt/etc/mihomo/config.yaml
 
 ### 3. Проверить
 
-```bash id="d2k9wr"
+```bash
 /opt/etc/init.d/S99mihomo status
 ```
 
@@ -288,7 +249,7 @@ nano /opt/etc/mihomo/config.yaml
 
 ### 4. Проверить прокси
 
-```bash id="m8p4sd"
+```bash
 curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 ```
 
@@ -300,13 +261,16 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 
 ---
 
-## Диагностика из install.sh
+## Self-check в конце установки
 
-В конце скрипт перезапускает Mihomo и проверяет, что порт 7890 слушает (`netstat`/`ss`).
+В конце install.sh выполняет самопроверку и печатает `[ok] / [WARN] / [FAIL]` по каждому
+пункту: бинарник Mihomo и `mihomo -v`, init-скрипт `S99mihomo`, проектный Proxy-интерфейс,
+перехват транзитного DNS, bypass-правила, permit в политике `bypass_wa`, watchdog
+(бинарник, cron-обёртка, запись в crontab), cron, MagiTrickle, S00ubifs (в ram-режиме),
+синтаксис `config.yaml` (`mihomo -t`), порт 7890, свободное место на `/opt`.
 
-👉 если порт слушает — установка успешна
-
-⚠️ Полная диагностика (tmpfs, MagiTrickle, bypass) отдельно не выполняется — см. `08-troubleshooting.md`
+- любой `[FAIL]` — установка считается неполной, скрипт завершается с ошибкой;
+- `[WARN]` установку не прерывают, но их стоит просмотреть.
 
 ---
 
@@ -316,28 +280,15 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 * кривой DNS
 * экспериментировал и всё развалилось
 
----
-
-## Итог
-
-install.sh:
-
-✔ нормальная установка
-✔ безопасная
-✔ для любых поддерживаемых архитектур
-
----
-
-install_7621.sh:
-
-✔ работает на MT7621, где install.sh не проходит
-⚠ компромисс по безопасности (--insecure)
-⚠ запасной путь, а не основной
+Повторный запуск безопасен: изменяющие шаги сначала проверяют, существует ли объект
+(пакеты, политика, Proxy-интерфейс, запись в crontab) и ничего не задублируют.
+Нюанс: mihomo-пакет скачивается при каждом запуске — opkg пропустит ту же версию,
+новую установит.
 
 ---
 
 ## Коротко
 
-👉 любой поддерживаемый роутер → начните с install.sh
-👉 MT7621, если install.sh не проходит → install_7621.sh
+👉 любой поддерживаемый роутер (включая MT7621) → install.sh
 👉 128MB → даже не начинай
+👉 если что-то пошло не так → [08-troubleshooting.md](08-troubleshooting.md)

@@ -18,7 +18,7 @@
 
 ## 📍 Текущий статус
 
-- ✔ Автоустановка (install.sh / install_7621.sh)
+- ✔ Автоустановка (install.sh — единый путь: aarch64 / armv7 / mipsel / mips)
 - ✔ Mihomo + проектный ProxyN (Proxy0 или первый свободный; чужой Proxy0 не трогается)
 - ✔ bootstrap config.yaml (mixed-port: 7890, без зависимости от placeholder пакета)
 - ✔ MagiTrickle

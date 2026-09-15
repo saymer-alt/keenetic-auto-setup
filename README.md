@@ -153,6 +153,6 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 ### Дополнительно
 
-- [Второй установщик](docs/07-install.md)
+- [Подробно об установке](docs/07-install.md)
 - [CHANGELOG](CHANGELOG.md)
 - [Лицензия](LICENSE)

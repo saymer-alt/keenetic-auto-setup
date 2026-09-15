@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- Legacy `install_7621.sh` removed. The universal `install.sh` is the single supported installer for aarch64, armv7, mipsel and mips (live-tested on MT7621). Historical release notes below still mention the legacy installer — kept as history.
 - VPS/Ubuntu notes and server-side materials (`scripts/ubuntu*.md`, `debian1.md`, `setup_debian12*.sh`, `mieru.md`) moved to `saymer-alt/vps-gateway-bootstrap`.
 - Personal Entware service utility (`scripts/service`) removed from this repository (preserved in `saymer-alt/keenetic-knowledge-base`).
 

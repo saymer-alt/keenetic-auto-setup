@@ -153,6 +153,6 @@ Details and logs → [Watchdog](../04-watchdog.md).
 
 ### Additional
 
-- [Second installer](../07-install.md)
+- [Installation details](../07-install.md)
 - [CHANGELOG](../../CHANGELOG.md)
 - [License](../../LICENSE)

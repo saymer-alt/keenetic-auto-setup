@@ -22,7 +22,7 @@
 
 ### Основной путь — универсальный `install.sh`
 
-Автоопределение архитектуры: aarch64/armv7, а также mipsel/mips (mipsel-путь давно не проходил повторное тестирование).
+Автоопределение архитектуры: aarch64 / armv7 / mipsel / mips (включая MT7621).
 
 ```bash
 opkg update && opkg install curl && \
@@ -31,13 +31,9 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 ---
 
-### MT7621: если универсальный не проходит
+### MT7621 / mipsel
 
-Если предыдущая команда падает (SSL / curl ошибки):
-
-```bash
-curl -k -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install_7621.sh | sh
-```
+Та же команда `install.sh` — отдельного установщика больше нет.
 
 ---
 

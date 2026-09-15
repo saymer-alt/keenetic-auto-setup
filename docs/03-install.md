@@ -402,18 +402,11 @@ which opkg
 
 ---
 
-## Разница install.sh и install_7621.sh
+## Подробнее про установку
 
-Коротко:
+Как именно работает install.sh — архитектуры, источник пакета, fallback-цепочка,
+self-check:
 
-|              | install.sh  | install_7621.sh       |
-| ------------ | ----------- | --------------------- |
-| CPU          | авто: aarch64/armv7/mipsel/mips | mipsel (совместимые MT7621) |
-| SSL          | нормальный  | `--insecure`          |
-| состав       | полный      | без MagiTrickle и bypass_wa |
-| стабильность | высокая     | компромисс            |
-
-Подробнее:
 → `07-install.md`
 
 ---
