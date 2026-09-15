@@ -199,18 +199,39 @@ if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     fi
 fi
 
-[ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ] && \
-    err "No mihomo ipk found for arch suffix: ${IPK_SUFFIX}. Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+# GitHub Releases (saymer-alt/entware-go) are the PRIMARY package source;
+# the Entware feed install below is a LAST RESORT, not an equal alternative.
+MIHOMO_INSTALLED=0
 
-log "Found: $(basename "$DOWNLOAD_URL")"
-log "Downloading..."
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    warn "No mihomo ipk found for arch suffix: ${IPK_SUFFIX}. Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+else
+    log "Found: $(basename "$DOWNLOAD_URL")"
+    log "Downloading..."
+    if retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk"; then
+        log "Installing package..."
+        if opkg install "$TMP_DIR/mihomo.ipk"; then
+            MIHOMO_INSTALLED=1
+        else
+            warn "Mihomo install from the downloaded GitHub package failed"
+        fi
+    else
+        warn "Failed to download mihomo ipk"
+    fi
+fi
 
-retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk" || err "Failed to download mihomo ipk"
-
-log "Installing package..."
-opkg install "$TMP_DIR/mihomo.ipk" || err "Mihomo install failed"
-
+# Timely cleanup after the GitHub attempt (the EXIT trap is only a backstop):
+# a failed attempt must not leave a partial ipk in /tmp.
 rm -f "$TMP_DIR/mihomo.ipk"
+
+# LAST RESORT: package `mihomo` from the configured Entware feed. Reached
+# only after the whole GitHub path failed before a successful install; the
+# feed version may be older than the GitHub release build.
+if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
+    warn "GitHub Mihomo package unavailable, trying Entware feed fallback..."
+    opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
+    log "Mihomo installed from Entware feed fallback (version may be older than the GitHub release build)"
+fi
 
 MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
 log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
