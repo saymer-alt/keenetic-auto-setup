@@ -44,13 +44,44 @@ Proxy0 передаёт соединения на `127.0.0.1:7890`. TUN — вт
 | --- | --- |
 | `enable` | включает TUN |
 | `device` | имя создаваемого интерфейса (например, `mitun0`) |
-| `stack` | кто обрабатывает пакеты: `system` (стек ОС) / `gvisor` (пользовательский) / `mixed`; **дефолт — `gvisor`**, документация рекомендует `mixed` (с оговоркой про firewall) |
+| `stack` | кто обрабатывает пакеты: `system` (стек ОС) / `gvisor` (пользовательский) / `mixed` / `mips` — **Mihomo IP Stack**, собственный userspace IP stack Mihomo, доступен начиная с 1.19.31 (см. «Не путать» ниже); **дефолт — `gvisor`**, документация рекомендует `mixed` (с оговоркой про firewall) |
 | `auto-route` | автоматически создаёт глобальные маршруты в TUN-интерфейс |
 | `auto-redirect` | Linux: автоматически настраивает iptables/nftables для редиректа TCP (требует `auto-route`) |
 | `auto-detect-interface` | автоопределение выходного интерфейса; документация для multi-WAN рекомендует задавать интерфейс вручную (см. ARCHITECTURE: interface-name ≠ WAN) |
 | `dns-hijack` | перехват DNS: соединения под условие (например, `any:53`) перенаправляются во **внутренний DNS-модуль ядра** |
 | `mtu` | MTU интерфейса |
 | `strict-route` | жёсткие маршруты при `auto-route` (защита от утечек; может ломать часть ПО) |
+
+### Не путать: четыре разных понятия вокруг «mips» и TUN
+
+Реальные структуры в `config.yaml` — секция `tun` на верхнем уровне и `ip-stack`
+внутри конкретного WireGuard/AWG outbound:
+
+```yaml
+tun:
+  device: mitun0   # имя TUN-интерфейса
+  stack: mips      # IP stack обработки TUN-трафика
+
+proxies:
+  - type: wireguard
+    ip-stack:
+      mode: mips   # IP stack этого конкретного WireGuard/AWG outbound
+```
+
+- **`device: mitun0`** (внутри `tun`) — просто имя TUN-интерфейса; к выбору stack
+  отношения не имеет.
+- **`tun.stack: mips`** — `mips` здесь означает **Mihomo IP Stack** — собственный
+  userspace IP stack Mihomo для TUN (доступен начиная с 1.19.31) — и не связан
+  с архитектурой процессора MIPS.
+- **`ip-stack.mode` внутри WireGuard/AWG outbound в `proxies`** — внутренний IP stack
+  этого конкретного outbound'а (см. [28-proxies.md](28-proxies.md)); отдельная
+  настройка, к TUN stack отношения не имеет.
+- **MIPS / mipsel CPU** — архитектура процессора (например, MT7621). Сама по себе
+  CPU-архитектура не запрещает использование stack `mips`.
+
+Проект не утверждает, что `stack: mips` быстрее, легче или лучше `gvisor`/`mixed`.
+На Keenetic этот вариант пока считается **экспериментальным до сравнительных
+live-тестов**.
 
 ---
 

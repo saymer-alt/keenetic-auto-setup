@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Project proxy selection: the installer reuses an existing project proxy interface matched by both description (`mihomo t2sN`) and upstream (`127.0.0.1 7890`); otherwise it creates `Proxy0` when the slot is free, or the first free `ProxyN` — a foreign `Proxy0` is never modified.
 - Automatic `bypass_wa` binding: the policy (found by its description) is bound to the selected project proxy with `permit global`. Existing permits — e.g. a manual VPN binding — are never removed or reordered; a missing policy produces a warning instead of a silently created one.
 - `docs/EN/README.md`: English entry point, kept in sync with the Russian README.
+- `install.sh`: last-resort Mihomo install fallback — `opkg install mihomo` from the configured Entware feed. Used only after the whole GitHub path (asset lookup → download → package install) has failed before a successful install; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
 
 ### Changed
 

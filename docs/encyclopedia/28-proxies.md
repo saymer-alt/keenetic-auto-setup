@@ -78,6 +78,26 @@ proxies:
 
 ---
 
+## Заметка про WireGuard/AWG
+
+У outbound'а типа `wireguard` есть собственные настройки IP stack. Они относятся
+**только к этому outbound'у**, а не к TUN (разбор TUN и его stack —
+[31-tun.md](31-tun.md)):
+
+```yaml
+ip-stack:
+  mode: auto          # auto / gvisor / mips; mips = Mihomo IP Stack, не CPU-архитектура
+  congestion-controller: cubic   # для Mihomo IP Stack: cubic / reno / bbr / bbr3
+```
+
+Полный набор параметров — в [официальной документации](https://wiki.metacubex.one/ru/config/proxies/).
+
+Из истории совместимости: в Mihomo 1.19.31 исправлены `RandomPaddingAddition` и
+`DisableCookies` для AmneziaWG v3 — это исправление работы существовавшего режима,
+а не его появление.
+
+---
+
 ## Узел ≠ группа
 
 - **Узел (proxy)** — один конкретный сервер с параметрами подключения.
