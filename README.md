@@ -77,6 +77,12 @@ mihomo -t -f /opt/etc/mihomo/config.yaml
 
 `127.0.0.1:7890`
 
+Комплексная проверка установки — read-only Doctor (ничего не меняет и ничего не перезапускает; весь вывод можно целиком отправить разработчику):
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+```
+
 Подробности → [проверка работы](docs/08-troubleshooting.md).
 
 ## 4. Управление Mihomo

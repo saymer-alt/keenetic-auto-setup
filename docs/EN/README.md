@@ -77,6 +77,12 @@ Mihomo proxy:
 
 `127.0.0.1:7890`
 
+Full installation check — the read-only Doctor (changes nothing and restarts nothing; the whole output can be pasted for support):
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+```
+
 Details → [Troubleshooting](../08-troubleshooting.md).
 
 ## 4. Mihomo UI
