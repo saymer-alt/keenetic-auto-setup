@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.0.0 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.1.0 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -9,7 +9,8 @@
 #   installs, updates or removes anything; never touches
 #   config.yaml or Keenetic configuration; never creates
 #   Proxy interfaces; never starts/stops/restarts Mihomo;
-#   never runs install.sh / update-mihomo.sh / opkg.
+#   never runs install.sh / update-mihomo.sh, and never
+#   modifies anything via opkg (read-only opkg queries only).
 # It is safe to run at any time and safe to paste the whole
 # output into a support chat: no config contents, secrets,
 # subscription URLs or proxy credentials are printed.
@@ -325,15 +326,51 @@ fi
 hdr "3. Mihomo binary"
 # =========================================================
 
-if [ -f "$MIHOMO_PATH" ]; then
-    BIN="$MIHOMO_PATH"
-elif COMMAND_PATH=$(command -v mihomo 2>/dev/null) && [ -n "$COMMAND_PATH" ]; then
-    BIN="$COMMAND_PATH"
-    info "Binary not at $MIHOMO_PATH, found via PATH: $BIN"
+# Runtime resolution (mirrors update-mihomo.sh / migrate-mihomo-mips.sh):
+# the running daemon's /proc/<pid>/exe is authoritative when it names a
+# canonical path; otherwise /opt/sbin/mihomo (the Entware init PATH
+# order), then /opt/bin/mihomo. Nested copies such as meta-backup/mihomo
+# are never selected as the diagnostic subject; they are only reported
+# as extras. Read-only-specific: everything below respects DOCTOR_OPT_ROOT.
+RUNTIME_EXE=""
+_RUNTIME_SEEN=""
+_READLINK_FAILED=0
+if command -v pidof >/dev/null 2>&1; then
+    for _p in $(pidof mihomo 2>/dev/null); do
+        _exe=$(readlink "/proc/$_p/exe" 2>/dev/null)
+        if [ -z "$_exe" ]; then
+            _READLINK_FAILED=1
+            continue
+        fi
+        _RUNTIME_SEEN="$_exe"
+        if [ "$_exe" = "$OPT_ROOT/sbin/mihomo" ] || [ "$_exe" = "$OPT_ROOT/bin/mihomo" ]; then
+            RUNTIME_EXE="$_exe"
+            break
+        fi
+    done
+fi
+if [ -n "$RUNTIME_EXE" ]; then
+    BIN="$RUNTIME_EXE"
+    info "Runtime binary resolved from the running daemon (/proc/<pid>/exe): $BIN"
 else
-    fail "Mihomo binary not found ($MIHOMO_PATH)"
-    info "Install with install.sh - the doctor does not install anything."
-    BIN_STATE="missing"
+    if [ -n "$_RUNTIME_SEEN" ]; then
+        info "Running daemon executes: $_RUNTIME_SEEN (non-canonical path - reported, never selected as the runtime)"
+    elif [ "$_READLINK_FAILED" = "1" ]; then
+        info "Could not inspect /proc/<pid>/exe - falling back to the deterministic path order"
+    fi
+    if [ -f "$OPT_ROOT/sbin/mihomo" ]; then
+        BIN="$OPT_ROOT/sbin/mihomo"
+        info "Diagnostic subject resolved by the init PATH order: $BIN (/opt/sbin precedes /opt/bin)"
+    elif [ -f "$MIHOMO_PATH" ]; then
+        BIN="$MIHOMO_PATH"
+    elif COMMAND_PATH=$(command -v mihomo 2>/dev/null) && [ -n "$COMMAND_PATH" ]; then
+        BIN="$COMMAND_PATH"
+        info "Binary not at $OPT_ROOT/sbin/mihomo or $MIHOMO_PATH, found via PATH: $BIN"
+    else
+        fail "Mihomo binary not found ($OPT_ROOT/sbin/mihomo, $MIHOMO_PATH)"
+        info "Install with install.sh - the doctor does not install anything."
+        BIN_STATE="missing"
+    fi
 fi
 
 if [ -n "$BIN" ]; then
@@ -351,7 +388,7 @@ if [ -n "$BIN" ]; then
 
     EXTRA_BINS=$(find "$OPT_ROOT" -name mihomo -type f 2>/dev/null | grep -v "^$BIN\$" | head -n 4)
     if [ -n "$EXTRA_BINS" ]; then
-        warn "Additional mihomo binaries found - update-mihomo.sh picks the first find() hit, which is an undefined selection:"
+        info "Additional mihomo files present (never selected as the runtime by update-mihomo.sh / migrate-mihomo-mips.sh):"
         printf '%s\n' "$EXTRA_BINS" | while IFS= read -r _x; do info "  $_x"; done
     fi
 
@@ -410,6 +447,18 @@ if [ -n "$BIN" ]; then
             info "Output: $(first_line "$MV_OUT")"
             info "Confirmed live on a 256 MB MIPSLE device (no swap): a second Mihomo execution while the daemon is running SIGSEGVs regardless of UPX packing - the packed installed binary and an UPX-unpacked build both crashed, and the same binary passed once the daemon was stopped. UPX is not the established cause."
             info "Likely mechanism: memory pressure from two concurrent Mihomo instances. If the Service section below shows Mihomo running, re-run the doctor with the service stopped to test the binary alone. The doctor modifies nothing."
+        fi
+    fi
+    if command -v opkg >/dev/null 2>&1; then
+        _opkg_mihomo=$(opkg list-installed 2>/dev/null | awk '$1 == "mihomo" { print $2; exit }')
+        if [ -n "$_opkg_mihomo" ]; then
+            if [ -n "$BIN_VER" ] && [ "$_opkg_mihomo" != "$BIN_VER" ]; then
+                info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected under the binary-update model; the binary version above is the runtime truth)"
+            else
+                info "opkg database: mihomo $_opkg_mihomo"
+            fi
+        else
+            info "opkg database has no mihomo entry (expected: the updater replaces the binary without touching opkg)"
         fi
     fi
 fi
