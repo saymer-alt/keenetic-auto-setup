@@ -44,7 +44,18 @@
 #     restarts Mihomo whenever its port is unreachable — which it is
 #     during this downtime. The short downtime is intended; the previous
 #     service state is restored afterwards. A running Mihomo without an
-#     init script is an abort, never a second instance.
+#     init script is an abort, never a second instance. The rule covers
+#     the INSTALLED binary as well: while a Mihomo daemon may be running
+#     (pidof reports it, or pidof is unavailable so the state is unknown),
+#     the installed-version probe (`mihomo -v` on the installed ELF) is
+#     deferred until after the controlled stop — a second execution at
+#     that moment is the documented SIGSEGV pattern (rc=139) on 256 MB
+#     devices, and after the stop it is safe. The version decision then
+#     happens with the daemon down; the "already up to date" and
+#     downgrade-skip exits restore the service. Re-running the updater on
+#     a current version with the daemon up therefore costs one package
+#     download and a short planned downtime instead of a blind second
+#     ELF execution.
 #   - No automatic downgrade: the available version is numerically compared
 #     with the installed one (the updater's truth is `mihomo -v`, not opkg).
 #     An older available version — or one that cannot be reliably ordered,
@@ -386,19 +397,66 @@ fi
 [ -z "$RELEASE_JSON" ] && error "Failed to fetch release information from $REPO"
 
 # -----------------------------
-# 5. Find currently installed mihomo
+# 5. Find currently installed mihomo (deterministic resolution; see the
+#    resolver comment for the source-of-truth order)
 # -----------------------------
-MIHOMO_PATH=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
-[ -z "$MIHOMO_PATH" ] && MIHOMO_PATH=$(which mihomo 2>/dev/null)
-[ -z "$MIHOMO_PATH" ] && error "Cannot find installed mihomo binary. Use install.sh to install it first."
+# -----------------------------
+# Resolve the Mihomo runtime binary deterministically. The Entware init
+# script resolves `mihomo` through a PATH in which /opt/sbin precedes
+# /opt/bin, so a router keeping both copies runs /opt/sbin/mihomo
+# (live-verified through /proc/<pid>/exe). A running daemon's
+# /proc/<pid>/exe is authoritative when it names one of these two
+# canonical paths; nested copies such as meta-backup/mihomo are never
+# considered.
+# -----------------------------
+resolve_mihomo_binary() {
+  if command -v pidof >/dev/null 2>&1; then
+    for _p in $(pidof mihomo 2>/dev/null); do
+      _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
+      if [ "$_exe" = "/opt/sbin/mihomo" ] || [ "$_exe" = "/opt/bin/mihomo" ]; then
+        if [ -x "$_exe" ]; then
+          printf '%s\n' "$_exe"
+          return 0
+        fi
+      fi
+    done
+  fi
+  if [ -x /opt/sbin/mihomo ]; then
+    printf '%s\n' /opt/sbin/mihomo
+    return 0
+  fi
+  if [ -x /opt/bin/mihomo ]; then
+    printf '%s\n' /opt/bin/mihomo
+    return 0
+  fi
+  return 0
+}
+
+MIHOMO_PATH=$(resolve_mihomo_binary)
+[ -z "$MIHOMO_PATH" ] && error "Cannot find installed mihomo binary at /opt/sbin/mihomo or /opt/bin/mihomo. Use install.sh to install it first."
 
 MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
+# One-instance rule for the INSTALLED binary too: while a daemon may be
+# running (pidof reports mihomo, or pidof is unavailable so the state is
+# unknown), executing a second Mihomo ELF is the documented SIGSEGV
+# pattern on memory-constrained devices. Defer the version probe until
+# after the controlled stop; only a confirmed-down daemon allows the
+# early probe (the fast, zero-downtime "already up to date" path).
+DEFER_VERSION_DECISION=1
+if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+  DEFER_VERSION_DECISION=0
+fi
 CURRENT_VER=""
-if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
-  CURRENT_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
-  CURRENT_VER=${CURRENT_VER#v}
+if [ "$DEFER_VERSION_DECISION" -eq 0 ]; then
+  if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
+    CURRENT_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
+    CURRENT_VER=${CURRENT_VER#v}
+  fi
+fi
+if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
+  log "Mihomo may be running — the installed-version probe is deferred until after the controlled stop (one-instance rule)."
 fi
 log "Current Mihomo: ${CURRENT_VER:-unknown}"
 
@@ -482,7 +540,9 @@ log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
 # manual task. Exact string equality short-circuits first, so devices on a
 # prerelease are recognized as up to date when the same version is packaged.
 # An unreadable current version is treated as a repair case.
-if [ -z "$CURRENT_VER" ]; then
+if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
+  log "Version decision deferred until after the controlled stop — the package is fetched so the comparison can be made safely."
+elif [ -z "$CURRENT_VER" ]; then
   log "Current version unknown — attempting repair with the available package."
 elif [ "$CURRENT_VER" = "$AVAILABLE_VER" ]; then
   if [ "$FORCE_UPDATE" -eq 0 ]; then
@@ -634,6 +694,49 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     log "Stopping old Mihomo before running the new binary..."
   fi
   stop_mihomo_confirmed
+fi
+
+# -----------------------------
+# 12b. Deferred installed-version decision (one-instance path). The old
+# daemon is confirmed down (or was never running), so probing the
+# installed binary is safe here. Same decision rules as the early
+# comparison; every exit restores the service this updater stopped.
+# -----------------------------
+if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
+  INSTALLED_VER=""
+  if VERSION_OUTPUT=$("$MIHOMO_PATH" -v 2>/dev/null); then
+    INSTALLED_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
+    INSTALLED_VER=${INSTALLED_VER#v}
+  fi
+  if [ -z "$INSTALLED_VER" ]; then
+    log "Installed version still unreadable after the stop — proceeding with the repair update."
+  elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
+    if [ "$FORCE_UPDATE" -eq 0 ]; then
+      if [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
+        log "Already up to date ($INSTALLED_VER) — verified after the controlled stop."
+      else
+        log "Already up to date ($INSTALLED_VER) — verified without pidof; the service state could not be confirmed."
+      fi
+      restore_stopped_service
+      exit 0
+    fi
+    log "Same version ($INSTALLED_VER) and --force given: replacing the binary anyway."
+  else
+    _ver_rel=$(ver_compare "$AVAILABLE_VER" "$INSTALLED_VER")
+    if [ "$_ver_rel" = "gt" ]; then
+      log "Update confirmed after the stop: $INSTALLED_VER -> $AVAILABLE_VER."
+    elif [ "$_ver_rel" = "lt" ]; then
+      warn "Available version ($AVAILABLE_VER) is older than the installed one ($INSTALLED_VER). Automatic downgrade is not performed; binary left untouched."
+      restore_stopped_service
+      log "Nothing to do."
+      exit 0
+    else
+      warn "Cannot reliably order versions ($AVAILABLE_VER vs $INSTALLED_VER). Automatic downgrade protection: binary left untouched."
+      restore_stopped_service
+      log "Nothing to do."
+      exit 0
+    fi
+  fi
 fi
 
 # -----------------------------

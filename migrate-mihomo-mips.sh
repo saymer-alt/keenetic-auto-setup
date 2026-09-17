@@ -266,9 +266,42 @@ for arg in "$@"; do
 done
 
 # -----------------------------
-# Shared discovery
+# Shared discovery. Binary resolution is deterministic (see the resolver
+# comment); the init-script glob is bounded to /opt/etc/init.d.
 # -----------------------------
-MIHOMO_BIN=$(find /opt -name "mihomo" -type f 2>/dev/null | head -1)
+# -----------------------------
+# Resolve the Mihomo runtime binary deterministically. The Entware init
+# script resolves `mihomo` through a PATH in which /opt/sbin precedes
+# /opt/bin, so a router keeping both copies runs /opt/sbin/mihomo
+# (live-verified through /proc/<pid>/exe). A running daemon's
+# /proc/<pid>/exe is authoritative when it names one of these two
+# canonical paths; nested copies such as meta-backup/mihomo are never
+# considered.
+# -----------------------------
+resolve_mihomo_binary() {
+  if command -v pidof >/dev/null 2>&1; then
+    for _p in $(pidof mihomo 2>/dev/null); do
+      _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
+      if [ "$_exe" = "/opt/sbin/mihomo" ] || [ "$_exe" = "/opt/bin/mihomo" ]; then
+        if [ -x "$_exe" ]; then
+          printf '%s\n' "$_exe"
+          return 0
+        fi
+      fi
+    done
+  fi
+  if [ -x /opt/sbin/mihomo ]; then
+    printf '%s\n' /opt/sbin/mihomo
+    return 0
+  fi
+  if [ -x /opt/bin/mihomo ]; then
+    printf '%s\n' /opt/bin/mihomo
+    return 0
+  fi
+  return 0
+}
+
+MIHOMO_BIN=$(resolve_mihomo_binary)
 INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
 
 # -----------------------------
@@ -288,13 +321,28 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   else
     warn "Could not read the version (crash under memory pressure with the daemon running?)"
   fi
+  # Support state controls how the config findings below may be worded:
+  # supported   = the probe passed;
+  # unsupported = the binary positively rejected the stack;
+  # unknown     = the probe could not run safely (crash/error, e.g. memory
+  #               pressure with the daemon running) — --check never stops a
+  #               working service to make the probe succeed.
+  GATE_STATE="unknown"
   if support_gate "$GATE_HOME"; then
+    GATE_STATE="supported"
     echo "[OK] tun.stack: mips is supported by this binary"
   else
     case "$GATE_REASON" in
-      unsupported) echo "[SKIP] tun.stack: mips is NOT supported by this binary (needs mihomo >= $MIN_VERSION)" ;;
-      crash)       echo "[SKIP] support probe crashed (likely memory pressure with the daemon running) — rerun --check with the service stopped" ;;
-      *)           warn "Support probe failed for an unexpected reason" ;;
+      unsupported)
+        GATE_STATE="unsupported"
+        echo "[SKIP] tun.stack: mips is NOT supported by this binary (needs mihomo >= $MIN_VERSION)"
+        ;;
+      crash)
+        warn "Support could not be verified: the probe crashed (memory pressure with the daemon running?). Apply mode performs the definitive gate after its controlled stop."
+        ;;
+      *)
+        warn "Support could not be verified: the probe failed for an unexpected reason. Apply mode performs the definitive gate after its controlled stop."
+        ;;
     esac
   fi
   if [ -f "$CONFIG" ]; then
@@ -302,9 +350,17 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     _m=$(count_mips "$CONFIG")
     log "TUN stack keys found: gvisor=$_g mips=$_m"
     if [ "$_g" -gt 0 ]; then
-      echo "[OK] migration would rewrite $_g stack line(s) to mips"
+      case "$GATE_STATE" in
+        supported)   echo "[OK] migration would rewrite $_g stack line(s) to mips" ;;
+        unsupported) echo "[SKIP] $_g stack line(s) would become mips, but this binary does not support them — update Mihomo first" ;;
+        *)           warn "$_g stack line(s) would become mips, but support is UNVERIFIED — apply mode performs the definitive gate (controlled stop, automatic rollback)" ;;
+      esac
     elif [ "$_m" -gt 0 ]; then
-      echo "[SKIP] already migrated (stack: mips present)"
+      case "$GATE_STATE" in
+        unsupported) warn "stack: mips is already in the config, but this binary does not support it — Mihomo may fail to load this config" ;;
+        unknown)     echo "[SKIP] already migrated (stack: mips present) — binary support unverified" ;;
+        *)           echo "[SKIP] already migrated (stack: mips present)" ;;
+      esac
     else
       echo "[SKIP] no 'stack: gvisor' found — nothing to migrate (other values are left untouched; a missing key defaults to gVisor upstream)"
     fi
