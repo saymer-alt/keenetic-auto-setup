@@ -24,8 +24,8 @@ MagiTrickle решает, какой трафик куда идёт; Mihomo — 
 | deploy.sh                 | первый установщик проекта; legacy, в README не упоминается |
 | update-mihomo.sh          | обновление Mihomo: тест конфига, автооткат; на MIPS отказывается |
 | update-watchdog.sh        | обновление копии watchdog в /opt/bin (sanity + sh -n + backup + mv) |
-| mihomo_watchdog.sh        | cron каждые 5 мин: WAN → порт 7890 → socks5h-туннель → рестарт |
-| 020-bypass_wa.sh          | хук netfilter.d: маркировка VoIP UDP 1400/3478/3482 → policy bypass_wa |
+| mihomo-watchdog.sh        | cron каждые 5 мин: WAN → порт 7890 → socks5h-туннель → рестарт |
+| 020-bypass-wa.sh          | хук netfilter.d: маркировка VoIP UDP 1400/3478/3482 → policy bypass_wa |
 | S00ubifs                  | tmpfs на /opt/tmp, /opt/var/log, /opt/var/run (профили по RAM) |
 | mihomo-interface-check.sh | диагностика: готовые `interface-name:` для config.yaml |
 
@@ -37,7 +37,7 @@ MagiTrickle решает, какой трафик куда идёт; Mihomo — 
 Наиболее чувствительные части — менять только с явной задачей и пониманием:
 - логика watchdog: порядок проверок, lock-файл, jitter, cooldown и правило
   «нет WAN → не рестартить» (docs/04 прямо просит их не трогать);
-- идемпотентность 020-bypass_wa.sh (хук выполняется при каждой пересборке firewall);
+- идемпотентность 020-bypass-wa.sh (хук выполняется при каждой пересборке firewall);
 - цепочка отката update-mihomo.sh и RAM-гейты;
 - dns-proxy intercept enable (перехват транзитного DNS) в обоих установщиках:
   installer-managed persistent config; перед применением — grep по `show running-config`,
@@ -79,7 +79,7 @@ MagiTrickle решает, какой трафик куда идёт; Mihomo — 
   каждом запуске (opkg пропустит ту же версию, новую — установит); как апгрейд
   обойдётся с пользовательским /opt/etc/mihomo/config.yaml — зависит от conffiles
   пакета и здесь не проверялось.
-- Идемпотентность 020-bypass_wa.sh — не стиль, а условие работы: хук вызывается при
+- Идемпотентность 020-bypass-wa.sh — не стиль, а условие работы: хук вызывается при
   каждой пересборке firewall, поэтому `-C` перед `-A` и `-F` вместо пересоздания цепочки
   обязательны (docs/05).
 - Обратимость обновлений: backup в /tmp и откат на любой критической ошибке
@@ -102,7 +102,7 @@ raw.githubusercontent.com/main. Версионирования и стейджи
 Без явной задачи и подтверждения оператора не следует:
 - менять постоянную конфигурацию роутера через ndmc (`system configuration save`,
   политики `ip policy`, интерфейс Proxy0);
-- править iptables вне паттерна 020-bypass_wa.sh: работать только в table mangle и
+- править iptables вне паттерна 020-bypass-wa.sh: работать только в table mangle и
   своей цепочке _CUST_BYPASS_WA_; глобальные `-F`/`-X` и удаление проверок `-C` для
   этого хука недопустимы — без них правила дублируются при каждой пересборке firewall;
 - менять default route или DNS (resolv.conf, DoH в config.yaml) «для проверки»:
@@ -144,7 +144,7 @@ raw.githubusercontent.com/main. Версионирования и стейджи
   запуск install.sh, update-mihomo (успех и откат), update-watchdog, reboot, поведение
   watchdog при недоступном WAN. Живую проверку выполняет оператор на устройстве.
 - Доступные проверки после изменений: sh -n на каждом изменённом .sh; если менял
-  mihomo_watchdog.sh — сохрани sanity-маркер «MIHOMO WATCHDOG SCRIPT» (на него завязан
+  mihomo-watchdog.sh — сохрани sanity-маркер «MIHOMO WATCHDOG SCRIPT» (на него завязан
   update-watchdog.sh); если менял объём лога — учти ротацию 500/300 строк.
 - При сомнении — остановись и спроси оператора. Отсутствие информации — не разрешение.
 
@@ -243,7 +243,7 @@ raw.githubusercontent.com/main. Версионирования и стейджи
   .backup/.old/.bak рядом с бинарником (очистка места, не потеря по ошибке).
 - В watchdog нет `set -e`, неуспешные проверки обрабатываются через `if` — не добавляй
   `set -e` без анализа всех путей.
-- 020-bypass_wa.sh при ручном запуске сразу выходит ($table пуста) — это нормально.
+- 020-bypass-wa.sh при ручном запуске сразу выходит ($table пуста) — это нормально.
 - Watchdog при standalone-запуске рассчитывает, что /opt/var/log существует
   (примечание в коде); каталог создаёт install.sh.
 - Теги: v1.x — релизы тулкита; тег `mihomo` — хранилище пиннутого mipsel-ipk, не релиз.

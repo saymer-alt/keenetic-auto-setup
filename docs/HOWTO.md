@@ -621,21 +621,35 @@ sh update-mihomo.sh [--force]
 What it does, step by step:
 
 1. Lock file prevents parallel updates.
-2. RAM gate: aborts on devices with less than 256 MB (protects against OOM).
-3. Architecture check: aarch64 → `linux-arm64`, armv7 → `linux-armv7`. **MIPS/mipsel → refuses on purpose** — the updater does not support these architectures; update Mihomo there by re-running `install.sh` (fresh package install).
-4. Fetches the latest release tag from `MetaCubeX/mihomo` (GitHub API, web-redirect fallback).
-5. Compares with the installed version; same version → exit (unless `--force`).
-6. Downloads the `.gz` binary to `/tmp` (curl, wget fallback), decompresses, runs `binary -v` (architecture sanity), then a **config test against your live `config.yaml`**.
-7. Space check on the target filesystem (4 MB margin; stale `.backup/.old/.bak` files near the binary are cleaned; if space is still tight the service is stopped first to release "ghost" blocks).
-8. Backs the old binary up to **`/tmp`** (RAM — not `/opt`), stops the service, replaces the binary, verifies version and startup (`pidof`, retried 5×).
+2. RAM below 256 MB is a warning, not an abort (128 MB devices are not supported at all).
+3. Architecture via `opkg print-architecture`; the package comes from the ready-to-install set of the `saymer-alt/entware-go` feed (release `latest`) — the same one `install.sh` uses: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; the softfloat `nohf` variant is excluded.
+4. Versions: same version → exit (unless `--force`); an available version that is older than the installed one — or cannot be reliably ordered (prerelease suffixes) — is never auto-downgraded, even with `--force`.
+5. Downloads the `.ipk` to `/tmp` (curl, up to 3 attempts) and extracts only the new binary from it — file operations, the service is still running.
+6. Free-space check (4 MB margin; stale `.backup/.old/.bak` files near the binary are cleaned; if space is held by "ghost" blocks of the running binary, the service is stopped to release them).
+7. Stops the service and confirms the stop: the new binary only ever runs alone — two Mihomo instances at once are operationally unsafe on 256 MB devices. A running service without an init script aborts the update (stop Mihomo manually and re-run). This is a short controlled downtime; the stop is re-checked right before the replacement — the cron watchdog may have restarted the service while its port was unreachable.
+8. Runtime checks of the new binary: `binary -v` is matched against the version in the package filename, then a **config test against your live `config.yaml`**. A failure here replaces nothing: the service comes back and temp files are cleaned.
+9. Backs the old binary up to **`/tmp`** (RAM — not `/opt`), replaces the binary, verifies version and startup (`pidof`, retried 5×).
+10. The service returns to its original state: it was running before the update → the new binary is started and verified; you had stopped it → it stays stopped.
 
-**Automatic rollback** triggers on any failed step: binary test, config test, space, replace, version mismatch, service start. The previous binary is restored and the service is started again. A failed update should leave you exactly where you were.
+**Automatic rollback** triggers on any failed step: binary test, config test, space, replace, version mismatch, service start. The previous binary is restored; the service is brought back only if it was running before the update (a service you stopped stays stopped). A failed update should leave you exactly where you were.
 
 Notes:
 
 - The `/tmp` backup is removed after success — there is **no permanent backup on `/opt`**. For a manual downgrade, download the specific release binary yourself (see section 10).
 - The updater looks for the binary via `find /opt -name mihomo | head -1` — if you keep several copies around, the choice is undefined; keep one.
 - Prefer updating through this script over hand-editing: the hand-rolled procedure still exists for special cases in [mihomo_manual_update_arm.md](../mihomo_manual_update_arm.md) (RU).
+
+### 8.1 Migrating the TUN stack to mips
+
+For configurations with TUN (`mitun0`), a separate script rewrites `stack: gvisor` → `stack: mips` (the Mihomo IP Stack, supported since mihomo 1.19.31):
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+# diagnosis only, no changes:
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh -s -- --check
+```
+
+Properties: the support gate is a `mihomo -t` probe (not a version read from the banner); only `stack:` values change — the rest of the config is preserved byte-for-byte; a short controlled downtime (stop + confirmation before any binary execution); the original service state is preserved (a service you stopped stays stopped); the `config.yaml.pre-mips` backup is kept after success and never overwritten; rollback is automatic when validation/start/port fails; idempotent — a second run is a safe no-op; the WireGuard `ip-stack` is not touched. Without TUN in the config it is a safe no-op.
 
 ---
 
@@ -783,7 +797,7 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 Platform notes that remain:
 
 - **128 MB RAM models are not supported** ([docs/06](06-s00ubifs.md)) — several MT7621-era devices fall into this group; the installer's RAM gate will stop there.
-- **Updating Mihomo on MIPS/mipsel:** upstream publishes official MIPS/MIPSLE builds (at least since 1.19.31), but `update-mihomo.sh` intentionally does not run on these architectures — the project's update path there is a fresh package install via `install.sh`, not a binary swap. Do not "fix" it by dropping random builds into `/opt`.
+- **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 
 ---

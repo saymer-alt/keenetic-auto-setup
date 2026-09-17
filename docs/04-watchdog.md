@@ -231,11 +231,14 @@ BusyBox:
 Реальные строки:
 
 ```bash
+[INIT] log generation started (fresh tmpfs after boot or first run)
 [WAN] Connectivity OK via http://cp.cloudflare.com
 [WAN] Primary targets unavailable, checking whitelist targets
 [WARN] WAN unreachable (primary + whitelist targets failed)
 [RATE-LIMIT] Restart blocked (120s < 300s) | Mihomo port unreachable
 [RESTART] Proxy tunnel check failed
+[RESTART-OK] process is running after restart
+[RESTART-FAIL] process did not come up within 10s after restart
 [OK] All good
 ```
 
@@ -314,6 +317,36 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 * рестарт уже был меньше 300 сек назад
 
 👉 это защита от цикла, а не ошибка
+
+---
+
+### `[INIT] log generation started`
+
+Причина:
+
+* лог-файла не было на старте watchdog — свежий tmpfs после reboot или первый запуск
+
+👉 якорь генерации: вся история выше этой строки относится к текущему аптайму
+
+---
+
+### `[RESTART-OK] process is running after restart`
+
+Причина:
+
+* рестарт выполнен и процесс подтверждён той же проверкой в течение 10 сек
+
+👉 нормальное подтверждение восстановления; следующая запись `[OK] All good` остаётся полной проверкой
+
+---
+
+### `[RESTART-FAIL] process did not come up within 10s after restart`
+
+Причина:
+
+* рестарт не подтвердился за 10 сек — Mihomo не поднялся (config, окружение, ресурсы)
+
+👉 смотреть раздел типовых проблем; watchdog продолжит проверки по расписанию
 
 ---
 

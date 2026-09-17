@@ -186,6 +186,14 @@ rotate_log() {
 # NOTE: Log directory should be created during installation (install.sh).
 # If running standalone, ensure /opt/var/log exists beforehand.
 
+# Log generation anchor: when the log file does not exist yet
+# (fresh tmpfs after boot, or the very first run), record a
+# single [INIT] marker so analysis can tell a fresh generation
+# from a rotated one. RAM-only; no extra persistence.
+if [ ! -f "$LOG" ]; then
+    log "[INIT] log generation started (fresh tmpfs after boot or first run)"
+fi
+
 rotate_log
 
 
@@ -233,6 +241,25 @@ can_restart() {
 
     log "[RESTART] ${reason}"
     /opt/etc/init.d/S99mihomo restart
+
+    # Same-run outcome verification (observability only): the
+    # [RESTART] line above is written before the restart, so this
+    # bounded check records whether the process came back without
+    # waiting for the next cron run. No further action is taken
+    # here - the next run repeats the full health checks.
+    if command -v pidof >/dev/null 2>&1; then
+        _i=0
+        while [ "$_i" -lt 10 ]; do
+            pidof mihomo >/dev/null 2>&1 && break
+            sleep 1
+            _i=$((_i + 1))
+        done
+        if pidof mihomo >/dev/null 2>&1; then
+            log "[RESTART-OK] process is running after restart"
+        else
+            log "[RESTART-FAIL] process did not come up within 10s after restart"
+        fi
+    fi
 
     return 0
 }

@@ -30,14 +30,14 @@
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
-TMP_FILE="/tmp/mihomo_watchdog.sh.new.$$"
-URL="${WATCHDOG_URL:-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh}"
+TMP_FILE="/tmp/mihomo-watchdog.sh.new.$$"
+URL="${WATCHDOG_URL:-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-watchdog.sh}"
 
 # --- CLEANUP ---
 cleanup() {
     rm -f "$TMP_FILE"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 watchdog_is_canonical() {
     [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null

@@ -36,6 +36,13 @@ WATCHDOG_CRON="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog"
 WATCHDOG_LOG="$OPT_ROOT/var/log/mihomo_watchdog.log"
 CRONTAB_FILE="$OPT_ROOT/etc/crontab"
 
+# MagiTrickle (optional component) - ground truth from the
+# magitrickle 0.8.2 Entware package (entware build paths)
+MT_BIN="$OPT_ROOT/bin/magitrickled"
+MT_CFG="$OPT_ROOT/var/lib/magitrickle/config.yaml"
+MT_INIT="$OPT_ROOT/etc/init.d/S99magitrickle"
+MT_PIDFILE="$OPT_ROOT/var/run/magitrickle.pid"
+
 ENTWARE_REPO="saymer-alt/entware-go"
 CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
@@ -108,6 +115,31 @@ port_listening() {
         done
     else
         PL_RC=2
+    fi
+}
+
+# udp_listening N -> UL_RC: UDP counterpart of port_listening
+# (netstat -uln -> ss -uln -> /proc/net/udp(6) hex compare).
+udp_listening() {
+    _ul="$1"
+    if command -v netstat >/dev/null 2>&1; then
+        if netstat -uln 2>/dev/null | awk '{print $4}' | grep -q ":$_ul\$"; then
+            UL_RC=0; else UL_RC=1; fi
+    elif command -v ss >/dev/null 2>&1; then
+        if ss -uln 2>/dev/null | awk '{print $4}' | grep -q ":$_ul\$"; then
+            UL_RC=0; else UL_RC=1; fi
+    elif [ -r /proc/net/udp ] || [ -r /proc/net/udp6 ]; then
+        _hx=$(printf '%04X' "$_ul")
+        UL_RC=1
+        for _f in /proc/net/udp /proc/net/udp6; do
+            [ -r "$_f" ] || continue
+            if awk -v h="$_hx" 'NR>1 {n=split($2,a,":"); if (a[n]==h) found=1} END{exit !found}' "$_f" 2>/dev/null; then
+                UL_RC=0
+                break
+            fi
+        done
+    else
+        UL_RC=2
     fi
 }
 
@@ -376,8 +408,8 @@ if [ -n "$BIN" ]; then
         fi
         if [ "$BIN_STATE" = "segv" ]; then
             info "Output: $(first_line "$MV_OUT")"
-            info "SIGSEGV on some MIPSLE Mihomo builds is under separate investigation (a possible UPX connection is unconfirmed). The doctor does not modify binaries."
-            info "Low available memory (section 1) is another possible factor; recovery path is a reinstall via install.sh (not done by the doctor)."
+            info "Confirmed live on a 256 MB MIPSLE device (no swap): a second Mihomo execution while the daemon is running SIGSEGVs regardless of UPX packing - the packed installed binary and an UPX-unpacked build both crashed, and the same binary passed once the daemon was stopped. UPX is not the established cause."
+            info "Likely mechanism: memory pressure from two concurrent Mihomo instances. If the Service section below shows Mihomo running, re-run the doctor with the service stopped to test the binary alone. The doctor modifies nothing."
         fi
     fi
 fi
@@ -555,6 +587,250 @@ else
 fi
 
 # =========================================================
+hdr "6b. MagiTrickle (optional component, read-only)"
+# =========================================================
+
+# Ground truth: magitrickle 0.8.2 Entware package. The daemon
+# is magitrickled (NEVER executed by the doctor - running the
+# binary without arguments would start a second daemon); the
+# config is /opt/var/lib/magitrickle/config.yaml (nested YAML);
+# DNS proxy listens on :3553 and forwards to 127.0.0.1:53; the
+# web UI sits on :8080; port 53 is remapped via nat-table DNAT
+# rules into MT_* chains; ipset tables use the mt_ prefix.
+# MagiTrickle logs go to stdout and are lost at daemonization,
+# so there is no log file to analyze.
+
+MT_INSTALLED=0
+MT_VER=""
+if command -v opkg >/dev/null 2>&1; then
+    MT_VER=$(opkg list-installed 2>/dev/null | awk '$1 == "magitrickle" { print $2; exit }')
+    [ -n "$MT_VER" ] && MT_INSTALLED=1
+fi
+if [ -f "$MT_BIN" ]; then
+    MT_INSTALLED=1
+fi
+
+if [ "$MT_INSTALLED" -eq 0 ]; then
+    info "MagiTrickle is not installed - nothing to check (optional component; install.sh installs it when present)"
+else
+    if [ -n "$MT_VER" ]; then
+        ok "MagiTrickle package installed (opkg version $MT_VER)"
+    else
+        warn "magitrickled binary present but the opkg database has no magitrickle package - partial install?"
+    fi
+    if [ -x "$MT_BIN" ]; then
+        ok "MagiTrickle daemon binary is executable ($MT_BIN)"
+    elif [ -f "$MT_BIN" ]; then
+        warn "MagiTrickle daemon binary is not executable ($MT_BIN)"
+    else
+        warn "MagiTrickle daemon binary missing ($MT_BIN)"
+    fi
+    if [ -x "$MT_INIT" ]; then
+        ok "MagiTrickle init script present ($MT_INIT)"
+    else
+        warn "MagiTrickle init script missing or not executable ($MT_INIT)"
+    fi
+
+    # Layer 1: process
+    MT_PROCS=0
+    MT_PID=""
+    if command -v pidof >/dev/null 2>&1; then
+        set -- $(pidof magitrickled 2>/dev/null)
+        MT_PROCS=$#
+        [ "$MT_PROCS" -gt 0 ] && MT_PID=$1
+    else
+        for _p in /proc/[0-9]*/cmdline; do
+            _pid=${_p%/cmdline}; _pid=${_pid#/proc/}
+            [ "$_pid" = "$$" ] && continue
+            _a0=$(tr '\000' '\n' < "$_p" 2>/dev/null | head -n 1)
+            [ "$(basename "$_a0" 2>/dev/null)" = "magitrickled" ] || continue
+            MT_PROCS=$((MT_PROCS+1))
+            [ -z "$MT_PID" ] && MT_PID=$_pid
+        done
+    fi
+    if [ "$MT_PROCS" -gt 0 ]; then
+        ok "magitrickled process is running ($MT_PROCS process(es))"
+    else
+        warn "magitrickled process is not running - MagiTrickle DNS classification is down (if you stopped it yourself, this is expected)"
+    fi
+
+    # PID file cross-check
+    if [ -f "$MT_PIDFILE" ]; then
+        MT_PIDFILE_PID=$(cat "$MT_PIDFILE" 2>/dev/null)
+        case "$MT_PIDFILE_PID" in
+            ''|*[!0-9]*)
+                warn "MagiTrickle PID file is malformed ($MT_PIDFILE)"
+                ;;
+            *)
+                if [ "$MT_PROCS" -gt 0 ] && [ -d "/proc/$MT_PIDFILE_PID" ]; then
+                    ok "PID file is consistent (pid $MT_PIDFILE_PID)"
+                elif [ "$MT_PROCS" -eq 0 ]; then
+                    warn "PID file exists (pid $MT_PIDFILE_PID) but magitrickled is not running - stale"
+                else
+                    ok "PID file exists (pid $MT_PIDFILE_PID)"
+                fi
+                ;;
+        esac
+    else
+        info "No MagiTrickle PID file ($MT_PIDFILE)"
+    fi
+
+    # Resource fact
+    if [ -n "$MT_PID" ] && [ -r "/proc/$MT_PID/status" ]; then
+        MT_RSS=$(awk '/^VmRSS:/ {print $2}' "/proc/$MT_PID/status" 2>/dev/null)
+        if is_num "$MT_RSS"; then
+            info "magitrickled RSS: $((MT_RSS/1024)) MB (resource fact only)"
+        fi
+    fi
+
+    # Config (nested scalars; package defaults as fallback)
+    MT_DNS_PORT=3553
+    MT_WEB_PORT=8080
+    MT_UPSTREAM_ADDR=127.0.0.1
+    MT_UPSTREAM_PORT=53
+    MT_CHAIN="MT_"
+    MT_IPSET_PREFIX="mt_"
+    MT_REMAP="false"
+    MT_WEB_ENABLED="true"
+    MT_LINK=""
+    MT_CFG_SRC="package defaults"
+    if [ -r "$MT_CFG" ]; then
+        MT_CFG_SRC="$MT_CFG"
+        _v=$(awk '/^  dnsProxy:/{f=1;next} /^  [^[:space:]#]/{f=0} f&&/^    port:/{print $2; exit}' "$MT_CFG")
+        is_num "$_v" && MT_DNS_PORT=$_v
+        _v=$(awk '/^  httpWeb:/{f=1;next} /^  [^[:space:]#]/{f=0} f&&/^    port:/{print $2; exit}' "$MT_CFG")
+        is_num "$_v" && MT_WEB_PORT=$_v
+        _v=$(awk '/^  httpWeb:/{f=1;next} /^  [^[:space:]#]/{f=0} f&&/^    enabled:/{print $2; exit}' "$MT_CFG")
+        [ -n "$_v" ] && MT_WEB_ENABLED=$_v
+        _v=$(awk '/^    upstream:/{f=1;next} /^    [^[:space:]#]/{f=0} f&&/^      address:/{print $2; exit}' "$MT_CFG")
+        [ -n "$_v" ] && MT_UPSTREAM_ADDR=$(printf '%s' "$_v" | tr -d '"')
+        _v=$(awk '/^    upstream:/{f=1;next} /^    [^[:space:]#]/{f=0} f&&/^      port:/{print $2; exit}' "$MT_CFG")
+        is_num "$_v" && MT_UPSTREAM_PORT=$_v
+        _v=$(awk '/^      chainPrefix:/{print $2; exit}' "$MT_CFG")
+        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"')
+        _v=$(awk '/^        tablePrefix:/{print $2; exit}' "$MT_CFG")
+        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
+        _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
+        [ -n "$_v" ] && MT_REMAP=$_v
+        MT_LINK=$(awk '/^  link:/{l=1;next} /^  [^[:space:]#]/{l=0} l&&/^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,"");print}' "$MT_CFG" | tr '\n' ' ')
+    fi
+    info "MT config source: $MT_CFG_SRC"
+    info "DNS proxy: port $MT_DNS_PORT -> upstream $MT_UPSTREAM_ADDR:$MT_UPSTREAM_PORT"
+    info "Web UI: port $MT_WEB_PORT (enabled: $MT_WEB_ENABLED)"
+    info "Link interfaces: ${MT_LINK:-<none>}; iptables chain prefix: $MT_CHAIN; ipset prefix: $MT_IPSET_PREFIX; remap53 disabled: $MT_REMAP"
+
+        # Layer 2: listeners (only meaningful when the process runs)
+        _dns_listening=0
+        if [ "$MT_PROCS" -eq 0 ]; then
+            info "magitrickled is not running - listener, function and netfilter checks are informational only"
+        else
+            port_listening "$MT_DNS_PORT"
+            _tcp=$PL_RC
+            udp_listening "$MT_DNS_PORT"
+            _udp=$UL_RC
+            if [ "$_tcp" = "0" ] || [ "$_udp" = "0" ]; then
+                ok "DNS proxy port $MT_DNS_PORT is listening"
+                _dns_listening=1
+            elif [ "$_tcp" = "2" ] || [ "$_udp" = "2" ]; then
+                info "Cannot verify the DNS listener (no netstat/ss and no /proc/net)"
+            else
+                warn "magitrickled is running but DNS proxy port $MT_DNS_PORT is not listening"
+            fi
+
+            # Layer 3: function (a real DNS query through the proxy);
+            # skipped when the listener is down - a failing query on a
+            # closed port would blame the wrong component
+            if [ "$_dns_listening" -ne 1 ]; then
+                info "Functional DNS check skipped: DNS port $MT_DNS_PORT is not listening"
+            elif command -v dig >/dev/null 2>&1; then
+                run_with_timeout 6 dig +time=2 +tries=1 +short @127.0.0.1 -p "$MT_DNS_PORT" example.com
+                if [ "$RUN_RC" -eq 0 ] && [ -n "$RUN_OUT" ]; then
+                    ok "Functional DNS query via 127.0.0.1:$MT_DNS_PORT works"
+                else
+                    fail "Functional DNS query via 127.0.0.1:$MT_DNS_PORT failed (process and listener are up, but no answer)"
+                    port_listening 53
+                    udp_listening 53
+                    if [ "$PL_RC" -ne 0 ] && [ "$UL_RC" -ne 0 ]; then
+                        info "MT upstream $MT_UPSTREAM_ADDR:53 is not listening - MagiTrickle has nowhere to forward queries; the failure is upstream-side, not the MagiTrickle process itself"
+                    fi
+                fi
+            else
+                info "Functional DNS check skipped: no dig available (busybox nslookup cannot target custom ports)"
+            fi
+
+        # netfilter facts (read-only; presence checks only)
+        if [ "$MT_REMAP" = "true" ]; then
+            info "disableRemap53=true - port 53 remap is intentionally off"
+        elif command -v iptables >/dev/null 2>&1; then
+            MT_REMAP_N=$(iptables -t nat -S 2>/dev/null | grep -c "DNAT.*:$MT_DNS_PORT\b") || MT_REMAP_N=0
+            if [ "$MT_REMAP_N" -gt 0 ]; then
+                ok "Port 53 remap rules found in nat (DNAT -> :$MT_DNS_PORT): $MT_REMAP_N"
+            else
+                warn "No port-53 remap rules found in nat - DNS interception is inactive (clients bypass MagiTrickle)"
+            fi
+        else
+            info "iptables not available - remap rules not checked"
+        fi
+        if command -v ipset >/dev/null 2>&1; then
+            MT_IPSET_N=$(ipset list -name 2>/dev/null | grep -c "^$MT_IPSET_PREFIX") || MT_IPSET_N=0
+            info "ipset tables with prefix $MT_IPSET_PREFIX: $MT_IPSET_N"
+        else
+            info "ipset not available - ipset tables not checked"
+        fi
+    fi
+
+    # Web UI / API liveness (HTTP code only, body is discarded)
+    if [ "$MT_WEB_ENABLED" != "false" ] && [ "$MT_PROCS" -gt 0 ]; then
+        port_listening "$MT_WEB_PORT"
+        if [ "$PL_RC" -eq 0 ]; then
+            MT_HTTP=""
+            if command -v curl >/dev/null 2>&1; then
+                MT_HTTP=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "http://127.0.0.1:$MT_WEB_PORT/auth" 2>/dev/null) || MT_HTTP=""
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q -T 5 -O /dev/null "http://127.0.0.1:$MT_WEB_PORT/auth" 2>/dev/null && MT_HTTP="200"
+            fi
+            case "$MT_HTTP" in
+                ''|*[!0-9]*) info "Web API HTTP probe unavailable (no client or empty reply)" ;;
+                200|401)     ok "Web API answers (HTTP $MT_HTTP; 401 is expected with auth enabled)" ;;
+                *)           info "Web API answered HTTP $MT_HTTP" ;;
+            esac
+        else
+            info "Web UI port $MT_WEB_PORT is not listening (web UI disabled or bound elsewhere)"
+        fi
+    fi
+
+    # Relation to Mihomo - facts only; no causal claims are made
+    info "Relation to Mihomo (facts only): mihomo processes: $MIHOMO_PROCS; mihomo version: ${BIN_VER:-unknown}; MT upstream: $MT_UPSTREAM_ADDR:$MT_UPSTREAM_PORT (Keenetic DNS)"
+    MT_TUN_STACK=$(awk '/^tun:/{t=1;next} /^[^[:space:]#]/{t=0} t&&/^[[:space:]]*stack:/{print $2; exit}' "$CONFIG" 2>/dev/null)
+    if [ -n "$MT_TUN_STACK" ]; then
+        info "Mihomo tun.stack: $MT_TUN_STACK"
+    fi
+    if [ -d "/sys/class/net/mitun0" ]; then
+        info "mitun0 interface is present"
+    else
+        info "mitun0 interface is not present"
+    fi
+    info "No causal link between Mihomo state (incl. TUN stack) and MagiTrickle state is claimed by this report."
+
+    # Logs: MagiTrickle writes zerolog output to stdout, which is
+    # lost at daemonization - there is no log file by default.
+    MT_LOG_FOUND=0
+    for _lf in "$OPT_ROOT/var/log/magitrickled.log" "$OPT_ROOT/var/log/magitrickle.log"; do
+        if [ -f "$_lf" ]; then
+            MT_LOG_FOUND=1
+            MT_LOG_LINES=$(wc -l < "$_lf" 2>/dev/null)
+            MT_LOG_ERRS=$(grep -ciE 'error|fatal' "$_lf" 2>/dev/null) || true
+            is_num "$MT_LOG_LINES" || MT_LOG_LINES=0
+            is_num "$MT_LOG_ERRS" || MT_LOG_ERRS=0
+            info "MT log file: $_lf ($MT_LOG_LINES lines, $MT_LOG_ERRS error/fatal-class lines) - contents are never printed"
+        fi
+    done
+    if [ "$MT_LOG_FOUND" -eq 0 ]; then
+        info "MagiTrickle logs are not persisted to a file (zerolog writes to stdout, lost at daemonization) - nothing to analyze"
+    fi
+fi
+
+# =========================================================
 hdr "7. Keenetic proxy bridge (ProxyN)"
 # =========================================================
 
@@ -684,7 +960,7 @@ fi
 # =========================================================
 hdr "8b. Watchdog history (read-only log analysis)"
 # =========================================================
-# Ground truth from mihomo_watchdog.sh: every log line is
+# Ground truth from mihomo-watchdog.sh: every log line is
 #   "%Y-%m-%d %H:%M:%S <message>" appended to the log, with
 # exactly these messages: "[OK] All good", "[WAN] Connectivity
 # OK via <target>", "[WAN] Primary targets unavailable, checking
@@ -694,8 +970,12 @@ hdr "8b. Watchdog history (read-only log analysis)"
 # unreachable" and "Proxy tunnel check failed". Rotation keeps the
 # last ~300-500 lines (trimmed at the start of every run); the log
 # lives on tmpfs and is lost on reboot. [RESTART] is written BEFORE
-# the restart is executed, with no success record afterwards, so a
-# recovery can only be confirmed by a later "[OK] All good" entry.
+# the restart is executed, so a recovery is confirmed by a later
+# "[OK] All good" entry; since 2026-09 the watchdog also writes
+# "[RESTART-OK]"/"[RESTART-FAIL]" immediately after its own restart
+# (same-run outcome) and an "[INIT]" marker when it starts a fresh
+# log generation after boot. Older logs simply lack these lines -
+# all three are counted optionally and never required.
 # Analysis prints categories, counts and timestamps only - never
 # raw log lines.
 
@@ -740,6 +1020,9 @@ else
             }
             else if (msg ~ /^\[WARN\] WAN unreachable/) wanout++
             else if (msg ~ /^\[WAN\] Primary targets unavailable/) wanwl++
+            else if (msg ~ /^\[RESTART-OK\]/) { rok++; lastrOK = ts }
+            else if (msg ~ /^\[RESTART-FAIL\]/) { rfail++; lastrFAIL = ts }
+            else if (msg ~ /^\[INIT\]/) init++
         }
         END {
             print "total=" total + 0
@@ -758,6 +1041,11 @@ else
             print "l_other=" l_other + 0
             print "wanout=" wanout + 0
             print "wanwl=" wanwl + 0
+            print "rok=" rok + 0
+            print "rfail=" rfail + 0
+            print "init=" init + 0
+            print "lastrOK=" lastrOK
+            print "lastrFAIL=" lastrFAIL
             print "lastprob=" lastprob
             print "lastprobk=" lastprobk
             print "pen=" pen + 0
@@ -775,6 +1063,7 @@ else
     WD_WANOUT=0; WD_WANWL=0; WD_PEN=0; WD_SERIESMAX=0
     WD_FIRST=""; WD_LAST=""; WD_LASTOK=""
     WD_LASTPROB=""; WD_LASTPROBK=""; WD_SERIESKEY=""; WD_PEVENTS=""
+    WD_ROK=0; WD_RFAIL=0; WD_INIT=0; WD_LASTROK=""; WD_LASTRFAIL=""
 
     while IFS= read -r _line; do
         _k=${_line%%=*}
@@ -802,6 +1091,11 @@ else
             seriesmax)  WD_SERIESMAX=$_v ;;
             serieskey)  WD_SERIESKEY=$_v ;;
             pevent)     WD_PEVENTS="$WD_PEVENTS $_v" ;;
+            rok)        WD_ROK=$_v ;;
+            rfail)      WD_RFAIL=$_v ;;
+            init)       WD_INIT=$_v ;;
+            lastrOK)    WD_LASTROK=$_v ;;
+            lastrFAIL)  WD_LASTRFAIL=$_v ;;
         esac
     done <<_WDEOF
 $WD_STATS
@@ -826,6 +1120,9 @@ _WDEOF
         fi
         if [ -n "$WD_FIRST" ] && [ -n "$WD_LAST" ]; then
             info "Available history: $WD_FIRST -> $WD_LAST (rotation keeps ~300-500 lines; tmpfs: lost on reboot)"
+        fi
+        if [ "$WD_INIT" -gt 0 ]; then
+            info "Log generation marker ([INIT]) on record: $WD_INIT - the visible history starts at a fresh generation (boot or first run), not at an arbitrary rotation point"
         fi
 
         if [ -n "$WD_LAST" ]; then
@@ -863,6 +1160,15 @@ _WDEOF
             fi
             if [ -n "$WD_LASTPROB" ]; then
                 info "Last problem event: $WD_LASTPROB ($WD_LASTPROBK)"
+            fi
+            if [ "$WD_ROK" -gt 0 ]; then
+                _msg="Same-run restart verification ([RESTART-OK]) on record: $WD_ROK"
+                [ -n "$WD_LASTROK" ] && _msg="$_msg, last at $WD_LASTROK"
+                info "$_msg"
+            fi
+            if [ "$WD_RFAIL" -gt 0 ]; then
+                warn "Restart outcome failures ([RESTART-FAIL]) on record: $WD_RFAIL - a restart did not bring the process up$([ -n "$WD_LASTRFAIL" ] && printf ', last at %s' "$WD_LASTRFAIL")"
+                WD_STAB="WARN"; WD_STAB_WHY="restart outcome failure on record"
             fi
 
             if [ -n "$WD_LASTOK" ]; then

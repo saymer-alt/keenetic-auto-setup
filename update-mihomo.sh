@@ -33,11 +33,18 @@
 #     (mihomo -d /opt/etc/mihomo -t). Failure leaves the old Mihomo intact.
 #   - Rollback: the previous binary is backed up to /tmp before replacement
 #     and restored if any post-replacement check fails.
-#   - The packaged binary is UPX-packed by the build pipeline: it unpacks
-#     itself in memory on execution. On <256 MB devices this updater stops
-#     the old Mihomo BEFORE the first execution of the extracted new binary
-#     (and restores it on any pre-flight failure) to avoid a memory peak
-#     from old and new executables unpacking at the same time.
+#   - One-instance rule: the packaged binary is UPX-packed and unpacks
+#     itself in memory on execution; two Mihomo instances must never run
+#     at the same time (on 256 MB devices a second instance crashed with
+#     SIGSEGV). This updater extracts the package and performs every check
+#     that does not execute the new ELF while the old Mihomo is still
+#     running, then stops the old Mihomo, and only then runs the runtime
+#     pre-flight of the new binary. The stop is confirmed and re-checked
+#     again right before the replacement, because the cron watchdog
+#     restarts Mihomo whenever its port is unreachable — which it is
+#     during this downtime. The short downtime is intended; the previous
+#     service state is restored afterwards. A running Mihomo without an
+#     init script is an abort, never a second instance.
 #   - No automatic downgrade: the available version is numerically compared
 #     with the installed one (the updater's truth is `mihomo -v`, not opkg).
 #     An older available version — or one that cannot be reliably ordered,
@@ -187,8 +194,9 @@ rollback_and_exit() {
   error "$1"
 }
 
-# Restore a service that THIS updater stopped (low-RAM pre-stop or ghost-block
-# space stop) when the update aborts before the old binary is replaced. The
+# Restore a service that THIS updater stopped (the one-instance stop before
+# the runtime pre-flight, or the ghost-block space stop) when the update
+# aborts before the old binary is replaced. The
 # old binary is still in place, so starting it returns the system to its
 # pre-update state. A user-stopped service (SERVICE_WAS_STOPPED=0) is never
 # touched. Abort paths after the binary replacement are handled by
@@ -220,12 +228,36 @@ restore_stopped_service() {
   return 0
 }
 
-# Pre-flight failure: nothing on the system has been modified, but on low-RAM
-# devices this updater may already have stopped the old service — bring it
-# back before exiting.
+# Pre-flight failure: nothing on the system has been modified, but this
+# updater may already have stopped the old service (the one-instance stop
+# or the ghost-block stop) — bring it back before exiting.
 preflight_fail() {
   restore_stopped_service
   error "$1"
+}
+
+# Stop Mihomo and confirm it is really down before anything may execute the
+# new binary. Aborts the update rather than ever risking a second Mihomo
+# instance. Called before the runtime pre-flight and again right before the
+# destructive replacement: the cron watchdog restarts Mihomo whenever its
+# port is unreachable, which is exactly the state during this updater's
+# downtime, so an instance stopped above may legitimately come back.
+stop_mihomo_confirmed() {
+  if [ -z "$INIT_SCRIPT" ]; then
+    preflight_fail "Mihomo is running but no init script was found in /opt/etc/init.d. A second Mihomo instance must not be started alongside it — stop Mihomo manually and re-run the updater."
+  fi
+  "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+  SERVICE_WAS_STOPPED=1
+  _i=0
+  while [ "$_i" -lt 10 ]; do
+    pidof mihomo >/dev/null 2>&1 || break
+    sleep 1
+    _i=$((_i + 1))
+  done
+  if pidof mihomo >/dev/null 2>&1; then
+    preflight_fail "Old Mihomo did not stop — refusing to run a second Mihomo instance. Update aborted, installed binary untouched."
+  fi
+  sleep 1
 }
 
 # Centralized temp cleanup: runs on EVERY exit (success, safe abort, config
@@ -243,12 +275,12 @@ cleanup_tmp() {
 #   Phase A (0): old binary untouched — restore a service the updater
 #                stopped itself; a user-stopped service is never started.
 #   Phase B (1): old binary already replaced — full rollback from the backup.
-# Re-entry via further INT/TERM is disabled first; the handler always exits
+# Re-entry via further INT/TERM/HUP is disabled first; the handler always exits
 # non-zero (Phase B through rollback_and_exit, whose `error` exits 1 after
 # the rollback completed — the EXIT trap cleans only afterwards, so the
 # backup is never removed before the rollback is done).
 signal_handler() {
-  trap '' INT TERM
+  trap '' INT TERM HUP
   log "Received $1 — aborting update."
   if [ "$REPLACEMENT_STARTED" -eq 1 ]; then
     rollback_and_exit "Update interrupted ($1)"
@@ -273,6 +305,7 @@ touch "$LOCK_FILE"
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT
 trap 'signal_handler TERM' TERM
+trap 'signal_handler HUP' HUP
 
 # -----------------------------
 # 1. Base checks and updater dependencies
@@ -478,7 +511,7 @@ if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
 fi
 
 # -----------------------------
-# 8. Find init script (needed for the low-RAM pre-stop and the service steps)
+# 8. Find init script (needed for the one-instance stop and the service steps)
 # -----------------------------
 INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
 
@@ -505,21 +538,10 @@ retry curl -fsSL "$DOWNLOAD_URL" -o "$TMP_IPK" || error "Failed to download $ASS
 [ -s "$TMP_IPK" ] || error "Downloaded package is empty — installed Mihomo untouched"
 
 # -----------------------------
-# 10. Pre-flight: extract the new binary and test it BEFORE any modification.
-# On low-RAM devices the old Mihomo is stopped first, so the packed new
-# executable never unpacks in memory alongside the running old one.
+# 10. Extract the new binary from the package container. Pure file
+# operation: nothing executes the new ELF here, so the old Mihomo keeps
+# running through this step and an extraction failure modifies nothing.
 # -----------------------------
-if [ -n "$TOTAL_MEM_KB" ] && [ "$TOTAL_MEM_KB" -lt 250000 ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
-  if [ -n "$INIT_SCRIPT" ]; then
-    log "Low RAM: stopping old Mihomo before running the new binary..."
-    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
-    SERVICE_WAS_STOPPED=1
-    sleep 2
-  else
-    warn "Low RAM and no init script: old Mihomo keeps running while the new binary is tested; this may peak memory."
-  fi
-fi
-
 log "Pre-flight check: extracting the new binary from the package..."
 WORK_DIR="$TMP_DIR/mihomo-ipk.$$"
 
@@ -530,25 +552,10 @@ fi
 TMP_NEW="$EXTRACTED_BIN"
 chmod +x "$TMP_NEW"
 
-PACKAGE_VER=$("$TMP_NEW" -v 2>/dev/null | head -1 | awk '{print $3}')
-PACKAGE_VER=${PACKAGE_VER#v}
-if [ "$PACKAGE_VER" != "$AVAILABLE_VER" ]; then
-  preflight_fail "Pre-flight failed: package binary reports ${PACKAGE_VER:-unknown}, expected $AVAILABLE_VER (from $ASSET_NAME) — installed Mihomo untouched"
-fi
-log "Package binary version verified: $PACKAGE_VER"
-
-if [ -d "/opt/etc/mihomo" ]; then
-  log "Testing new version $AVAILABLE_VER with current config..."
-  if ! "$TMP_NEW" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
-    preflight_fail "Config test failed: version $AVAILABLE_VER is incompatible with the current config.yaml. Update aborted, nothing was modified."
-  fi
-  log "Config test passed."
-else
-  log "WARNING: /opt/etc/mihomo not found, skipping config test."
-fi
-
 # -----------------------------
-# 11. Check free space and clean old backups
+# 11. Check free space and clean old backups — static checks (wc/df only,
+# no ELF execution), performed while the old Mihomo is still running so a
+# space problem aborts without any downtime.
 # -----------------------------
 NEW_SIZE_BYTES=$(wc -c < "$TMP_NEW")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
@@ -602,7 +609,58 @@ if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
 fi
 
 # -----------------------------
-# 12. Backup the current binary to /tmp (RAM) as the recovery path
+# 12. Stop the old Mihomo BEFORE the first execution of the new binary.
+#
+# The packaged binary is UPX-packed: when executed, it unpacks itself in
+# memory (tens of MB). Executing it alongside the running old instance
+# crashes memory-starved devices with SIGSEGV, so at most ONE Mihomo may
+# execute at any moment. Every check that does not require running the new
+# ELF is already done; the intended short downtime starts here and ends
+# when the service is started again (or the updater aborts and restores
+# the previous state).
+#
+# The service state is re-probed: the daemon may have been started or may
+# have died while the package was downloading and extracting (for example
+# by a watchdog restart). A running Mihomo without an init script cannot
+# be stopped — abort instead of risking a second instance. The stop is
+# confirmed before anything executes the new binary.
+# -----------------------------
+if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  SERVICE_WAS_RUNNING=1
+fi
+
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+  if [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
+    log "Stopping old Mihomo before running the new binary..."
+  fi
+  stop_mihomo_confirmed
+fi
+
+# -----------------------------
+# 13. Runtime pre-flight: the new binary executes ONLY here, with the old
+# instance confirmed stopped. Failure restores the service this updater
+# stopped (a service that was already down stays down) and leaves the old
+# binary in place.
+# -----------------------------
+PACKAGE_VER=$("$TMP_NEW" -v 2>/dev/null | head -1 | awk '{print $3}')
+PACKAGE_VER=${PACKAGE_VER#v}
+if [ "$PACKAGE_VER" != "$AVAILABLE_VER" ]; then
+  preflight_fail "Pre-flight failed: package binary reports ${PACKAGE_VER:-unknown}, expected $AVAILABLE_VER (from $ASSET_NAME) — installed Mihomo untouched"
+fi
+log "Package binary version verified: $PACKAGE_VER"
+
+if [ -d "/opt/etc/mihomo" ]; then
+  log "Testing new version $AVAILABLE_VER with current config..."
+  if ! "$TMP_NEW" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
+    preflight_fail "Config test failed: version $AVAILABLE_VER is incompatible with the current config.yaml. Update aborted, nothing was modified."
+  fi
+  log "Config test passed."
+else
+  log "WARNING: /opt/etc/mihomo not found, skipping config test."
+fi
+
+# -----------------------------
+# 14. Backup the current binary to /tmp (RAM) as the recovery path
 # -----------------------------
 TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
 
@@ -615,8 +673,17 @@ if [ -f "$MIHOMO_PATH" ]; then
 fi
 
 # -----------------------------
-# 13. Transactional binary replacement
+# 15. Transactional binary replacement
+#
+# The cron watchdog restarts Mihomo whenever its port is unreachable — and
+# it IS unreachable during the updater's downtime. If a watchdog restart
+# slipped in after the stop above, re-stop it here: the binary is never
+# replaced and never verified under a live Mihomo.
 # -----------------------------
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  log "Mihomo is running again (watchdog restart?) — stopping before replacement..."
+  stop_mihomo_confirmed
+fi
 if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   log "Stopping mihomo service..."
   "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
@@ -640,7 +707,7 @@ if ! chmod +x "$MIHOMO_PATH"; then
 fi
 
 # -----------------------------
-# 14. Verify the replaced binary (version + config) — rollback on any failure
+# 16. Verify the replaced binary (version + config) — rollback on any failure
 # -----------------------------
 log "Testing installed binary..."
 if ! "$MIHOMO_PATH" -v >/dev/null 2>&1; then
@@ -664,7 +731,7 @@ if [ -d "/opt/etc/mihomo" ]; then
 fi
 
 # -----------------------------
-# 15. Start service and verify process
+# 17. Start service and verify process
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   if [ -n "$INIT_SCRIPT" ]; then
@@ -697,7 +764,7 @@ else
 fi
 
 # -----------------------------
-# 16. Final process verification
+# 18. Final process verification
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   if command -v pidof >/dev/null 2>&1; then

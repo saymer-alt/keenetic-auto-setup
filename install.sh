@@ -29,7 +29,7 @@ retry() {
 }
 
 # Cleanup temp files on any exit
-trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo_watchdog.new"' EXIT INT TERM
+trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new"' EXIT INT TERM HUP
 
 # ---------------------------
 # CHECK BASE
@@ -503,7 +503,7 @@ ensure_bypass_policy_exit "$PROXY_IFACE"
 log "Installing MagiTrickle..."
 
 curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || \
-    wget -qO- http://bin.magitrickle.dev/packages/add_repo.sh | sh || \
+    wget -qO- https://bin.magitrickle.dev/packages/add_repo.sh | sh || \
     warn "MagiTrickle repo add failed"
 
 opkg update || warn "opkg update after magitrickle failed"
@@ -520,7 +520,7 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass_wa.sh \
+if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass-wa.sh \
     -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
 
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
@@ -541,7 +541,7 @@ log "Installing watchdog..."
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
-WATCHDOG_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo_watchdog.sh"
+WATCHDOG_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-watchdog.sh"
 
 watchdog_is_canonical() {
     [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null
@@ -549,17 +549,17 @@ watchdog_is_canonical() {
 
 install_watchdog_bin() {
     mkdir -p /opt/bin || return 1
-    if ! retry curl -fsSL "$WATCHDOG_URL" -o "$TMP_DIR/mihomo_watchdog.new"; then
+    if ! retry curl -fsSL "$WATCHDOG_URL" -o "$TMP_DIR/mihomo-watchdog.new"; then
         warn "Watchdog download failed"
         return 1
     fi
     # Same sanity gates as update-watchdog.sh: marker + syntax.
-    if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_DIR/mihomo_watchdog.new" || \
-       ! sh -n "$TMP_DIR/mihomo_watchdog.new"; then
+    if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_DIR/mihomo-watchdog.new" || \
+       ! sh -n "$TMP_DIR/mihomo-watchdog.new"; then
         warn "Watchdog sanity check failed, not installed"
         return 1
     fi
-    if ! mv -f "$TMP_DIR/mihomo_watchdog.new" "$WATCHDOG_BIN"; then
+    if ! mv -f "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_BIN"; then
         warn "Failed to install $WATCHDOG_BIN"
         return 1
     fi
