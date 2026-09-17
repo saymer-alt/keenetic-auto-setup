@@ -27,6 +27,7 @@ MagiTrickle решает, какой трафик куда идёт; Mihomo — 
 | 020-bypass-wa.sh          | хук netfilter.d: маркировка VoIP UDP 1400/3478/3482 → policy bypass_wa |
 | S00ubifs                  | tmpfs на /opt/tmp, /opt/var/log, /opt/var/run (профили по RAM) |
 | mihomo-interface-check.sh | диагностика: готовые `interface-name:` для config.yaml |
+| mihomo-route-watch.sh     | read-only диагностика текущего маршрута через Controller API (только GET /proxies) |
 
 Потоки трафика (docs/01):
 - обычный: LAN → Proxy0 → Mihomo → VPN → интернет;

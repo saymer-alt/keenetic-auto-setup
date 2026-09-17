@@ -698,6 +698,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | Mihomo alive? | `/opt/etc/init.d/S99mihomo status` | `alive` |
 | Mihomo RAM usage? | `grep VmRSS /proc/$(pidof mihomo)/status` | measure before/after changes — no fixed norm |
 | Proxy forwards traffic? | `curl -x socks5://127.0.0.1:7890 https://ipinfo.io` | exit IP of your server |
+| Which leaf server is selected right now / failover timeline? | `sh mihomo-route-watch.sh` (one-shot) or `--watch 1` (changes-only) | `GLOBAL -> ... -> <server>` + `CURRENT SERVER:`; timestamped changes |
 | Watchdog running? | `cat /opt/var/log/mihomo_watchdog.log` | recent `[OK] All good` |
 | Cron entry present? | `grep mihomo_watchdog /opt/etc/crontab` | exactly one line |
 | Cron daemon? | `ps | grep cron` | cron process present |
@@ -707,6 +708,18 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | DNS transit interception on? | `ndmc -c "show running-config" \| grep intercept` | `intercept enable` in the `dns-proxy` block |
 | Free space / RAM | `df -h /opt`, `free` | — |
 | Time correct? | `date` | wrong time → SSL errors everywhere |
+
+### Watching the selected route
+
+`mihomo-route-watch.sh` asks the Controller API (default `http://127.0.0.1:9090`, start group `GLOBAL`) which final leaf server the group chain currently resolves to:
+
+```bash
+sh mihomo-route-watch.sh                 # one-shot
+sh mihomo-route-watch.sh --watch 1       # changes only, timestamped
+sh mihomo-route-watch.sh -g MyGroup -s SECRET
+```
+
+In watch mode a line is printed only when the resolved route changes, each with a timestamp — measure failover and failback moments against them. The helper is strictly read-only: its only request is ever `GET /proxies`; it never selects nodes, never triggers delay tests and never restarts anything — observing the selection does not influence it. Requires `curl` and `jq`, and the Controller must be enabled (`external-controller`; the doctor reports whether it is).
 
 ### A quick MT smoke test
 
