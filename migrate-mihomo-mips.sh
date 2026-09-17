@@ -492,11 +492,24 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     log "pidof not available, skipping process verification."
   fi
   if [ "$SERVICE_OK" -eq 1 ]; then
-    _port_rc=0
-    port_ok || _port_rc=$?
+    # The process may appear several seconds before the proxy listener is ready.
+    # Wait for readiness instead of treating the first connection refusal as a
+    # failed migration.  Live Keenetic testing observed pidof at t=0 while the
+    # contract port became ready only at t=4.
+    _port_rc=1
+    _i=0
+    while [ "$_i" -lt 15 ]; do
+      _port_rc=0
+      port_ok || _port_rc=$?
+      if [ "$_port_rc" -eq 0 ] || [ "$_port_rc" -eq 2 ]; then
+        break
+      fi
+      sleep 1
+      _i=$((_i + 1))
+    done
     if [ "$_port_rc" -eq 1 ]; then
       SERVICE_OK=0
-      log "Process is running but the contract port 7890 does not answer."
+      log "Process is running but the contract port 7890 did not become ready within 15 seconds."
     elif [ "$_port_rc" -eq 2 ]; then
       warn "No curl/wget available — port verification skipped (pidof check only)."
     fi
