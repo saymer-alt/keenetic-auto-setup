@@ -637,7 +637,7 @@ Notes:
 
 - The `/tmp` backup is removed after success — there is **no permanent backup on `/opt`**. For a manual downgrade, download the specific release binary yourself (see section 10).
 - The updater resolves the binary deterministically: the running daemon's `/proc/<pid>/exe` when it points at `/opt/sbin/mihomo` or `/opt/bin/mihomo`, else `/opt/sbin/mihomo`, else `/opt/bin/mihomo` — mirroring the Entware init script's PATH order. Extra copies (e.g. `meta-backup/mihomo`) are never selected.
-- Prefer updating through this script over hand-editing: the hand-rolled procedure still exists for special cases in [mihomo_manual_update_arm.md](../mihomo_manual_update_arm.md) (RU).
+- Prefer updating through this script over hand-editing: the old manual "replace the binary" procedure has been removed; update-mihomo.sh is the single supported update path (backup in /tmp, validation before anything is touched, automatic rollback).
 
 ### 8.1 Migrating the TUN stack to mips
 

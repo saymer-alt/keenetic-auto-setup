@@ -21,8 +21,7 @@ MagiTrickle решает, какой трафик куда идёт; Mihomo — 
 | Скрипт                    | Роль |
 |---------------------------|------|
 | install.sh                | единый установщик (автоопределение архитектуры: aarch64/armv7/mipsel/mips, включая MT7621 — live-тест пройден; режимы `ram`\|`disk`, ram = tmpfs) |
-| deploy.sh                 | первый установщик проекта; legacy, в README не упоминается |
-| update-mihomo.sh          | обновление Mihomo: тест конфига, автооткат; на MIPS отказывается |
+| update-mihomo.sh          | обновление бинарника Mihomo из пакета entware-go для всех архитектур: тест конфига, автооткат, one-instance |
 | update-watchdog.sh        | обновление копии watchdog в /opt/bin (sanity + sh -n + backup + mv) |
 | mihomo-watchdog.sh        | cron каждые 5 мин: WAN → порт 7890 → socks5h-туннель → рестарт |
 | 020-bypass-wa.sh          | хук netfilter.d: маркировка VoIP UDP 1400/3478/3482 → policy bypass_wa |
@@ -201,9 +200,9 @@ raw.githubusercontent.com/main. Версионирования и стейджи
 
 ## 10. Исторический контекст (почему так)
 
-- deploy.sh старше install.sh: это первый установщик (CDN jsdelivr, зеркало sw.ext.io,
-  интерактивный nano). install.sh создавался, удалялся и пересоздавался; deploy.sh
-  оставлен как legacy — не удалять и не «синхронизировать» без задачи.
+- deploy.sh (первый установщик: CDN jsdelivr, зеркало sw.ext.io, интерактивный nano)
+  удалён 2026-09-17 по решению оператора; история — в git. install.sh создавался,
+  удалялся и пересоздавался.
 - install_7621.sh (удалён 2026-09; история — в git и CHANGELOG) появился из-за
   наблюдавшихся на MT7621 TLS-сбоев при скачивании (как свойство платформы не
   подтверждено): `--insecure` + http-зеркало sw.ext.io + fallback на запинованный
@@ -238,9 +237,12 @@ raw.githubusercontent.com/main. Версионирования и стейджи
 - DoH: быстрый ≠ рабочий; рекомендуемые docs/08 — cloudflare-dns / dns.google / quad9.
 - Сбитое время → SSL-ошибки → «opkg update failed»; диагностику начинай с `date`.
 - Повторный install.sh не чистит существующий crontab и не удаляет старые компоненты.
-- update-mihomo.sh ищет бинарник через `find /opt -name mihomo | head -1` — при
-  нескольких копиях выбор не определён; и он же намеренно удаляет старые
-  .backup/.old/.bak рядом с бинарником (очистка места, не потеря по ошибке).
+- update-mihomo.sh и migrate-mihomo-mips.sh определяют бинарник детерминированно:
+  /proc/<pid>/exe запущенного демона, если указывает на /opt/sbin/mihomo или
+  /opt/bin/mihomo, иначе /opt/sbin/mihomo, иначе /opt/bin/mihomo (зеркало порядка
+  PATH инит-скрипта; вложенные копии вида meta-backup не выбираются). Updater также
+  намеренно удаляет старые .backup/.old/.bak рядом с бинарником (очистка места,
+  не потеря по ошибке).
 - В watchdog нет `set -e`, неуспешные проверки обрабатываются через `if` — не добавляй
   `set -e` без анализа всех путей.
 - 020-bypass-wa.sh при ручном запуске сразу выходит ($table пуста) — это нормально.
