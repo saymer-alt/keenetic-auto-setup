@@ -492,9 +492,6 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-# -----------------------------
-# Apply mode
-# -----------------------------
 echo "=== Mihomo MIPS stack migration ==="
 
 # 0. Prevent parallel migrations (same atomic mkdir lock contract as the
@@ -536,20 +533,35 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -z "$INIT_SCRIPT" ]; then
   error "Mihomo is running but no init script was found in /opt/etc/init.d. Stop Mihomo manually and re-run."
 fi
 
-# 4. Cheap version pre-filter (not the gate). A crash here is
-# tolerated: the -t gate after the stop decides definitively.
-read_current_ver
-if [ -n "$CURRENT_VER" ]; then
-  _rel=$(ver_compare "$CURRENT_VER" "$MIN_VERSION")
-  if [ "$_rel" = "lt" ]; then
-    log "[SKIP] installed Mihomo $CURRENT_VER predates $MIN_VERSION — tun.stack: mips is not supported. Nothing changed."
-    exit 0
-  fi
-  log "Installed Mihomo: $CURRENT_VER"
-else
-  warn "Could not read the installed version — the support gate will decide."
+# -----------------------------
+# 4. Cheap version pre-filter (not the gate) - one-Mihomo invariant:
+# the installed binary is probed with -v ONLY when no daemon is
+# running (pidof reports none). While a daemon lives, executing a
+# second Mihomo is the established SIGSEGV pattern on constrained
+# hardware, so the probe is deferred: the definitive support gate
+# after the controlled stop decides anyway, and the version
+# pre-filter is only a zero-downtime optimization for the
+# daemon-stopped case.
+# -----------------------------
+DEFER_VERSION_DECISION=1
+if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+  DEFER_VERSION_DECISION=0
 fi
-
+if [ "$DEFER_VERSION_DECISION" -eq 0 ]; then
+  read_current_ver
+  if [ -n "$CURRENT_VER" ]; then
+    _rel=$(ver_compare "$CURRENT_VER" "$MIN_VERSION")
+    if [ "$_rel" = "lt" ]; then
+      log "[SKIP] installed Mihomo $CURRENT_VER predates $MIN_VERSION — tun.stack: mips is not supported. Nothing changed."
+      exit 0
+    fi
+    log "Installed Mihomo: $CURRENT_VER"
+  else
+    warn "Could not read the installed version — the support gate will decide."
+  fi
+else
+  log "Mihomo may be running — the version pre-filter is deferred (one-Mihomo invariant); the support gate after the controlled stop decides."
+fi
 # 5. Config scan -> no-op states. Pure file reads: performed
 # BEFORE the stop so "already migrated" and "nothing to
 # migrate" cost zero downtime.
