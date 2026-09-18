@@ -1,276 +1,282 @@
 # AGENTS.md — keenetic-auto-setup
 
-Рабочая инструкция для AI-агентов (в первую очередь ZCode): «перед X проверь Y»,
-«не делай Z без подтверждения». Пункты без пометки подтверждены кодом, docs/ или
-git-историей; пометка «(предложение)» — рекомендация агента, а не правило репозитория.
+Working instructions for AI agents (primarily ZCode): "before X, verify Y",
+"do not do Z without confirmation". Items without a label are confirmed by code, docs/,
+or Git history; "(proposal)" means an agent recommendation, not a repository rule.
 
-## 1. Назначение
+## 1. Purpose
 
-POSIX-shell toolkit, превращающий Keenetic-роутер с Entware в самовосстанавливающийся
-VPN-шлюз: Mihomo (Clash Meta; VLESS/Reality) на 127.0.0.1:7890, DNS-сплит-роутинг
-(MagiTrickle), VoIP-bypass через iptables-метки, tmpfs-защита флеша, watchdog.
-Ориентирован на небольшие парки роутеров, включая ~20 штук (docs/09). Документация
-на русском. Это не «VPN на роутере», а разделение уровней (ARCHITECTURE.md, docs/01):
-MagiTrickle решает, какой трафик куда идёт; Mihomo — отдельный слой маршрутизации;
-транспорты взаимозаменяемы.
+A POSIX-shell toolkit that turns a Keenetic router with Entware into a self-healing
+VPN gateway: Mihomo (Clash Meta; VLESS/Reality) on 127.0.0.1:7890, DNS split routing
+(MagiTrickle), VoIP bypass through iptables marks, tmpfs flash protection, and a watchdog.
+Designed for small router fleets, including ~20 devices (docs/09). Documentation
+is in Russian. This is not simply "VPN on a router", but a separation of layers
+(ARCHITECTURE.md, docs/01): MagiTrickle decides where traffic goes; Mihomo is a separate
+routing layer; transports are interchangeable.
 
-## 2. Архитектура
+## 2. Architecture
 
-Продукт — корневые скрипты (библиотек нет):
+The product is the root-level scripts (there are no libraries):
 
-| Скрипт                    | Роль |
+| Script                    | Role |
 |---------------------------|------|
-| install.sh                | единый установщик (автоопределение архитектуры: aarch64/armv7/mipsel/mips, включая MT7621 — live-тест пройден; режимы `ram`\|`disk`, ram = tmpfs) |
-| update-mihomo.sh          | обновление бинарника Mihomo из пакета entware-go для всех архитектур: тест конфига, автооткат, one-instance |
-| update-watchdog.sh        | обновление копии watchdog в /opt/bin (sanity + sh -n + backup + mv) |
-| mihomo-watchdog.sh        | cron каждые 5 мин: WAN → порт 7890 → socks5h-туннель → рестарт |
-| 020-bypass-wa.sh          | хук netfilter.d: маркировка VoIP UDP 1400/3478/3482 → policy bypass_wa |
-| S00ubifs                  | tmpfs на /opt/tmp, /opt/var/log, /opt/var/run (профили по RAM) |
-| mihomo-interface-check.sh | диагностика: готовые `interface-name:` для config.yaml |
-| mihomo-route-watch.sh     | read-only диагностика текущего маршрута через Controller API (только GET /proxies) |
+| install.sh                | unified installer (architecture auto-detection: aarch64/armv7/mipsel/mips, including MT7621 — live test passed; modes `ram`\|`disk`, ram = tmpfs) |
+| update-mihomo.sh          | updates the Mihomo binary from the entware-go package for all architectures: config test, automatic rollback, one-instance |
+| update-watchdog.sh        | updates the watchdog copy in /opt/bin (sanity + sh -n + backup + mv) |
+| mihomo-watchdog.sh        | cron every 5 min: WAN → port 7890 → socks5h tunnel → restart |
+| 020-bypass-wa.sh          | netfilter.d hook: mark VoIP UDP 1400/3478/3482 → policy bypass_wa |
+| S00ubifs                  | tmpfs on /opt/tmp, /opt/var/log, /opt/var/run (profiles by RAM) |
+| mihomo-interface-check.sh | diagnostics: ready-to-use `interface-name:` values for config.yaml |
+| mihomo-route-watch.sh     | read-only diagnostics of the current route through the Controller API (GET /proxies only) |
 
-Потоки трафика (docs/01):
-- обычный: LAN → Proxy0 → Mihomo → VPN → интернет;
-- VoIP (UDP): mangle MARK → policy bypass_wa → VPN напрямую, мимо Mihomo;
-- watchdog: cron → проверки → иногда рестарт S99mihomo.
+Traffic flows (docs/01):
+- normal: LAN → Proxy0 → Mihomo → VPN → Internet;
+- VoIP (UDP): mangle MARK → policy bypass_wa → VPN directly, bypassing Mihomo;
+- watchdog: cron → checks → sometimes restart S99mihomo.
 
-Наиболее чувствительные части — менять только с явной задачей и пониманием:
-- логика watchdog: порядок проверок, lock-файл, jitter, cooldown и правило
-  «нет WAN → не рестартить» (docs/04 прямо просит их не трогать);
-- идемпотентность 020-bypass-wa.sh (хук выполняется при каждой пересборке firewall);
-- цепочка отката update-mihomo.sh и RAM-гейты;
-- dns-proxy intercept enable (перехват транзитного DNS) в обоих установщиках:
-  installer-managed persistent config; перед применением — grep по `show running-config`,
-  `system configuration save` — только при реальном изменении; это не защита от DoH/DoT;
-- Proxy0 — единственный мост Keenetic → Mihomo. Его человекочитаемое описание —
-  `mihomo t2sN` (N = номер интерфейса, Proxy0 → t2s0), синхронизировано с нумерацией
-  t2s в MagiTrickle; внутренний идентификатор Proxy0/Proxy1/… менять нельзя.
-  На чистом роутере установщик создаёт Proxy0; если ID занят, Keenetic выдаст
-  следующий свободный ProxyN — подпись следует номеру (в доках Proxy0 — пример,
-  а не единственно возможный ID).
-  Уже существующий Proxy0 установщики сознательно не трогают (включая описание).
+The most sensitive parts — change only for an explicit task and with full understanding:
+- watchdog logic: check order, lock file, jitter, cooldown, and the
+  "no WAN → do not restart" rule (docs/04 explicitly asks not to touch them);
+- idempotency of 020-bypass-wa.sh (the hook runs on every firewall rebuild);
+- rollback chain in update-mihomo.sh and RAM gates;
+- `dns-proxy intercept enable` (transit DNS interception) in both installers:
+  installer-managed persistent config; before applying — grep against `show running-config`,
+  `system configuration save` only when there is an actual change; this is not protection from DoH/DoT;
+- Proxy0 is the only bridge from Keenetic → Mihomo. Its human-readable description is
+  `mihomo t2sN` (N = interface number, Proxy0 → t2s0), synchronized with the t2s numbering
+  in MagiTrickle; the internal Proxy0/Proxy1/… identifier must not be changed.
+  On a clean router, the installer creates Proxy0; if the ID is occupied, Keenetic assigns
+  the next free ProxyN — the label follows the number (in docs, Proxy0 is an example,
+  not the only possible ID).
+  Installers intentionally do not touch an existing Proxy0 (including its description).
 
-## 3. Целевые платформы
+## 3. Target platforms
 
-- KeeneticOS + Entware (/opt). По CHANGELOG проверено на KN-1810, KN-3811, KN-1913;
-  updater — на ARM64 (примечание в скрипте).
-- Архитектуры: aarch64, armv7, mipsel, mips — единый install.sh для всех, включая
-  MT7621 (live-тест пройден); отдельного установщика больше нет.
-  Суффиксы ipk:
-  aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4 (пакеты — актуальный release
-  saymer-alt/entware-go; последний резерв при провале GitHub-пути — `opkg install mihomo`
-  из настроенного Entware feed, версия из feed может быть старее).
-- RAM: минимум 256 МБ; 128 МБ не поддерживается (docs/06: проверено в продакшене —
-  tmpfs дестабилизирует систему).
-- MIPS/mipsel: апстрим Mihomo публикует официальные MIPS/MIPSLE-сборки (как минимум
-  с 1.19.31), но update-mihomo.sh на этих архитектурах намеренно не работает — путь
-  обновления там: повторная установка пакета через install.sh. Не «чинить» подстановкой
-  чужих сборок.
-- Диалект shell — busybox/ash: bashisms не использовать; `local` допустим
-  (busybox поддерживает, уже используется в watchdog). $RANDOM, pidof, ss, netstat
-  могут отсутствовать — выборочные проверки command -v в коде сохраняй.
+- KeeneticOS + Entware (/opt). According to CHANGELOG, verified on KN-1810, KN-3811, KN-1913;
+  updater — on ARM64 (note in the script).
+- Architectures: aarch64, armv7, mipsel, mips — one install.sh for all, including
+  MT7621 (live test passed); there is no separate installer anymore.
+  ipk suffixes:
+  aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4 (packages come from the current
+  saymer-alt/entware-go release; the final fallback if the GitHub path fails is
+  `opkg install mihomo` from the configured Entware feed, whose version may be older).
+- RAM: minimum 256 MB; 128 MB is unsupported (docs/06: verified in production —
+  tmpfs destabilizes the system).
+- MIPS/mipsel: upstream Mihomo publishes official MIPS/MIPSLE builds (at least
+  since 1.19.31), but update-mihomo.sh intentionally does not work on these architectures —
+  the update path there is reinstalling the package through install.sh. Do not "fix" this
+  by substituting third-party builds.
+- Shell dialect is busybox/ash: do not use bashisms; `local` is allowed
+  (busybox supports it and it is already used in the watchdog). $RANDOM, pidof, ss, netstat
+  may be absent — preserve selective `command -v` checks in the code.
 
-## 4. Принципы разработки
+## 4. Development principles
 
-Подтверждено кодом и docs:
-- Повторный запуск install.sh задуман безопасным: изменяющие шаги защищены проверками
-  (pkg_ensure; `show ip policy` / `show interface Proxy0` перед созданием; grep перед
-  append в crontab; is_mounted в S00ubifs). Но mihomo-ipk скачивается и ставится при
-  каждом запуске (opkg пропустит ту же версию, новую — установит); как апгрейд
-  обойдётся с пользовательским /opt/etc/mihomo/config.yaml — зависит от conffiles
-  пакета и здесь не проверялось.
-- Идемпотентность 020-bypass-wa.sh — не стиль, а условие работы: хук вызывается при
-  каждой пересборке firewall, поэтому `-C` перед `-A` и `-F` вместо пересоздания цепочки
-  обязательны (docs/05).
-- Обратимость обновлений: backup в /tmp и откат на любой критической ошибке
-  (update-mihomo.sh); backup + sanity + sh -n + атомарный mv (update-watchdog.sh).
-- Простота важнее фич (docs/10): фича, усложняющая систему и повышающая риск поломки,
-  не добавляется.
-- Не бороться с KeeneticOS: интеграция через ndmc / RCI (localhost:79) / netfilter.d.
+Confirmed by code and docs:
+- Re-running install.sh is designed to be safe: mutating steps are guarded by checks
+  (pkg_ensure; `show ip policy` / `show interface Proxy0` before creation; grep before
+  appending to crontab; is_mounted in S00ubifs). However, the mihomo ipk is downloaded and
+  installed on every run (opkg skips the same version and installs a newer one); how an upgrade
+  handles a user `/opt/etc/mihomo/config.yaml` depends on package conffiles and has not been
+  verified here.
+- Idempotency of 020-bypass-wa.sh is not a style preference, but a functional requirement:
+  the hook is invoked on every firewall rebuild, so `-C` before `-A` and `-F` instead
+  of recreating the chain are mandatory (docs/05).
+- Reversibility of updates: backup in /tmp and rollback on any critical error
+  (update-mihomo.sh); backup + sanity + sh -n + atomic mv (update-watchdog.sh).
+- Simplicity is more important than features (docs/10): do not add a feature that
+  complicates the system and raises breakage risk.
+- Do not fight KeeneticOS: integration is through ndmc / RCI (localhost:79) / netfilter.d.
 
-(предложение) новые настраиваемые параметры оформлять переменными в шапке скрипта —
-как WAN_PRIMARY_TARGETS/PROXY в watchdog; (предложение) не расширять набор зависимостей
-сверх уже используемых (curl, jq, gzip, wget, cron, ca-bundle, nano).
+(proposal) expose new configurable parameters as variables at the top of the script —
+like WAN_PRIMARY_TARGETS/PROXY in the watchdog; (proposal) do not expand the dependency set
+beyond what is already used (curl, jq, gzip, wget, cron, ca-bundle, nano).
 
-## 5. Безопасность: зоны риска
+## 5. Security: risk zones
 
-Особенность доставки: install.sh и update-watchdog.sh при запуске тянут скрипты с
-raw.githubusercontent.com/main. Версионирования и стейджинга нет: коммит в main
-становится тем, что выполнит следующий `curl | sh` пользователя (уже установленные
-копии watchdog на роутерах сами не обновляются). CI в репо нет.
+Delivery detail: when run, install.sh and update-watchdog.sh download scripts from
+raw.githubusercontent.com/main. There is no versioning or staging: a commit to main
+becomes what the next user's `curl | sh` executes (already installed watchdog copies
+on routers do not update themselves). There is no CI in the repository.
 
-Без явной задачи и подтверждения оператора не следует:
-- менять постоянную конфигурацию роутера через ndmc (`system configuration save`,
-  политики `ip policy`, интерфейс Proxy0);
-- править iptables вне паттерна 020-bypass-wa.sh: работать только в table mangle и
-  своей цепочке _CUST_BYPASS_WA_; глобальные `-F`/`-X` и удаление проверок `-C` для
-  этого хука недопустимы — без них правила дублируются при каждой пересборке firewall;
-- менять default route или DNS (resolv.conf, DoH в config.yaml) «для проверки»:
-  ошибка в этих зонах отрезает интернет всей LAN и может закрыть SSH-доступ к роутеру;
-- ослаблять защитные проверки: RAM-гейт (<250 МБ) и тест конфига в update-mihomo.sh,
-  cooldown и whitelist-fallback в watchdog — они защищают от циклических рестартов
-  и размена флеш/RAM;
-- выполнять сетевые эксперименты на живом роутере без задачи.
+Without an explicit task and operator confirmation, do not:
+- change persistent router configuration through ndmc (`system configuration save`,
+  `ip policy` policies, Proxy0 interface);
+- modify iptables outside the 020-bypass-wa.sh pattern: work only in table mangle and
+  the custom chain _CUST_BYPASS_WA_; global `-F`/`-X` and removing `-C` checks for
+  this hook are forbidden — without them, rules duplicate on every firewall rebuild;
+- change the default route or DNS (resolv.conf, DoH in config.yaml) "for testing":
+  a mistake in these areas can cut Internet access for the entire LAN and may close SSH access
+  to the router;
+- weaken safety checks: the RAM gate (<250 MB) and config test in update-mihomo.sh,
+  cooldown and whitelist fallback in the watchdog — they protect against restart loops
+  and wasting flash/RAM;
+- run network experiments on a live router without a task.
 
-Если изменение в этих зонах всё же требуется — сначала разберись в зависимости
-(п.2 и профильный doc), меняй минимально и перечисли оператору сценарии проверки.
+If a change in these areas is required, first understand the dependency
+(§2 and the relevant doc), make the smallest change, and list verification scenarios
+for the operator.
 
-Особенности зон:
-- update-mihomo.sh останавливает сервис и подменяет бинарник; последовательность
-  backup(/tmp) → rm → cp → chmod → тест → старт → проверка процесса построена так,
-  что каждая стадия — точка отказа с откатом. Меняй порядок только с пониманием этого.
-- watchdog: рестарт только при подтверждённом WAN и провале прокси/туннеля; при полном
-  отказе WAN скрипт выходит без действий — осознанное решение (комментарий в коде,
-  README: «WAN-сбой не означает, что сломан Mihomo»).
-- S00ubifs: данные tmpfs теряются при reboot — by design; на 128 МБ tmpfs
-  дестабилизирует систему; расширение списка директорий — только с оценкой RAM.
-- MTU туннелей: симптом «медленно / часть сайтов не работает» — это про MTU
-  (рабочие значения 1200–1300, docs/09), а не про маршрутизацию.
+Risk-zone specifics:
+- update-mihomo.sh stops the service and replaces the binary; the sequence
+  backup(/tmp) → rm → cp → chmod → test → start → process check is designed so
+  each stage is a failure point with rollback. Change the order only with full understanding.
+- watchdog: restart only when WAN is confirmed and the proxy/tunnel check fails; on total
+  WAN failure the script exits without action — an intentional decision (comment in code,
+  README: "WAN failure does not mean Mihomo is broken").
+- S00ubifs: tmpfs data is lost on reboot — by design; on 128 MB, tmpfs
+  destabilizes the system; expanding the directory list requires a RAM assessment.
+- Tunnel MTU: the symptom "slow / some sites do not work" points to MTU
+  (working values 1200–1300, docs/09), not routing.
 
-## 6. Правила работы AI-агента
+## 6. AI agent working rules
 
-- Перед изменением скрипта прочитай его целиком и профильный doc: watchdog → docs/04,
-  bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 и docs/07.
-- Не переписывай рабочую архитектуру. Изменения — минимальным диффом в существующем
-  стиле: POSIX sh, функции log/warn/err, retry 3×, проверки command -v.
-- Не сокращай «избыточные» fallback-цепочки (jq → grep → повторный запрос → HTML →
-  last-resort `opkg install mihomo` в install.sh; curl → wget в update-mihomo.sh): судя
-  по истории (десятки итеративных правок этих файлов), ступени добавлены под реальные
-  сбои. Сокращение — только с задачей и объяснением, почему ступень больше не нужна.
-- Не удаляй существующее поведение ради упрощения — за многими «странными» местами
-  стоят причины (см. п.10).
-- «sh -n прошёл» ≠ «работает»: синтаксис — первый фильтр, не подтверждение.
-- Перечисли явно, какие сценарии затронет изменение: установка (ram/disk), повторный
-  запуск install.sh, update-mihomo (успех и откат), update-watchdog, reboot, поведение
-  watchdog при недоступном WAN. Живую проверку выполняет оператор на устройстве.
-- Доступные проверки после изменений: sh -n на каждом изменённом .sh; если менял
-  mihomo-watchdog.sh — сохрани sanity-маркер «MIHOMO WATCHDOG SCRIPT» (на него завязан
-  update-watchdog.sh); если менял объём лога — учти ротацию 500/300 строк.
-- При сомнении — остановись и спроси оператора. Отсутствие информации — не разрешение.
+- Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
+  bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.
+- Do not rewrite working architecture. Changes should be minimal diffs in the existing
+  style: POSIX sh, log/warn/err functions, retry 3×, `command -v` checks.
+- Do not shorten "redundant" fallback chains (jq → grep → repeated request → HTML →
+  last-resort `opkg install mihomo` in install.sh; curl → wget in update-mihomo.sh):
+  judging by history (dozens of iterative fixes to these files), the stages were added
+  for real failures. Remove one only with an explicit task and an explanation of why
+  it is no longer needed.
+- Do not remove existing behavior merely to simplify it — many "strange" places have
+  reasons behind them (see §10).
+- "`sh -n` passed" ≠ "it works": syntax is the first filter, not proof.
+- Explicitly list which scenarios a change affects: installation (ram/disk), repeated
+  install.sh run, update-mihomo (success and rollback), update-watchdog, reboot, watchdog
+  behavior when WAN is unavailable. Live verification is performed by the operator
+  on the device.
+- Available checks after changes: sh -n on every changed .sh; if changing
+  mihomo-watchdog.sh, preserve the sanity marker "MIHOMO WATCHDOG SCRIPT" (update-watchdog.sh
+  depends on it); if changing log volume, account for 500/300-line rotation.
+- When in doubt, stop and ask the operator. Missing information is not permission.
 
-## 7. Работа с Git
+## 7. Working with Git
 
-Рабочие правила по умолчанию (отдельного регламента в репо нет; судя по истории,
-владелец правит main напрямую, сообщения вида «Update X»):
-- перед началом: `git status`; убедись, что ты на main и нет чужих незакоммиченных
-  изменений; не перезаписывай чужую работу (reset --hard / checkout -- файлов —
-  только по явному указанию);
-- перед изменением файла посмотри его историю (`git log --oneline -- <file>`):
-  значительная часть коммитов — серии мелких правок одного скрипта; причина правки
-  важнее самой правки;
-- коммить только по явной инструкции оператора; сообщение — что и зачем; без force-push;
-- VPS-заметки (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) перенесены
-  в репозиторий saymer-alt/vps-gateway-bootstrap (docs/archaeology/) и больше
-  не являются частью этого репозитория.
+Default working rules (there is no separate repository policy; history indicates that
+the owner edits main directly, with commit messages like "Update X"):
+- before starting: `git status`; make sure you are on main and there are no unrelated
+  uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
+  only with explicit instruction);
+- before modifying a file, inspect its history (`git log --oneline -- <file>`):
+  many commits are series of small fixes to one script; the reason for the change
+  matters more than the change itself;
+- commit only on explicit operator instruction; the message should say what and why;
+  no force-push;
+- VPS notes (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) were moved
+  to the saymer-alt/vps-gateway-bootstrap repository (docs/archaeology/) and are no longer
+  part of this repository.
 
-## 8. Документация
+## 8. Documentation
 
-- README.md (RU+EN) — входная точка проекта: русская версия основная и первая, ниже полная
-  английская; содержит концептуальное вступление, архитектуру, use cases, экосистему
-  (link-generators) и Quick Start; подробности — не дублировать в README, а уносить в
-  HOWTO/docs.
-- docs/HOWTO.md и docs/HOWTO_RU.md — полное пошаговое руководство (подготовка,
-  установка, режимы, конфигурация, MagiTrickle, watchdog, обновление, откат,
-  диагностика, MT7621, типовые проблемы). README и HOWTO держать согласованными между
-  собой и с кодом.
-- ARCHITECTURE.md — главный архитектурный документ (RU): три пути трафика, роли
-  Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS-архитектура,
-  границы гарантий. README на него ссылается как на основное архитектурное чтение.
-- docs/00–10 — подробные гайды;
-  CHANGELOG.md — изменения (теги v1.0.0–v1.2.0).
-- При расхождении документации и кода источник истины — код. Известный случай:
-  docs/04-watchdog.md описывает старую версию watchdog (pidof-проверка, один WAN-URL,
-  ротация ~100 строк), актуальный скрипт — двухступенчатый WAN + порт + socks5h,
-  ротация 500/300.
-- Меняешь поведение скрипта — в том же изменении рассмотри обновление README и
-  профильного doc; значимый сдвиг — строка в CHANGELOG (формат «в том же коммите» —
-  предложение).
+- README.md (RU+EN) is the project entry point: the Russian version is primary and first,
+  with the full English version below; it contains a conceptual introduction, architecture,
+  use cases, ecosystem (link-generators), and Quick Start; do not duplicate details in README,
+  put them in HOWTO/docs instead.
+- docs/HOWTO.md and docs/HOWTO_RU.md are the complete step-by-step guide (preparation,
+  installation, modes, configuration, MagiTrickle, watchdog, update, rollback,
+  diagnostics, MT7621, common problems). Keep README and HOWTO aligned with each other
+  and with the code.
+- ARCHITECTURE.md is the main architecture document (RU): three traffic paths, roles of
+  Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS architecture,
+  guarantee boundaries. README links to it as the primary architecture reading.
+- docs/00–10 are detailed guides;
+  CHANGELOG.md contains changes (tags v1.0.0–v1.2.0).
+- If documentation and code disagree, the code is the source of truth. Known case:
+  docs/04-watchdog.md describes an older watchdog version (pidof check, one WAN URL,
+  ~100-line rotation), while the current script uses two-stage WAN + port + socks5h
+  and 500/300-line rotation.
+- When script behavior changes, consider updating README and the relevant doc in the same
+  change; a significant shift should get a CHANGELOG entry (the "same commit" format is
+  a proposal).
 
-## 9. Тестирование
+## 9. Testing
 
-Автотестов, CI и линтеров в репозитории нет — не выдумывай их результаты. Реально
-доступно:
-- `sh -n <script>` для каждого изменённого .sh (обязательно);
-- ревью на busybox/POSIX-совместимость (без bashisms и GNU-only опций);
-- проверка завязок между скриптами: sanity-маркер watchdog, пути /opt/etc/cron.5mins
-  против /opt/bin, имена файлов в raw.githubusercontent-ссылках install.sh;
-- (предложение) shellcheck локально, если доступен — полезно, но не требование репо;
-- живые сценарии (установка, обновление, откат, reboot, watchdog без WAN) — выполняет
-  оператор на устройстве; (предложение) не на единственном продовом роутере.
-Агент обязан честно разделить: что проверено sh -n/ревью, а что требует живого прогона.
+There are no automated tests, CI, or linters in the repository — do not invent results.
+What is actually available:
+- `sh -n <script>` for every changed .sh (mandatory);
+- review for busybox/POSIX compatibility (no bashisms or GNU-only options);
+- check coupling between scripts: watchdog sanity marker, /opt/etc/cron.5mins paths
+  versus /opt/bin, filenames in raw.githubusercontent links in install.sh;
+- (proposal) shellcheck locally, if available — useful but not a repository requirement;
+- live scenarios (installation, update, rollback, reboot, watchdog without WAN) are
+  performed by the operator on the device; (proposal) not on the only production router.
+The agent must clearly separate what was verified by sh -n/review from what requires
+a live run.
 
-## 10. Исторический контекст (почему так)
+## 10. Historical context (why it is this way)
 
-- deploy.sh (первый установщик: CDN jsdelivr, зеркало sw.ext.io, интерактивный nano)
-  удалён 2026-09-17 по решению оператора; история — в git. install.sh создавался,
-  удалялся и пересоздавался.
-- install_7621.sh (удалён 2026-09; история — в git и CHANGELOG) появился из-за
-  наблюдавшихся на MT7621 TLS-сбоев при скачивании (как свойство платформы не
-  подтверждено): `--insecure` + http-зеркало sw.ext.io + fallback на запинованный
-  mihomo_1.19.23-1_mipsel из release-тега `mihomo` этого же репо. Тогда считалось, что
-  у апстрима нет MIPS-сборок; сейчас апстрим публикует официальные MIPS/MIPSLE-сборки
-  (как минимум с 1.19.31).
-- Основной источник mihomo-ipk для install.sh — релизы соседнего репозитория
-  saymer-alt/entware-go (в workspace это ../entware-go; его CI собирает и публикует
-  ipk). Изменение пакета там меняет то, что ставит install.sh здесь.
-- Двухступенчатая WAN-проверка с whitelist (gosuslugi/ya.ru/mail.ru/vk) выросла из
-  эксплуатации в сетях с ограниченным доступом: whitelist отличает «интернета нет»
-  от «недоступны только основные цели»; полный отказ WAN → никаких рестартов.
-- Jitter `date +%s % 25`, а не RANDOM — busybox может не иметь $RANDOM (docs/04).
-- bypass_wa через netfilter.d, а не разовый iptables — Keenetic пересобирает firewall
-  сам; docs/05 («прошло через боль»): run-parts ненадёжен, iptables плодит дубли —
-  отсюда `-C`/`-F`.
-- Watchdog ставится в /opt/etc/cron.5mins/mihomo_watchdog (install.sh), а
-  update-watchdog.sh обновляет /opt/bin/mihomo_watchdog.sh — пути разные (и заголовок
-  самого watchdog упоминает /opt/bin). Перед обновлением выясни, какая копия реально
-  прописана в crontab на конкретном роутере.
-- Логи в tmpfs пропадают при reboot — осознанный размен ради ресурса флеша.
+- deploy.sh (the first installer: jsdelivr CDN, sw.ext.io mirror, interactive nano)
+  was removed on 2026-09-17 by operator decision; history remains in Git. install.sh
+  was created, removed, and recreated.
+- install_7621.sh (removed in 2026-09; history is in Git and CHANGELOG) appeared because of
+  observed TLS download failures on MT7621 (not confirmed as a platform property):
+  `--insecure` + sw.ext.io HTTP mirror + fallback to pinned
+  mihomo_1.19.23-1_mipsel from this repository's `mihomo` release tag. At the time,
+  upstream was believed not to publish MIPS builds; upstream now publishes official
+  MIPS/MIPSLE builds (at least since 1.19.31).
+- The primary source of the mihomo ipk for install.sh is releases from the sibling
+  saymer-alt/entware-go repository (in the workspace, ../entware-go; its CI builds and
+  publishes ipk). Changing the package there changes what install.sh installs here.
+- The two-stage WAN check with a whitelist (gosuslugi/ya.ru/mail.ru/vk) grew out of
+  operation in restricted-access networks: the whitelist distinguishes "no Internet"
+  from "only primary targets are unavailable"; complete WAN failure → no restarts.
+- Jitter uses `date +%s % 25`, not RANDOM — busybox may not have $RANDOM (docs/04).
+- bypass_wa uses netfilter.d instead of one-time iptables because Keenetic rebuilds the
+  firewall itself; docs/05 ("learned the hard way"): run-parts is unreliable, iptables
+  creates duplicates — hence `-C`/`-F`.
+- The watchdog is installed at /opt/etc/cron.5mins/mihomo_watchdog (install.sh), while
+  update-watchdog.sh updates /opt/bin/mihomo_watchdog.sh — the paths differ (and the
+  watchdog header itself mentions /opt/bin). Before updating, determine which copy is
+  actually referenced in crontab on that router.
+- Logs in tmpfs disappear on reboot — an intentional tradeoff to preserve flash.
 
 ## 11. Known pitfalls
 
-- Дубли строк в /opt/etc/crontab → watchdog выполняется дважды (docs/08/09);
-  install.sh добавляет запись только при отсутствии, но ручная правка crontab легко
-  плодит дубли.
-- run-parts в Entware ненадёжен — поэтому fallback на прямой путь в crontab.
-- 128 МБ RAM: tmpfs дестабилизирует Keenetic (docs/06: Extra, старый Viva); RAM-гейты
-  не снимать и не пытаться «заставить работать».
-- MTU туннеля 1500 → «всё медленно / не работает»; рабочие значения 1200–1300 (docs/09).
-- DoH: быстрый ≠ рабочий; рекомендуемые docs/08 — cloudflare-dns / dns.google / quad9.
-- Сбитое время → SSL-ошибки → «opkg update failed»; диагностику начинай с `date`.
-- Повторный install.sh не чистит существующий crontab и не удаляет старые компоненты.
-- update-mihomo.sh и migrate-mihomo-mips.sh определяют бинарник детерминированно:
-  /proc/<pid>/exe запущенного демона, если указывает на /opt/sbin/mihomo или
-  /opt/bin/mihomo, иначе /opt/sbin/mihomo, иначе /opt/bin/mihomo (зеркало порядка
-  PATH инит-скрипта; вложенные копии вида meta-backup не выбираются). Updater также
-  намеренно удаляет старые .backup/.old/.bak рядом с бинарником (очистка места,
-  не потеря по ошибке).
-- В watchdog нет `set -e`, неуспешные проверки обрабатываются через `if` — не добавляй
-  `set -e` без анализа всех путей.
-- 020-bypass-wa.sh при ручном запуске сразу выходит ($table пуста) — это нормально.
-- Watchdog при standalone-запуске рассчитывает, что /opt/var/log существует
-  (примечание в коде); каталог создаёт install.sh.
-- Теги: v1.x — релизы тулкита; тег `mihomo` — хранилище пиннутого mipsel-ipk, не релиз.
+- Duplicate lines in /opt/etc/crontab → watchdog runs twice (docs/08/09);
+  install.sh adds an entry only if absent, but manual crontab editing can easily create
+  duplicates.
+- run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
+- 128 MB RAM: tmpfs destabilizes Keenetic (docs/06: Extra, old Viva); do not remove
+  RAM gates or try to "make it work".
+- Tunnel MTU 1500 → "everything is slow / does not work"; working values 1200–1300
+  (docs/09).
+- DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
+- Incorrect system time → SSL errors → "opkg update failed"; start diagnosis with `date`.
+- Re-running install.sh does not clean an existing crontab or remove old components.
+- update-mihomo.sh and migrate-mihomo-mips.sh determine the binary deterministically:
+  /proc/<pid>/exe of the running daemon if it points to /opt/sbin/mihomo or
+  /opt/bin/mihomo, otherwise /opt/sbin/mihomo, otherwise /opt/bin/mihomo (mirrors the
+  init script PATH order; nested copies such as meta-backup are not selected). The updater
+  also intentionally removes old .backup/.old/.bak files next to the binary (space cleanup,
+  not accidental data loss).
+- The watchdog does not use `set -e`; failed checks are handled with `if` — do not add
+  `set -e` without analyzing all paths.
+- 020-bypass-wa.sh exits immediately when run manually ($table is empty) — this is normal.
+- When run standalone, the watchdog assumes /opt/var/log exists (note in code);
+  install.sh creates the directory.
+- Tags: v1.x are toolkit releases; the `mihomo` tag is storage for the pinned mipsel ipk,
+  not a release.
 
-## 12. Стиль работы агента
+## 12. Agent working style
 
-- Определи, какие компоненты затрагивает задача (п.2), перечитай зоны риска (п.5)
-  и профильный doc — до правок, а не после.
-- Любое действие на живом роутере — только по задаче оператора.
-- Коммит в main меняет то, что выполнит следующий `curl | sh` пользователя; стейджинга
-  нет, откат — только новым коммитом. CI нет — проверяй свои изменения тщательнее
-  обычного.
-- Не заявляй «работает», если проверка ограничилась sh -n: перечисли, что проверено,
-  а что требует живого прогона на устройстве.
-- Если задача выглядит как «переписать всё по-нормальному» — остановись и перечитай
-  п.4 и docs/10: стабильность важнее красоты.
+- Determine which components the task touches (§2), reread the risk zones (§5),
+  and read the relevant doc before editing, not after.
+- Any action on a live router requires an operator task.
+- A commit to main changes what the next user's `curl | sh` executes; there is no staging,
+  rollback is only via a new commit. There is no CI — verify your changes more carefully
+  than usual.
+- Do not claim "it works" if verification was limited to sh -n: list what was checked
+  and what requires a live run on a device.
+- If the task looks like "rewrite everything properly", stop and reread §4 and docs/10:
+  stability matters more than elegance.
 
+## Technical debt
 
-## Технический долг
-
-- Технический долг выявлять и фиксировать как отдельный инженерный риск, но не путать его с косметикой, личными стилевыми предпочтениями или просто «некрасивым» рабочим кодом.
-- Для каждого найденного долга сначала привести evidence и классифицировать влияние: **High** (риск поломки/безопасности/потери данных или блокирует эксплуатацию), **Medium** (мешает развитию, создаёт дублирование или расхождение логики, заметно усложняет сопровождение), **Low** (локальная сложность без существенного текущего риска).
-- Не выполнять рефакторинг только ради чистоты. Погашать долг, когда польза и снижение риска оправдывают изменение; стабильный проверенный код не переписывать без причины.
-- Исправление долга должно иметь минимальный scope, сохранять существующие safety-boundaries и проходить обычные regression/safety-проверки проекта. Если исправление создаёт больший риск или новый долг, остановиться и предложить более безопасный вариант.
-- При обнаружении долга вне текущей задачи не расширять scope молча: зафиксировать находку и рекомендацию, а реализацию выполнять только когда она входит в задачу или явно одобрена оператором.
-
-- Если долг обнаружен вне текущей задачи, не изменять код или документацию только ради фиксации находки. В итоговом отчёте указать место, краткое описание, evidence, уровень **High / Medium / Low**, риск и рекомендуемое действие. Если находка заслуживает отдельного отслеживания — предложить создать GitHub Issue. Создавать Issue, добавлять `TODO` или менять файлы для фиксации долга только по явному разрешению оператора. `TODO (TechDebt ...)` допустим, когда такой комментарий входит в согласованный scope и действительно нужен непосредственно рядом с кодом.
+- Treat technical debt as a separate engineering risk, but do not confuse it with cosmetics, personal style preferences, or merely "ugly" working code.
+- For each debt item, provide evidence first and classify its impact: **High** (breakage/security/data-loss risk or blocks operation), **Medium** (impedes development, creates duplication or logic divergence, or materially increases maintenance cost), **Low** (local complexity with little current risk).
+- Do not refactor for cleanliness alone. Pay down debt when the benefit and risk reduction justify the change; do not rewrite stable, verified code without a concrete reason.
+- Debt fixes must keep minimal scope, preserve existing safety boundaries, and pass the project's normal regression/safety checks. If the fix creates greater risk or new debt, stop and propose a safer alternative.
+- If debt is discovered outside the current task, do not silently expand scope: record the finding and recommendation, and implement it only when it is in scope or explicitly approved by the operator.
+- If debt is discovered outside the current task, do not change code or documentation solely to record the finding. In the final report, state the location, brief description, evidence, **High / Medium / Low** level, risk, and recommended action. If the finding deserves separate tracking, propose creating a GitHub Issue. Create an Issue, add a `TODO`, or change files to record debt only with explicit operator permission. `TODO (TechDebt ...)` is acceptable when such a comment is within the approved scope and is genuinely needed next to the code.
