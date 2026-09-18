@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.1.0 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.0 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -11,6 +11,12 @@
 #   Proxy interfaces; never starts/stops/restarts Mihomo;
 #   never runs install.sh / update-mihomo.sh, and never
 #   modifies anything via opkg (read-only opkg queries only).
+#   THE ONE-MIHOMO INVARIANT IS UNIVERSAL: while a Mihomo daemon
+#   is running, the doctor never executes a second Mihomo binary
+#   (no `-v`, no `-t` - a second execution is the established
+#   SIGSEGV pattern on constrained hardware); the runtime version
+#   then comes from the read-only Controller API (GET /version
+#   only). Executable probes run only when no daemon was observed.
 # It is safe to run at any time and safe to paste the whole
 # output into a support chat: no config contents, secrets,
 # subscription URLs or proxy credentials are printed.
@@ -144,14 +150,18 @@ udp_listening() {
     fi
 }
 
-# count_mihomo_procs -> MIHOMO_PROCS. pidof preferred; without
-# it, scan /proc cmdlines for argv0 basename == "mihomo"
-# (the watchdog and this doctor have different basenames and
-# are not counted).
-count_mihomo_procs() {
+# observe_mihomo_procs -> MIHOMO_PROCS + MIHOMO_PIDS. pidof
+# preferred; without it, scan /proc cmdlines for argv0 basename ==
+# "mihomo" (the watchdog and this doctor have different basenames
+# and are not counted). Observed ONCE near the start and reused by
+# the later sections: the report is an interval observation, not an
+# atomic snapshot.
+observe_mihomo_procs() {
     MIHOMO_PROCS=0
+    MIHOMO_PIDS=""
     if command -v pidof >/dev/null 2>&1; then
-        set -- $(pidof mihomo 2>/dev/null)
+        MIHOMO_PIDS=$(pidof mihomo 2>/dev/null)
+        set -- $MIHOMO_PIDS
         MIHOMO_PROCS=$#
     else
         for _p in /proc/[0-9]*/cmdline; do
@@ -159,9 +169,79 @@ count_mihomo_procs() {
             [ "$_pid" = "$$" ] && continue
             _a0=$(tr '\000' '\n' < "$_p" 2>/dev/null | head -n 1)
             [ "$(basename "$_a0" 2>/dev/null)" = "mihomo" ] || continue
+            MIHOMO_PIDS="$MIHOMO_PIDS $_pid"
             MIHOMO_PROCS=$((MIHOMO_PROCS+1))
         done
     fi
+}
+
+# probe_controller_version - read-only runtime-version evidence via the
+# Mihomo Controller REST API (GET /version only - the same request class
+# as mihomo-route-watch.sh's GET /proxies). Called ONLY while a Mihomo
+# daemon is running: the one-Mihomo invariant forbids executing the
+# binary for -v then. Sets BIN_VER ("" stays unknown) and prints the
+# evidence lines. A configured secret is sent in the Authorization
+# header and is NEVER printed. Every failure mode lands on
+# UNKNOWN/UNVERIFIED - never on a FAIL: the controller being off is the
+# project default, not a defect.
+probe_controller_version() {
+    BIN_VER=""
+    EC_VAL=$(cfg_scalar external-controller)
+    if [ -z "$EC_VAL" ]; then
+        info "Runtime version: UNKNOWN / UNVERIFIED (external-controller not configured - the project default; the binary is not executed for -v while the daemon runs)"
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        info "Runtime version: UNKNOWN / UNVERIFIED (curl unavailable - the Controller probe needs header support wget cannot provide)"
+        return 0
+    fi
+    _ec_secret=$(grep -E "^[[:space:]]*secret:" "$CONFIG" 2>/dev/null | head -n 1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d "\"'")
+    if [ -n "$_ec_secret" ]; then
+        _resp=$(curl -sS --connect-timeout 3 --max-time 8 -H "Authorization: Bearer $_ec_secret" -w '\n%{http_code}' "http://$EC_VAL/version" 2>/dev/null)
+    else
+        _resp=$(curl -sS --connect-timeout 3 --max-time 8 -w '\n%{http_code}' "http://$EC_VAL/version" 2>/dev/null)
+    fi
+    _rc=$?
+    if [ "$_rc" -ne 0 ] || [ -z "$_resp" ]; then
+        info "Runtime version: UNKNOWN / UNVERIFIED (Controller at $EC_VAL unreachable - connection failure, timeout, or a non-HTTP answer; this is NOT a config or service verdict)"
+        return 0
+    fi
+    _code=$(printf '%s\n' "$_resp" | tail -n 1)
+    _body=$(printf '%s\n' "$_resp" | sed '$d')
+    case "$_code" in
+        200) : ;;
+        401|403)
+            info "Runtime version: UNKNOWN / UNVERIFIED (Controller answered HTTP $_code - the request was rejected; check the configured secret)"
+            return 0 ;;
+        404)
+            info "Runtime version: UNKNOWN / UNVERIFIED (Controller answered HTTP 404 - /version not found; unexpected service on the controller port?)"
+            return 0 ;;
+        *)
+            info "Runtime version: UNKNOWN / UNVERIFIED (Controller answered HTTP ${_code:-<empty>} - port collision with an unexpected service?)"
+            return 0 ;;
+    esac
+    _ver=""
+    if command -v jq >/dev/null 2>&1; then
+        _ver=$(printf '%s' "$_body" | jq -r '.version // empty' 2>/dev/null)
+        [ "$_ver" = "null" ] && _ver=""
+        [ "$_ver" = "empty" ] && _ver=""
+    fi
+    if [ -z "$_ver" ]; then
+        _ver=$(printf '%s\n' "$_body" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null | head -n 1 | sed 's/.*:[[:space:]]*"//;s/"$//')
+    fi
+    if [ -z "$_ver" ]; then
+        info "Runtime version: UNKNOWN / UNVERIFIED (Controller answered 200 but reported no usable version field - possible foreign service on the controller port)"
+        return 0
+    fi
+    _ver=${_ver#v}
+    case "$_ver" in
+        ''|*[!0-9.]*)
+            info "Runtime version: UNKNOWN / UNVERIFIED (Controller reported an unparseable version string)"
+            return 0 ;;
+    esac
+    BIN_VER=$_ver
+    ok "Runtime version $BIN_VER (read-only Controller GET /version at $EC_VAL - the binary itself is NOT executed while the daemon runs)"
+    info "Controller evidence scope: proves the runtime version only - not proxy, network or config health (the dedicated sections below cover those)."
 }
 
 # cfg_scalar KEY -> prints the first column-0 YAML scalar value
@@ -199,12 +279,24 @@ fi
 
 echo "=== Mihomo Doctor (read-only diagnostic) ==="
 info "Nothing is installed, updated, removed, started or stopped; config.yaml and Keenetic settings are not touched."
+info "Observation model: the doctor reads the system over an interval - processes may appear or disappear between individual checks; no atomic snapshot is claimed."
 
-BIN_STATE=""      # "" | missing | noexec | ok | segv | execfail
+BIN_STATE=""      # "" | missing | noexec | ok | segv | execfail | running
 BIN=""            # resolved binary path
 BIN_VER=""        # parsed version ("" when unrecognized)
 RELEASE_JSON=""
 NET_GITHUB=1
+
+# One-Mihomo invariant: observe the daemon state ONCE, before any
+# decision about executing the binary. While any mihomo process lives,
+# the doctor never runs a second Mihomo (-v/-t); the runtime version is
+# taken from the read-only Controller API instead.
+observe_mihomo_procs
+DAEMON_RUNNING=0
+[ "$MIHOMO_PROCS" -gt 0 ] && DAEMON_RUNNING=1
+if [ "$MIHOMO_PROCS" -gt 1 ]; then
+    warn "Multiple mihomo processes observed ($MIHOMO_PROCS PIDs:$MIHOMO_PIDS) - the invariant is exactly one; no Mihomo executable is run while any of them lives"
+fi
 
 # =========================================================
 hdr "1. System"
@@ -393,6 +485,15 @@ if [ -n "$BIN" ]; then
     fi
 
     if [ "$BIN_STATE" != "noexec" ]; then
+    if [ "$DAEMON_RUNNING" -eq 1 ]; then
+        # One-Mihomo invariant: the binary is NEVER executed here.
+        BIN_STATE="running"
+        info "Mihomo daemon is running - the binary is NOT executed (-v would start a second Mihomo: the established SIGSEGV pattern on constrained hardware)"
+        if [ "$MIHOMO_PROCS" -gt 1 ]; then
+            info "PID-level runtime resolution is ambiguous with multiple processes - each PID was inspected; none is reported as 'the healthy runtime'"
+        fi
+        probe_controller_version
+    else
         run_with_timeout 15 "$BIN" -v
         MV_RC=$RUN_RC
         MV_OUT=$RUN_OUT
@@ -446,13 +547,23 @@ if [ -n "$BIN" ]; then
         if [ "$BIN_STATE" = "segv" ]; then
             info "Output: $(first_line "$MV_OUT")"
             info "Confirmed live on a 256 MB MIPSLE device (no swap): a second Mihomo execution while the daemon is running SIGSEGVs regardless of UPX packing - the packed installed binary and an UPX-unpacked build both crashed, and the same binary passed once the daemon was stopped. UPX is not the established cause."
-            info "Likely mechanism: memory pressure from two concurrent Mihomo instances. If the Service section below shows Mihomo running, re-run the doctor with the service stopped to test the binary alone. The doctor modifies nothing."
+            info "Likely mechanism: memory pressure from two concurrent Mihomo instances. This probe ran only because NO Mihomo daemon was observed running (the doctor never executes a second Mihomo while one lives), so the failure belongs to the binary or its environment, not to probe interference."
         fi
     fi
+    fi
     if command -v opkg >/dev/null 2>&1; then
-        _opkg_mihomo=$(opkg list-installed 2>/dev/null | awk '$1 == "mihomo" { print $2; exit }')
+        # BusyBox opkg prints "mihomo - 1.19.30-1": the version is $3
+        # when $2 is the literal dash. Package metadata is NOT runtime
+        # truth - a stale opkg entry beside a newer runtime is a
+        # legitimate observable state, never a FAIL.
+        _opkg_mihomo=$(opkg list-installed 2>/dev/null | awk '$1 == "mihomo" { if ($2 == "-" && $3 != "") print $3; else print $2; exit }')
         if [ -n "$_opkg_mihomo" ]; then
-            if [ -n "$BIN_VER" ] && [ "$_opkg_mihomo" != "$BIN_VER" ]; then
+            _opkg_base=$_opkg_mihomo
+            case "${_opkg_mihomo#*-}" in
+                ''|*[!0-9]*) : ;;   # no numeric -<release> suffix
+                *) _opkg_base=${_opkg_mihomo%-"${_opkg_mihomo#*-}"} ;;
+            esac
+            if [ -n "$BIN_VER" ] && [ "$_opkg_base" != "$BIN_VER" ]; then
                 info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected under the binary-update model; the binary version above is the runtime truth)"
             else
                 info "opkg database: mihomo $_opkg_mihomo"
@@ -526,7 +637,9 @@ else
         info "DNS listen (best-effort parse): port $DNS_PORT"
     fi
 
-    if [ "$BIN_STATE" = "ok" ]; then
+    if [ "$DAEMON_RUNNING" -eq 1 ]; then
+        info "Config validation SKIPPED / UNVERIFIED: Mihomo is running and 'mihomo -t' would execute a second Mihomo (the established SIGSEGV pattern on constrained hardware) - the one-Mihomo invariant wins. The running config is NOT judged by this test; stop the service to enable the executable validation."
+    elif [ "$BIN_STATE" = "ok" ]; then
         run_with_timeout 30 "$BIN" -d "$CONFIG_DIR" -t
         if [ "$RUN_RC" -eq 0 ]; then
             ok "Config test passed ($BIN -d $CONFIG_DIR -t)"
@@ -559,7 +672,8 @@ else
     fi
 fi
 
-count_mihomo_procs
+# Process state was observed once at the top of section 3 and is
+# reused here (interval observation, not an atomic snapshot).
 if [ "$MIHOMO_PROCS" -gt 0 ]; then
     if [ -n "$INIT_SCRIPT" ]; then
         ok "Mihomo is running ($MIHOMO_PROCS process(es)), managed by $INIT_SCRIPT"
@@ -652,7 +766,7 @@ hdr "6b. MagiTrickle (optional component, read-only)"
 MT_INSTALLED=0
 MT_VER=""
 if command -v opkg >/dev/null 2>&1; then
-    MT_VER=$(opkg list-installed 2>/dev/null | awk '$1 == "magitrickle" { print $2; exit }')
+    MT_VER=$(opkg list-installed 2>/dev/null | awk '$1 == "magitrickle" { if ($2 == "-" && $3 != "") print $3; else print $2; exit }')
     [ -n "$MT_VER" ] && MT_INSTALLED=1
 fi
 if [ -f "$MT_BIN" ]; then
