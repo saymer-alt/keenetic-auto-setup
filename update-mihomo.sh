@@ -26,7 +26,7 @@
 #     with the rest of the package payload — only the new binary stays, and
 #     it is deleted together with the backup by the centralized cleanup trap
 #     on EVERY exit (success, abort, config failure, download/extraction
-#     failure, signal, rollback). The lock file is cleaned by the same trap.
+#     failure, signal, rollback). The update lock is released by the same trap.
 #   - Pre-flight: the extracted binary is checked before anything on the
 #     system is modified — its `mihomo -v` must match the version in the
 #     package filename, then it is tested against the current config.yaml
@@ -276,7 +276,8 @@ stop_mihomo_confirmed() {
 # (downloaded .ipk, extracted package data, new binary, backup) survive the
 # updater; the lock file is cleaned by the same trap.
 cleanup_tmp() {
-  rm -f "$LOCK_FILE" 2>/dev/null || true
+  rm -f "$LOCK_LEGACY" 2>/dev/null || true
+  rm -rf "$LOCK_DIR" 2>/dev/null || true
   rm -f "$TMP_DIR"/mihomo-update.ipk "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 }
@@ -303,20 +304,168 @@ signal_handler() {
 }
 
 # -----------------------------
-# 0. Prevent parallel updates
 # -----------------------------
-LOCK_FILE="/tmp/mihomo-update.lock"
+# 0. Prevent parallel updates - atomic mkdir lock, stale-safe takeover.
+#
+# /tmp/mihomo-update.lock.d IS the lock: mkdir is an atomic test-and-set,
+# so two concurrent updaters can never both believe they own it. The pid
+# and ts files inside serve liveness and stale recovery only - losing or
+# misreading them never weakens mutual exclusion:
+#   mkdir ok            -> we own the lock
+#   dir held, pid alive and its /proc/<pid>/cmdline references this
+#   updater             -> another run is active, abort
+#   pid dead, or alive with a foreign cmdline (PID reuse) -> stale owner
+#   pid missing/garbage -> fresh (<60s by ts) may be a starter between
+#   its mkdir and its pid write: abort; otherwise stale
+# A stale takeover renames the directory away first (the mv IS the atomic
+# claim: exactly one recoverer wins) and then removes only the directory
+# it renamed. A takeover additionally requires that NO live process with
+# this updater's name exists in /proc - the independent process scan is
+# the backstop that keeps malformed metadata or clock anomalies from ever
+# overrunning a live run. Wall-clock age alone decides nothing: the
+# router may boot before time sync, so a live owner pid (checked through
+# /proc/<pid>/cmdline) always outranks any timestamp.
+# Legacy form: versions before the mkdir lock used the plain file
+# /tmp/mihomo-update.lock with no owner metadata. It is still honored:
+# a legacy lock backed by a live update process blocks this run; with no
+# live update process behind it, it is stale and reclaimed. While we
+# hold the lock we keep the legacy file present with our pid, so an
+# old-version updater (which only checks that the file exists) still
+# sees "another update is running" instead of racing us. Residual: an
+# old-version updater has a racy check-then-touch of its own and can
+# slip through a microseconds-wide window; that generation is racy by
+# design and phases out as routers update.
+# -----------------------------
+LOCK_DIR="/tmp/mihomo-update.lock.d"
+LOCK_LEGACY="/tmp/mihomo-update.lock"
+LOCK_TOOL_MARKER="update-mihomo"
+LOCK_HINT="If no update is actually running, remove it manually: rm -rf /tmp/mihomo-update.lock.d /tmp/mihomo-update.lock"
 
-if [ -e "$LOCK_FILE" ]; then
+# True when <pid> is a live process whose cmdline references this updater.
+lock_pid_is_ours() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ -d "/proc/$1" ] || return 1
+  grep -q "$LOCK_TOOL_MARKER" "/proc/$1/cmdline" 2>/dev/null
+}
+
+# Independent backstop for every takeover decision: is any OTHER live
+# process visibly running this updater? Covers legacy locks (which carry
+# no pid), half-written metadata and PID reuse. Self and the direct
+# parent are excluded; a false positive only errs on the safe side.
+LOCK_TOOL_PIDS=""
+lock_tool_alive() {
+  LOCK_TOOL_PIDS=""
+  for _lock_d in /proc/[0-9]*; do
+    [ "$_lock_d" = "/proc/$$" ] && continue
+    [ "$_lock_d" = "/proc/$PPID" ] && continue
+    if grep -q "$LOCK_TOOL_MARKER" "$_lock_d/cmdline" 2>/dev/null; then
+      LOCK_TOOL_PIDS="$LOCK_TOOL_PIDS ${_lock_d#/proc/}"
+    fi
+  done
+  [ -n "$LOCK_TOOL_PIDS" ]
+}
+
+lock_write_owner() {
+  # The claim symlink is the ownership decider: creating it is an atomic
+  # create-if-absent, so on a filesystem/kernel where directory creation
+  # itself is not a reliable test-and-set (observed on a WSL2 kernel), two
+  # concurrent starters still cannot both hold the lock - exactly one
+  # claim lands, the loser backs off without touching anything. On normal
+  # kernels the ln cannot fail after our own mkdir and this is a no-op
+  # guarantee. Written before pid/ts so a lost claim never corrupts the
+  # winner's metadata.
+  ln -s "pid=$$;ts=$(date +%s)" "$LOCK_DIR/claim" 2>/dev/null || return 1
+  echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
+  date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
+  # Best-effort legacy companion: old-version updaters only check that
+  # the plain file exists; new runs read our pid from it.
+  echo "$$" > "$LOCK_LEGACY" 2>/dev/null || true
+}
+
+acquire_lock() {
+  # Legacy evidence first: an old-version updater only knows the plain
+  # lock file, so its presence outranks everything else.
+  if [ -e "$LOCK_LEGACY" ]; then
+    if [ ! -f "$LOCK_LEGACY" ] || [ -L "$LOCK_LEGACY" ]; then
+      error "Update lock has an unexpected form: $LOCK_LEGACY is not a regular file. Will not remove an unknown object. $LOCK_HINT"
+    fi
+    _lp=$(head -n 1 "$LOCK_LEGACY" 2>/dev/null | awk '{print $1}' || true)
+    if lock_pid_is_ours "$_lp"; then
+      error "Another Mihomo update is already running (pid $_lp). Aborting."
+    fi
+    if lock_tool_alive; then
+      error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
+    fi
+    log "Removing stale legacy update lock (no live update process behind it)..."
+    rm -f "$LOCK_LEGACY"
+  fi
+
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    if ! lock_write_owner; then
+      # The claim was lost to a concurrent starter (or the write failed):
+      # back off WITHOUT cleanup - the visible lock belongs to the winner.
+      error "Another Mihomo update is already running (lock claim lost). Aborting."
+    fi
+    return 0
+  fi
+
+  if [ ! -d "$LOCK_DIR" ]; then
+    error "Update lock has an unexpected form: $LOCK_DIR is not a directory. Will not remove an unknown object. $LOCK_HINT"
+  fi
+
+  _lp=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+  _lock_busy=0
+  case "$_lp" in
+    ''|*[!0-9]*)
+      # Missing/garbage pid: possibly a starter between its mkdir and its
+      # pid write (microseconds). Trust only a fresh ts; a malformed or
+      # missing ts counts as ancient and falls through to the
+      # live-process backstop before any takeover.
+      _now=$(date +%s)
+      _ts=$(cat "$LOCK_DIR/ts" 2>/dev/null || true)
+      case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
+      [ $((_now - _ts)) -lt 60 ] && _lock_busy=1
+      ;;
+    *)
+      lock_pid_is_ours "$_lp" && _lock_busy=1
+      # /proc/<pid> gone, or alive with a foreign cmdline (PID reuse):
+      # a dead or stale owner either way; the backstop below still runs.
+      ;;
+  esac
+  if [ "$_lock_busy" -eq 1 ]; then
+    error "Another Mihomo update is already running. Aborting."
+  fi
+
+  # Stale verdict: a live maintenance process must never be overrun,
+  # whatever its (malformed) metadata says.
+  if lock_tool_alive; then
+    error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
+  fi
+
+  log "Taking over a stale update lock (owner pid ${_lp:-unknown} is gone)..."
+  _claim="$LOCK_DIR.stale.$$"
+  if mv "$LOCK_DIR" "$_claim" 2>/dev/null; then
+    rm -rf "$_claim"
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+      lock_write_owner
+      return 0
+    fi
+    # A fresh run took the freed path first; it owns the lock now.
+    error "Another Mihomo update is already running. Aborting."
+  fi
   error "Another Mihomo update is already running. Aborting."
-fi
+}
 
-touch "$LOCK_FILE"
+acquire_lock
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT
 trap 'signal_handler TERM' TERM
 trap 'signal_handler HUP' HUP
+
+
 
 # -----------------------------
 # 1. Base checks and updater dependencies
