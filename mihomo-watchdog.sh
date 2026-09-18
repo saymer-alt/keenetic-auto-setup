@@ -198,6 +198,31 @@ rotate_log
 
 
 # =========================================================
+# MAINTENANCE COORDINATION
+#
+# update-mihomo.sh and migrate-mihomo-mips.sh write
+# /tmp/mihomo.maintenance for the duration of a transaction that may
+# intentionally stop Mihomo. While a fresh marker exists, this watchdog
+# run exits before any checks, so a cron tick landing inside an update
+# or migration cannot resurrect Mihomo mid-transaction. A malformed or
+# missing timestamp is treated as fresh (conservative for the running
+# maintenance); the marker lives in /tmp, so a crashed run self-heals at
+# the next reboot, and anything older than 3600 s is ignored so a
+# watchdog outage stays bounded.
+# =========================================================
+
+if [ -f "/tmp/mihomo.maintenance" ]; then
+    _maint_ts=$(head -n 1 /tmp/mihomo.maintenance 2>/dev/null | awk '{print $2}')
+    case "$_maint_ts" in
+        ''|*[!0-9]*) _maint_ts=$(date +%s) ;;
+    esac
+    if [ $(( $(date +%s) - _maint_ts )) -le 3600 ]; then
+        log "[SKIP] maintenance in progress - checks skipped"
+        exit 0
+    fi
+fi
+
+# =========================================================
 # RESTART RATE LIMITER
 #
 # Prevents restart loops during upstream outages.

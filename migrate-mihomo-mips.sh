@@ -57,6 +57,7 @@ LOCK_DIR="/tmp/mihomo-migrate.lock.d"
 LOCK_LEGACY="/tmp/mihomo-migrate.lock"
 LOCK_TOOL_MARKER="migrate-mihomo"
 LOCK_HINT="If no migration is actually running, remove it manually: rm -rf /tmp/mihomo-migrate.lock.d /tmp/mihomo-migrate.lock"
+MAINT_MARKER="/tmp/mihomo.maintenance"
 
 # Lock helpers (used by apply mode only; --check is read-only and never
 # locks). Same contract as update-mihomo.sh: the directory IS the lock
@@ -347,6 +348,7 @@ port_ok() {
 cleanup_tmp() {
   rm -f "$LOCK_LEGACY" 2>/dev/null || true
   rm -rf "$LOCK_DIR" 2>/dev/null || true
+  rm -f "$MAINT_MARKER" 2>/dev/null || true
   rm -f "$TMP_NEW" 2>/dev/null || true
   rm -rf "$GATE_HOME" 2>/dev/null || true
 }
@@ -499,6 +501,11 @@ echo "=== Mihomo MIPS stack migration ==="
 # updater; see the lock helpers above for the stale-recovery rules and
 # the legacy plain-file compatibility)
 acquire_lock
+
+# Maintenance coordination (same contract as update-mihomo.sh): while
+# this migration runs, the watchdog skips its checks entirely so a cron
+# tick cannot resurrect Mihomo during the planned downtime.
+echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT

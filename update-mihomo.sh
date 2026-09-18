@@ -20,11 +20,16 @@
 #     binary this updater restores on rollback. opkg itself is used only for
 #     architecture information and, if missing, for the updater's own tool
 #     dependencies (curl, jq, gzip).
-#   - Staged /tmp lifecycle keeps the peak footprint small: outer archive is
-#     unpacked into a dedicated temp dir, the downloaded .ipk is deleted
+#   - Transactional replacement: the candidate is staged ON the destination
+#     filesystem (/opt/<dir>/.mihomo.new.$$) and committed with a single
+#     same-filesystem atomic rename - the canonical binary never passes
+#     through a missing or partially copied state, `rm` of the old binary
+#     before the commit never happens, and a failed rename leaves the old
+#     binary intact. The /tmp staging below only ever holds the extracted
+#     outer archive into a dedicated temp dir; the downloaded .ipk is deleted
 #     immediately, then data.tar.gz is unpacked and immediately removed along
-#     with the rest of the package payload — only the new binary stays, and
-#     it is deleted together with the backup by the centralized cleanup trap
+#     with the rest of the package payload — only the extracted binary stays,
+#     and it is deleted together with the /opt stage and the backup by the
 #     on EVERY exit (success, abort, config failure, download/extraction
 #     failure, signal, rollback). The update lock is released by the same trap.
 #   - Pre-flight: the extracted binary is checked before anything on the
@@ -89,6 +94,9 @@ OPKG_UPDATED=0
 REPLACEMENT_STARTED=0
 TMP_NEW=""
 WORK_DIR=""
+STAGE_BIN=""
+RECOVERY_FAILED=0
+MAINT_MARKER="/tmp/mihomo.maintenance"
 
 # Parse arguments
 for arg in "$@"; do
@@ -182,14 +190,24 @@ extract_new_binary_from_ipk() {
 rollback_and_exit() {
   log "Rolling back to previous version..."
 
-  if [ ! -f "$TMP_BACKUP" ]; then
-    error "$1 — rollback impossible: backup is missing"
+  # Usable rollback candidate: the backup this run created and
+  # size-verified in /tmp. It is volatile (gone after reboot).
+  if [ ! -s "$TMP_BACKUP" ]; then
+    RECOVERY_FAILED=1
+    restore_stopped_service
+    error "$1 — UPDATE FAILED AND RECOVERY FAILED: rollback backup is missing or empty at $TMP_BACKUP (volatile — gone after reboot). The new binary remains installed at $MIHOMO_PATH. Restore the previous binary manually (install.sh) or verify the new one with: mihomo -v"
   fi
 
-  rm -f "$MIHOMO_PATH"
-
-  cp -f "$TMP_BACKUP" "$MIHOMO_PATH" || error "$1 — failed to restore backup"
-  chmod +x "$MIHOMO_PATH"
+  rm -f "$STAGE_BIN" 2>/dev/null || true
+  if ! cp -f "$TMP_BACKUP" "$MIHOMO_PATH"; then
+    RECOVERY_FAILED=1
+    restore_stopped_service
+    error "$1 — UPDATE FAILED AND RECOVERY FAILED: could not copy the backup back to $MIHOMO_PATH. The file there may be the failed new version. Restore manually from $TMP_BACKUP (volatile — gone after reboot)."
+  fi
+  if ! chmod +x "$MIHOMO_PATH"; then
+    RECOVERY_FAILED=1
+    error "$1 — UPDATE FAILED AND RECOVERY FAILED: backup restored but chmod failed on $MIHOMO_PATH. Fix permissions manually: chmod +x $MIHOMO_PATH"
+  fi
   log "Previous binary restored."
 
   if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
@@ -202,7 +220,7 @@ rollback_and_exit() {
     fi
   fi
 
-  error "$1"
+  error "$1 — update failed, previous version restored."
 }
 
 # Restore a service that THIS updater stopped (the one-instance stop before
@@ -276,9 +294,19 @@ stop_mihomo_confirmed() {
 # (downloaded .ipk, extracted package data, new binary, backup) survive the
 # updater; the lock file is cleaned by the same trap.
 cleanup_tmp() {
+  # After a FAILED RECOVERY the backup is the user's manual restore
+  # path - the error message points at it, so it must survive.
+  if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
+    rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
+  fi
   rm -f "$LOCK_LEGACY" 2>/dev/null || true
   rm -rf "$LOCK_DIR" 2>/dev/null || true
-  rm -f "$TMP_DIR"/mihomo-update.ipk "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
+  rm -f "$MAINT_MARKER" 2>/dev/null || true
+  rm -f "$STAGE_BIN" 2>/dev/null || true
+  if [ -n "$MIHOMO_DIR" ]; then
+    rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
+  fi
+  rm -f "$TMP_DIR"/mihomo-update.ipk 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 }
 
@@ -459,6 +487,13 @@ acquire_lock() {
 }
 
 acquire_lock
+
+# Maintenance coordination: while this transaction runs, the watchdog
+# skips its checks entirely (see mihomo-watchdog.sh) so a cron tick cannot
+# resurrect Mihomo during the planned downtime. The marker lives in /tmp,
+# so a crashed run self-heals at the next reboot; the watchdog additionally
+# ignores markers older than one hour.
+echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT
@@ -762,26 +797,42 @@ TMP_NEW="$EXTRACTED_BIN"
 chmod +x "$TMP_NEW"
 
 # -----------------------------
-# 11. Check free space and clean old backups — static checks (wc/df only,
-# no ELF execution), performed while the old Mihomo is still running so a
-# space problem aborts without any downtime.
+# 11. Pre-stop transaction preparation. Everything that does not require
+# the daemon to be down happens HERE, while the old Mihomo is still
+# running: network acquisition is already complete, and any failure in
+# this section aborts with the system untouched and the service running.
+#
+#   a. Free-space preflight on the DESTINATION filesystem: staging needs
+#      the new binary plus a fixed 4 MB safety margin WHILE the old
+#      canonical binary is still present. Deletion of the old binary is
+#      never assumed to create staging space (the "ghost block" stop is
+#      gone - the transactional commit never removes the old binary, so
+#      stopping to reclaim ghost blocks has no purpose). UBI
+#      avail_eraseblocks are not consulted; UBIFS compression can make
+#      df conservative, and a safe refusal is preferable to destructive
+#      optimism. A refusal leaves a running service running.
+#   b. Target sanity: the canonical path must be a regular file.
+#   c. Orphaned stages of crashed earlier runs are removed first - the
+#      `.mihomo.new.` prefix is this updater's exclusive stage namespace
+#      (the run lock guarantees no concurrent updater owns one).
+#   d. Same-filesystem stage: the candidate is copied to
+#      $MIHOMO_DIR/.mihomo.new.$$ (same directory as the target, so the
+#      commit is a same-filesystem atomic rename - a cross-filesystem
+#      move is never claimed atomic). The copy is verified by exact size.
+#   e. Rollback backup: the current binary is copied to /tmp and its
+#      size verified against the target. This is THE rollback candidate
+#      for this run: bounded (one pid-suffixed file, removed on every
+#      exit) and volatile (after a reboot only install.sh restores).
 # -----------------------------
 NEW_SIZE_BYTES=$(wc -c < "$TMP_NEW")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
-NEED_KB=$((NEW_SIZE_KB + 4096))  # 4 MB safety margin
-
-# Size of the old binary that the replacement will free
-OLD_SIZE_BYTES=0
-if [ -f "$MIHOMO_PATH" ]; then
-  OLD_SIZE_BYTES=$(wc -c < "$MIHOMO_PATH" 2>/dev/null || echo 0)
-fi
-OLD_SIZE_KB=$(( (OLD_SIZE_BYTES + 1023) / 1024 ))
+NEED_KB=$((NEW_SIZE_KB + 4096))  # documented safety margin
 
 get_avail_kb() {
   df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
 }
 
-# Remove stale backups in /opt to reclaim space
+# Remove stale backups next to the binary in /opt to reclaim space
 for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
   if [ -f "$bak" ]; then
     log "Removing old backup: $bak"
@@ -790,31 +841,52 @@ for bak in "$MIHOMO_PATH.backup" "$MIHOMO_PATH.old" "$MIHOMO_PATH.bak"; do
 done
 
 AVAIL_KB=$(get_avail_kb)
-# Projected space includes the blocks we will get back after the old binary is freed
-PROJECTED_KB=$(( AVAIL_KB + OLD_SIZE_KB ))
+case "$AVAIL_KB" in
+  ''|*[!0-9]*) AVAIL_KB=0 ;;
+esac
 
-log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB"
-log "Old binary size to be freed: ${OLD_SIZE_KB} KB"
-log "New binary size: ${NEW_SIZE_KB} KB (need ~${NEED_KB} KB)"
-
-# If projected space is still not enough, stop the service to release "ghost" blocks
-if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
-  if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ]; then
-    log "Low space. Stopping mihomo to free ghost disk blocks..."
-    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
-    SERVICE_WAS_STOPPED=1
-    sleep 2
-    AVAIL_KB=$(get_avail_kb)
-    PROJECTED_KB=$(( AVAIL_KB + OLD_SIZE_KB ))
-    log "Free space after stop: ${AVAIL_KB} KB (Projected: ${PROJECTED_KB} KB)"
-  fi
+log "Free space on $MIHOMO_DIR: ${AVAIL_KB} KB; staging the candidate needs ~${NEED_KB} KB while the current binary stays in place"
+if [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  error "Not enough free space on $MIHOMO_DIR (need ~${NEED_KB} KB for staging, available ${AVAIL_KB} KB). Nothing was modified and the service was not touched. Free up space and re-run."
 fi
 
-if [ "$PROJECTED_KB" -lt "$NEED_KB" ]; then
-  # The old binary was never replaced, so a service this updater stopped
-  # for the recheck must not stay down.
-  restore_stopped_service
-  error "Not enough free space on $MIHOMO_DIR (Projected: ${PROJECTED_KB} KB, Required: ${NEED_KB} KB). Free up space manually."
+if [ -L "$MIHOMO_PATH" ] || [ -d "$MIHOMO_PATH" ] || [ ! -f "$MIHOMO_PATH" ]; then
+  error "Canonical Mihomo path has an unexpected form: $MIHOMO_PATH is not a regular file. Nothing was modified."
+fi
+TARGET_BYTES=$(wc -c < "$MIHOMO_PATH")
+
+# Orphaned stages of crashed earlier runs (our exclusive namespace)
+rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
+
+# Same-filesystem stage of the candidate
+STAGE_BIN="$MIHOMO_DIR/.mihomo.new.$$"
+if ! cp -f "$TMP_NEW" "$STAGE_BIN"; then
+  rm -f "$STAGE_BIN" 2>/dev/null || true
+  STAGE_BIN=""
+  error "Failed to stage the new binary at $MIHOMO_DIR/.mihomo.new.$$ (ENOSPC or I/O error) - installed Mihomo untouched, service untouched"
+fi
+chmod +x "$STAGE_BIN" || {
+  rm -f "$STAGE_BIN" 2>/dev/null || true
+  STAGE_BIN=""
+  error "Failed to set executable permission on the staged binary - installed Mihomo untouched, service untouched"
+}
+STAGE_BYTES=$(wc -c < "$STAGE_BIN" 2>/dev/null || echo 0)
+if [ "$STAGE_BYTES" != "$NEW_SIZE_BYTES" ]; then
+  rm -f "$STAGE_BIN" 2>/dev/null || true
+  STAGE_BIN=""
+  error "Staged copy is corrupted (size $STAGE_BYTES != $NEW_SIZE_BYTES) - installed Mihomo untouched, service untouched"
+fi
+log "Candidate staged at $STAGE_BIN"
+
+# Rollback backup (pre-stop: the old binary is intact and running)
+TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
+log "Backing up current binary to $TMP_BACKUP ..."
+if ! cp -f "$MIHOMO_PATH" "$TMP_BACKUP"; then
+  error "Failed to create backup in /tmp - nothing was modified, service untouched"
+fi
+BACKUP_BYTES=$(wc -c < "$TMP_BACKUP" 2>/dev/null || echo 0)
+if [ "$BACKUP_BYTES" != "$TARGET_BYTES" ]; then
+  error "Backup verification failed (size $BACKUP_BYTES != $TARGET_BYTES) - nothing was modified, service untouched"
 fi
 
 # -----------------------------
@@ -894,7 +966,7 @@ fi
 # stopped (a service that was already down stays down) and leaves the old
 # binary in place.
 # -----------------------------
-PACKAGE_VER=$("$TMP_NEW" -v 2>/dev/null | head -1 | awk '{print $3}')
+PACKAGE_VER=$("$STAGE_BIN" -v 2>/dev/null | head -1 | awk '{print $3}')
 PACKAGE_VER=${PACKAGE_VER#v}
 if [ "$PACKAGE_VER" != "$AVAILABLE_VER" ]; then
   preflight_fail "Pre-flight failed: package binary reports ${PACKAGE_VER:-unknown}, expected $AVAILABLE_VER (from $ASSET_NAME) — installed Mihomo untouched"
@@ -903,7 +975,7 @@ log "Package binary version verified: $PACKAGE_VER"
 
 if [ -d "/opt/etc/mihomo" ]; then
   log "Testing new version $AVAILABLE_VER with current config..."
-  if ! "$TMP_NEW" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
+  if ! "$STAGE_BIN" -d /opt/etc/mihomo -t >/dev/null 2>&1; then
     preflight_fail "Config test failed: version $AVAILABLE_VER is incompatible with the current config.yaml. Update aborted, nothing was modified."
   fi
   log "Config test passed."
@@ -912,51 +984,28 @@ else
 fi
 
 # -----------------------------
-# 14. Backup the current binary to /tmp (RAM) as the recovery path
-# -----------------------------
-TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
-
-if [ -f "$MIHOMO_PATH" ]; then
-  log "Backing up current binary to $TMP_BACKUP ..."
-  if ! cp -f "$MIHOMO_PATH" "$TMP_BACKUP"; then
-    restore_stopped_service
-    error "Failed to create backup in /tmp"
-  fi
-fi
-
-# -----------------------------
-# 15. Transactional binary replacement
-#
-# The cron watchdog restarts Mihomo whenever its port is unreachable — and
-# it IS unreachable during the updater's downtime. If a watchdog restart
-# slipped in after the stop above, re-stop it here: the binary is never
-# replaced and never verified under a live Mihomo.
+# 15. Transaction commit. The watchdog may have revived Mihomo after the
+# stop above (its port is unreachable during the downtime) - the re-stop
+# is confirmed before the commit. Any signal before the rename is Phase A
+# (nothing on /opt modified); from the rename on it is Phase B (rollback
+# from the backup). The commit itself is ONE same-filesystem rename: the
+# canonical target never exists in a missing or partially copied state,
+# and a failed rename leaves the old binary untouched.
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-  log "Mihomo is running again (watchdog restart?) — stopping before replacement..."
+  log "Mihomo is running again (watchdog restart?) - stopping before the commit..."
   stop_mihomo_confirmed
 fi
-if [ -n "$INIT_SCRIPT" ] && [ "$SERVICE_WAS_STOPPED" -eq 0 ] && [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
-  log "Stopping mihomo service..."
-  "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
-  sleep 1
-fi
 
-# From here on the old binary is being destructively replaced: any INT/TERM
-# must go through the Phase B rollback path (see signal_handler).
 REPLACEMENT_STARTED=1
-log "Replacing binary at $MIHOMO_PATH ..."
-if ! rm -f "$MIHOMO_PATH"; then
-  rollback_and_exit "Failed to remove old binary"
+log "Committing: rename $STAGE_BIN -> $MIHOMO_PATH ..."
+if ! mv -f "$STAGE_BIN" "$MIHOMO_PATH"; then
+  # The rename failed; under POSIX rename the old file is intact either
+  # way. Phase B rollback restores it from the backup explicitly.
+  rollback_and_exit "Binary replacement failed at the commit step"
 fi
-
-if ! cp -f "$TMP_NEW" "$MIHOMO_PATH"; then
-  rollback_and_exit "Failed to install new binary — rolled back to previous version"
-fi
-
-if ! chmod +x "$MIHOMO_PATH"; then
-  rollback_and_exit "Failed to set executable permission"
-fi
+STAGE_BIN=""
+log "Commit point passed: the new binary is the canonical Mihomo."
 
 # -----------------------------
 # 16. Verify the replaced binary (version + config) — rollback on any failure
