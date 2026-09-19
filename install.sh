@@ -243,9 +243,10 @@ log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")
 # ---------------------------
 # MIHOMO BOOTSTRAP CONFIG
 # ---------------------------
-# The mihomo ipk ships its own placeholder config.yaml (a conffile) with no
-# mixed-port: 7890 — the project contract port (Proxy0 upstream, watchdog,
-# self-check). Provide a project bootstrap instead:
+# The mihomo ipk ships a placeholder config.yaml (a conffile). Package builds
+# before the entware-go mixed-port fix declared only transparent-proxy ports
+# (tproxy/redir) and no mixed-port: 7890 — the project contract port (Proxy0
+# upstream, watchdog, self-check). Provide a project bootstrap instead:
 #   - config.yaml missing -> create it;
 #   - config.yaml still identical to the conffile md5 recorded by opkg at
 #     package install time (untouched package placeholder) -> replace it;
