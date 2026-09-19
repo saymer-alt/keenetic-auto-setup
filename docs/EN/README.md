@@ -9,6 +9,7 @@ Automated installation and operation of network and supporting tools on Keenetic
 ## 0. Prerequisites
 
 - Keenetic with Entware / OPKG installed
+- The KeeneticOS **Proxy client / Клиент прокси** component — required: without it the Proxy* interfaces do not exist and the installer cannot create the project ProxyN
 - SSH access
 - Internet access
 

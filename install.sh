@@ -370,6 +370,22 @@ create_project_proxy() {
     ndmc -c "system configuration save" >/dev/null 2>&1 || true
 }
 
+proxy_client_missing() {
+    # The project Proxy interface did not take effect after an attempted
+    # creation. On real hardware (Keenetic Hopper, 2026-09) this is the
+    # signature of the KeeneticOS "Proxy client / Клиент прокси" component
+    # being absent: without it the interface type itself does not exist.
+    # Fail before any dependent mutation (bypass_wa binding, watchdog,
+    # restart) and tell the operator exactly what to install. The installer
+    # never installs KeeneticOS components itself.
+    _pi="$1"
+    echo "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания." >&2
+    echo "[ERROR] Наиболее вероятная причина: в KeeneticOS не установлен компонент «Клиент прокси» (Proxy client) — без него интерфейсы Proxy* не существуют. Этот компонент обязателен для проекта (ProxyN → Mihomo)." >&2
+    echo "[ERROR] Установите компонент вручную: KeeneticOS → General system settings / Общие настройки системы → KeeneticOS update and components / Обновление и компоненты KeeneticOS → Change component set / Изменить набор компонентов → Proxy client / Клиент прокси." >&2
+    echo "[ERROR] Установщик сам компоненты KeeneticOS не устанавливает. После установки компонента запустите установщик повторно." >&2
+    exit 1
+}
+
 select_project_proxy() {
     PROXY_IFACE=""
 
@@ -400,11 +416,21 @@ select_project_proxy() {
         log "Creating project proxy Proxy0..."
         create_project_proxy "Proxy0"
         PROXY_IFACE="Proxy0"
-        # Refresh the snapshot: the pre-create dump legitimately lacks the
-        # interface this run just created, and ensure_bypass_policy_exit
-        # classifies against it. On a reload failure the downstream binding
-        # is skipped with a warning (safe direction, no mutation).
-        load_rc_dump || warn "Cannot re-validate running-config after create; bypass_wa binding may be skipped"
+        # Refresh the snapshot and VERIFY the creation took effect: a
+        # component-less KeeneticOS (no "Proxy client") silently rejects
+        # every Proxy* write above, and the failure must not hide until the
+        # self-check. On a reload failure the creation result is UNKNOWN:
+        # nothing is bound or assumed, verification is left to the
+        # self-check (safe direction, no mutation).
+        if ! load_rc_dump; then
+            warn "Cannot re-validate running-config after create - creation result UNKNOWN; verify the project proxy manually"
+            return 0
+        fi
+        proxy_state "Proxy0"
+        if [ "$PROXY_STATE" != "FOUND" ]; then
+            proxy_client_missing "Proxy0"
+        fi
+        log "Project proxy Proxy0 created and verified"
         return 0
     fi
 
@@ -429,9 +455,18 @@ select_project_proxy() {
     log "Proxy0 is not project-managed, creating project proxy Proxy${_n}..."
     create_project_proxy "Proxy${_n}"
     PROXY_IFACE="Proxy${_n}"
-    # Same snapshot refresh as in step 2: the new interface must be visible
-    # to ensure_bypass_policy_exit.
-    load_rc_dump || warn "Cannot re-validate running-config after create; bypass_wa binding may be skipped"
+    # Same verification as in step 2: the new interface must be visible to
+    # ensure_bypass_policy_exit, and its absence after the create is the
+    # missing-Proxy-client signature (fail before the bypass_wa binding).
+    if ! load_rc_dump; then
+        warn "Cannot re-validate running-config after create - creation result UNKNOWN; verify the project proxy manually"
+        return 0
+    fi
+    proxy_state "Proxy${_n}"
+    if [ "$PROXY_STATE" != "FOUND" ]; then
+        proxy_client_missing "Proxy${_n}"
+    fi
+    log "Project proxy Proxy${_n} created and verified"
 }
 
 select_project_proxy
@@ -815,6 +850,14 @@ if [ -f "$CONFIG" ]; then
     fi
 else
     check_warn "config.yaml not found (bootstrap missing) — 7890 stays down until a config exists"
+fi
+
+# Mihomo endpoint distinction (read-only): the project ProxyN upstream needs
+# a SOCKS5/Mixed endpoint on 7890. A user config exposing only transparent
+# proxy ports (tproxy/redir) cannot feed ProxyN; the installer never
+# modifies the user config — reported so the gap is visible immediately.
+if [ -f "$CONFIG" ] &&    grep -qE '^[[:space:]]*(tproxy-port|redir-port):' "$CONFIG" &&    ! grep -qE '^[[:space:]]*(mixed-port|socks-port|port):' "$CONFIG"; then
+    check_warn "config.yaml defines only transparent-proxy ports (tproxy/redir) and no SOCKS5/Mixed endpoint — the project ProxyN upstream (127.0.0.1:7890) needs one, e.g. 'mixed-port: 7890' (user config is never modified by the installer)"
 fi
 
 # Free space on /opt (critical low)
