@@ -429,11 +429,15 @@ Apply and verify:
 curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # expect the proxy exit IP
 ```
 
-You can also syntax-check a config without restarting:
+Do not run `mihomo -t` in parallel with the running daemon: on some Keenetic devices a second Mihomo process causes SIGSEGV. For an executable syntax check, stop the service first, run the check, then start it again:
 
 ```bash
+/opt/etc/init.d/S99mihomo stop
 mihomo -d /opt/etc/mihomo -t
+/opt/etc/init.d/S99mihomo start
 ```
+
+For normal read-only diagnostics of a running installation, use `mihomo-doctor.sh`: it obeys the one-Mihomo rule and does not start a second process.
 
 Generating a config from your links/subscriptions instead of writing YAML by hand: [saymer-alt/link-generators](https://github.com/saymer-alt/link-generators) (runs fully client-side in the browser).
 
@@ -758,7 +762,7 @@ Wrong clock. `ntpd -q -p pool.ntp.org`, check `date`, retry. Classic on routers 
 Unstable/broken DoH servers in `config.yaml`. Switch to cloudflare-dns / dns.google / quad9. Also check the server itself: `curl -x socks5://127.0.0.1:7890 https://ipinfo.io`.
 
 **`proxy fail [000/000]` / Mihomo won't start**
-Almost always `config.yaml` — missing or invalid. `mihomo -d /opt/etc/mihomo -t` prints the real error; run `mihomo -d /opt/etc/mihomo` in foreground to see startup logs.
+Almost always `config.yaml` — missing or invalid. If no Mihomo process is actually running, `mihomo -d /opt/etc/mihomo -t` prints the real error; run `mihomo -d /opt/etc/mihomo` in foreground to see startup logs. Do not run either command in parallel with a live Mihomo daemon.
 
 **"Everything installed but nothing opens"**
 No `config.yaml` (step 5), or DNS on clients. Also check the router's own DNS still works — never "test" by changing default route/DNS config casually.
