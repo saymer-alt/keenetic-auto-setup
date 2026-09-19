@@ -29,7 +29,11 @@ retry() {
 }
 
 # Cleanup temp files on any exit
-trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new"' EXIT INT TERM HUP
+WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
+# Cleanup temp files on any exit (the watchdog stage lives on /opt,
+# next to its final destination - a /tmp -> /opt move is not atomic
+# and must never be claimed as such)
+trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE"' EXIT INT TERM HUP
 
 # ---------------------------
 # CHECK BASE
@@ -559,7 +563,16 @@ install_watchdog_bin() {
         warn "Watchdog sanity check failed, not installed"
         return 1
     fi
-    if ! mv -f "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_BIN"; then
+    # Same-filesystem staging: copy the validated candidate next to its
+    # destination, then commit with one atomic rename. The canonical
+    # watchdog never passes through a partially copied state; a crash
+    # mid-copy leaves only this updater's stage file, which the next
+    # install.sh or update-watchdog.sh run removes.
+    if ! cp -f "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE"; then
+        warn "Failed to stage the new watchdog at $WATCHDOG_STAGE"
+        return 1
+    fi
+    if ! mv -f "$WATCHDOG_STAGE" "$WATCHDOG_BIN"; then
         warn "Failed to install $WATCHDOG_BIN"
         return 1
     fi
@@ -648,13 +661,28 @@ WARNS=0
 check_ok()   { echo "[ok] $1"; }
 check_warn() { echo "[WARN] $1"; WARNS=$((WARNS+1)); }
 check_fail() { echo "[FAIL] $1"; FAILS=$((FAILS+1)); }
+check_info() { echo "[info] $1"; }
+
+# One-Mihomo invariant: the self-check executes the Mihomo binary (-v/-t)
+# ONLY when no daemon is running - a second execution is the documented
+# SIGSEGV pattern on constrained hardware. Without pidof the state cannot
+# be verified, so the probes are skipped conservatively (assumed running).
+mihomo_running() {
+    if command -v pidof >/dev/null 2>&1; then
+        pidof mihomo >/dev/null 2>&1
+    else
+        return 0
+    fi
+}
 
 CONFIG="/opt/etc/mihomo/config.yaml"
 
 # Mihomo binary + version
 if [ -x /opt/bin/mihomo ] || command -v mihomo >/dev/null 2>&1; then
     MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
-    if ${MIHOMO_BIN} -v >/dev/null 2>&1; then
+    if mihomo_running; then
+        check_info "Mihomo daemon is running - binary probe (-v) skipped (one-Mihomo invariant); the running daemon itself proves the binary executes"
+    elif ${MIHOMO_BIN} -v >/dev/null 2>&1; then
         check_ok "Mihomo binary: $(${MIHOMO_BIN} -v 2>/dev/null | head -1)"
     else
         check_fail "Mihomo binary exists but 'mihomo -v' failed"
@@ -773,7 +801,9 @@ fi
 # Config.yaml: the bootstrap (mixed-port 7890) should always be present;
 # port 7890 is checked whenever a config exists.
 if [ -f "$CONFIG" ]; then
-    if ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
+    if mihomo_running; then
+        check_info "Mihomo config syntax check skipped - the daemon is running and 'mihomo -t' would execute a second Mihomo (one-Mihomo invariant); the running service proves the config loads"
+    elif ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
         check_ok "Mihomo config syntax valid"
     else
         check_warn "Mihomo config syntax check (mihomo -t) failed"

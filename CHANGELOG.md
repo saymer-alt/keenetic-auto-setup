@@ -30,6 +30,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `install.sh` now obeys the one-Mihomo invariant: the post-install self-check executed the Mihomo binary (`-v` twice, and `-t` against the user config) unconditionally — the documented SIGSEGV pattern on constrained MT7621 hardware when the daemon is running. Both probes are now gated on the daemon state (pidof; without pidof the state is unverifiable and the probes are skipped conservatively), reporting the skip as `[info]` with the running daemon itself serving as the execution/config proof. The canonical watchdog install additionally stages on the destination filesystem and commits with an atomic rename — the previous cross-filesystem `/tmp` → `/opt` `mv` was not atomic and could leave a partially written canonical watchdog on interruption (crash residue now bounded to the installer's stage file, swept by the next install or update-watchdog run).
+
+### Fixed
+
 - `migrate-mihomo-mips.sh` now obeys the one-Mihomo invariant during its version pre-filter: the installed binary was probed with `-v` while the daemon could still be running (the documented SIGSEGV pattern on constrained MT7621 hardware). The probe is now deferred exactly like in `update-mihomo.sh` — while a daemon lives the pre-filter is skipped (the definitive `mihomo -t` support gate after the controlled stop decides anyway; the pre-filter remains a zero-downtime optimization for the daemon-stopped case), found by the TASK-18 adversarial integration regression and verified there end-to-end.
 
 ### Fixed
