@@ -34,15 +34,9 @@ All notable changes to this project will be documented in this file.
 - Clean-install Mihomo endpoint contract fixed at the package source: the mihomo `.ipk` published on `saymer-alt/entware-go:latest` (package release 2, rebuilt through that repository's established `build-mihomo.yml` workflow) now ships a default `config.yaml` declaring `mixed-port: 7890` — the canonical Keenetic ProxyN bridge endpoint. The previous default carried only transparent-proxy placeholder ports (`tproxy-port: 1181`, `redir-port: 1182`): on a clean Keenetic Hopper install Mihomo ran and `Proxy0`/`bypass_wa` were created correctly, but nothing listened on 127.0.0.1:7890 until the endpoint was added manually — the installer's endpoint-distinction self-check flagged exactly this gap and the watchdog logged "Mihomo port unreachable". `config.yaml` stays an opkg conffile (a package upgrade/reinstall never overwrites a user-maintained config), and `update-mihomo.sh` never invokes `opkg install` at all, so existing installations are unaffected. The installer keeps pointing ProxyN at 127.0.0.1:7890 only and never modifies an existing config; `docs/03-install.md` and the installer's bootstrap comment now describe the fixed package placeholder.
 - `install.sh` now verifies that the project Proxy interface actually took effect: on a real Keenetic Hopper the KeeneticOS "Proxy client / Клиент прокси" component was missing, every Proxy* creation write was silently rejected (the `|| true` best-effort suppression hid the failure), and the installer ran to a generic self-check failure. `create_project_proxy` is now followed by a fresh running-config read-back; if the created interface is still absent the installer fails immediately — before the bypass_wa binding and watchdog/restart steps — with an actionable message naming the required KeeneticOS component and its UI path (General system settings → KeeneticOS update and components → Change component set → Proxy client / Клиент прокси). The installer does not install KeeneticOS components itself. A failed running-config reload after creation is treated as UNKNOWN (non-destructive continuation, verification left to the self-check), an existing valid project ProxyN is reused without any capability probe, and foreign Proxy interfaces remain untouched. The self-check additionally distinguishes a Mihomo config that exposes only transparent-proxy ports (tproxy/redir) with no SOCKS5/Mixed endpoint on 7890 — reported read-only; user configs are never normalized. README prerequisites now list the Proxy client component as required.
 
-### Fixed
-
 - `install.sh` now obeys the one-Mihomo invariant: the post-install self-check executed the Mihomo binary (`-v` twice, and `-t` against the user config) unconditionally — the documented SIGSEGV pattern on constrained MT7621 hardware when the daemon is running. Both probes are now gated on the daemon state (pidof; without pidof the state is unverifiable and the probes are skipped conservatively), reporting the skip as `[info]` with the running daemon itself serving as the execution/config proof. The canonical watchdog install additionally stages on the destination filesystem and commits with an atomic rename — the previous cross-filesystem `/tmp` → `/opt` `mv` was not atomic and could leave a partially written canonical watchdog on interruption (crash residue now bounded to the installer's stage file, swept by the next install or update-watchdog run).
 
-### Fixed
-
 - `migrate-mihomo-mips.sh` now obeys the one-Mihomo invariant during its version pre-filter: the installed binary was probed with `-v` while the daemon could still be running (the documented SIGSEGV pattern on constrained MT7621 hardware). The probe is now deferred exactly like in `update-mihomo.sh` — while a daemon lives the pre-filter is skipped (the definitive `mihomo -t` support gate after the controlled stop decides anyway; the pre-filter remains a zero-downtime optimization for the daemon-stopped case), found by the TASK-18 adversarial integration regression and verified there end-to-end.
-
-### Fixed
 
 - `mihomo-doctor.sh` (v1.2.0) now obeys the one-Mihomo invariant as a universal rule (real MT7621 hardware showed a second Mihomo execution for `-v`/`-t` SIGSEGVing under the running daemon regardless of architecture or RAM size): the daemon is observed once at the start (pidof, or a /proc cmdline scan without it — pid list preserved), and while any mihomo process lives the doctor never executes a second Mihomo — the runtime version comes from the read-only Controller `GET /version` (Authorization header only, secrets never printed; unconfigured / unreachable / timeout / 401 / 403 / malformed JSON / missing version / `v`-prefix all land on UNKNOWN/UNVERIFIED rather than FAIL, with the evidence scope of the Controller explicitly limited to the runtime version) and the config test is reported SKIPPED/UNVERIFIED instead of judging the config. Executable `-v`/`-t` probes still run when no daemon was observed. Multiple mihomo processes are reported as an anomaly and no PID is arbitrarily presented as the healthy runtime; a dead/unreadable/noncanonical `/proc/<pid>/exe` falls back to the deterministic path order. opkg metadata parsing fixed for real BusyBox output (`mihomo - 1.19.30-1`: the literal dash column was previously reported as the version); stale opkg metadata beside a newer runtime stays informational. An observation-model note states that the doctor reads the system over an interval and claims no atomic snapshot. Exit codes and OK/WARN/FAIL/INFO semantics unchanged; legitimate contract FAILs (missing project ProxyN, foreign Proxy0) and WARNs (missing bypass_wa, exposed controller) unchanged.
 
@@ -58,6 +52,28 @@ All notable changes to this project will be documented in this file.
 - Legacy `deploy.sh` (first-generation installer) and `mihomo_manual_update_arm.md` (manual ARM binary replacement, superseded by the transactional `update-mihomo.sh`) removed; `update-mihomo.sh` is the single supported update path.
 - VPS/Ubuntu notes and server-side materials (`scripts/ubuntu*.md`, `debian1.md`, `setup_debian12*.sh`, `mieru.md`) moved to `saymer-alt/vps-gateway-bootstrap`.
 - Personal Entware service utility (`scripts/service`) removed from this repository (preserved in `saymer-alt/keenetic-knowledge-base`).
+
+## [1.3.0] - 2026-09-13
+
+### Changed
+
+- Architecture and documentation were aligned with the current `KeeneticOS → ProxyN → Mihomo` model and the actual installer behavior.
+- Russian README was rewritten as the concise practical entry point; the English README was added and synchronized.
+- Installation, HOWTO, architecture and encyclopedia documentation was synchronized with the current bootstrap and component roles.
+- VPS/Ubuntu/Debian material was separated into `saymer-alt/vps-gateway-bootstrap`; the personal Entware utility was preserved in `saymer-alt/keenetic-knowledge-base` and removed from this repository.
+
+### Added
+
+- Safe project ProxyN selection with protection of a foreign `Proxy0`.
+- Automatic `bypass_wa` binding to the selected project ProxyN while preserving existing manual permits.
+- Bootstrap documentation aligned with the minimal `mixed-port: 7890` configuration.
+
+### Notes
+
+- This release primarily aligned documentation and architecture with the implementation; it intentionally did not add unnecessary runtime networking features.
+- This section was added retrospectively from the already-published GitHub Release `v1.3.0`; the tag and published release are unchanged.
+
+---
 
 ## [1.2.0] - 2026-09-08
 
