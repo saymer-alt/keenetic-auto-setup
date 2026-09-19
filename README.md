@@ -56,13 +56,13 @@ nano /opt/etc/mihomo/config.yaml
 
 ## 3. Проверка и запуск
 
-Проверить конфигурацию:
+Если Mihomo уже запущен, **не запускайте `mihomo -t` параллельно**: на части Keenetic второй экземпляр Mihomo приводит к SIGSEGV. Для безопасной read-only проверки установленного стека используйте Doctor:
 
 ```bash
-mihomo -t -f /opt/etc/mihomo/config.yaml
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
 ```
 
-Запустить:
+После изменения конфигурации перезапустить сервис:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
