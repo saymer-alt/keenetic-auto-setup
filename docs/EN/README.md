@@ -56,13 +56,13 @@ Details → [Mihomo](../encyclopedia/10-mihomo-eto.md) · [MagiTrickle and routi
 
 ## 3. Check and start
 
-Validate the configuration:
+If Mihomo is already running, **do not run `mihomo -t` in parallel**: on some Keenetic devices a second Mihomo process causes SIGSEGV. For a safe read-only check of the installed stack, use the Doctor:
 
 ```bash
-mihomo -t -f /opt/etc/mihomo/config.yaml
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
 ```
 
-Start/restart the service:
+After changing the configuration, restart the service:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
