@@ -437,11 +437,15 @@ sh mihomo-interface-check.sh    # или скачайте его из репо �
 curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # ожидаем IP выходного сервера
 ```
 
-Конфиг можно проверить на синтаксис без перезапуска:
+Не запускайте `mihomo -t` параллельно с работающим демоном: на части Keenetic второй экземпляр Mihomo приводит к SIGSEGV. Для исполняемой проверки синтаксиса сначала остановите сервис, выполните проверку и затем снова запустите его:
 
 ```bash
+/opt/etc/init.d/S99mihomo stop
 mihomo -d /opt/etc/mihomo -t
+/opt/etc/init.d/S99mihomo start
 ```
+
+Для обычной read-only диагностики работающей установки используйте `mihomo-doctor.sh`: он соблюдает правило одного Mihomo и не запускает второй экземпляр.
 
 Чтобы не писать YAML руками, а собрать конфиг из своих ссылок/подписок: [saymer-alt/link-generators](https://github.com/saymer-alt/link-generators) (работает полностью в браузере, ничего никуда не отправляется).
 
@@ -766,7 +770,7 @@ sh mihomo-route-watch.sh -g MyGroup -s SECRET
 Нестабильные/битые DoH-серверы в `config.yaml`. Перейдите на cloudflare-dns / dns.google / quad9. Заодно проверьте сам сервер: `curl -x socks5://127.0.0.1:7890 https://ipinfo.io`.
 
 **`proxy fail [000/000]` / Mihomo не стартует**
-Почти всегда `config.yaml` — отсутствует или неверен. `mihomo -d /opt/etc/mihomo -t` напечатает настоящую ошибку; запуск `mihomo -d /opt/etc/mihomo` в foreground покажет логи старта.
+Почти всегда `config.yaml` — отсутствует или неверен. Если процесса Mihomo действительно нет, `mihomo -d /opt/etc/mihomo -t` напечатает настоящую ошибку; запуск `mihomo -d /opt/etc/mihomo` в foreground покажет логи старта. Не выполняйте эти команды параллельно с работающим Mihomo.
 
 **«Всё установилось, но ничего не открывается»**
 Нет `config.yaml` (раздел 5) или DNS на клиентах. Также проверьте, что собственный DNS роутера жив — никогда не «тестируйте» изменением default route/DNS как попало.
