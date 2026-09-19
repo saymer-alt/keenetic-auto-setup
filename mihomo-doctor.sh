@@ -303,7 +303,14 @@ hdr "1. System"
 # =========================================================
 
 if command -v ndmc >/dev/null 2>&1; then
-    MODEL=$(ndmc -c "show version" 2>/dev/null | tr -d '\r' | grep -Ei 'model|hw id' | head -n 1 | sed 's/^[[:space:]]*//')
+    SV_OUT=$(ndmc -c "show version" 2>/dev/null | tr -d '\r')
+    _sv_field() { printf '%s\n' "$SV_OUT" | sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" | head -n 1 | sed 's/[[:space:]]*$//'; }
+    _model_value=$(_sv_field model)
+    if [ -n "$_model_value" ]; then
+        MODEL="model: $_model_value"
+    else
+        MODEL=$(printf '%s\n' "$SV_OUT" | grep -Ei 'model|hw id' | head -n 1 | sed 's/^[[:space:]]*//')
+    fi
     if [ -z "$MODEL" ] && command -v ndmq >/dev/null 2>&1; then
         MODEL=$(ndmq -p 'show version' -f json 2>/dev/null | grep -o '"title":"[^"]*"' | cut -d'"' -f4)
     fi
@@ -312,6 +319,19 @@ if command -v ndmc >/dev/null 2>&1; then
     else
         info "Router model: not reported by ndmc/ndmq"
     fi
+    # KeeneticOS identity from the same read-only `show version` observation.
+    # title/release/sandbox/hw_id are each authoritative for their field and
+    # are never inferred from each other; informational only - no firmware
+    # comparison, no version-based behavior. A field that cannot be read is
+    # reported as such, never fabricated.
+    _OS_TITLE=$(_sv_field title)
+    _OS_RELEASE=$(_sv_field release)
+    _OS_CHANNEL=$(_sv_field sandbox)
+    _OS_HWID=$(_sv_field hw_id)
+    if [ -n "$_OS_TITLE" ]; then info "KeeneticOS: $_OS_TITLE"; else info "KeeneticOS: not reported by ndmc"; fi
+    if [ -n "$_OS_RELEASE" ]; then info "Release: $_OS_RELEASE"; else info "Release: not reported by ndmc"; fi
+    if [ -n "$_OS_CHANNEL" ]; then info "Channel: $_OS_CHANNEL"; else info "Channel: not reported by ndmc"; fi
+    if [ -n "$_OS_HWID" ]; then info "Hardware ID: $_OS_HWID"; else info "Hardware ID: not reported by ndmc"; fi
 else
     info "ndmc not available - Keenetic model info skipped"
 fi
