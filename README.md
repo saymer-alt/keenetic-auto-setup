@@ -43,7 +43,10 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [архитектура и маршрутизация](docs/01-architecture.md)
+Подробности →
+
+- [Mihomo](docs/encyclopedia/10-mihomo-eto.md)
+- [архитектура и маршрутизация](docs/01-architecture.md)
 
 ## 3. Проверка и запуск
 
