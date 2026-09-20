@@ -72,13 +72,15 @@ Mihomo:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
 ```
 
+Подробности → [обновление Mihomo](docs/HOWTO_RU.md)
+
 Watchdog:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-Подробности → [обновление Mihomo](docs/HOWTO_RU.md) · [Watchdog](docs/04-watchdog.md)
+Подробности → [Watchdog](docs/04-watchdog.md)
 
 ## 5. Дополнительные команды
 
@@ -124,12 +126,12 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 ## 7. Документация
 
-[Быстрый старт](docs/02-quick-start.md) ·
-[Установка](docs/03-install.md) ·
-[HOWTO](docs/HOWTO_RU.md) ·
-[Архитектура](docs/01-architecture.md) ·
-[Диагностика](docs/08-troubleshooting.md) ·
-[Ограничения](docs/09-limitations.md) ·
-[Roadmap](docs/10-roadmap.md) ·
-[CHANGELOG](CHANGELOG.md) ·
-[Лицензия](LICENSE)
+- [Быстрый старт](docs/02-quick-start.md)
+- [Установка](docs/03-install.md)
+- [HOWTO](docs/HOWTO_RU.md)
+- [Архитектура](docs/01-architecture.md)
+- [Диагностика](docs/08-troubleshooting.md)
+- [Ограничения](docs/09-limitations.md)
+- [Roadmap](docs/10-roadmap.md)
+- [CHANGELOG](CHANGELOG.md)
+- [Лицензия](LICENSE)
