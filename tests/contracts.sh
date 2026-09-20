@@ -10,6 +10,10 @@ pass() { echo "[OK] $1"; }
 grep -q 'Клиент прокси' "$ROOT/README.md" || fail "README must name Proxy client as required"
 pass "README names Proxy client prerequisite"
 
+grep -q 'LOW-RAM / BEST-EFFORT INSTALL' "$ROOT/install.sh" || fail "installer must warn clearly on low-RAM devices"
+grep -q '128 MB-class devices are allowed, but stability is NOT guaranteed' "$ROOT/install.sh" || fail "128 MB must remain allowed but explicitly best-effort"
+pass "low-RAM install remains allowed with an explicit best-effort warning"
+
 grep -q 'proxy_client_missing' "$ROOT/install.sh" || fail "installer must retain missing Proxy-client fail-fast path"
 grep -q 'running-config after create' "$ROOT/install.sh" || fail "installer must read Proxy creation back"
 grep -q 'Proxy0 appeared in running-config but the required project profile' "$ROOT/install.sh" || fail "installer must reject an incomplete Proxy0 profile"
