@@ -87,7 +87,16 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
 ```
 
-Подробности → [проверка работы](docs/08-troubleshooting.md).
+Если нужно не проверить здоровье стека, а **увидеть, какой конечный proxy-сервер выбран Mihomo сейчас и когда происходит failover/failback**, используйте необязательный read-only helper `mihomo-route-watch.sh`:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh -s -- --watch 1
+```
+
+Он только читает Controller API (`GET /proxies`), ничего не выбирает и не перезапускает. Для работы Controller должен быть включён; `127.0.0.1:9090` — значение по умолчанию самого helper'а, а не встроенный default Mihomo.
+
+Подробности → [проверка работы](docs/08-troubleshooting.md) · [полное HOWTO](docs/HOWTO_RU.md).
 
 ## 4. Управление Mihomo
 
