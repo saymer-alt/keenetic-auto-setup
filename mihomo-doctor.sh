@@ -364,6 +364,7 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
 MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
+RESOURCE_PROFILE_CONTRACT_VERSION=20260920_1
 
 # Storage/swap classification - read-only mirror of the installer preflight.
 # Keenetic conventions: internal storage is UBIFS (ubi*/mtd*, no block-device
@@ -440,40 +441,33 @@ case "$_doc_opt" in
     *)        info "/opt storage: cannot determine (unrecognized mount state)" ;;
 esac
 
+_doc_scan_swap
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
     if [ "$MEM_TOTAL" -lt 200000 ]; then
-        # 128 MB-class: prerequisites are EXTERNAL /opt AND >= 384 MB
-        # EXTERNAL storage-backed active swap (512 MB preferred). zRAM is
-        # auto-sized to about the physical RAM and never counts toward it.
-        _doc_scan_swap
         if [ "$_doc_opt" != external ]; then
-            warn "Low-RAM prerequisite NOT met (/opt is not on verified external persistent storage): the 128 MB-class best-effort/experiment requires external /opt plus >= 384 MB active swap on external storage, 512 MB preferred; zRAM does not count (docs/06)"
+            fail "Low-RAM prerequisite NOT met (/opt is not on verified external persistent storage): the 128 MB-class best-effort/experimental profile requires external /opt plus >= 384 MB active swap on external storage, 512 MB preferred; zRAM does not count (docs/06)"
         elif [ "$_doc_ext_kb" -ge 393216 ]; then
-            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((_doc_ext_kb/1024)) MB external storage-backed swap on external /opt): swap prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
+            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((_doc_ext_kb/1024)) MB external storage-backed swap on external /opt): prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
         else
-            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((_doc_ext_kb/1024)) MB external storage-backed active swap on external /opt; zRAM $((_doc_zram_kb/1024)) MB does not count): >= 384 MB active swap on external storage is required, 512 MB preferred; best-effort/experimental regardless, stability not guaranteed (docs/06)"
+            fail "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((_doc_ext_kb/1024)) MB external storage-backed active swap on external /opt; zRAM $((_doc_zram_kb/1024)) MB does not count): >= 384 MB active swap on external storage is required, 512 MB preferred; best-effort/experimental regardless (docs/06)"
         fi
     elif [ "$MEM_TOTAL" -lt 450000 ]; then
-        _doc_scan_swap
-        case "$_doc_opt" in
-            internal|ram)
-                if [ "$_doc_unver_kb" = "-1" ]; then
-                    warn "256 MB-class on internal /opt: cannot verify the KeeneticOS zRAM prerequisite ($SWAPS_SRC unreadable) - zRAM state UNKNOWN"
-                elif [ "$_doc_zram_kb" -gt 0 ]; then
-                    ok "256 MB-class on internal storage with active zRAM ($((_doc_zram_kb/1024)) MB) - supported profile"
-                else
-                    fail "256 MB-class with /opt on internal storage requires ACTIVE KeeneticOS zRAM (compressed system swap) - project profile not met; enable Keenetic compressed swap and re-check"
-                fi ;;
-            external)
-                if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
-                    info "256 MB-class device on external /opt without swap - supported and live-tested; active swap would add memory headroom (optional, never required)"
-                fi ;;
-            *)
-                if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
-                    info "256 MB-class device: /opt storage class cannot be determined - supported profile; active swap would add memory headroom (optional, never required)"
-                fi ;;
-        esac
+        if [ "$_doc_unver_kb" = "-1" ]; then
+            fail "256 MB-class: cannot verify the required ACTIVE KeeneticOS zRAM because $SWAPS_SRC is unreadable - project memory profile cannot be proven"
+        elif [ "$_doc_zram_kb" -gt 0 ]; then
+            ok "256 MB-class with active zRAM ($((_doc_zram_kb/1024)) MB) - supported memory profile"
+        else
+            fail "256 MB-class requires ACTIVE KeeneticOS zRAM (compressed system swap) regardless of /opt placement - project memory profile not met; enable Keenetic compressed swap and re-check"
+        fi
+    else
+        if is_num "$SWAP_TOTAL"; then
+            if [ "$SWAP_TOTAL" -eq 0 ]; then
+                warn "512 MB+ device has no active zRAM/swap - operation is allowed, but this is outside the recommended project memory profile and stability under memory pressure is not guaranteed"
+            fi
+        else
+            warn "512 MB+ device: active zRAM/swap state cannot be verified - memory-pressure fallback state UNKNOWN"
+        fi
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
         warn "Very low available memory ($((MEM_AVAIL/1024)) MB) - Mihomo (UPX-packed, unpacks in RAM) and updates need headroom"

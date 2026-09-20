@@ -11,14 +11,12 @@
 ## Перед запуском
 
 Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и компонент
-KeeneticOS **«Клиент прокси» (Proxy client)**. 256 МБ+ RAM — поддерживаемый профиль; внутренняя память — только с активным штатным zRAM KeeneticOS (ранний preflight без него останавливает установку), внешний /opt — swap/zRAM опциональны; 128 МБ-класс — best-effort/experimental только при внешнем /opt и внешнем storage-backed swap >= 384 МБ (512 МБ предпочтительно; zRAM не считается): иначе installer останавливается на раннем preflight. Без него проектный ProxyN не
-создаётся. Полная матрица обязательных, условных и необязательных возможностей:
-[COMPONENTS.md](COMPONENTS.md).
+KeeneticOS **«Клиент прокси» (Proxy client)**. Resource-profile: 128 МБ — только best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ (512 предпочтительно; zRAM в минимум не входит); 256 МБ — активный штатный zRAM обязателен независимо от места /opt; 512 МБ+ — установка разрешена, но без любого активного zRAM/swap выдаётся явный WARN и гарантий устойчивости при memory pressure нет. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей: [COMPONENTS.md](COMPONENTS.md).
 
 ## Общий процесс
 
 ```id="flow1"
-1. RAM preflight (read-only; 128 МБ-класс → WARN, не запрет)
+1. Resource-profile preflight (read-only; 128/256 hard prerequisites, 512+ WARN without any active zRAM/swap)
 2. Подготовка (opkg, пакеты)
 3. bypass_wa policy (создание)
 4. Перехват транзитного DNS
@@ -396,11 +394,13 @@ date
 cat /opt/etc/crontab
 ```
 
-Должно быть:
+Допустимы два штатных варианта: `run-parts` для `cron.5mins` **или** одна managed direct-строка (когда run-parts-маршрута нет):
 
 ```id="cronok"
 */5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog
 ```
+
+`update-watchdog.sh` нормализует managed-вариант и не должен оставлять два параллельных запуска.
 
 ---
 

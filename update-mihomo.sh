@@ -223,9 +223,8 @@ rollback_and_exit() {
   error "$1 — update failed, previous version restored."
 }
 
-# Restore a service that THIS updater stopped (the one-instance stop before
-# the runtime pre-flight, or the ghost-block space stop) when the update
-# aborts before the old binary is replaced. The
+# Restore a service that THIS updater stopped for the one-instance runtime
+# pre-flight when the update aborts before the old binary is replaced. The
 # old binary is still in place, so starting it returns the system to its
 # pre-update state. A user-stopped service (SERVICE_WAS_STOPPED=0) is never
 # touched. Abort paths after the binary replacement are handled by
@@ -532,18 +531,80 @@ command -v curl >/dev/null || error "curl is required but not installed"
 command -v tar >/dev/null || error "tar is required but not installed (busybox applet)"
 
 # -----------------------------
-# 2. RAM notice (low RAM is the user's responsibility)
+# 2. Resource-profile advisory (read-only; never blocks legacy updates)
 # -----------------------------
-TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null)
-case "$TOTAL_MEM_KB" in
-  ''|*[!0-9]*) TOTAL_MEM_KB="" ;;
-esac
+RESOURCE_PROFILE_CONTRACT_VERSION=20260920_1
+UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
+UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
+UP_SWAP128_MIN_KB=393216
+
+_up_classify_mount() {
+  case "$2" in ubifs|squashfs) echo internal; return 0 ;; tmpfs|ramfs) echo ram; return 0 ;; esac
+  case "$1" in ubi*|mtd*) echo internal; return 0 ;; esac
+  case "$2" in ext2|ext3|ext4|btrfs|f2fs|xfs|vfat|fat|exfat|ntfs|ntfs3|fuseblk) ;; *) echo unknown; return 0 ;; esac
+  case "$1" in /dev/sd*|/dev/nvme*|/tmp/mnt/*) echo external ;; *) echo unknown ;; esac
+}
+_up_storage_class() {
+  _up_path="$1"; _up_bl=0; _up_cls=unknown
+  [ -r "$UP_MOUNTS" ] || { echo unknown; return 0; }
+  while read -r _up_src _up_mp _up_fst _up_rest; do
+    case "$_up_path" in "$_up_mp") ;; *) case "$_up_path" in "$_up_mp"/*) ;; *) continue ;; esac ;; esac
+    _up_len=${#_up_mp}; [ "$_up_len" -ge "$_up_bl" ] || continue
+    _up_bl=$_up_len; _up_cls=$(_up_classify_mount "$_up_src" "$_up_fst")
+  done < "$UP_MOUNTS"
+  echo "$_up_cls"
+}
+_up_scan_swap() {
+  UP_ZRAM_KB=0; UP_EXT_KB=0; UP_UNVER_KB=0
+  [ -r "$UP_SWAPS" ] || { UP_UNVER_KB=-1; return 0; }
+  while read -r _up_sw_file _up_sw_type _up_sw_size _up_sw_rest; do
+    case "$_up_sw_file" in ''|Filename) continue ;; esac
+    case "$_up_sw_size" in ''|*[!0-9]*) continue ;; esac
+    case "$_up_sw_file" in *zram*) UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue ;; esac
+    case "$_up_sw_type" in
+      partition) case "$_up_sw_file" in /dev/sd*|/dev/nvme*) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
+      file) case "$(_up_storage_class "$(dirname "$_up_sw_file")")" in external) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
+      *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;;
+    esac
+  done < "$UP_SWAPS"
+}
+
+TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)
+case "$TOTAL_MEM_KB" in ''|*[!0-9]*) TOTAL_MEM_KB="" ;; esac
+case "$SWAP_TOTAL_KB" in ''|*[!0-9]*) SWAP_TOTAL_KB="" ;; esac
+UP_OPT_CLASS=$(_up_storage_class /opt)
+_up_scan_swap
+
+_profile_warn_banner() {
+  warn "============================================================"
+  warn "$1"; warn "$2"; warn "$3"
+  warn "The updater will continue only to service this existing installation."
+  warn "All updater transaction safety checks remain enforced."
+  warn "============================================================"
+}
 
 if [ -n "$TOTAL_MEM_KB" ]; then
   log "Total RAM: ${TOTAL_MEM_KB} KB"
-  if [ "$TOTAL_MEM_KB" -lt 250000 ]; then
-    warn "Device has less than 256 MB RAM (${TOTAL_MEM_KB} KB). Update may require additional memory and can fail on low-memory systems."
+  if [ "$TOTAL_MEM_KB" -lt 200000 ]; then
+    if [ "$UP_OPT_CLASS" != external ] || [ "$UP_EXT_KB" -lt "$UP_SWAP128_MIN_KB" ]; then
+      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 128 MB-class" "Current project contract requires verified external /opt plus >=384 MB EXTERNAL storage-backed active swap (512 MB preferred); zRAM does not count toward that minimum." "Detected: /opt=$UP_OPT_CLASS, external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. Project stability/support guarantees do not apply to this layout."
+    else
+      warn "128 MB-class prerequisites are present, but this remains BEST-EFFORT/EXPERIMENTAL with NO STABILITY GUARANTEE."
+    fi
+  elif [ "$TOTAL_MEM_KB" -lt 450000 ]; then
+    if [ "$UP_ZRAM_KB" -le 0 ]; then
+      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class without active KeeneticOS zRAM" "The supported project profile requires ACTIVE native KeeneticOS zRAM regardless of /opt placement." "Detected: /opt=$UP_OPT_CLASS, zRAM=$((UP_ZRAM_KB/1024)) MB. Enable compressed system swap and verify with mihomo-doctor.sh."
+    fi
+  else
+    if [ "$SWAP_TOTAL_KB" = "0" ]; then
+      _profile_warn_banner "MEMORY PROFILE WARNING: 512 MB+ with no active zRAM/swap" "Operation is allowed, but the recommended project profile keeps at least one active memory-pressure fallback." "KeeneticOS and its components share RAM with Entware/Mihomo; no project stability guarantee is made under memory pressure without a fallback."
+    elif [ -z "$SWAP_TOTAL_KB" ]; then
+      warn "512 MB+ device: active zRAM/swap state cannot be verified; updater continues, but memory-pressure fallback state is UNKNOWN."
+    fi
   fi
+else
+  warn "Cannot determine total RAM from /proc/meminfo; updater continues, but the project memory profile cannot be evaluated."
 fi
 
 # -----------------------------

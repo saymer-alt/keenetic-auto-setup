@@ -274,7 +274,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router: **256 MB RAM or more** (supported profile; 512 MB+ has the most headroom) | router spec / `free` on the router | 128 MB-class devices: **best-effort/experimental AND only with external /opt plus >= 384 MB storage-backed active swap on external storage** (512 MB preferred) — otherwise the installer stops at the early preflight, before downloads and changes; native zRAM is auto-sized to about the RAM and does not count toward the requirement — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends and the /opt class); 256 MB: internal storage requires active zRAM, external /opt keeps swap optional; 512 MB+: swap optional; `disk` mode is preferable to `ram` |
+| Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap (512 MB preferred; zRAM does not count toward that minimum). 256 MB: active native zRAM is mandatory regardless of /opt placement. 512 MB+: internal/external /opt allowed; with no active zRAM/swap the project emits an explicit WARN and gives no stability guarantee under memory pressure. |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
@@ -625,11 +625,11 @@ sh update-mihomo.sh [--force]
 What it does, step by step:
 
 1. Lock file prevents parallel updates.
-2. RAM below 256 MB means the 128 MB-class: best-effort/experimental only, and only with external /opt plus >= 384 MB storage-backed active swap on external storage (512 MB preferred); otherwise the preflight aborts early. On 256 MB internal storage requires active zRAM, external /opt keeps swap optional; 512 MB+ — swap optional (a note, not an abort).
+2. The updater reads the same resource profile but **does not block an existing legacy installation solely for a profile violation**: 128 MB without external /opt + >=384 MB external swap and 256 MB without active zRAM get a strong UNSUPPORTED warning; 512 MB+ without any active zRAM/swap gets an explicit warning. All actual updater safety gates (one-Mihomo, config test, architecture, free space, atomic commit, rollback) remain mandatory.
 3. Architecture via `opkg print-architecture`; the package comes from the ready-to-install set of the `saymer-alt/entware-go` feed (release `latest`) — the same one `install.sh` uses: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; the softfloat `nohf` variant is excluded.
 4. Versions: same version → exit (unless `--force`); an available version that is older than the installed one — or cannot be reliably ordered (prerelease suffixes) — is never auto-downgraded, even with `--force`.
 5. Downloads the `.ipk` to `/tmp` (curl, up to 3 attempts) and extracts only the new binary from it — file operations, the service is still running.
-6. Free-space check (4 MB margin; stale `.backup/.old/.bak` files near the binary are cleaned; if space is held by "ghost" blocks of the running binary, the service is stopped to release them).
+6. Free-space check **before stopping the service**: same-filesystem staging needs the new binary size plus a 4 MB margin while the current binary stays in place. If space is insufficient, the updater refuses without stopping Mihomo; stale managed `.backup/.old/.bak` files beside the binary are cleaned first.
 7. Stops the service and confirms the stop: the new binary only ever runs alone — two Mihomo instances at once are operationally unsafe on 256 MB devices. A running service without an init script aborts the update (stop Mihomo manually and re-run). This is a short controlled downtime; the stop is re-checked right before the replacement — the cron watchdog may have restarted the service while its port was unreachable.
 8. Runtime checks of the new binary: `binary -v` is matched against the version in the package filename, then a **config test against your live `config.yaml`**. A failure here replaces nothing: the service comes back and temp files are cleaned.
 9. Backs the old binary up to **`/tmp`** (RAM — not `/opt`), replaces the binary, verifies version and startup (`pidof`, retried 5×).
@@ -831,7 +831,9 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 
 Platform notes that remain:
 
-- **128 MB RAM is best-effort/experimental and requires external /opt plus >= 384 MB storage-backed active swap on external storage** (512 MB preferred; [docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; without them the installer stops at the early preflight, with them it prints a prominent EXPERIMENTAL warning. Native zRAM (~RAM-sized) does not count toward the requirement — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends and the /opt class). Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
+- **128 MB RAM is best-effort/experimental:** external /opt + >=384 MB external storage-backed swap are mandatory (512 MB preferred; zRAM may coexist but does not count toward that minimum). Stability is not guaranteed even when prerequisites are met.
+- **256 MB RAM:** active native zRAM is mandatory regardless of /opt placement.
+- **512 MB+:** operation is not blocked, but no active zRAM/swap produces a WARN and places the layout outside the recommended project memory profile.
 - **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 
@@ -839,9 +841,9 @@ Platform notes that remain:
 
 ## 14. Known limits
 
-- **128 MB RAM: best-effort/experimental, only with >= 384 MB active swap** (512 MB preferred). Stability is not guaranteed even with swap; real deployments showed that memory pressure and tmpfs can destabilize the device. 256 MB+ is the supported profile (swap optional), 512 MB+ has the most headroom.
+- **Memory profile:** 128 MB is best-effort/experimental only with external /opt + >=384 MB external swap; 256 MB requires active zRAM; 512 MB+ with no active zRAM/swap continues with an explicit WARN and no project stability guarantee under memory pressure.
 - **The watchdog fixes Mihomo only.** It won't fix a dead VPN server, ISP outage, DNS or config mistakes.
-- **Mihomo UDP handling has limits** — that's exactly why VoIP goes around it.
+- **bypass_wa for selected VoIP/real-time UDP is a deliberate routing choice, not a universal claim that Mihomo handles UDP poorly.**
 - **Entware is not a full Linux.** BusyBox quirks (`$RANDOM`, `pidof`, `ss`, `run-parts`), trimmed packages — keep that in mind before "modernizing" the scripts.
 - **Logs in RAM vanish on reboot** — the flash-protection trade.
 - **IPv6 is disabled on purpose** in the base configuration — for predictability, not by accident. Enabling it is an advanced change with its own verification (see Troubleshooting).

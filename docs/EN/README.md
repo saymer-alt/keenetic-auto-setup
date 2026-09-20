@@ -10,8 +10,9 @@ Automated installation and operation of network and supporting tools on Keenetic
 
 - Keenetic with Entware / OPKG installed
 - RAM and /opt storage are separate decisions:
-  - **256 MB+ RAM is the supported profile** (live-tested). **512 MB+ has the most headroom**, swap optional. 256 MB with /opt on internal storage requires **active native KeeneticOS zRAM** ("Compressed RAM disk for system swap"; without it the installer stops at the early preflight); 256 MB with external /opt keeps swap/zRAM optional.
-  - **128 MB-class devices are allowed only as best-effort/experimental and only when ALL of the following hold**: (1) /opt is on **external** persistent storage; (2) **storage-backed active swap on external storage** exists; (3) it is at least **384 MB** (512 MB preferred). Failing any of them, the installer stops at the early preflight, before any download or change. **zRAM does not count:** KeeneticOS auto-sizes zRAM to about the physical RAM (~128 MB); it may coexist with disk-backed swap but does not replace it. The project never creates, mounts or resizes swap or storage itself. Stability is not guaranteed even with swap.
+  - **256 MB RAM is supported only with active native KeeneticOS zRAM**, regardless of whether /opt is internal or external. Without active zRAM the installer stops at the early preflight.
+  - **512 MB+ is the normal profile**; internal and external /opt are allowed. If no active zRAM/swap exists at all, installation continues with an explicit WARN: the layout is outside the recommended project memory profile and carries no project stability guarantee under memory pressure.
+  - **128 MB-class devices are best-effort/experimental only when ALL conditions hold**: external persistent /opt, active storage-backed swap on external storage, and at least **384 MB** of that external swap (512 MB preferred). zRAM may coexist but never counts toward the required 384 MB. The project never creates, mounts or resizes swap/storage. Stability is not guaranteed even when the prerequisites are met.
 - The KeeneticOS **Proxy client / Клиент прокси** component — required: without it the Proxy* interfaces do not exist and the installer cannot create the project ProxyN
 - **Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** — required for the supported DNS profile because the project needs `dns-proxy intercept enable`; this does not require selecting a cloud filtering provider for clients
 - Router DoT and/or DoH are strongly recommended for upstream DNS: port-53 interception solves a different problem and does not itself protect Keenetic's upstream resolver traffic from ISP interference
@@ -22,7 +23,7 @@ Automated installation and operation of network and supporting tools on Keenetic
 
 ### Router internal storage — proven option
 
-When installing to internal storage, enabling the native KeeneticOS zRAM option is recommended: zRAM is compressed swap in RAM without writing a classic swap file to the internal NAND. It is exposed in the web UI under the system performance settings (the exact path and wording vary by firmware/language). After installation verify active swap with `mihomo-doctor.sh` (it reports the size and the backends: zRAM and/or storage-backed swap).
+KeeneticOS provides native zRAM (compressed system swap in RAM without a classic NAND swap file). On 256 MB devices active zRAM is mandatory regardless of /opt placement; on 512 MB+ the project expects at least one active memory-pressure fallback (zRAM or suitable swap) and warns if none exists. Verify the active backends with `mihomo-doctor.sh`.
 
 ```bash
 opkg update && opkg install curl && \

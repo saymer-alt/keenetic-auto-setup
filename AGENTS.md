@@ -60,11 +60,8 @@ The most sensitive parts — change only for an explicit task and with full unde
   aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4 (packages come from the current
   saymer-alt/entware-go release; the final fallback if the GitHub path fails is
   `opkg install mihomo` from the configured Entware feed, whose version may be older).
-- RAM/storage/swap policy (live-detected from /proc/meminfo, /proc/swaps, /proc/mounts - never guessed): 128 MB-class is best-effort/experimental and is REFUSED unless ALL of: /opt on EXTERNAL persistent storage, EXTERNAL storage-backed active swap >= 384 MB (512 MB preferred; zRAM does NOT count - auto-sized to about the physical RAM); unrecognizable state fails conservatively naming the unverified prerequisite. 256 MB: supported/live-tested; INTERNAL /opt requires ACTIVE KeeneticOS zRAM (installer fails early, Doctor reports profile FAIL), external /opt keeps swap/zRAM optional. 512 MB+: normal profile, swap optional. install.sh stops at the early preflight before downloads/mutations; with met prerequisites a prominent EXPERIMENTAL warning stays; never weaken the one-Mihomo rule. The project never creates/enables/formats/mounts/resizes swap or storage. KeeneticOS zRAM UI path wording varies by firmware. The Doctor classifies backends and /opt class read-only (DOCTOR_SWAPS/DOCTOR_MOUNTS overrides); verify with mihomo-doctor.sh. Low-RAM instability remains a known production risk (docs/06).
-- MIPS/mipsel: upstream Mihomo publishes official MIPS/MIPSLE builds (at least
-  since 1.19.31), but update-mihomo.sh intentionally does not work on these architectures —
-  the update path there is reinstalling the package through install.sh. Do not "fix" this
-  by substituting third-party builds.
+- Resource-profile contract `20260920_1` (live-detected from /proc/meminfo, /proc/swaps, /proc/mounts; never guessed): 128 MB-class is best-effort/experimental and install.sh REFUSES it unless /opt is verified external AND external storage-backed active swap is >= 384 MB (512 MB preferred; zRAM may coexist but never counts toward that external-swap minimum). 256 MB-class requires ACTIVE native KeeneticOS zRAM regardless of /opt placement; install.sh fails early and Doctor reports FAIL when it is absent/unverifiable. 512 MB+ may continue with internal/external /opt, but if no active zRAM/swap exists Installer, Doctor and Updater emit an explicit WARN and the layout is outside the recommended project memory profile/no stability guarantee under memory pressure. update-mihomo.sh never blocks an existing legacy install solely for a resource-profile violation: it prints a strong UNSUPPORTED/WARN banner and continues while keeping all transaction safety gates. The project never creates/enables/formats/mounts/resizes swap or storage.
+- MIPS/mipsel: upstream Mihomo publishes official MIPS/MIPSLE builds, and the current universal install.sh AND update-mihomo.sh both support the packaged `mipsel-3.4` / `mips-3.4` paths from saymer-alt/entware-go. Do not substitute random third-party binaries.
 - Shell dialect is busybox/ash: do not use bashisms; `local` is allowed
   (busybox supports it and it is already used in the watchdog). $RANDOM, pidof, ss, netstat
   may be absent — preserve selective `command -v` checks in the code.
@@ -107,9 +104,7 @@ Without an explicit task and operator confirmation, do not:
 - change the default route or DNS (resolv.conf, DoH in config.yaml) "for testing":
   a mistake in these areas can cut Internet access for the entire LAN and may close SSH access
   to the router;
-- weaken safety checks: the RAM gate (<250 MB) and config test in update-mihomo.sh,
-  cooldown and whitelist fallback in the watchdog — they protect against restart loops
-  and wasting flash/RAM;
+- weaken resource-profile handling or config/transaction safety: install.sh hard-gates unsupported 128/256 new installs, Doctor mirrors that state read-only, update-mihomo.sh only warns for legacy profile violations but must still enforce one-Mihomo/config/architecture/free-space/atomic-commit/rollback safety; watchdog cooldown and whitelist fallback protect against restart loops;
 - run network experiments on a live router without a task.
 
 If a change in these areas is required, first understand the dependency
@@ -117,9 +112,7 @@ If a change in these areas is required, first understand the dependency
 for the operator.
 
 Risk-zone specifics:
-- update-mihomo.sh stops the service and replaces the binary; the sequence
-  backup(/tmp) → rm → cp → chmod → test → start → process check is designed so
-  each stage is a failure point with rollback. Change the order only with full understanding.
+- update-mihomo.sh is transactional: acquire/download/extract while the old service runs, verify destination free space, same-filesystem stage beside the canonical binary, create/verify the volatile /tmp rollback backup, controlled one-Mihomo stop, runtime/config pre-flight, then a single same-filesystem rename commit followed by verification/start. There is no rm-old-then-copy window. Change this order only with full understanding.
 - watchdog: restart only when WAN is confirmed and the proxy/tunnel check fails; on total
   WAN failure the script exits without action — an intentional decision (comment in code,
   README: "WAN failure does not mean Mihomo is broken").
@@ -240,8 +233,7 @@ a live run.
   install.sh adds an entry only if absent, but manual crontab editing can easily create
   duplicates.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
-- 128 MB RAM: known low-headroom risk (docs/06: Extra, old Viva); installation remains allowed ONLY as best-effort WITH active swap >= 384 MB (512 MB preferred, early-preflight stop without it), with `disk` preferred and prominent EXPERIMENTAL warnings preserved
-  RAM gates or try to "make it work".
+- 128 MB RAM: known low-headroom risk (docs/06). New installation is allowed only as best-effort/experimental with verified external /opt + >=384 MB external storage-backed active swap (512 MB preferred; zRAM does not count toward that minimum). 256 MB requires active zRAM regardless of /opt; 512 MB+ without any active zRAM/swap gets an explicit WARN. Do not weaken these profile rules or try to "make it work" by silently bypassing them.
 - Tunnel MTU 1500 → "everything is slow / does not work"; working values 1200–1300
   (docs/09).
 - DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
