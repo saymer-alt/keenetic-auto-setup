@@ -193,8 +193,10 @@ the owner edits main directly, with commit messages like "Update X"):
 
 ## 9. Testing
 
-There are no automated tests, CI, or linters in the repository — do not invent results.
-What is actually available:
+The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer real installation states and cross-component contracts, then extend the existing permanent regression harness with the smallest scenario that preserves a real failure. Heavy adversarial matrices are reserved for high-consequence invariants such as atomic replacement/rollback, locking, one-Mihomo discipline, service-state restoration, and watchdog recovery. Do not build a full KeeneticOS emulator for a narrow task.
+
+There is no repository CI or linter that makes a change automatically safe — do not invent results.
+What is always available:
 - `sh -n <script>` for every changed .sh (mandatory);
 - review for busybox/POSIX compatibility (no bashisms or GNU-only options);
 - check coupling between scripts: watchdog sanity marker, /opt/etc/cron.5mins paths
@@ -226,10 +228,10 @@ a live run.
 - bypass_wa uses netfilter.d instead of one-time iptables because Keenetic rebuilds the
   firewall itself; docs/05 ("learned the hard way"): run-parts is unreliable, iptables
   creates duplicates — hence `-C`/`-F`.
-- The watchdog is installed at /opt/etc/cron.5mins/mihomo_watchdog (install.sh), while
-  update-watchdog.sh updates /opt/bin/mihomo_watchdog.sh — the paths differ (and the
-  watchdog header itself mentions /opt/bin). Before updating, determine which copy is
-  actually referenced in crontab on that router.
+- The canonical watchdog is /opt/bin/mihomo_watchdog.sh. /opt/etc/cron.5mins/mihomo_watchdog
+  is the managed thin wrapper that execs the canonical file. update-watchdog.sh recognizes
+  known legacy layouts where the full script lived in cron.5mins, preserves a bounded
+  legacy backup, and migrates them; unknown/user-modified files are preserved.
 - Logs in tmpfs disappear on reboot — an intentional tradeoff to preserve flash.
 
 ## 11. Known pitfalls
