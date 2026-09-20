@@ -14,6 +14,14 @@ grep -q 'LOW-RAM / BEST-EFFORT INSTALL' "$ROOT/install.sh" || fail "installer mu
 grep -q '128 MB-class devices are allowed, but stability is NOT guaranteed' "$ROOT/install.sh" || fail "128 MB must remain allowed but explicitly best-effort"
 pass "low-RAM install remains allowed with an explicit best-effort warning"
 
+grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
+grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
+grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
+if grep -q 'pkg_ensure magitrickle || warn' "$ROOT/install.sh"; then
+    fail "MagiTrickle install must not pretend pkg_ensure can fall through to warn"
+fi
+pass "MagiTrickle installation output is owned by install.sh"
+
 grep -q 'proxy_client_missing' "$ROOT/install.sh" || fail "installer must retain missing Proxy-client fail-fast path"
 grep -q 'running-config after create' "$ROOT/install.sh" || fail "installer must read Proxy creation back"
 grep -q 'Proxy0 appeared in running-config but the required project profile' "$ROOT/install.sh" || fail "installer must reject an incomplete Proxy0 profile"
