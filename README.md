@@ -1,6 +1,6 @@
 # 🛡️ Keenetic Auto-Setup Suite
 
-Автоматизированный инструмент для установки сетевых и вспомогательных инструментов на Keenetic, их автономной работы и защиты внутренней памяти от износа.
+Автоматизированная установка Mihomo и вспомогательных компонентов на Keenetic + Entware.
 
 [English](docs/EN/README.md)
 
@@ -8,231 +8,124 @@
 
 ## 0. Что должно быть подготовлено
 
-- Keenetic с установленным Entware / OPKG
-- RAM и выбор /opt-памяти — раздельные решения:
-  - **256 МБ RAM — поддерживаемый профиль только с активным штатным zRAM KeeneticOS**, независимо от того, находится /opt во внутренней или внешней памяти. Без активного zRAM установщик останавливается на раннем preflight.
-  - **512 МБ+ — нормальный профиль**, внутренний и внешний /opt разрешены. Если нет вообще никакого активного zRAM/swap, установка не блокируется, но выводится явный WARN: такая схема находится вне рекомендуемого memory-profile проекта, и гарантий устойчивости при memory pressure нет.
-  - **128 МБ-класс — только best-effort/experimental и только при выполнении ВСЕХ условий**: (1) /opt на **внешнем** постоянном носителе; (2) активный **storage-backed swap на внешнем носителе**; (3) его объём **>= 384 МБ** (512 МБ предпочтительно). Без любого из условий установщик останавливается на раннем preflight. zRAM может сосуществовать с внешним swap, но **не считается** в требуемые 384 МБ. Swap и носители проект сам никогда не создаёт, не монтирует и не меняет. Стабильность не гарантирована даже при выполнении условий.
-- Компонент KeeneticOS «Клиент прокси» (Proxy client) — обязателен: без него не существуют интерфейсы Proxy*, и установщик не сможет создать проектный ProxyN
-- Компонент «Фильтрация контента и блокировка рекламы при помощи облачных сервисов» — обязателен для поддерживаемого DNS-профиля: проекту нужен `dns-proxy intercept enable` (это не означает, что нужно выбирать облачный фильтр для клиентов)
-- DoT и/или DoH на роутере настоятельно рекомендуются для upstream DNS: перехват port 53 решает другую задачу и сам по себе не защищает запросы Keenetic к резолверу от вмешательства провайдера
-- Доступ к shell Entware (SSH — обычный способ, но компонент KeeneticOS «Сервер SSH» не является runtime-зависимостью проекта)
-- Интернет
+- Keenetic с Entware / OPKG
+- доступ к shell
+- интернет
+
+Полные требования → [компоненты и prerequisites](docs/COMPONENTS.md) · [RAM / storage / ограничения](docs/09-limitations.md)
 
 ## 1. Установка
 
 ### Встроенная память роутера — проверенный вариант
-
-KeeneticOS имеет штатный zRAM («Сжатый RAM-диск для системного swap» / Compressed RAM disk for system swap): это swap в сжатой RAM без классического swap-файла во внутренней NAND. Для 256 МБ активный zRAM обязателен независимо от места /opt; для 512 МБ+ нужен хотя бы один активный memory-pressure fallback (zRAM или подходящий swap), иначе проект выдаёт WARN. После установки проверьте состояние через `mihomo-doctor.sh`.
 
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
 ```
 
-### Внешний носитель — USB HDD / NVMe (больше ресурса и запаса; на 128 МБ-классе — предпочтительно в `disk`-режиме)
+### Внешний носитель — USB HDD / NVMe
 
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-Дождаться завершения установки.
-
-Подробности → [установка](docs/03-install.md) · [компоненты и prerequisites](docs/COMPONENTS.md).
+Подробности → [установка](docs/03-install.md) · [полное HOWTO](docs/HOWTO_RU.md)
 
 ## 2. Конфигурация Mihomo
 
-Сгенерировать конфигурацию:
-
-[**Mihomo Unified Generator**](https://github.com/saymer-alt/link-generators)
-
-Открыть конфигурацию:
+Генератор → [Mihomo Unified Generator](https://github.com/saymer-alt/link-generators)
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Очистить файл (`Ctrl+K`), вставить конфигурацию.
-
-Сохранить: `Ctrl+O` → `Enter`  
-Выйти: `Ctrl+X`
-
-Если сгенерированная конфигурация включает TUN, Mihomo создаёт интерфейс `mitun0`; его рекомендуется использовать в MagiTrickle как интерфейс для перенаправления. Сам bootstrap содержит только `mixed-port: 7890`.
-
-Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [MagiTrickle и маршрутизация](docs/01-architecture.md) · [первый вход в UI](docs/encyclopedia/12-pervyj-vhod-v-ui.md).
+Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [архитектура и маршрутизация](docs/01-architecture.md)
 
 ## 3. Проверка и запуск
 
-Если Mihomo уже запущен, **не запускайте `mihomo -t` параллельно**: на части Keenetic второй экземпляр Mihomo приводит к SIGSEGV. Для безопасной read-only проверки установленного стека используйте Doctor:
+Doctor:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
 ```
 
-После изменения конфигурации перезапустить сервис:
+Перезапуск:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
 ```
 
-Проверить статус:
+Статус:
 
 ```bash
 /opt/etc/init.d/S99mihomo status
 ```
 
-Прокси Mihomo:
+Диагностика → [Troubleshooting](docs/08-troubleshooting.md)
 
-`127.0.0.1:7890`
+## 4. Обновление
 
-Комплексная проверка установки — read-only Doctor (ничего не меняет и ничего не перезапускает; весь вывод можно целиком отправить разработчику):
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
-```
-
-Если нужно не проверить здоровье стека, а **увидеть, какой конечный proxy-сервер выбран Mihomo сейчас и когда происходит failover/failback**, используйте необязательный read-only helper `mihomo-proxy-selection-watch.sh`.
-
-Самый понятный вариант для первого запуска:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh -o /tmp/mihomo-proxy-selection-watch.sh
-sh /tmp/mihomo-proxy-selection-watch.sh --help
-sh /tmp/mihomo-proxy-selection-watch.sh
-sh /tmp/mihomo-proxy-selection-watch.sh --watch 1
-```
-
-Он только читает Controller API (`GET /proxies`), ничего не выбирает и не перезапускает. Он **не смотрит маршруты Keenetic**: «route» здесь означает цепочку выбора proxy-групп Mihomo. Для работы Controller должен быть включён; `127.0.0.1:9090` — значение по умолчанию самого helper'а, а не встроенный default Mihomo.
-
-Подробная инструкция, которую можно просто отправить другому пользователю → [Mihomo Proxy Selection Watch](docs/11-proxy-selection-watch.md).  
-Общая диагностика → [проверка работы](docs/08-troubleshooting.md) · [полное HOWTO](docs/HOWTO_RU.md).
-
-## 4. Управление Mihomo
-
-После установки конфигурации с Web UI:
-
-```text
-http://192.168.1.1:9090/ui/
-```
-
-`192.168.1.1` заменить на IP роутера.
-
-Подробности → [первый вход в UI](docs/encyclopedia/12-pervyj-vhod-v-ui.md).
-
-## 5. Обновление
-
-### Mihomo
+Mihomo:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
 ```
 
-Принудительное обновление:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh -s -- --force
-```
-
-Подробности → [обновление и откат](docs/HOWTO_RU.md).
-
-### Watchdog
+Watchdog:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-Подробности и логи → [Watchdog](docs/04-watchdog.md).
+Подробности → [обновление Mihomo](docs/HOWTO_RU.md) · [Watchdog](docs/04-watchdog.md)
 
-## 6. Документация
+## 5. Дополнительные команды
 
-### Быстрый старт и установка
+MIPS TUN migration:
 
-- [Введение](docs/00-intro.md)
-- [Быстрый старт](docs/02-quick-start.md)
-- [Установка](docs/03-install.md)
-- [Руководство](docs/HOWTO_RU.md)
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+```
 
-### Система
+Проверка Linux-интерфейсов:
 
-- [Карта системы](docs/encyclopedia/00-karta-sistemy.md)
-- [Архитектура](docs/01-architecture.md)
-- [Словарь](docs/encyclopedia/01-slovar.md)
-- [Ограничения](docs/09-limitations.md)
-- [Roadmap](docs/10-roadmap.md)
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh
+```
 
-### Mihomo
+Текущий proxy / failover-failback:
 
-- [Что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md)
-- [MetaCubeX](docs/encyclopedia/11-metacubex-eto.md)
-- [127.0.0.1 и IP роутера](docs/encyclopedia/13-127-0-0-1-i-ip-routera.md)
-- [DNS и Fake-IP](docs/encyclopedia/26-dns-i-fake-ip.md)
-- [Порты и config.yaml](docs/encyclopedia/27-porty-i-config-yaml.md)
-- [Прокси](docs/encyclopedia/28-proxies.md)
-- [Группы прокси](docs/encyclopedia/29-proxy-groups.md)
-- [Правила](docs/encyclopedia/30-rules.md)
-- [TUN](docs/encyclopedia/31-tun.md)
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
+```
 
-### Сервисные механизмы
+Подробности → [MIPS / update HOWTO](docs/HOWTO_RU.md) · [interface-name](ARCHITECTURE.md) · [Proxy Selection Watch](docs/11-proxy-selection-watch.md)
 
-- [Watchdog](docs/04-watchdog.md)
-- [bypass_wa](docs/05-bypass-wa.md)
-- [S00ubifs](docs/06-s00ubifs.md)
-- [Диагностика](docs/08-troubleshooting.md)
-- [Mihomo Proxy Selection Watch — выбранный proxy и failover/failback](docs/11-proxy-selection-watch.md)
+## 6. Скрипты проекта
 
-### Дополнительно
+| Скрипт | Документация |
+| --- | --- |
+| [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
+| [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [HOWTO](docs/HOWTO_RU.md) |
+| [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |
+| [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Архитектура](ARCHITECTURE.md) |
+| [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](docs/11-proxy-selection-watch.md) |
+| [`update-mihomo.sh`](update-mihomo.sh) | [HOWTO](docs/HOWTO_RU.md) |
+| [`update-watchdog.sh`](update-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
+| [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
+| [`020-bypass-wa.sh`](020-bypass-wa.sh) | [bypass_wa](docs/05-bypass-wa.md) |
+| [`S00ubifs`](S00ubifs) | [S00ubifs](docs/06-s00ubifs.md) |
+| [`tests/contracts.sh`](tests/contracts.sh) | [Стратегия тестирования](docs/TESTING_STRATEGY.md) |
 
-- [Подробно об установке](docs/07-install.md)
-- [CHANGELOG](CHANGELOG.md)
-- [Лицензия](LICENSE)
+## 7. Документация
 
-## 7. Скрипты и служебные команды
-
-Полный индекс скриптов проекта. Для ручных утилит дана готовая команда запуска; installer-managed компоненты помечены отдельно, чтобы не запускать hook/service без необходимости.
-
-- **[install.sh](install.sh) — установка / повторное применение проекта**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh`  
-  Режим с постоянным /opt: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk`  
-  [Документация](docs/03-install.md)
-
-- **[migrate-mihomo-mips.sh](migrate-mihomo-mips.sh) — MIPS TUN migration**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh`  
-  Read-only check: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh -s -- --check`  
-  [Документация](docs/HOWTO_RU.md)
-
-- **[mihomo-doctor.sh](mihomo-doctor.sh) — read-only Doctor**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh`  
-  [Документация](docs/08-troubleshooting.md)
-
-- **[mihomo-interface-check.sh](mihomo-interface-check.sh) — Linux-интерфейсы для proxy-outbound**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh`  
-  [Документация](ARCHITECTURE.md)
-
-- **[mihomo-proxy-selection-watch.sh](mihomo-proxy-selection-watch.sh) — текущий proxy / failover-failback**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh`  
-  [Документация](docs/11-proxy-selection-watch.md)
-
-- **[update-mihomo.sh](update-mihomo.sh) — обновление Mihomo**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh`  
-  [Документация](docs/HOWTO_RU.md)
-
-- **[update-watchdog.sh](update-watchdog.sh) — обновление Watchdog**  
-  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh`  
-  [Документация](docs/04-watchdog.md)
-
-- **[mihomo-watchdog.sh](mihomo-watchdog.sh) — runtime Watchdog** *(installer-managed)*  
-  Канонический файл: `/opt/bin/mihomo_watchdog.sh`; ручной диагностический запуск: `sh -x /opt/etc/cron.5mins/mihomo_watchdog`  
-  [Документация](docs/04-watchdog.md)
-
-- **[020-bypass-wa.sh](020-bypass-wa.sh) — netfilter hook для bypass_wa** *(installer-managed, вручную обычно не запускается)*  
-  Проверка установленного hook: `ls -l /opt/etc/ndm/netfilter.d/020-bypass_wa.sh`  
-  [Документация](docs/05-bypass-wa.md)
-
-- **[S00ubifs](S00ubifs) — tmpfs/UBIFS init-service** *(installer-managed в режиме `ram`)*  
-  Статус: `/opt/etc/init.d/S00ubifs status`  
-  [Документация](docs/06-s00ubifs.md)
-
-- **[tests/contracts.sh](tests/contracts.sh) — developer contract smoke test** *(не runtime-компонент роутера)*  
-  Из checkout репозитория: `sh tests/contracts.sh`  
-  [Стратегия тестирования](docs/TESTING_STRATEGY.md)
+[Быстрый старт](docs/02-quick-start.md) ·
+[Установка](docs/03-install.md) ·
+[HOWTO](docs/HOWTO_RU.md) ·
+[Архитектура](docs/01-architecture.md) ·
+[Диагностика](docs/08-troubleshooting.md) ·
+[Ограничения](docs/09-limitations.md) ·
+[Roadmap](docs/10-roadmap.md) ·
+[CHANGELOG](CHANGELOG.md) ·
+[Лицензия](LICENSE)
