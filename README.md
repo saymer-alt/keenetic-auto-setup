@@ -31,7 +31,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 Дождаться завершения установки.
 
-Подробности → [установка](docs/03-install.md).
+Подробности → [установка](docs/03-install.md) · [компоненты и prerequisites](docs/COMPONENTS.md).
 
 ## 2. Конфигурация Mihomo
 
