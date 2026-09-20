@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - stable
+  pull_request:
+    branches:
+      - main
+      - stable
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Shell contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            echo "sh -n $file"
+            sh -n "$file"
+          done < <(git ls-files '*.sh')
+          echo "sh -n S00ubifs"
+          sh -n S00ubifs
+
+      - name: Contract smoke test
+        run: sh tests/contracts.sh
+
+      - name: Whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            pull_request)
+              git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+              ;;
+            push)
+              before="${{ github.event.before }}"
+              if [[ -z "$before" || "$before" =~ ^0+$ ]]; then
+                git show --check --oneline "${{ github.sha }}"
+              else
+                git diff --check "$before..${{ github.sha }}"
+              fi
+              ;;
+            *)
+              git show --check --oneline "${{ github.sha }}"
+              ;;
+          esac
