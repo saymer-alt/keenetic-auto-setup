@@ -11,9 +11,9 @@ Automated installation and operation of network and supporting tools on Keenetic
 - Keenetic with Entware / OPKG installed
 - 256 MB+ RAM is the supported/recommended profile; 128 MB-class devices are allowed as best-effort/experimental with no stability guarantee (the installer warns; prefer `disk` to `ram`)
 - The KeeneticOS **Proxy client / Клиент прокси** component — required: without it the Proxy* interfaces do not exist and the installer cannot create the project ProxyN
-- **Content filtering and cloud ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** — required for the supported DNS profile because the project needs `dns-proxy intercept enable`; this does not require selecting a cloud filtering provider for clients
+- **Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** — required for the supported DNS profile because the project needs `dns-proxy intercept enable`; this does not require selecting a cloud filtering provider for clients
 - Router DoT and/or DoH are strongly recommended for upstream DNS: port-53 interception solves a different problem and does not itself protect Keenetic's upstream resolver traffic from ISP interference
-- Entware shell access (SSH is the usual method, but the KeeneticOS SSH Server component is not a project runtime dependency)
+- Entware shell access (SSH is the usual method, but the KeeneticOS SSH server component is not a project runtime dependency)
 - Internet access
 
 ## 1. Installation
