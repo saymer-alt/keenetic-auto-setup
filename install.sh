@@ -136,6 +136,7 @@ scan_swap_backends() {
 }
 
 MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
 OPT_CLASS=$(opt_storage_class /opt)
 scan_swap_backends
 case "$OPT_CLASS" in

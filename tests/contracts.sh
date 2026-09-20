@@ -19,6 +19,7 @@ grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB-class externa
 grep -q 'requires the native KeeneticOS zRAM' "$ROOT/install.sh" || fail "256 MB + internal /opt must require active KeeneticOS zRAM"
 grep -q 'adding active swap would give extra memory headroom (optional, never required)' "$ROOT/install.sh" || fail "256 MB external /opt and 512 MB+ must stay non-blocking (swap optional)"
 grep -q 'never creates, enables, formats or resizes swap' "$ROOT/install.sh" || fail "installer must never create, enable, format or resize swap"
+grep -q 'SWAP_TOTAL_KB=' "$ROOT/install.sh" || fail "installer must assign SWAP_TOTAL_KB from /proc/meminfo (the 256 MB informational no-swap warning depends on it)"
 pass "low-RAM install gate enforces external /opt + external swap; 256 MB internal requires zRAM; swap never auto-managed"
 
 grep -q 'Low-RAM prerequisite NOT met' "$ROOT/mihomo-doctor.sh" || fail "doctor must report an unmet low-RAM prerequisite on 128 MB-class"

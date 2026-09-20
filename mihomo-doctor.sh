@@ -388,7 +388,9 @@ _doc_classify_mount() {
     esac
 }
 _doc_opt_class() {
-    _doc_oc_path="$OPT_ROOT" _doc_oc_bl=0 _doc_oc_cls=unknown
+    # classify the deepest mount carrying $1 (defaults to $OPT_ROOT for the
+    # /opt report; swap-file classification passes the file's directory)
+    _doc_oc_path="${1:-$OPT_ROOT}" _doc_oc_bl=0 _doc_oc_cls=unknown
     [ -r "$MOUNTS_SRC" ] || { echo unknown; return 0; }
     while read -r _doc_oc_src _doc_oc_mp _doc_oc_fst _doc_oc_rest; do
         case "$_doc_oc_path" in
