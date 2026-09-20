@@ -4,7 +4,7 @@ This document records the testing policy that emerged from development of this p
 
 ## What we learned
 
-Extensive synthetic testing successfully hardened known high-risk invariants, especially locking, transactional replacement, rollback, recovery, and the one-Mihomo rule. Those tests were valuable and should remain as regression tests.
+Extensive synthetic testing successfully hardened known high-risk invariants, especially locking, transactional replacement, rollback, recovery, and the one-Mihomo rule. The large temporary adversarial harness used during that work is not a permanent project artifact; preserve the resulting production invariants and add only small committed regressions/contracts when they are cheap and useful.
 
 They did not adequately cover the diversity of real installation prerequisites and cross-repository bootstrap state. The first external clean installation exposed two ordinary integration failures that the synthetic campaigns had not modeled:
 
