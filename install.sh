@@ -109,8 +109,15 @@ log "Configuring DNS transit interception..."
 if ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
     log "DNS transit interception already enabled, skipping"
 else
-    ndmc -c "dns-proxy intercept enable" >/dev/null 2>&1 || warn "Failed to enable DNS transit interception"
-    ndmc -c "system configuration save" >/dev/null 2>&1
+    if ! ndmc -c "dns-proxy intercept enable" >/dev/null 2>&1; then
+        err "Failed to enable required DNS transit interception"
+    fi
+    ndmc -c "system configuration save" >/dev/null 2>&1 || warn "Failed to save DNS transit interception immediately"
+    # Critical persistent mutation: do not continue a long install after a
+    # command that appeared to succeed but did not take effect.
+    if ! ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
+        err "DNS transit interception did not appear in running-config after enable; installation cannot satisfy the MagiTrickle DNS contract"
+    fi
 fi
 
 # ---------------------------
@@ -431,6 +438,9 @@ select_project_proxy() {
         if [ "$PROXY_STATE" != "FOUND" ]; then
             proxy_client_missing "Proxy0"
         fi
+        if ! proxy_is_project "Proxy0" "0"; then
+            err "Proxy0 appeared in running-config but the required project profile (mihomo t2s0 / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
+        fi
         log "Project proxy Proxy0 created and verified"
         return 0
     fi
@@ -466,6 +476,9 @@ select_project_proxy() {
     proxy_state "Proxy${_n}"
     if [ "$PROXY_STATE" != "FOUND" ]; then
         proxy_client_missing "Proxy${_n}"
+    fi
+    if ! proxy_is_project "Proxy${_n}" "$_n"; then
+        err "Proxy${_n} appeared in running-config but the required project profile (mihomo t2s${_n} / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
     fi
     log "Project proxy Proxy${_n} created and verified"
 }
