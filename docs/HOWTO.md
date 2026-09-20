@@ -277,7 +277,7 @@ Check every point — most failed installs trace back to one of these:
 | Keenetic router with **256 MB RAM or more** | router spec / `free` on the router | **128 MB devices are not supported.** tmpfs destabilizes them — verified in production, not a theoretical warning |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
-| **SSH access** as root | `ssh root@192.168.1.1` | KeeneticOS: install the *SSH server* component (*General System Settings → Component options*); it enables automatically after installation |
+| **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
 | **Internet reachable from the router** | `opkg update` succeeds | DNS and correct time are the usual blockers (see [Troubleshooting](#12-troubleshooting)) |
 
 Tested on: KN-1810, KN-3811, KN-1913 (see [CHANGELOG](../CHANGELOG.md)).
