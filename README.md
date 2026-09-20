@@ -12,10 +12,7 @@
 - Доступ к shell
 - Интернет
 
-Полные требования →
-
-- [компоненты и prerequisites](docs/COMPONENTS.md)
-- [RAM / storage / ограничения](docs/09-limitations.md)
+Полные требования → [компоненты и prerequisites](docs/COMPONENTS.md) · [RAM / storage / ограничения](docs/09-limitations.md)
 
 ## 1. Установка
 
@@ -43,10 +40,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Подробности →
-
-- [Mihomo](docs/encyclopedia/10-mihomo-eto.md)
-- [архитектура и маршрутизация](docs/01-architecture.md)
+Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [архитектура и маршрутизация](docs/01-architecture.md)
 
 ## 3. Проверка и запуск
 
