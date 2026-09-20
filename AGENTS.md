@@ -90,10 +90,12 @@ beyond what is already used (curl, jq, gzip, wget, cron, ca-bundle, nano).
 
 ## 5. Security: risk zones
 
-Delivery detail: when run, install.sh and update-watchdog.sh download scripts from
-raw.githubusercontent.com/main. There is no versioning or staging: a commit to main
-becomes what the next user's `curl | sh` executes (already installed watchdog copies
-on routers do not update themselves). There is no CI in the repository.
+Delivery detail: until the separate stable delivery channel is promoted for a release,
+the public one-liners and installer-managed downloads still use raw.githubusercontent.com/main,
+so a commit to main can reach the next user's `curl | sh` (already installed watchdog
+copies on routers do not update themselves). Minimal GitHub Actions CI now runs shell
+syntax, committed contract smoke tests and whitespace checks on main and the future
+stable branch. Green CI is necessary, but real-hardware acceptance still matters.
 
 Without an explicit task and operator confirmation, do not:
 - change persistent router configuration through ndmc (`system configuration save`,
@@ -258,9 +260,9 @@ a live run.
 - Determine which components the task touches (§2), reread the risk zones (§5),
   and read the relevant doc before editing, not after.
 - Any action on a live router requires an operator task.
-- A commit to main changes what the next user's `curl | sh` executes; there is no staging,
-  rollback is only via a new commit. There is no CI — verify your changes more carefully
-  than usual.
+- Until the stable delivery channel is promoted, a commit to main can still change what
+  the next user's `curl | sh` executes. Minimal CI must be green, but it is not a
+  substitute for focused live-router acceptance when hardware behavior matters.
 - Do not claim "it works" if verification was limited to sh -n: list what was checked
   and what requires a live run on a device.
 - If the task looks like "rewrite everything properly", stop and reread §4 and docs/10:
