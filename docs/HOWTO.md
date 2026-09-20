@@ -669,6 +669,33 @@ The updater: downloads to a temp file → checks it is non-empty → checks the 
 
 ---
 
+## Backup and recovery
+
+A full `tar` archive of `/opt` can be useful as an emergency snapshot, but it is **not the primary backup format for this project**. Most binaries, init scripts and the watchdog are reproducible from the installer/updaters. The important state is the configuration you chose.
+
+At minimum, keep copies of:
+
+- `/opt/etc/mihomo/config.yaml` — your Mihomo proxies, groups, rules and DNS/TUN settings;
+- `/opt/var/lib/magitrickle/config.yaml` — your MagiTrickle groups/rules/interfaces;
+- any other file under `/opt` that **you edited manually** and that is not created from this repository.
+
+A small configuration-only backup can therefore be made as:
+
+```bash
+mkdir -p /tmp/keenetic-stack-backup
+cp -p /opt/etc/mihomo/config.yaml /tmp/keenetic-stack-backup/mihomo-config.yaml
+cp -p /opt/var/lib/magitrickle/config.yaml /tmp/keenetic-stack-backup/magitrickle-config.yaml
+tar -C /tmp -czf /tmp/keenetic-stack-backup.tgz keenetic-stack-backup
+```
+
+Copy the resulting archive **off the router**. `/tmp` is temporary storage and is lost on reboot.
+
+For recovery, first install the project normally so that Entware packages, init scripts, ProxyN, watchdog and other managed pieces are recreated. Then restore the saved YAML files to their original paths and restart the corresponding services. This avoids restoring stale binaries or old project-owned scripts over a newer installation.
+
+Do not treat transient updater rollback files or `config.yaml.pre-mips` as your only backup: they exist for a specific maintenance operation, not as disaster recovery.
+
+---
+
 ## 10. Rollback
 
 **Automatic (Mihomo updater).** Built into `update-mihomo.sh` at every critical step — nothing to do, the previous binary comes back on its own.
