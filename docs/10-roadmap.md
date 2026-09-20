@@ -52,7 +52,7 @@
 
 - [x] защита от ложных рестартов (lock-файл, cooldown 300 с, whitelist-fallback
       WAN-проверки, jitter — уже в текущей версии watchdog)
-- [x] уменьшить шум healthy-логов: проверки остаются каждые 5 минут, `[OK]` heartbeat — не чаще раза в 20 минут; WARN/restart/rate-limit и первый recovery `[OK]` пишутся сразу
+- [x] уменьшить шум healthy-логов: проверки остаются каждые 5 минут, `[OK]` heartbeat — не чаще раза в 20 минут; WARN/restart/rate-limit, первый recovery `[OK]` и смена WAN-пути `primary ↔ whitelist` пишутся сразу
 - [ ] добавить уровень логирования
 - [ ] расширить проверку здоровья upstream за пределы текущего GET через SOCKS5h
 
