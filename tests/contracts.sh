@@ -50,7 +50,10 @@ sh -n "$ROOT/mihomo-route-watch.sh" || fail "route-watch must remain valid POSIX
 grep -q 'Read-only: the only request ever made is GET /proxies.' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must document its read-only API contract"
 grep -q '401|403)' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must classify Controller 401/403 as auth rejection"
 grep -q 'CURRENT SERVER:' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must retain the final leaf-server output contract"
+grep -q 'does NOT inspect or change Keenetic/Linux routing tables' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must not be confused with Keenetic route-table diagnostics"
+grep -q -- '--version' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must remain self-identifying"
 grep -q 'mihomo-route-watch.sh' "$ROOT/README.md" || fail "README must surface the optional route-watch helper"
-pass "route-watch remains visible, read-only and auth-aware"
+grep -q 'docs/11-route-watch.md' "$ROOT/README.md" || fail "README must link the shareable route-watch guide"
+pass "route-watch remains visible, self-explanatory, read-only and auth-aware"
 
 echo "[OK] Contract smoke tests passed"
