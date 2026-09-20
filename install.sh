@@ -263,7 +263,7 @@ log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")
 ensure_bootstrap_config() {
     _config="$1"
 
-    mkdir -p "${_config%/*}" || { warn "Cannot create ${_config%/*}"; return 0; }
+    mkdir -p "${_config%/*}" || err "Cannot create ${_config%/*} for required Mihomo bootstrap config"
 
     _replace=0
     if [ ! -f "$_config" ]; then
@@ -279,7 +279,7 @@ ensure_bootstrap_config() {
 
     if [ "$_replace" -eq 1 ]; then
         log "Writing bootstrap config (mixed-port 7890)..."
-        cat > "$_config" <<'EOF' || warn "Failed to write bootstrap config"
+        cat > "$_config" <<'EOF' || err "Failed to write required Mihomo bootstrap config"
 # Bootstrap config installed by keenetic-auto-setup.
 # mixed-port 7890 is the project contract port (Proxy0, watchdog, self-check);
 # until it listens, Proxy0 and the watchdog tunnel check stay down.
@@ -863,7 +863,7 @@ if [ -f "$CONFIG" ]; then
         ss -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening — Mihomo may not be running, or config.yaml does not define mixed-port 7890"
     fi
 else
-    check_warn "config.yaml not found (bootstrap missing) — 7890 stays down until a config exists"
+    check_fail "config.yaml not found (required bootstrap missing) — project ProxyN cannot reach Mihomo on 7890"
 fi
 
 # Mihomo endpoint distinction (read-only): the project ProxyN upstream needs
