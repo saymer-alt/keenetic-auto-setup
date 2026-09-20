@@ -7,8 +7,9 @@ ROOT=${1:-.}
 fail() { echo "[FAIL] $1" >&2; exit 1; }
 pass() { echo "[OK] $1"; }
 
-grep -q 'Клиент прокси' "$ROOT/README.md" || fail "README must name Proxy client as required"
-pass "README names Proxy client prerequisite"
+grep -q 'Proxy client / Клиент прокси' "$ROOT/docs/COMPONENTS.md" || fail "component contract must name Proxy client"
+grep -q '\*\*REQUIRED\*\*' "$ROOT/docs/COMPONENTS.md" || fail "component contract must mark required capabilities"
+pass "component contract records Proxy client prerequisite"
 
 PROFILE_CONTRACT=20260920_1
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
