@@ -60,8 +60,7 @@ The most sensitive parts — change only for an explicit task and with full unde
   aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4 (packages come from the current
   saymer-alt/entware-go release; the final fallback if the GitHub path fails is
   `opkg install mihomo` from the configured Entware feed, whose version may be older).
-- RAM: minimum 256 MB; 128 MB is unsupported (docs/06: verified in production —
-  tmpfs destabilizes the system).
+- RAM: 256 MB+ is the supported/recommended profile. 128 MB-class devices are allowed but best-effort/experimental: warn prominently, do not block installation, prefer `disk` mode when practical, and never weaken the one-Mihomo rule. Low-RAM instability remains a known production risk (docs/06).
 - MIPS/mipsel: upstream Mihomo publishes official MIPS/MIPSLE builds (at least
   since 1.19.31), but update-mihomo.sh intentionally does not work on these architectures —
   the update path there is reinstalling the package through install.sh. Do not "fix" this
