@@ -98,16 +98,17 @@ external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-
 
 ---
 
-## Шаг 3. Проверить конфигурацию
+## Шаг 3. Проверить установку
+
+При работающем Mihomo используйте read-only Doctor и **не запускайте `mihomo -t` параллельно**:
 
 ```bash
-mihomo -d /opt/etc/mihomo -t
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh -o /tmp/mihomo-doctor.sh
+chmod +x /tmp/mihomo-doctor.sh
+/tmp/mihomo-doctor.sh
 ```
 
-`-t` — проверка конфига **без запуска** Mihomo.
-
-- Успех: ядро печатает сообщение об успешной проверке (точная формулировка зависит от
-  версии ядра) и завершается.
+Если нужна именно исполняемая проверка YAML, сначала остановите сервис, выполните `mihomo -d /opt/etc/mihomo -t`, затем снова запустите сервис. На части Keenetic второй экземпляр Mihomo приводит к SIGSEGV.
 - Ошибка: будет назван проблемный элемент конфига — чаще всего отступы (YAML требует
   пробелы, не табуляцию) или опечатка. Исправьте и повторите, пока проверка не пройдёт.
 
