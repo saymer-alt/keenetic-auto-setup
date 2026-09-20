@@ -276,6 +276,7 @@ Check every point — most failed installs trace back to one of these:
 | --- | --- | --- |
 | Keenetic router with **256 MB RAM or more** | router spec / `free` on the router | **128 MB devices are not supported.** tmpfs destabilizes them — verified in production, not a theoretical warning |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
+| KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **SSH access** as root | `ssh root@192.168.1.1` | KeeneticOS: install the *SSH server* component (*General System Settings → Component options*); it enables automatically after installation |
 | **Internet reachable from the router** | `opkg update` succeeds | DNS and correct time are the usual blockers (see [Troubleshooting](#12-troubleshooting)) |
 
@@ -296,7 +297,7 @@ opkg print-architecture | awk '/^arch/{print $2}'
 
 The toolkit installs *into* Entware — it does not install Entware itself.
 
-1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or a USB drive formatted as ext4.
+1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or a USB drive formatted as ext4. Also install the required **Proxy client / Клиент прокси** component — without it Keenetic cannot create the project ProxyN. See [COMPONENTS.md](COMPONENTS.md) for the full prerequisite matrix.
 2. Reboot when the component asks.
 3. Verify from SSH:
 
