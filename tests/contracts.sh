@@ -1,0 +1,32 @@
+#!/bin/sh
+# Small committed contract smoke test. It intentionally checks only regressions
+# learned from real installations; it is not a KeeneticOS emulator.
+set -eu
+
+ROOT=${1:-.}
+fail() { echo "[FAIL] $1" >&2; exit 1; }
+pass() { echo "[OK] $1"; }
+
+grep -q 'Клиент прокси' "$ROOT/README.md" || fail "README must name Proxy client as required"
+pass "README names Proxy client prerequisite"
+
+grep -q 'proxy_client_missing' "$ROOT/install.sh" || fail "installer must retain missing Proxy-client fail-fast path"
+grep -q 'running-config after create' "$ROOT/install.sh" || fail "installer must read Proxy creation back"
+pass "Proxy creation has a read-back/fail-fast contract"
+
+grep -q '^mixed-port: 7890$' "$ROOT/install.sh" || fail "bootstrap must expose mixed-port 7890"
+pass "bootstrap exposes contract port 7890"
+
+grep -q 'dns-proxy intercept enable' "$ROOT/install.sh" || fail "installer must enable DNS transit interception"
+grep -q 'DNS transit interception (dns-proxy intercept enable) not found' "$ROOT/install.sh" || fail "self-check must verify DNS interception"
+pass "DNS transit interception is installed and verified"
+
+grep -q 'No project-managed ProxyN marker found; existing Proxy interface(s):' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep unmarked ProxyN informational"
+! grep -q 'foreign Proxy interface(s).*Keenetic has no bridge into Mihomo' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not infer no Mihomo bridge from an unmarked ProxyN"
+pass "Doctor does not misclassify an unmarked ProxyN as no bridge"
+
+grep -q 'permit order is user-defined' "$ROOT/mihomo-doctor.sh" || fail "Doctor must preserve user-owned bypass_wa ordering semantics"
+! grep -q 'bypass_wa policy has other interface permits but not the project proxy' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not require the project ProxyN in a nonempty user-owned bypass policy"
+pass "Doctor accepts nonempty user-owned bypass_wa policy"
+
+echo "[OK] Contract smoke tests passed"
