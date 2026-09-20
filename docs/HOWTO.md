@@ -274,7 +274,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router: **256 MB RAM or more** (supported profile; 512 MB+ has the most headroom) | router spec / `free` on the router | 128 MB-class devices: **best-effort/experimental AND only with >= 384 MB active swap** (512 MB preferred) — without it the installer stops at the early preflight, before downloads and changes; native zRAM is auto-sized to about the RAM and does not satisfy the requirement by itself — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends); on 256/512 MB swap is optional, and zRAM is recommended when running from internal storage; `disk` mode is preferable to `ram` |
+| Keenetic router: **256 MB RAM or more** (supported profile; 512 MB+ has the most headroom) | router spec / `free` on the router | 128 MB-class devices: **best-effort/experimental AND only with external /opt plus >= 384 MB storage-backed active swap on external storage** (512 MB preferred) — otherwise the installer stops at the early preflight, before downloads and changes; native zRAM is auto-sized to about the RAM and does not count toward the requirement — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends and the /opt class); 256 MB: internal storage requires active zRAM, external /opt keeps swap optional; 512 MB+: swap optional; `disk` mode is preferable to `ram` |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
@@ -625,7 +625,7 @@ sh update-mihomo.sh [--force]
 What it does, step by step:
 
 1. Lock file prevents parallel updates.
-2. RAM below 256 MB means the 128 MB-class: best-effort/experimental only, and only with >= 384 MB active swap (512 MB preferred); without sufficient swap the updater aborts early. On 256/512 MB devices swap is optional (a note, not an abort).
+2. RAM below 256 MB means the 128 MB-class: best-effort/experimental only, and only with external /opt plus >= 384 MB storage-backed active swap on external storage (512 MB preferred); otherwise the preflight aborts early. On 256 MB internal storage requires active zRAM, external /opt keeps swap optional; 512 MB+ — swap optional (a note, not an abort).
 3. Architecture via `opkg print-architecture`; the package comes from the ready-to-install set of the `saymer-alt/entware-go` feed (release `latest`) — the same one `install.sh` uses: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; the softfloat `nohf` variant is excluded.
 4. Versions: same version → exit (unless `--force`); an available version that is older than the installed one — or cannot be reliably ordered (prerelease suffixes) — is never auto-downgraded, even with `--force`.
 5. Downloads the `.ipk` to `/tmp` (curl, up to 3 attempts) and extracts only the new binary from it — file operations, the service is still running.
@@ -831,7 +831,7 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 
 Platform notes that remain:
 
-- **128 MB RAM is best-effort/experimental and requires >= 384 MB active swap** (512 MB preferred; [docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; without sufficient swap the installer stops at the early preflight, with swap it prints a prominent EXPERIMENTAL warning. Native zRAM (~RAM-sized) does not satisfy the requirement alone — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends). Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
+- **128 MB RAM is best-effort/experimental and requires external /opt plus >= 384 MB storage-backed active swap on external storage** (512 MB preferred; [docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; without them the installer stops at the early preflight, with them it prints a prominent EXPERIMENTAL warning. Native zRAM (~RAM-sized) does not count toward the requirement — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends and the /opt class). Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
 - **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 

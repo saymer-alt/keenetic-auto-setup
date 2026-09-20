@@ -12,8 +12,9 @@ _No changes yet._
 
 ## [1.4.0] - UNRELEASED (release candidate)
 
-> Status: release candidate — validated by the release gate, **not yet tagged or
-> published**; the latest published release remains [1.3.0]. This section keeps
+> Status: v1.4.0 release candidate — not tagged or published; final release gate
+> pending after the remaining approved changes. The latest published release
+> remains [1.3.0]. This section keeps
 > the accumulated v1.4.0 notes until the owner explicitly releases the version.
 
 ### Added
@@ -29,6 +30,8 @@ _No changes yet._
 - `install.sh`: last-resort Mihomo install fallback — `opkg install mihomo` from the configured Entware feed. Used only after the whole GitHub path (asset lookup → download → package install) has failed before a successful install; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
 
 ### Changed
+
+- RAM/storage/swap policy finalized from real Keenetic deployment evidence; memory capacity, /opt location and swap backends are now detected from live state (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`) and never guessed. 128 MB-class is refused at the early preflight unless ALL of: `/opt` on external persistent storage, storage-backed active swap on external storage of at least 384 MB (512 MB preferred); KeeneticOS zRAM may coexist but does not count toward the 384 MB (auto-sized to about the physical RAM), and unrecognized mount/swap state fails conservatively with the exact unverified prerequisite named. 256 MB: supported and live-tested; `/opt` on internal storage now requires ACTIVE KeeneticOS zRAM (the installer fails early without it, Doctor reports a profile FAIL), while external `/opt` keeps swap/zRAM optional. 512 MB+: normal supported profile, swap optional, nothing implied as mandatory. Classification conventions (UBIFS/ubi*/mtd* = internal, `/dev/sd*`|`/dev/nvme*` + `/tmp/mnt/*` = external) follow documented Keenetic mount behavior; the project never creates, enables, formats, mounts or resizes swap or storage. `mihomo-doctor.sh` reports the `/opt` storage class, active zRAM, external storage-backed swap and unclassifiable entries separately, and applies the same profile interpretation read-only. Contract tests pinned; documentation synchronized.
 
 - RAM/swap/storage profile contract reworked from real deployment evidence, memory capacity and /opt storage choice separated: 256 MB+ is the supported profile (live-tested, internal-storage operation proven — no longer described as the preferred deployment) with swap optional (a headroom note on 256 MB, optional on 512 MB+); 128 MB-class is best-effort/experimental and now REQUIRES active swap (`SwapTotal` from `/proc/meminfo` — a swap partition counts, no literal swap file demanded) of at least 384 MB (512 MB preferred): `install.sh` stops at the early preflight, before any download or mutation, with an actionable message; with sufficient swap the prominent EXPERIMENTAL warning remains and stability is still not guaranteed; `disk` remains preferable to `ram`. The project never creates, resizes or mounts swap/storage itself, and unreadable `/proc/meminfo` keeps the conservative continue-with-warning behavior. `mihomo-doctor.sh` reports the same bands: an unmet low-RAM swap prerequisite on 128 MB-class, an informational optional-swap note on 256 MB, and no swap implication on 512 MB+. Documentation (README, EN README, docs/00/02/06/07/08/09/10, both HOWTOs) aligned to the same contract.
 

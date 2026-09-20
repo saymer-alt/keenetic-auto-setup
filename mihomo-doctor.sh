@@ -362,25 +362,116 @@ MEM_TOTAL=$(awk '/^MemTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 MEM_AVAIL=$(awk '/^MemAvailable:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
+SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
+MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
+
+# Storage/swap classification - read-only mirror of the installer preflight.
+# Keenetic conventions: internal storage is UBIFS (ubi*/mtd*, no block-device
+# nodes, cannot host swap); USB/NVMe disks appear as /dev/sd*|/dev/nvme*
+# with partitions mounted under /tmp/mnt/*. Sources are overridable
+# (DOCTOR_MEMINFO, DOCTOR_SWAPS, DOCTOR_MOUNTS) for read-only testing.
+_doc_classify_mount() {
+    case "$2" in
+        ubifs|squashfs) echo internal; return 0 ;;
+        tmpfs|ramfs)    echo ram; return 0 ;;
+    esac
+    case "$1" in
+        ubi*|mtd*) echo internal; return 0 ;;
+    esac
+    case "$2" in
+        ext2|ext3|ext4|btrfs|f2fs|xfs|vfat|fat|exfat|ntfs|ntfs3|fuseblk) ;;
+        *) echo unknown; return 0 ;;
+    esac
+    case "$1" in
+        /dev/sd*|/dev/nvme*|/tmp/mnt/*) echo external ;;
+        *) echo unknown ;;
+    esac
+}
+_doc_opt_class() {
+    _doc_oc_path="$OPT_ROOT" _doc_oc_bl=0 _doc_oc_cls=unknown
+    [ -r "$MOUNTS_SRC" ] || { echo unknown; return 0; }
+    while read -r _doc_oc_src _doc_oc_mp _doc_oc_fst _doc_oc_rest; do
+        case "$_doc_oc_path" in
+            "$_doc_oc_mp") ;;
+            *) case "$_doc_oc_path" in
+                   "$_doc_oc_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _doc_oc_len=${#_doc_oc_mp}
+        [ "$_doc_oc_len" -ge "$_doc_oc_bl" ] || continue
+        _doc_oc_bl=$_doc_oc_len
+        _doc_oc_cls=$(_doc_classify_mount "$_doc_oc_src" "$_doc_oc_fst")
+    done < "$MOUNTS_SRC"
+    echo "$_doc_oc_cls"
+}
+_doc_scan_swap() {
+    _doc_zram_kb=0; _doc_ext_kb=0; _doc_unver_kb=0
+    [ -r "$SWAPS_SRC" ] || { _doc_unver_kb=-1; return 0; }
+    while read -r _doc_sw_file _doc_sw_type _doc_sw_size _doc_sw_rest; do
+        case "$_doc_sw_file" in ''|Filename) continue ;; esac
+        case "$_doc_sw_size" in ''|*[!0-9]*) continue ;; esac
+        case "$_doc_sw_file" in
+            *zram*) _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue ;;
+        esac
+        case "$_doc_sw_type" in
+            partition)
+                case "$_doc_sw_file" in
+                    /dev/sd*|/dev/nvme*) _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size)) ;;
+                    *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
+                esac ;;
+            file)
+                case "$(_doc_opt_class "$(dirname "$_doc_sw_file")")" in
+                    external) _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size)) ;;
+                    *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
+                esac ;;
+            *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
+        esac
+    done < "$SWAPS_SRC"
+}
+
+_doc_opt=$(_doc_opt_class)
+case "$_doc_opt" in
+    internal) info "/opt storage: internal Keenetic storage" ;;
+    external) info "/opt storage: external persistent storage" ;;
+    ram)      info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent" ;;
+    *)        info "/opt storage: cannot determine (unrecognized mount state)" ;;
+esac
 
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
     if [ "$MEM_TOTAL" -lt 200000 ]; then
-        # 128 MB-class: ACTIVE swap (SwapTotal) is the project prerequisite
-        # for the best-effort/experiment: >= 384 MB, 512 MB preferred.
-        if ! is_num "$SWAP_TOTAL"; then
-            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB): swap size cannot be read - the low-RAM swap prerequisite (>= 384 MB active, 512 MB preferred) is UNVERIFIED (docs/06)"
-        elif [ "$SWAP_TOTAL" -eq 0 ]; then
-            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, no active swap): the 128 MB-class best-effort/experiment requires >= 384 MB active swap, 512 MB preferred; stability is not guaranteed even with swap (docs/06)"
-        elif [ "$SWAP_TOTAL" -lt 393216 ]; then
-            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((SWAP_TOTAL/1024)) MB active swap): >= 384 MB is required, 512 MB preferred; best-effort/experimental regardless, stability not guaranteed (docs/06)"
+        # 128 MB-class: prerequisites are EXTERNAL /opt AND >= 384 MB
+        # EXTERNAL storage-backed active swap (512 MB preferred). zRAM is
+        # auto-sized to about the physical RAM and never counts toward it.
+        _doc_scan_swap
+        if [ "$_doc_opt" != external ]; then
+            warn "Low-RAM prerequisite NOT met (/opt is not on verified external persistent storage): the 128 MB-class best-effort/experiment requires external /opt plus >= 384 MB active swap on external storage, 512 MB preferred; zRAM does not count (docs/06)"
+        elif [ "$_doc_ext_kb" -ge 393216 ]; then
+            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((_doc_ext_kb/1024)) MB external storage-backed swap on external /opt): swap prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
         else
-            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((SWAP_TOTAL/1024)) MB active swap): swap prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
+            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((_doc_ext_kb/1024)) MB external storage-backed active swap on external /opt; zRAM $((_doc_zram_kb/1024)) MB does not count): >= 384 MB active swap on external storage is required, 512 MB preferred; best-effort/experimental regardless, stability not guaranteed (docs/06)"
         fi
     elif [ "$MEM_TOTAL" -lt 450000 ]; then
-        if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
-            info "256 MB-class device without swap - supported and live-tested; active swap would add memory headroom (optional, never required)"
-        fi
+        _doc_scan_swap
+        case "$_doc_opt" in
+            internal|ram)
+                if [ "$_doc_unver_kb" = "-1" ]; then
+                    warn "256 MB-class on internal /opt: cannot verify the KeeneticOS zRAM prerequisite ($SWAPS_SRC unreadable) - zRAM state UNKNOWN"
+                elif [ "$_doc_zram_kb" -gt 0 ]; then
+                    ok "256 MB-class on internal storage with active zRAM ($((_doc_zram_kb/1024)) MB) - supported profile"
+                else
+                    fail "256 MB-class with /opt on internal storage requires ACTIVE KeeneticOS zRAM (compressed system swap) - project profile not met; enable Keenetic compressed swap and re-check"
+                fi ;;
+            external)
+                if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
+                    info "256 MB-class device on external /opt without swap - supported and live-tested; active swap would add memory headroom (optional, never required)"
+                fi ;;
+            *)
+                if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
+                    info "256 MB-class device: /opt storage class cannot be determined - supported profile; active swap would add memory headroom (optional, never required)"
+                fi ;;
+        esac
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
         warn "Very low available memory ($((MEM_AVAIL/1024)) MB) - Mihomo (UPX-packed, unpacks in RAM) and updates need headroom"
@@ -397,23 +488,21 @@ if is_num "$SWAP_TOTAL"; then
 fi
 # Swap backend breakdown (read-only): /proc/swaps, when readable, shows
 # which backends are actually ACTIVE - KeeneticOS zRAM (compressed swap
-# in RAM, written without a NAND swap file) vs storage-backed (block
-# device / swap file). The doctor never creates, enables or resizes swap;
-# the low-RAM prerequisite above is judged from TOTAL active swap.
-SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
+# in RAM, written without a NAND swap file) vs external storage-backed
+# (block device / swap file on external storage). Unrecognized entries are
+# reported separately, never guessed into a class.
 if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -gt 0 ] && [ -r "$SWAPS_SRC" ]; then
-    _zram_kb=$(awk 'NR>1 && $1 ~ /zram/ {s+=$3} END{print s+0}' "$SWAPS_SRC" 2>/dev/null)
-    _stor_kb=$(awk 'NR>1 && $1 !~ /zram/ {s+=$3} END{print s+0}' "$SWAPS_SRC" 2>/dev/null)
-    if is_num "$_zram_kb" && is_num "$_stor_kb" && [ $(( _zram_kb + _stor_kb )) -gt 0 ]; then
-        if [ "$_zram_kb" -gt 0 ] && [ "$_stor_kb" -gt 0 ]; then
-            info "Swap backends: zRAM $((_zram_kb/1024)) MB (compressed in RAM) + storage-backed $((_stor_kb/1024)) MB"
-        elif [ "$_zram_kb" -gt 0 ]; then
-            info "Swap backends: zRAM only, $((_zram_kb/1024)) MB (compressed swap in RAM - not a NAND swap file)"
-        else
-            info "Swap backends: storage-backed $((_stor_kb/1024)) MB (block device/swap file)"
-        fi
+    _doc_scan_swap
+    if [ "$_doc_unver_kb" -gt 0 ]; then
+        info "Swap entries that could not be classified: $((_doc_unver_kb/1024)) MB"
     fi
-    unset _zram_kb _stor_kb
+    if [ "$_doc_zram_kb" -gt 0 ] && [ "$_doc_ext_kb" -gt 0 ]; then
+        info "Swap backends: zRAM $((_doc_zram_kb/1024)) MB (compressed in RAM) + storage-backed $((_doc_ext_kb/1024)) MB"
+    elif [ "$_doc_zram_kb" -gt 0 ]; then
+        info "Swap backends: zRAM only, $((_doc_zram_kb/1024)) MB (compressed swap in RAM - not a NAND swap file)"
+    elif [ "$_doc_ext_kb" -gt 0 ]; then
+        info "Swap backends: storage-backed $((_doc_ext_kb/1024)) MB (external block device/swap file)"
+    fi
 fi
 
 for _mount in "$OPT_ROOT" /tmp; do
