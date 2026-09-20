@@ -165,14 +165,13 @@ cat /opt/var/log/mihomo_watchdog.log
 Проверь DNS:
 
 ```bash
+ls -l /opt/etc/resolv.conf   # обычно симлинк на /etc/resolv.conf, им управляет KeeneticOS
 cat /opt/etc/resolv.conf
 ```
 
-Если пусто:
-
-```bash
-echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf
-```
+⚠️ Не перезаписывай файл публичными резолверами вручную — это обход
+`dns-proxy intercept` и ломает схему DNS-transit (MagiTrickle). Диагностика
+и штатные пути — в [troubleshooting](08-troubleshooting.md).
 
 ---
 

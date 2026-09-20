@@ -307,7 +307,7 @@ opkg update                # must end without errors
 date                       # wrong time → SSL errors later
 ```
 
-If `opkg update` fails: fix DNS (`cat /opt/etc/resolv.conf`, try `echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf`) and time (`ntpd -q -p pool.ntp.org`) first — these are the two most common causes.
+If `opkg update` fails: check DNS first (`cat /opt/etc/resolv.conf` — usually a symlink to `/etc/resolv.conf` managed by KeeneticOS; do not overwrite it with public resolvers manually, that breaks DNS-transit; diagnostics in the Troubleshooting section) and time (`ntpd -q -p pool.ntp.org`) — these are the two most common causes.
 
 ---
 
@@ -333,7 +333,7 @@ In order:
 3. Enables Keenetic **DNS transit interception** (`dns-proxy intercept enable`, then `system configuration save` — applied only if not already on): classic port-53 queries from LAN clients addressed straight to external resolvers are redirected into the router's DNS proxy, where MagiTrickle sees them (details in [section 6.1](#6-magitrickle)). This is part of the automatic installation — no manual post-install DNS step. Classic DNS only; DoH/DoT are not affected.
 4. **RAM mode only:** downloads `S00ubifs` to `/opt/etc/init.d/` and starts it (tmpfs for `/opt/tmp`, `/opt/var/log`, `/opt/var/run`).
 5. Detects the architecture and downloads the matching **mihomo `.ipk`** from the latest release of [`saymer-alt/entware-go`](https://github.com/saymer-alt/entware-go) (GitHub API with three fallbacks: jq → grep on JSON → repeated request → HTML scraping). As a last resort only — after the whole GitHub path has failed before a successful install (asset not found, download failed, or the package did not install) — it falls back to `opkg install mihomo` from the configured Entware feed; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
-6. **Creates the Proxy0 interface** — the only bridge Keenetic → Mihomo — pointing at `127.0.0.1:7890` (SOCKS5, UDP enabled), human-readable name `mihomo t2s0`, and saves the config.
+6. **Creates the project Proxy interface (ProxyN)** — the bridge Keenetic → Mihomo — pointing at `127.0.0.1:7890` (SOCKS5, UDP enabled), human-readable name `mihomo t2sN`, and saves the config. On a clean/free router this is `Proxy0` (`mihomo t2s0`); if `Proxy0` is occupied by a foreign configuration, it is left untouched and the first free `ProxyN` is created instead.
 7. Installs **MagiTrickle** (adds its package repo, installs, starts).
 8. Installs the VoIP bypass hook `020-bypass_wa.sh` into `/opt/etc/ndm/netfilter.d/`.
 9. Installs the **watchdog** into `/opt/etc/cron.5mins/` and wires it into cron (a run-parts `cron.5mins` entry is reused if present; otherwise a direct crontab line is added).
@@ -341,7 +341,7 @@ In order:
 
 ### 3.3 Is it safe to re-run?
 
-The installer is written to be idempotent: every modifying step first checks whether the object already exists (packages, policy, Proxy0, crontab entry). Re-running it will not duplicate things.
+The installer is written to be idempotent: every modifying step first checks whether the object already exists (packages, policy, the project ProxyN, crontab entry). Re-running it will not duplicate things.
 
 One caveat: the mihomo `.ipk` is downloaded on every run — `opkg` will simply skip it if the same version is already installed.
 
@@ -572,7 +572,7 @@ Every 5 minutes (cron), with a 0–24 s random jitter (busybox-safe, `date +%s %
 2. **Proxy port** — `127.0.0.1:7890` must accept TCP connections. Closed port → Mihomo probably crashed → restart.
 3. **End-to-end tunnel** — a real request through `socks5h://127.0.0.1:7890` (DNS resolved through the tunnel) to google must succeed. Port open but tunnel dead → restart.
 
-Restart rate limit: minimum 300 s between restarts, tracked in `/tmp/mihomo_watchdog.restart` with content validation. Lock file `/tmp/mihomo_watchdog.lock` prevents overlapping runs.
+Restart rate limit: minimum 300 s between restarts, tracked in `/tmp/mihomo_watchdog.restart` with content validation. Overlapping runs are prevented by an atomic mkdir lock dir `/tmp/mihomo_watchdog.lock.d` (with pid/ts ownership and a live-process takeover — a `kill -9`ed holder is taken over on the next run, no reboot needed).
 
 ### 7.2 Reading the log
 
@@ -602,8 +602,7 @@ Two copies can exist on a router — **check which one your crontab really execu
 grep mihomo_watchdog /opt/etc/crontab
 ```
 
-- `install.sh` puts it in `/opt/etc/cron.5mins/mihomo_watchdog` (run-parts or direct line)
-- `update-watchdog.sh` updates `/opt/bin/mihomo_watchdog.sh` (a different path!)
+- `install.sh` and `update-watchdog.sh` maintain the SAME canonical layout: the full script at `/opt/bin/mihomo_watchdog.sh` plus the thin wrapper `/opt/etc/cron.5mins/mihomo_watchdog` wired by either a run-parts `cron.5mins` crontab entry or the single managed direct line (duplicates are collapsed by `update-watchdog.sh`)
 
 ### 7.4 Manual debug run
 
@@ -664,9 +663,9 @@ Properties: the support gate is a `mihomo -t` probe (not a version read from the
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-The updater: downloads to a temp file → checks it is non-empty → checks the `MIHOMO WATCHDOG SCRIPT` sanity marker → `sh -n` syntax check → backs up the current copy to `/opt/var/log/mihomo_watchdog.sh.bak.<timestamp>` → atomic `mv` into place.
+The updater: downloads to a temp file → checks it is non-empty → checks the `MIHOMO WATCHDOG SCRIPT` sanity marker → `sh -n` syntax check → stages on the destination filesystem (`/opt/bin/.mihomo_watchdog.sh.new.$$`) → atomic `mv` into place. There is **no backup copy** of the replaced watchdog by design (the staged copy is validated before the atomic rename, so a half-written watchdog cannot appear); a re-run of the updater or the installer always restores the canonical script. A bounded backup is kept only for a replaced *managed legacy cron file* (`/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak`).
 
-**Path caveat (important):** it updates `/opt/bin/mihomo_watchdog.sh`, while `install.sh` deploys to `/opt/etc/cron.5mins/mihomo_watchdog`. Before updating, verify which copy your crontab actually runs (section 7.3) — otherwise you update a file that is never executed.
+Both installer and updater maintain the same canonical layout — the full script at `/opt/bin/mihomo_watchdog.sh` plus the thin wrapper `/opt/etc/cron.5mins/mihomo_watchdog`. There is no "second copy" to get out of sync; `update-watchdog.sh` also normalizes the crontab route (run-parts `cron.5mins` entry or the single managed direct line).
 
 ---
 
@@ -710,7 +709,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 
 3. Verify: `mihomo -v`, `ps | grep mihomo`, then the proxy curl from section 5.
 
-**Manual restore of the watchdog** (if `update-watchdog.sh` went wrong): the previous copy is in `/opt/var/log/mihomo_watchdog.sh.bak.<timestamp>` — `cp` it back to the path your crontab runs.
+**Manual restore of the watchdog**: `update-watchdog.sh` replaces the binary via same-filesystem staging + atomic rename and syntax-checks the staged copy first, so a partially written watchdog cannot appear. There is no `/opt`-side watchdog backup by design (tmpfs backups die with a reboot); if a replacement ever misbehaves, re-run `update-watchdog.sh` (it re-downloads the canonical script) or re-run `install.sh`. The only persistent backup artifact is `CRON_LEGACY_BAK` (`/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak`) — a bounded copy of a replaced *managed legacy* cron file, kept for inspection.
 
 ---
 
@@ -772,7 +771,7 @@ This is a mental model with checkpoints, not a per-component manual — where ea
 Symptom → cause → fix.
 
 **`opkg update` fails / `curl: (6) Could not resolve host`**
-DNS in Entware is broken. `echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf` (and `8.8.8.8` as a second line), retry.
+DNS in Entware is misbehaving. Diagnose first: `ls -l /opt/etc/resolv.conf` (a symlink to `/etc/resolv.conf`, managed by KeeneticOS) and `cat /opt/etc/resolv.conf`. ⚠️ Do not overwrite the file with public resolvers manually — that bypasses `dns-proxy intercept` and breaks DNS-transit (MagiTrickle). Check that DNS transit is enabled (`ndmc -c "show running-config" | grep "intercept enable"`) and re-run `install.sh` if needed.
 
 **SSL errors on downloads (`curl: (60)`, opkg certificate errors)**
 Wrong clock. `ntpd -q -p pool.ntp.org`, check `date`, retry. Classic on routers that just booted.
@@ -790,7 +789,7 @@ No `config.yaml` (step 5), or DNS on clients. Also check the router's own DNS st
 Cron not running, or the crontab line points to a different copy of the script (section 7.3). Check `ps | grep cron` and `grep mihomo_watchdog /opt/etc/crontab`.
 
 **Watchdog runs twice (duplicate log lines)**
-Duplicate lines in `/opt/etc/crontab` — easy to create by hand-editing. Remove all `mihomo_watchdog` lines, re-add one, restart cron (`/opt/etc/init.d/S10cron restart`).
+Duplicate lines in `/opt/etc/crontab` — easy to create by hand-editing. Do not clean the crontab by hand: run `update-watchdog.sh` — it collapses duplicate managed direct lines to one, removes the direct line only when a run-parts route exists, and leaves unrelated crontab entries untouched. Restarting cron is unnecessary (crond re-reads the crontab), though `/opt/etc/init.d/S10cron restart` does no harm.
 
 **`[RATE-LIMIT] Restart blocked` in the log**
 Not an error — the 300 s anti-loop protection doing its job.

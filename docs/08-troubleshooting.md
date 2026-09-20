@@ -5,6 +5,18 @@
 Формат:
 👉 Симптом → Причина → Решение
 
+Порядок диагностики:
+
+1. **Сначала read-only**: `mihomo-doctor.sh` — он не меняет ничего и выдаёт
+   сводное состояние стека (Mihomo, порт 7890, ProxyN/bypass_wa, watchdog,
+   RAM, пакет).
+2. **Потом supported-пути**: `update-mihomo.sh` / `update-watchdog.sh` /
+   повторный `install.sh` — штатные инструменты, которые сами обеспечивают
+   атомарность и откат.
+3. **Ручные мутации — только когда это специально обосновано** (правка
+   собственного `config.yaml`, перезапуск сервиса). Не «чинить» систему
+   разовыми sed/chmod/echo-рецептами — они и были причиной части проблем.
+
 ---
 
 ## 🔴 Mihomo
@@ -33,10 +45,12 @@
 
 ```bash
 ls -la /opt/etc/mihomo/config.yaml
-nano /opt/etc/mihomo/config.yaml
 ```
 
-Потом:
+Если конфига нет вообще — bootstrap обязателен и создаётся установщиком:
+повтори `install.sh` (он пишет минимальный `mixed-port: 7890` и фейл-фаст,
+если записать не смог). Если конфиг есть, но с ошибкой — правь свой
+`config.yaml` (`nano /opt/etc/mihomo/config.yaml`), потом:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
@@ -122,18 +136,31 @@ cat /opt/var/log/mihomo_watchdog.log
 #### Проверка cron
 
 ```bash
-cat /opt/etc/crontab
+grep mihomo_watchdog /opt/etc/crontab
 ```
 
-Должно быть:
+Норма — **либо** единственная управляемая прямая строка:
 
 ```bash
 */5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog
 ```
 
+**либо** строка run-parts, запускающая каталог `cron.5mins` целиком (строка
+с `cron.5mins`, не упоминающая `mihomo_watchdog`). Обе схемы штатные; если
+есть обе — direct-строка лишняя, но это тоже нормализует
+`update-watchdog.sh`.
+
 ---
 
 #### Решение
+
+Если запись нет/кривая — supported-путь:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+```
+
+Если сам cron-демон не запущен:
 
 ```bash
 /opt/etc/init.d/S10cron restart
@@ -157,17 +184,23 @@ OK
 
 #### Причина
 
-👉 дубли в crontab
+👉 в crontab несколько строк, запускающих watchdog (например, прямая строка
+плюс run-parts для `cron.5mins`, или два дубля прямой строки)
 
 ---
 
 #### Решение
 
+Не вычищай crontab вручную через `sed -i '/mihomo_watchdog/d'` — это
+удаляет и чужие/нужные записи. Supported-путь нормализует планирование сам:
+
 ```bash
-sed -i '/mihomo_watchdog/d' /opt/etc/crontab
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-и добавить одну строку вручную
+Он схлопывает дубли управляемой прямой строки в одну и убирает прямую
+строку только тогда, когда есть run-parts-маршрут; посторонние записи
+crontab не трогаются.
 
 ---
 
@@ -177,17 +210,21 @@ sed -i '/mihomo_watchdog/d' /opt/etc/crontab
 
 #### Причина
 
-* нет файла
-* нет прав
+* watchdog ни разу не запускался (cron/планирование — см. выше)
+* файл был удалён вручную
 
 ---
 
 #### Решение
 
-```bash
-touch /opt/var/log/mihomo_watchdog.log
-chmod 666 /opt/var/log/mihomo_watchdog.log
-```
+Лог создаётся самим watchdog'ом при первом запуске (первая строка —
+`[INIT] log generation started`); руками файл создавать не нужно. Права
+`chmod 666` не нужны и не должны ставиться: watchdog выполняется от root
+и пишет в лог сам.
+
+Порядок: проверь планирование (раздел выше) → если планирование в порядке,
+но лога нет — `mihomo-doctor.sh` покажет состояние watchdog-раскладки
+(canonical/wrapper/legacy).
 
 ---
 
@@ -201,16 +238,33 @@ chmod 666 /opt/var/log/mihomo_watchdog.log
 
 #### Причина
 
-👉 DNS сломан
+👉 DNS на роутере/в Entware сломан (или пустой `/opt/etc/resolv.conf`)
+
+---
+
+#### Диагностика (read-only)
+
+```bash
+ls -l /opt/etc/resolv.conf        # на Entware это обычно симлинк на /etc/resolv.conf
+cat /opt/etc/resolv.conf
+/opt/bin/mihomo-doctor.sh         # сетевые проверки: DNS, GitHub, raw
+```
 
 ---
 
 #### Решение
 
-```bash
-echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf
-echo "nameserver 8.8.8.8" >> /opt/etc/resolv.conf
-```
+⚠️ Не перезаписывай `/opt/etc/resolv.conf` публичными резолверами
+(`echo "nameserver 1.1.1.1" > ...`): файл на Keenetic управляется
+KeeneticOS (обычно это симлинк на `/etc/resolv.conf`), а ручные публичные
+резолверы обходят `dns-proxy intercept` и ломают схему DNS-transit, на
+которой держится MagiTrickle.
+
+Штатный путь: убедись, что DNS-transit включён и применился (это делает
+install.sh, состояние показывает Doctor); если DNS сломан на уровне
+роутера — чини сначала KeeneticOS/провайдерский DNS, потом повторяй
+`install.sh` (он сам проверит `dns-proxy intercept enable` по
+running-config).
 
 ---
 

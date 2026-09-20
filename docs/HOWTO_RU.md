@@ -307,7 +307,7 @@ opkg update                # должно завершиться без ошиб
 date                       # сбитое время → позже упадут SSL-ошибки
 ```
 
-Если `opkg update` падает: сначала почините DNS (`cat /opt/etc/resolv.conf`, при необходимости `echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf`) и время (`ntpd -q -p pool.ntp.org`) — это две самые частые причины.
+Если `opkg update` падает: сначала проверьте DNS (`cat /opt/etc/resolv.conf`, обычно это симлинк на `/etc/resolv.conf`, которым управляет KeeneticOS — не перезаписывайте его публичными резолверами вручную, это ломает DNS-transit; диагностика — в разделе «Типовые проблемы» troubleshooting) и время (`ntpd -q -p pool.ntp.org`) — это две самые частые причины.
 
 ---
 
@@ -580,7 +580,7 @@ Upstream, у которого `R.Sent` растёт, а `A.Rcvd` стоит на
 2. **Порт прокси** — `127.0.0.1:7890` должен принимать TCP-соединения. Порт закрыт → Mihomo, вероятно, упал → рестарт.
 3. **Сквозной туннель** — реальный запрос через `socks5h://127.0.0.1:7890` (DNS тоже через туннель) до google должен пройти. Порт открыт, туннель мёртв → рестарт.
 
-Ограничение частоты: минимум 300 с между рестартами, состояние в `/tmp/mihomo_watchdog.restart` с валидацией содержимого. Lock-файл `/tmp/mihomo_watchdog.lock` не даёт двум копиям работать одновременно.
+Ограничение частоты: минимум 300 с между рестартами, состояние в `/tmp/mihomo_watchdog.restart` с валидацией содержимого. От наложения запусков защищает атомарный mkdir-lock-каталог `/tmp/mihomo_watchdog.lock.d` (pid/ts-владение и takeover по живости процесса — после `kill -9` замок подхватывается на следующем запуске, перезагрузка не нужна).
 
 ### 7.2 Как читать лог
 
@@ -610,8 +610,11 @@ cat /opt/var/log/mihomo_watchdog.log
 grep mihomo_watchdog /opt/etc/crontab
 ```
 
-- `install.sh` кладёт её в `/opt/etc/cron.5mins/mihomo_watchdog` (run-parts или прямая строка)
-- `update-watchdog.sh` обновляет `/opt/bin/mihomo_watchdog.sh` (другой путь!)
+- install.sh и update-watchdog.sh обслуживают ОДИН канонический layout:
+  полный скрипт `/opt/bin/mihomo_watchdog.sh` + thin-обёртка
+  `/opt/etc/cron.5mins/mihomo_watchdog`; планирование — run-parts-строка
+  `cron.5mins` либо единственная управляемая прямая строка (дубли схлопывает
+  `update-watchdog.sh`)
 
 ### 7.4 Ручной отладочный запуск
 
@@ -778,7 +781,7 @@ sh mihomo-proxy-selection-watch.sh -g MyGroup -s SECRET
 Симптом → причина → решение.
 
 **`opkg update` падает / `curl: (6) Could not resolve host`**
-Сломан DNS в Entware. `echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf` (и `8.8.8.8` второй строкой), повторить.
+Проблема с DNS в Entware. Сначала диагностика: `ls -l /opt/etc/resolv.conf` (симлинк на `/etc/resolv.conf`, управляется KeeneticOS) и `cat /opt/etc/resolv.conf`. ⚠️ Не перезаписывайте файл публичными резолверами вручную — это обход `dns-proxy intercept` и поломка DNS-transit (MagiTrickle). Проверьте, что DNS-transit включён (`ndmc -c "show running-config" | grep "intercept enable"`) и повторите `install.sh` при необходимости.
 
 **SSL-ошибки при скачивании (`curl: (60)`, ошибки сертификатов opkg)**
 Сбитые часы. `ntpd -q -p pool.ntp.org`, проверить `date`, повторить. Классика на только что загруженном роутере.
@@ -793,10 +796,11 @@ sh mihomo-proxy-selection-watch.sh -g MyGroup -s SECRET
 Нет `config.yaml` (раздел 5) или DNS на клиентах. Также проверьте, что собственный DNS роутера жив — никогда не «тестируйте» изменением default route/DNS как попало.
 
 **Лог watchdog пустой**
-Cron не запущен, либо строка в crontab указывает на другую копию скрипта (раздел 7.3). Проверьте `ps | grep cron` и `grep mihomo_watchdog /opt/etc/crontab`.
+Cron не запущен, либо в crontab нет ни управляемой прямой строки, ни
+run-parts-строки для `cron.5mins` (раздел 7.3). Проверьте `ps | grep cron` и `grep mihomo_watchdog /opt/etc/crontab`; нормализует планирование `update-watchdog.sh`.
 
 **Watchdog выполняется дважды (дубли строк в логе)**
-Дубли строк в `/opt/etc/crontab` — легко нарожать ручной правкой. Удалите все строки с `mihomo_watchdog`, добавьте одну, перезапустите cron (`/opt/etc/init.d/S10cron restart`).
+Дубли строк в `/opt/etc/crontab` — легко нарожать ручной правкой. Не вычищайте crontab вручную: запустите `update-watchdog.sh` — он схлопнет дубли управляемой прямой строки в одну, уберёт direct-строку при наличии run-parts-маршрута и не тронет посторонние записи. Cron перезапускать не нужно (crond перечитывает crontab сам), но `/opt/etc/init.d/S10cron restart` не повредит.
 
 **`[RATE-LIMIT] Restart blocked` в логе**
 Не ошибка — работает 300-секундная защита от циклов.

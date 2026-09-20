@@ -144,10 +144,12 @@ curl: (6) Could not resolve host
 
 ### Решение
 
-```bash
-echo "nameserver 1.1.1.1" > /opt/etc/resolv.conf
-echo "nameserver 8.8.8.8" >> /opt/etc/resolv.conf
-```
+⚠️ Не перезаписывай `/opt/etc/resolv.conf` публичными резолверами вручную:
+файлом управляет KeeneticOS (обычно это симлинк на `/etc/resolv.conf`), а
+ручные резолверы обходят `dns-proxy intercept` и ломают DNS-transit
+(MagiTrickle). Сначала диагностика — `ls -l /opt/etc/resolv.conf`,
+`cat /opt/etc/resolv.conf`, `mihomo-doctor.sh`; штатные пути описаны в
+[08-troubleshooting.md](08-troubleshooting.md).
 
 ---
 

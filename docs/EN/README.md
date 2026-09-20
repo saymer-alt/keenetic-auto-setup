@@ -81,13 +81,17 @@ Mihomo proxy:
 
 `127.0.0.1:7890`
 
-Full installation check — the read-only Doctor (changes nothing and restarts nothing; the whole output can be pasted for support):
+Details → [Troubleshooting](../08-troubleshooting.md).
+
+To see **which final proxy server Mihomo has selected right now, and when failover/failback happens**, use the optional read-only helper `mihomo-proxy-selection-watch.sh`:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh -o /tmp/mihomo-proxy-selection-watch.sh
+sh /tmp/mihomo-proxy-selection-watch.sh --help
+sh /tmp/mihomo-proxy-selection-watch.sh --watch 1
 ```
 
-Details → [Troubleshooting](../08-troubleshooting.md).
+It only reads the Controller API (`GET /proxies`); it never selects nodes and never restarts anything. It is **not a Doctor replacement**: the Doctor answers "is the stack healthy", proxy-selection-watch answers "which final proxy is selected now". Details → [Mihomo Proxy Selection Watch](../11-proxy-selection-watch.md).
 
 ## 4. Mihomo UI
 
@@ -115,7 +119,7 @@ Force update:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh -s -- --force
 ```
 
-Details → [update and rollback](../HOWTO_RU.md).
+Details → [update and rollback](../HOWTO.md).
 
 ### Watchdog
 
@@ -132,7 +136,8 @@ Details and logs → [Watchdog](../04-watchdog.md).
 - [Introduction](../00-intro.md)
 - [Quick start](../02-quick-start.md)
 - [Installation](../03-install.md)
-- [Guide](../HOWTO_RU.md)
+- [Guide (English)](../HOWTO.md)
+- [Полное руководство (RU)](../../docs/HOWTO_RU.md)
 
 ### System
 
@@ -160,6 +165,7 @@ Details and logs → [Watchdog](../04-watchdog.md).
 - [bypass_wa](../05-bypass-wa.md)
 - [S00ubifs](../06-s00ubifs.md)
 - [Troubleshooting](../08-troubleshooting.md)
+- [Mihomo Proxy Selection Watch — selected proxy and failover/failback](../11-proxy-selection-watch.md)
 
 ### Additional
 

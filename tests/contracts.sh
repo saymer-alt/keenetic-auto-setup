@@ -47,7 +47,8 @@ grep -q 'permit order is user-defined' "$ROOT/mihomo-doctor.sh" || fail "Doctor 
 pass "Doctor accepts nonempty user-owned bypass_wa policy"
 
 sh -n "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must remain valid POSIX shell syntax"
-grep -q 'Read-only: the only request ever made is GET /proxies.' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must document its read-only API contract"
+grep -qi 'read-only' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must document its read-only API contract"
+grep -Eq 'the only (HTTP )?request ever made is GET /proxies' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must keep GET /proxies as its only request"
 grep -q '401|403)' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must classify Controller 401/403 as auth rejection"
 grep -q 'CURRENT SERVER:' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must retain the final leaf-server output contract"
 grep -q 'does NOT inspect or change Keenetic/Linux routing tables' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must not be confused with Keenetic route-table diagnostics"

@@ -47,25 +47,28 @@ cron → каждые 5 минут → watchdog → завершился
 
 ## Где находится
 
-Установщик (install.sh) кладёт скрипт сюда:
+Канонический layout (один и тот же и у install.sh, и у update-watchdog.sh):
 
-```bash
-/opt/etc/cron.5mins/mihomo_watchdog
-```
+- полный скрипт: `/opt/bin/mihomo_watchdog.sh`
+- thin-обёртка планировщика: `/opt/etc/cron.5mins/mihomo_watchdog`
+  (`#!/bin/sh` + `exec /opt/bin/mihomo_watchdog.sh "$@"`)
 
-Запуск:
+Запуск — одна управляемая строка в crontab:
 
 ```bash
 */5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog
 ```
 
-⚠️ Важно: `update-watchdog.sh` обновляет ДРУГУЮ копию:
+`update-watchdog.sh` обновляет ровно этот layout (тот же файл, что ставит
+install.sh): он распознаёт исторические управляемые layout'ы (полный скрипт
+внутри cron-файла и др.) и мигрирует их в канонический. crontab-строки
+обрабатываются так: допускается либо единственная управляемая прямая строка
+выше, либо строка run-parts, запускающая каталог `cron.5mins` целиком (то
+есть строка crontab с `cron.5mins`, не упоминающая `mihomo_watchdog`);
+дубли прямых строк схлопываются в одну; прямая строка удаляется только если
+строка run-parts существует; любые другие записи crontab не трогаются.
 
-```bash
-/opt/bin/mihomo_watchdog.sh
-```
-
-👉 Перед обновлением проверь, какая копия реально запускается:
+Проверить, какая схема запуска используется:
 
 ```bash
 grep mihomo_watchdog /opt/etc/crontab
@@ -82,7 +85,7 @@ PROXY="127.0.0.1:7890"
 MIN_RESTART_INTERVAL=300
 LOG_MAX_LINES=500
 LOG_KEEP_LINES=300
-LOCK_FILE="/tmp/mihomo_watchdog.lock"
+LOCK_DIR="/tmp/mihomo_watchdog.lock.d"
 ```
 
 ---
@@ -173,10 +176,13 @@ curl -x socks5h://127.0.0.1:7890 -m 5 -s https://www.google.com
 
 ---
 
-## Lock-файл
+## Lock
 
-* `/tmp/mihomo_watchdog.lock` не даёт двум копиям работать одновременно
-* trap гарантирует удаление при любом выходе
+* атомарный mkdir-lock-каталог `/tmp/mihomo_watchdog.lock.d` (pid/ts-владение +
+  claim-симлинк) не даёт двум копиям работать одновременно
+* живой держатель блокирует; мёртвый (kill -9) атомарно подхватывается на
+  следующем запуске — перезагрузка не нужна
+* trap чистит временные файлы при любом выходе
 
 ---
 
@@ -355,7 +361,8 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 Причины:
 
 * cron не работает
-* запись в crontab указывает на другую копию
+* crontab не содержит ни управляемой прямой строки, ни строки run-parts
+  для `cron.5mins` (например, после ручной правки crontab)
 
 Проверка:
 
@@ -363,6 +370,11 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 ps | grep cron
 grep mihomo_watchdog /opt/etc/crontab
 ```
+
+Чинить так (supported path): `curl -fSsL
+https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh` —
+он нормализует планирование в канонический layout (и мигрирует исторические
+управляемые layout'ы).
 
 ---
 

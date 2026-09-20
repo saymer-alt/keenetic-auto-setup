@@ -10,7 +10,11 @@ _No changes yet._
 
 ---
 
-## [1.4.0] - 2026-09-20
+## [1.4.0] - UNRELEASED (release candidate)
+
+> Status: release candidate — validated by the release gate, **not yet tagged or
+> published**; the latest published release remains [1.3.0]. This section keeps
+> the accumulated v1.4.0 notes until the owner explicitly releases the version.
 
 ### Added
 
