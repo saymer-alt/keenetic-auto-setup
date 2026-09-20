@@ -40,7 +40,7 @@
 #   1  usage error, or curl/jq missing
 #   2  controller unreachable (is external-controller set?
 #      the doctor will tell you)
-#   3  HTTP 401 - secret required or wrong
+#   3  HTTP 401/403 - secret required or wrong
 #   4  start group not found in /proxies
 #   5  route anomaly (cycle, depth cap, unknown "now",
 #      malformed JSON response)
@@ -67,7 +67,7 @@ Usage: mihomo-route-watch.sh [-g GROUP] [-u URL] [-s SECRET] [--watch N]
 
 Read-only: the only request ever made is GET /proxies.
 Exit codes: 0 ok, 1 usage/missing tool, 2 controller unreachable,
-3 auth (401), 4 group not found, 5 route anomaly.
+3 auth (401/403), 4 group not found, 5 route anomaly.
 USAGE
 }
 
@@ -128,7 +128,7 @@ fetch_state() {
     BODY=$(printf '%s' "$RESP" | sed '$d')
     case "$CODE" in
         200) : ;;
-        401) FETCH_STATE="auth"; return 0 ;;
+        401|403) FETCH_STATE="auth"; return 0 ;;
         404) FETCH_STATE="notfound"; return 0 ;;
         *)   FETCH_STATE="http"; return 0 ;;
     esac
@@ -214,7 +214,7 @@ if [ -z "$WATCH" ]; then
             echo "[route-watch] controller unreachable at $URL - is external-controller set in config.yaml? (the doctor will tell you)" >&2
             exit 2 ;;
         auth)
-            echo "[route-watch] controller rejected the request (HTTP 401) - a secret is required or the secret is wrong" >&2
+            echo "[route-watch] controller rejected the request (HTTP $CODE) - a secret is required or the secret is wrong" >&2
             exit 3 ;;
         notfound)
             echo "[route-watch] unexpected HTTP 404 from the controller" >&2
@@ -255,7 +255,7 @@ while :; do
         unreachable)
             line="[controller unreachable]" ;;
         auth)
-            echo "[route-watch] controller rejected the request (HTTP 401) - a secret is required or the secret is wrong" >&2
+            echo "[route-watch] controller rejected the request (HTTP $CODE) - a secret is required or the secret is wrong" >&2
             exit 3 ;;
         notfound)
             echo "[route-watch] unexpected HTTP 404 from the controller" >&2
