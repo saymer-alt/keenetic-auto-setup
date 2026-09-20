@@ -46,4 +46,11 @@ grep -q 'permit order is user-defined' "$ROOT/mihomo-doctor.sh" || fail "Doctor 
 ! grep -q 'bypass_wa policy has other interface permits but not the project proxy' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not require the project ProxyN in a nonempty user-owned bypass policy"
 pass "Doctor accepts nonempty user-owned bypass_wa policy"
 
+sh -n "$ROOT/mihomo-route-watch.sh" || fail "route-watch must remain valid POSIX shell syntax"
+grep -q 'Read-only: the only request ever made is GET /proxies.' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must document its read-only API contract"
+grep -q '401|403)' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must classify Controller 401/403 as auth rejection"
+grep -q 'CURRENT SERVER:' "$ROOT/mihomo-route-watch.sh" || fail "route-watch must retain the final leaf-server output contract"
+grep -q 'mihomo-route-watch.sh' "$ROOT/README.md" || fail "README must surface the optional route-watch helper"
+pass "route-watch remains visible, read-only and auth-aware"
+
 echo "[OK] Contract smoke tests passed"
