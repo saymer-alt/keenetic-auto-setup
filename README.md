@@ -87,16 +87,21 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
 ```
 
-Если нужно не проверить здоровье стека, а **увидеть, какой конечный proxy-сервер выбран Mihomo сейчас и когда происходит failover/failback**, используйте необязательный read-only helper `mihomo-route-watch.sh`:
+Если нужно не проверить здоровье стека, а **увидеть, какой конечный proxy-сервер выбран Mihomo сейчас и когда происходит failover/failback**, используйте необязательный read-only helper `mihomo-route-watch.sh`.
+
+Самый понятный вариант для первого запуска:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh -s -- --watch 1
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh -o /tmp/mihomo-route-watch.sh
+sh /tmp/mihomo-route-watch.sh --help
+sh /tmp/mihomo-route-watch.sh
+sh /tmp/mihomo-route-watch.sh --watch 1
 ```
 
-Он только читает Controller API (`GET /proxies`), ничего не выбирает и не перезапускает. Для работы Controller должен быть включён; `127.0.0.1:9090` — значение по умолчанию самого helper'а, а не встроенный default Mihomo.
+Он только читает Controller API (`GET /proxies`), ничего не выбирает и не перезапускает. Он **не смотрит маршруты Keenetic**: «route» здесь означает цепочку выбора proxy-групп Mihomo. Для работы Controller должен быть включён; `127.0.0.1:9090` — значение по умолчанию самого helper'а, а не встроенный default Mihomo.
 
-Подробности → [проверка работы](docs/08-troubleshooting.md) · [полное HOWTO](docs/HOWTO_RU.md).
+Подробная инструкция, которую можно просто отправить другому пользователю → [Mihomo Route Watch](docs/11-route-watch.md).  
+Общая диагностика → [проверка работы](docs/08-troubleshooting.md) · [полное HOWTO](docs/HOWTO_RU.md).
 
 ## 4. Управление Mihomo
 
@@ -169,6 +174,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 - [bypass_wa](docs/05-bypass-wa.md)
 - [S00ubifs](docs/06-s00ubifs.md)
 - [Диагностика](docs/08-troubleshooting.md)
+- [Mihomo Route Watch — выбранный proxy и failover/failback](docs/11-route-watch.md)
 
 ### Дополнительно
 
