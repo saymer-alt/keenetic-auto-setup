@@ -41,12 +41,24 @@ trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAG
 command -v opkg >/dev/null 2>&1 || err "opkg not found"
 
 # ---------------------------
-# RAM PREFLIGHT
+# RAM / SWAP PREFLIGHT
 # ---------------------------
-# 256 MB+ is the supported/recommended profile. 128 MB-class devices are
-# intentionally not blocked: they can work, but have very little headroom and
-# are best-effort/experimental. Warn BEFORE downloads or package mutations.
+# Memory capacity and /opt storage are separate choices; this gate is only
+# about RAM + ACTIVE swap. Policy:
+#   - 256 MB+ is the supported profile (live-tested; running from Keenetic
+#     internal storage is proven to work). 512 MB+ has the most headroom.
+#   - 128 MB-class devices are allowed ONLY as best-effort/experimental AND
+#     only with ACTIVE swap: minimum 384 MB, 512 MB preferred. Without it
+#     the install stops here, before any download or mutation.
+# Values come from /proc/meminfo only (SwapTotal = active swap, so a swap
+# partition is accepted the same as a swap file; /proc/swaps is not needed
+# for the gate). This script never creates, resizes or mounts swap or
+# storage. Unreadable fields keep the conservative behavior (warn +
+# continue) - values are never invented.
+RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
+SWAP128_MIN_KB=393216     # 384 MB active swap minimum on 128 MB-class (512 MB preferred)
 MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
 case "$MEM_TOTAL_KB" in
     ''|*[!0-9]*)
         warn "Cannot determine total RAM from /proc/meminfo; continuing without the low-RAM preflight"
@@ -54,17 +66,34 @@ case "$MEM_TOTAL_KB" in
     *)
         MEM_TOTAL_MB=$((MEM_TOTAL_KB / 1024))
         log "RAM: ${MEM_TOTAL_MB} MB total"
-        if [ "$MEM_TOTAL_KB" -lt 250000 ]; then
-            warn "============================================================"
-            warn "LOW-RAM / BEST-EFFORT INSTALL: ${MEM_TOTAL_MB} MB detected"
-            warn "256 MB+ is the supported and recommended project profile."
-            warn "128 MB-class devices are allowed, but stability is NOT guaranteed."
-            warn "Memory pressure can break Keenetic services, Mihomo or updates."
-            if [ "$MODE" = "ram" ]; then
-                warn "RAM mode also uses tmpfs; disk mode is safer on 128 MB-class devices."
-            fi
-            warn "Never run a second Mihomo process beside the daemon."
-            warn "============================================================"
+        if [ "$MEM_TOTAL_KB" -lt "$RAM128_MAX_KB" ]; then
+            case "$SWAP_TOTAL_KB" in
+                ''|*[!0-9]*)
+                    warn "128 MB-class device (${MEM_TOTAL_MB} MB) but swap size cannot be read from /proc/meminfo."
+                    warn "The low-RAM experiment needs ACTIVE swap: minimum 384 MB, 512 MB preferred (SwapTotal). Continuing conservatively."
+                    ;;
+                0)
+                    err "128 MB-class device (${MEM_TOTAL_MB} MB) WITHOUT active swap - the low-RAM prerequisite is not met. Stopping before any download or change. The best-effort/experimental 128 MB profile requires ACTIVE swap of at least 384 MB (512 MB preferred, SwapTotal from /proc/meminfo - a swap partition counts). Enable/attach swap yourself - this project never creates or resizes swap - then re-run. Prefer disk mode over ram/tmpfs mode; stability is not guaranteed even with swap."
+                    ;;
+                *)
+                    if [ "$SWAP_TOTAL_KB" -lt "$SWAP128_MIN_KB" ]; then
+                        err "128 MB-class device (${MEM_TOTAL_MB} MB) with only $((SWAP_TOTAL_KB / 1024)) MB active swap - the low-RAM prerequisite is not met (detected $((SWAP_TOTAL_KB / 1024)) MB, required at least 384 MB, 512 MB preferred). Stopping before any download or change. Enable/attach more swap yourself - this project never creates or resizes swap - then re-run."
+                    fi
+                    warn "============================================================"
+                    warn "LOW-RAM / BEST-EFFORT INSTALL: ${MEM_TOTAL_MB} MB RAM + $((SWAP_TOTAL_KB / 1024)) MB active swap"
+                    warn "EXPERIMENTAL: the swap prerequisite is met (minimum 384 MB, 512 MB preferred),"
+                    warn "128 MB-class devices are allowed, but stability is NOT guaranteed."
+                    warn "disk mode remains preferable to ram/tmpfs mode on this class."
+                    warn "Never run a second Mihomo process beside the daemon."
+                    warn "============================================================"
+                    ;;
+            esac
+        elif [ "$MEM_TOTAL_KB" -lt 450000 ]; then
+            case "$SWAP_TOTAL_KB" in
+                0)
+                    warn "256 MB-class device without swap: supported and live-tested; adding active swap would give extra memory headroom (optional, never required)."
+                    ;;
+            esac
         fi
         ;;
 esac

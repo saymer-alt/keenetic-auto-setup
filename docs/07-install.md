@@ -50,7 +50,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 - Keenetic Giga / Ultra / Hero / Viva и другие совместимые, включая MT7621
 - aarch64 / armv7 / mipsel / mips
-- 256MB+ RAM — рекомендуемый/поддерживаемый профиль; 128 МБ-класс разрешён как best-effort/experimental без гарантии стабильности (см. [docs/09](09-limitations.md))
+- 256MB+ RAM — поддерживаемый профиль (512 МБ+ — самый запасной; active swap не обязателен); 128 МБ-класс — только best-effort/experimental и только с активным swap от 384 МБ (512 МБ предпочтительно), иначе установщик останавливается на раннем preflight (см. [docs/09](09-limitations.md))
 
 ---
 
@@ -58,6 +58,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 install.sh делает всё:
 
+0. RAM/swap-preflight: класс устройства и объём активного swap (`SwapTotal`); на 128 МБ-классе без активного swap от 384 МБ (512 МБ предпочтительно) установка останавливается здесь — до скачиваний и каких-либо изменений. На 256 МБ без swap — только информационное предупреждение (swap опционален)
 1. `opkg update`
 2. Базовые пакеты (`ca-bundle`, `curl`, `jq`, `nano`, `cron`)
 3. Политика `bypass_wa`

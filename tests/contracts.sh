@@ -12,7 +12,15 @@ pass "README names Proxy client prerequisite"
 
 grep -q 'LOW-RAM / BEST-EFFORT INSTALL' "$ROOT/install.sh" || fail "installer must warn clearly on low-RAM devices"
 grep -q '128 MB-class devices are allowed, but stability is NOT guaranteed' "$ROOT/install.sh" || fail "128 MB must remain allowed but explicitly best-effort"
-pass "low-RAM install remains allowed with an explicit best-effort warning"
+grep -q 'WITHOUT active swap' "$ROOT/install.sh" || fail "installer must stop on 128 MB-class without active swap, before any download or change"
+grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB-class active-swap minimum (384 MB) must stay a named gate constant"
+grep -q 'adding active swap would give extra memory headroom (optional, never required)' "$ROOT/install.sh" || fail "256 MB without swap must stay non-blocking (optional recommendation only)"
+pass "low-RAM install remains allowed with an explicit best-effort warning and the active-swap prerequisite"
+
+grep -q 'Low-RAM prerequisite NOT met' "$ROOT/mihomo-doctor.sh" || fail "doctor must report an unmet low-RAM swap prerequisite on 128 MB-class"
+grep -q 'active swap would add memory headroom (optional, never required)' "$ROOT/mihomo-doctor.sh" || fail "doctor must treat swap as optional (info) on 256 MB-class"
+grep -qE 'stability is NOT guaranteed \(docs/06\)' "$ROOT/mihomo-doctor.sh" || fail "doctor must not present swap as making 128 MB stable"
+pass "doctor reports swap per class without making it a 256/512 MB requirement"
 
 grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"

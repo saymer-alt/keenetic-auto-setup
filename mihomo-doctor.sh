@@ -365,8 +365,22 @@ SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
-    if [ "$MEM_TOTAL" -lt 250000 ]; then
-        warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB): 256 MB+ is supported/recommended; 128 MB-class devices are allowed but stability is not guaranteed (docs/06)"
+    if [ "$MEM_TOTAL" -lt 200000 ]; then
+        # 128 MB-class: ACTIVE swap (SwapTotal) is the project prerequisite
+        # for the best-effort/experiment: >= 384 MB, 512 MB preferred.
+        if ! is_num "$SWAP_TOTAL"; then
+            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB): swap size cannot be read - the low-RAM swap prerequisite (>= 384 MB active, 512 MB preferred) is UNVERIFIED (docs/06)"
+        elif [ "$SWAP_TOTAL" -eq 0 ]; then
+            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, no active swap): the 128 MB-class best-effort/experiment requires >= 384 MB active swap, 512 MB preferred; stability is not guaranteed even with swap (docs/06)"
+        elif [ "$SWAP_TOTAL" -lt 393216 ]; then
+            warn "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((SWAP_TOTAL/1024)) MB active swap): >= 384 MB is required, 512 MB preferred; best-effort/experimental regardless, stability not guaranteed (docs/06)"
+        else
+            warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((SWAP_TOTAL/1024)) MB active swap): swap prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
+        fi
+    elif [ "$MEM_TOTAL" -lt 450000 ]; then
+        if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -eq 0 ]; then
+            info "256 MB-class device without swap - supported and live-tested; active swap would add memory headroom (optional, never required)"
+        fi
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
         warn "Very low available memory ($((MEM_AVAIL/1024)) MB) - Mihomo (UPX-packed, unpacks in RAM) and updates need headroom"

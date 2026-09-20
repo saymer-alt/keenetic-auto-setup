@@ -60,7 +60,7 @@ The most sensitive parts — change only for an explicit task and with full unde
   aarch64-3.10 / armv7-3.2 / mipsel-3.4 / mips-3.4 (packages come from the current
   saymer-alt/entware-go release; the final fallback if the GitHub path fails is
   `opkg install mihomo` from the configured Entware feed, whose version may be older).
-- RAM: 256 MB+ is the supported/recommended profile. 128 MB-class devices are allowed but best-effort/experimental: warn prominently, do not block installation, prefer `disk` mode when practical, and never weaken the one-Mihomo rule. Low-RAM instability remains a known production risk (docs/06).
+- RAM/swap policy: 256 MB+ is the supported profile (live-tested; internal-storage operation proven), 512 MB+ has the most headroom; swap is optional on both (256 MB: extra headroom note, never required). 128 MB-class is best-effort/experimental and REQUIRES active swap (SwapTotal) >= 384 MB (512 MB preferred): install.sh stops at the early preflight, before downloads/mutations, without it; with it, a prominent EXPERIMENTAL warning stays; stability is not guaranteed even with swap; prefer `disk` mode; never weaken the one-Mihomo rule. The project never creates/resizes swap itself. Low-RAM instability remains a known production risk (docs/06).
 - MIPS/mipsel: upstream Mihomo publishes official MIPS/MIPSLE builds (at least
   since 1.19.31), but update-mihomo.sh intentionally does not work on these architectures —
   the update path there is reinstalling the package through install.sh. Do not "fix" this
@@ -240,7 +240,7 @@ a live run.
   install.sh adds an entry only if absent, but manual crontab editing can easily create
   duplicates.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
-- 128 MB RAM: known low-headroom risk (docs/06: Extra, old Viva); installation remains allowed as best-effort, with `disk` preferred and prominent warnings preserved
+- 128 MB RAM: known low-headroom risk (docs/06: Extra, old Viva); installation remains allowed ONLY as best-effort WITH active swap >= 384 MB (512 MB preferred, early-preflight stop without it), with `disk` preferred and prominent EXPERIMENTAL warnings preserved
   RAM gates or try to "make it work".
 - Tunnel MTU 1500 → "everything is slow / does not work"; working values 1200–1300
   (docs/09).
