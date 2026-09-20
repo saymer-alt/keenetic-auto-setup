@@ -12,7 +12,10 @@
 - доступ к shell
 - интернет
 
-Полные требования → [компоненты и prerequisites](docs/COMPONENTS.md) · [RAM / storage / ограничения](docs/09-limitations.md)
+Полные требования →
+
+- [компоненты и prerequisites](docs/COMPONENTS.md)
+- [RAM / storage / ограничения](docs/09-limitations.md)
 
 ## 1. Установка
 
