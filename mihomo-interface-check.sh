@@ -1,12 +1,15 @@
 #!/bin/sh
 
-# mihomo-interface-check.sh v1.0.3
-# Diagnostic tool for Keenetic NDMS + Entware
+# mihomo-interface-check.sh v1.0.4
+# Optional manual helper for Keenetic NDMS + Entware.
+# Lists active Linux interface names for Mihomo/MetaCubeX interface-name
+# when choosing the WAN used by proxy-outbound dialers.
+# Does not configure routing/TUN and is not required by project runtime.
 # GitHub: https://github.com/saymer-alt/keenetic-auto-setup
 
 
 echo "======================================"
-echo " Mihomo interface-name check v1.0.3"
+echo " Mihomo interface-name check v1.0.4"
 echo "======================================"
 
 # Получаем красивую версию Keenetic OS через ndmc/ndmq
@@ -81,12 +84,12 @@ show_iface() {
     
     echo " Type: $TYPE"
     if [ "$REAL_IFACE" = "$DEFAULT_IF" ]; then
-        echo " ⭐ Recommended (Current Internet route)"
+        echo " ⭐ Current default route (Keenetic)"
     fi
     echo " IP:   $IP"
     echo " MTU:  ${MTU:-unknown}"
     echo
-    echo " Mihomo:"
+    echo " Mihomo proxy outbound:"
     if [ -n "$SYS_NAME" ]; then
         echo " interface-name: $REAL_IFACE # $SYS_NAME"
     else
