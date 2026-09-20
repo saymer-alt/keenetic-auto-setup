@@ -11,25 +11,26 @@
 ## Перед запуском
 
 Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и компонент
-KeeneticOS **«Клиент прокси» (Proxy client)**. Без него проектный ProxyN не
+KeeneticOS **«Клиент прокси» (Proxy client)**. 256 МБ+ RAM — поддерживаемый/рекомендуемый профиль; 128 МБ-класс разрешён как best-effort/experimental: installer заранее предупреждает, но не блокирует установку, а `disk` предпочтительнее `ram`. Без него проектный ProxyN не
 создаётся. Полная матрица обязательных, условных и необязательных возможностей:
 [COMPONENTS.md](COMPONENTS.md).
 
 ## Общий процесс
 
 ```id="flow1"
-1. Подготовка (opkg, пакеты)
-2. bypass_wa policy (создание)
-3. Перехват транзитного DNS
-4. S00ubifs (RAM режим)
-5. Установка Mihomo
-6. Bootstrap config.yaml (mixed-port: 7890)
-7. Выбор проектного Proxy-интерфейса (ProxyN)
-8. Привязка bypass_wa к проектному Proxy
-9. Установка MagiTrickle
-10. VoIP-хук 020-bypass_wa.sh
-11. Watchdog + cron
-12. Рестарт Mihomo и самопроверка
+1. RAM preflight (read-only; 128 МБ-класс → WARN, не запрет)
+2. Подготовка (opkg, пакеты)
+3. bypass_wa policy (создание)
+4. Перехват транзитного DNS
+5. S00ubifs (RAM режим)
+6. Установка Mihomo
+7. Bootstrap config.yaml (mixed-port: 7890)
+8. Выбор проектного Proxy-интерфейса (ProxyN)
+9. Привязка bypass_wa к проектному Proxy
+10. Установка MagiTrickle
+11. VoIP-хук 020-bypass_wa.sh
+12. Watchdog + cron
+13. Рестарт Mihomo и самопроверка
 ```
 
 ---
