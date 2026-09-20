@@ -626,7 +626,7 @@ sh update-mihomo.sh [--force]
 What it does, step by step:
 
 1. Lock file prevents parallel updates.
-2. RAM below 256 MB is a warning, not an abort (128 MB devices are not supported at all).
+2. RAM below 256 MB is a warning, not an abort: 128 MB-class devices are allowed as best-effort/experimental with no stability guarantee.
 3. Architecture via `opkg print-architecture`; the package comes from the ready-to-install set of the `saymer-alt/entware-go` feed (release `latest`) — the same one `install.sh` uses: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; the softfloat `nohf` variant is excluded.
 4. Versions: same version → exit (unless `--force`); an available version that is older than the installed one — or cannot be reliably ordered (prerelease suffixes) — is never auto-downgraded, even with `--force`.
 5. Downloads the `.ipk` to `/tmp` (curl, up to 3 attempts) and extracts only the new binary from it — file operations, the service is still running.
