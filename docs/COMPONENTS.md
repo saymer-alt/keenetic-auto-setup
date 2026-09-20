@@ -30,14 +30,14 @@ be installed on one reference router.
 | **Storage support / Поддержка накопителей** | **CONDITIONAL** | Required for USB/external-storage Entware layouts; internal-storage Entware on supported models does not make USB storage a universal project prerequisite. |
 | **ext filesystem + ext utilities** | **CONDITIONAL** | Required when the selected Entware drive uses ext; not a Mihomo/MagiTrickle requirement by itself. |
 | **SSH Server / Сервер SSH** | **OPTIONAL administration method** | Convenient for the documented interactive shell workflow, but the project runtime does not depend on the KeeneticOS SSH server. It is not a project component prerequisite. |
-| **Content filtering / cloud ad blocking** | **NOT REQUIRED** | The project uses Keenetic DNS proxy transit interception; it does not require a cloud content-filter provider. |
-| **DNS-over-TLS proxy** | **OPTIONAL** | Upstream encrypted DNS choice; unrelated to the required classic port-53 transit interception contract. |
-| **DNS-over-HTTPS proxy** | **OPTIONAL** | Same: useful router DNS choice, not required by install.sh/MagiTrickle integration. |
-| **Ping Check** | **OPTIONAL** | The project watchdog performs its own bounded WAN/proxy checks; it does not call the Keenetic Ping Check service. |
-| **Traffic classification service** | **NOT REQUIRED by current project code** | No dependency on the Keenetic traffic-classification service is present in the repository. |
-| **Packet capture** | **OPTIONAL diagnostic tool** | Useful for manual troubleshooting, but no project script requires it. |
-| **iPerf3** | **OPTIONAL diagnostic tool** | Not used by install/runtime scripts. |
-| **DDNS / KeenDNS-related service** | **OPTIONAL** | Useful for remote access patterns described in the docs; not required for routing/Mihomo/MagiTrickle operation. |
+| **Content filtering and cloud ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** | **REQUIRED for the supported DNS-interception profile** | Keenetic exposes the DNS-filter/interception machinery through this component family. The project requires `dns-proxy intercept enable`; if that command/capability is absent, install.sh cannot satisfy the MagiTrickle DNS contract and must fail rather than silently continue. Installing this component does **not** mean that a third-party filtering service must be selected for clients. |
+| **DNS-over-TLS proxy** | **STRONGLY RECOMMENDED** | Not a hard MagiTrickle dependency, but encrypted router upstream DNS prevents the ISP from trivially observing/modifying classic plaintext upstream DNS. Use reachable trusted resolvers appropriate to the network. |
+| **DNS-over-HTTPS proxy** | **STRONGLY RECOMMENDED** | Same operational security goal as DoT. At least one encrypted upstream method should normally be available; DoH and DoT do not both have to be active. |
+| **Ping Check** | **RECOMMENDED operational component** | Not called by project code (the watchdog has its own checks), but useful for Keenetic's own WAN health/failover diagnostics. Recommended on managed routers, not a hard install dependency. |
+| **Traffic classification service** | **RECOMMENDED operational component** | Current project code does not call it, but it is useful visibility on a managed routing appliance. Recommended baseline, not a hard dependency. |
+| **Packet capture** | **RECOMMENDED diagnostic component** | Not required at runtime, but valuable when DNS/routing/VPN behavior must be proven from packets instead of guessed. |
+| **iPerf3** | **RECOMMENDED diagnostic component** | Not used by install/runtime scripts, but useful for repeatable throughput/path diagnostics. |
+| **DDNS / KeenDNS-related service** | **RECOMMENDED for managed/remote-access deployments** | Not required for packet routing itself, but useful for the documented protected remote-access patterns and router administration. |
 | **mDNS** | **NOT A PROJECT REQUIREMENT** | It may be mandatory for the router's own component set, but current project code does not depend on mDNS. |
 | **Wi-Fi controller, mobile/cloud agents, shaper, DHCP, Wi-Fi/USB interfaces** | **PLATFORM / ROUTER FEATURES, NOT PROJECT PREREQUISITES** | They may be mandatory or useful to KeeneticOS itself, but the project does not require them as install-time dependencies. |
 | **PPTP/L2TP/SSTP/OpenVPN/WireGuard/IPsec/OpenConnect/ZeroTier clients or servers** | **OPTIONAL / topology-specific** | A user may select a VPN interface as an exit, but no particular VPN technology is universally required. Servers are likewise outside the base project dependency set. |
@@ -82,8 +82,7 @@ These are not KeeneticOS components.
 
 ## Conditional / optional
 
-- **DoH / DoT components and servers** — optional. The project requires classic DNS
-  interception, not encrypted DNS support.
+- **DoH / DoT components and servers** — **strongly recommended operational baseline**, not a hard code dependency. The project requires classic DNS interception independently, but router upstream DNS should normally be encrypted so an interfering ISP cannot trivially observe or rewrite plaintext upstream DNS. Resolver reachability still wins over theory, especially on whitelist networks.
 - **WireGuard / AmneziaWG / SSTP / OpenConnect / other VPN clients** — optional exits
   selected by the operator or MagiTrickle; none is a universal project prerequisite.
 - **Mihomo external Controller / Web UI** — optional. Mihomo routing and ProxyN do not
