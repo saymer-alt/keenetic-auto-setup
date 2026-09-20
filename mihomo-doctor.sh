@@ -636,7 +636,7 @@ else
             *)
                 EC_SECRET=$(grep -E "^[[:space:]]*secret:" "$CONFIG" 2>/dev/null | head -n 1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d "\"'")
                 if [ -z "$EC_SECRET" ]; then
-                    warn "external-controller bound beyond loopback without a secret - anyone on the network can control Mihomo (doctor does not modify config)"
+                    info "external-controller bound beyond loopback without a secret - accepted by the project trust-boundary contract; keep the Controller inside a trusted LAN/VPN and out of WAN/untrusted segments"
                 else
                     info "external-controller bound beyond loopback with a secret set (port $EC_PORT)"
                 fi
