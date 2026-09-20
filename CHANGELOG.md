@@ -36,6 +36,7 @@ _No changes yet._
 - Component roles clarified across the architecture docs: KeeneticOS provides the routing/firewall/NAT mechanisms, MagiTrickle automates the scheme, Mihomo routes only the traffic that enters it, MetaCubeX UI is optional and hosted by Mihomo when enabled.
 - DNS/ports/bootstrap claims in the encyclopedia updated to the current bootstrap (`10`, `12`, `26`, `27`): the old package placeholder (DNS block with `1053`/fake-ip, commented controller lines) is marked historical.
 - `docs/05-bypass-wa.md`: default path is the project ProxyN binding; a manual VPN permit is documented as an alternative.
+- Multi-WAN `interface-name` semantics clarified from the project's live-tested Keenetic layout: the MetaCubeX «Outbound Interface» / global `interface-name` is documented here as the selector for proxy-outbound dialers, not as a WAN switch for TUN `mitun0`; the TUN path continues through normal Keenetic kernel/default routing unless separate policy routing is configured. `mihomo-interface-check.sh` is now explicitly documented as an optional manual helper and labels the current default route neutrally rather than as “Recommended”.
 
 ### Fixed
 - Installer critical-mutation verification tightened: enabling the required Keenetic DNS transit interception now fails early if the command fails or the state is absent on immediate running-config read-back; a newly created ProxyN must now match the complete project profile (description plus 127.0.0.1:7890 upstream) before installation continues, rather than merely existing until the final self-check.
