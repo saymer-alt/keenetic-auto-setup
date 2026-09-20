@@ -366,7 +366,7 @@ SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
     if [ "$MEM_TOTAL" -lt 250000 ]; then
-        warn "Total RAM below the project minimum of 256 MB ($((MEM_TOTAL/1024)) MB) - 128 MB devices are unsupported (docs/06)"
+        warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB): 256 MB+ is supported/recommended; 128 MB-class devices are allowed but stability is not guaranteed (docs/06)"
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
         warn "Very low available memory ($((MEM_AVAIL/1024)) MB) - Mihomo (UPX-packed, unpacks in RAM) and updates need headroom"
