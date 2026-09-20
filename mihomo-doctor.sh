@@ -177,7 +177,7 @@ observe_mihomo_procs() {
 
 # probe_controller_version - read-only runtime-version evidence via the
 # Mihomo Controller REST API (GET /version only - the same request class
-# as mihomo-route-watch.sh's GET /proxies). Called ONLY while a Mihomo
+# as mihomo-proxy-selection-watch.sh's GET /proxies). Called ONLY while a Mihomo
 # daemon is running: the one-Mihomo invariant forbids executing the
 # binary for -v then. Sets BIN_VER ("" stays unknown) and prints the
 # evidence lines. A configured secret is sent in the Authorization
