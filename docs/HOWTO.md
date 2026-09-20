@@ -188,11 +188,11 @@ What you need to understand for this project:
 
 Three different concepts are easy to merge into one — keep them apart:
 
-1. **Mihomo interface** — the Linux interface Mihomo binds its **own outbound connections** to (`interface-name` in the config / MetaCubeX settings; per official docs: *"mihomo's traffic outbound interface"*). Our `mihomo-interface-check.sh` exists exactly to pick this: it lists usable WAN interfaces and prints ready `interface-name:` lines.
+1. **Mihomo proxy-outbound interface** — the Linux interface used, in our tested Keenetic multi-WAN layout, for dialer connections to proxy servers (`interface-name` in the config / the MetaCubeX Outbound Interface field). The optional `mihomo-interface-check.sh` lists the real Linux names of active external interfaces and prints ready `interface-name:` lines. This setting **does not reassign the TUN `mitun0` path**.
 2. **Mihomo inbound** — where clients connect to Mihomo: the mixed port `7890`, or the TUN (`mitun0`).
 3. **Keenetic routing** — the kernel-level default gateway / policies that decide where traffic actually leaves the router once it is handed to the routing tables.
 
-The practical consequence (typical behavior on a dual-WAN router — verify on your own setup):
+The practical consequence (behavior verified in our dual-WAN Keenetic layout; this describes that layout rather than replacing policy routing):
 
 ```text
 WAN1 = ISP A (default gateway)      WAN2 = ISP B
@@ -202,7 +202,7 @@ Client → 127.0.0.1:7890 → Mihomo → selected proxy → dials bound to WAN2 
 Client → mitun0 → Mihomo (TUN) → traffic handed to kernel routing → default gateway   ✅ exits via ISP A
 ```
 
-In other words: **the MetaCubeX interface setting is not a WAN selector for the router.** It binds Mihomo's own outbound sockets — notably the connections to your proxy servers. Traffic that enters through `mitun0` is subject to Mihomo's rules like any other inbound, and whatever leaves it as unbound/plain traffic follows the usual Keenetic routing tables — i.e. the default gateway (ISP A above). Related TUN options to know about: `auto-route` (pulls traffic into the TUN) and `auto-detect-interface` (auto-detects the outbound interface — the docs explicitly recommend setting the interface manually on devices attached to several outbound interfaces at once). If you need per-path WAN selection for TUN traffic, that is a Keenetic policy-routing job, not a MetaCubeX checkbox.
+In other words: **in our Keenetic layout the MetaCubeX Outbound Interface / global `interface-name` selects the WAN used by proxy-outbound dialers; it does not switch the `mitun0` path.** A proxy connection can therefore be dialed through WAN2 while TUN traffic continues to follow the normal Keenetic kernel routing and default gateway (WAN1 in the example). `auto-route` and `auto-detect-interface` belong to the TUN machinery and are separate settings; do not treat them as equivalents of the global `interface-name`. If the TUN path itself needs a different WAN, configure that with Keenetic policy routing.
 
 ### Mihomo runs fine without a web UI
 
