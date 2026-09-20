@@ -41,6 +41,35 @@ trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAG
 command -v opkg >/dev/null 2>&1 || err "opkg not found"
 
 # ---------------------------
+# RAM PREFLIGHT
+# ---------------------------
+# 256 MB+ is the supported/recommended profile. 128 MB-class devices are
+# intentionally not blocked: they can work, but have very little headroom and
+# are best-effort/experimental. Warn BEFORE downloads or package mutations.
+MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+case "$MEM_TOTAL_KB" in
+    ''|*[!0-9]*)
+        warn "Cannot determine total RAM from /proc/meminfo; continuing without the low-RAM preflight"
+        ;;
+    *)
+        MEM_TOTAL_MB=$((MEM_TOTAL_KB / 1024))
+        log "RAM: ${MEM_TOTAL_MB} MB total"
+        if [ "$MEM_TOTAL_KB" -lt 250000 ]; then
+            warn "============================================================"
+            warn "LOW-RAM / BEST-EFFORT INSTALL: ${MEM_TOTAL_MB} MB detected"
+            warn "256 MB+ is the supported and recommended project profile."
+            warn "128 MB-class devices are allowed, but stability is NOT guaranteed."
+            warn "Memory pressure can break Keenetic services, Mihomo or updates."
+            if [ "$MODE" = "ram" ]; then
+                warn "RAM mode also uses tmpfs; disk mode is safer on 128 MB-class devices."
+            fi
+            warn "Never run a second Mihomo process beside the daemon."
+            warn "============================================================"
+        fi
+        ;;
+esac
+
+# ---------------------------
 # OPKG UPDATE
 # ---------------------------
 log "Updating opkg..."
