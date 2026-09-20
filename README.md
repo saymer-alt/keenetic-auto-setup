@@ -187,31 +187,52 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 - [CHANGELOG](CHANGELOG.md)
 - [Лицензия](LICENSE)
 
-## 7. Служебные команды
+## 7. Скрипты и служебные команды
 
-Короткая шпаргалка для ручного запуска. Подробности и ограничения — по ссылке рядом с каждой командой.
+Полный индекс скриптов проекта. Для ручных утилит дана готовая команда запуска; installer-managed компоненты помечены отдельно, чтобы не запускать hook/service без необходимости.
 
-- **MIPS TUN migration — `migrate-mihomo-mips.sh`**  
+- **[install.sh](install.sh) — установка / повторное применение проекта**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh`  
+  Режим с постоянным /opt: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk`  
+  [Документация](docs/03-install.md)
+
+- **[migrate-mihomo-mips.sh](migrate-mihomo-mips.sh) — MIPS TUN migration**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh`  
+  Read-only check: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh -s -- --check`  
   [Документация](docs/HOWTO_RU.md)
 
-- **Read-only Doctor — `mihomo-doctor.sh`**  
+- **[mihomo-doctor.sh](mihomo-doctor.sh) — read-only Doctor**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh`  
   [Документация](docs/08-troubleshooting.md)
 
-- **Проверка Linux-интерфейсов — `mihomo-interface-check.sh`**  
+- **[mihomo-interface-check.sh](mihomo-interface-check.sh) — Linux-интерфейсы для proxy-outbound**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh`  
   [Документация](ARCHITECTURE.md)
 
-- **Текущий proxy / failover-failback — `mihomo-proxy-selection-watch.sh`**  
+- **[mihomo-proxy-selection-watch.sh](mihomo-proxy-selection-watch.sh) — текущий proxy / failover-failback**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh`  
   [Документация](docs/11-proxy-selection-watch.md)
 
-- **Обновление Mihomo — `update-mihomo.sh`**  
+- **[update-mihomo.sh](update-mihomo.sh) — обновление Mihomo**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh`  
   [Документация](docs/HOWTO_RU.md)
 
-- **Обновление Watchdog — `update-watchdog.sh`**  
+- **[update-watchdog.sh](update-watchdog.sh) — обновление Watchdog**  
   `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh`  
   [Документация](docs/04-watchdog.md)
 
+- **[mihomo-watchdog.sh](mihomo-watchdog.sh) — runtime Watchdog** *(installer-managed)*  
+  Канонический файл: `/opt/bin/mihomo_watchdog.sh`; ручной диагностический запуск: `sh -x /opt/etc/cron.5mins/mihomo_watchdog`  
+  [Документация](docs/04-watchdog.md)
+
+- **[020-bypass-wa.sh](020-bypass-wa.sh) — netfilter hook для bypass_wa** *(installer-managed, вручную обычно не запускается)*  
+  Проверка установленного hook: `ls -l /opt/etc/ndm/netfilter.d/020-bypass_wa.sh`  
+  [Документация](docs/05-bypass-wa.md)
+
+- **[S00ubifs](S00ubifs) — tmpfs/UBIFS init-service** *(installer-managed в режиме `ram`)*  
+  Статус: `/opt/etc/init.d/S00ubifs status`  
+  [Документация](docs/06-s00ubifs.md)
+
+- **[tests/contracts.sh](tests/contracts.sh) — developer contract smoke test** *(не runtime-компонент роутера)*  
+  Из checkout репозитория: `sh tests/contracts.sh`  
+  [Стратегия тестирования](docs/TESTING_STRATEGY.md)
