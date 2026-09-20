@@ -582,18 +582,30 @@ ensure_bypass_policy_exit "$PROXY_IFACE"
 # ---------------------------
 # MAGITRICKLE
 # ---------------------------
-log "Installing MagiTrickle..."
-
-curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh || \
-    wget -qO- https://bin.magitrickle.dev/packages/add_repo.sh | sh || \
-    warn "MagiTrickle repo add failed"
-
-opkg update || warn "opkg update after magitrickle failed"
-pkg_ensure magitrickle || warn "MagiTrickle install failed"
-
-if [ -x /opt/etc/init.d/S99magitrickle ]; then
-    /opt/etc/init.d/S99magitrickle start || warn "MagiTrickle start failed"
+log "Adding MagiTrickle package repository..."
+# The upstream helper prints an interactive "do not forget to install magitrickle"
+# reminder. install.sh performs that step itself, so suppress helper stdout to avoid
+# telling users to repeat an action that is already automated. Keep stderr visible.
+if curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh >/dev/null; then
+    :
+elif wget -qO- https://bin.magitrickle.dev/packages/add_repo.sh | sh >/dev/null; then
+    :
+else
+    err "Failed to add MagiTrickle package repository"
 fi
+
+log "Refreshing package metadata for MagiTrickle..."
+opkg update || err "opkg update after adding the MagiTrickle repository failed"
+
+log "Installing MagiTrickle package..."
+pkg_ensure magitrickle
+
+pkg_is_installed magitrickle || err "MagiTrickle package is not present after installation"
+[ -x /opt/etc/init.d/S99magitrickle ] || err "MagiTrickle init script missing after installation"
+
+log "Starting MagiTrickle..."
+/opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
+log "MagiTrickle installed and started"
 
 # ---------------------------
 # BYPASS RULES
