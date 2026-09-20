@@ -198,10 +198,12 @@ DIRECT  /  proxy-group  /  proxy
 
 ```bash
 /opt/etc/init.d/S99mihomo status        # жив ли процесс: ожидаем alive
-mihomo -d /opt/etc/mihomo -t            # валидация конфига без запуска
+/tmp/mihomo-doctor.sh                    # read-only диагностика без второго Mihomo
 netstat -tln | grep 7890                # слушает ли вход (127.0.0.1:7890)
 curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # сквозной ответ: 204
 ```
+
+Если Doctor ещё не скачан, возьмите актуальный `mihomo-doctor.sh` из корня проекта. Исполняемый `mihomo -t` запускайте только при остановленном сервисе: второй Mihomo на части Keenetic приводит к SIGSEGV.
 
 Если что-то из этого не так — начните с [HOWTO, раздел Диагностика](../HOWTO_RU.md#12-типовые-проблемы);
 эта статья не про troubleshooting.
