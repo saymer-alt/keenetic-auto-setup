@@ -123,7 +123,7 @@ Risk-zone specifics:
 - watchdog: restart only when WAN is confirmed and the proxy/tunnel check fails; on total
   WAN failure the script exits without action — an intentional decision (comment in code,
   README: "WAN failure does not mean Mihomo is broken").
-- S00ubifs: tmpfs data is lost on reboot — by design; on 128 MB, tmpfs
+- S00ubifs: tmpfs data is lost on reboot — by design; on 128 MB-class devices, tmpfs
   destabilizes the system; expanding the directory list requires a RAM assessment.
 - Tunnel MTU: the symptom "slow / some sites do not work" points to MTU
   (working values 1200–1300, docs/09), not routing.
@@ -240,7 +240,7 @@ a live run.
   install.sh adds an entry only if absent, but manual crontab editing can easily create
   duplicates.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
-- 128 MB RAM: tmpfs destabilizes Keenetic (docs/06: Extra, old Viva); do not remove
+- 128 MB RAM: known low-headroom risk (docs/06: Extra, old Viva); installation remains allowed as best-effort, with `disk` preferred and prominent warnings preserved
   RAM gates or try to "make it work".
 - Tunnel MTU 1500 → "everything is slow / does not work"; working values 1200–1300
   (docs/09).
