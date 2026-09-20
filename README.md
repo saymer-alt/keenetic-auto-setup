@@ -88,11 +88,15 @@ MIPS TUN migration:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
 ```
 
+Подробности → [MIPS / update HOWTO](docs/HOWTO_RU.md)
+
 Проверка Linux-интерфейсов:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh
 ```
+
+Подробности → [interface-name](ARCHITECTURE.md)
 
 Текущий proxy / failover-failback:
 
@@ -100,7 +104,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
 ```
 
-Подробности → [MIPS / update HOWTO](docs/HOWTO_RU.md) · [interface-name](ARCHITECTURE.md) · [Proxy Selection Watch](docs/11-proxy-selection-watch.md)
+Подробности → [Proxy Selection Watch](docs/11-proxy-selection-watch.md)
 
 ## 6. Скрипты проекта
 
