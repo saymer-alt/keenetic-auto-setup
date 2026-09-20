@@ -428,7 +428,7 @@ cat /opt/var/log/mihomo_watchdog.log
 
 ### Какой proxy-сервер реально выбран сейчас?
 
-Если в конфиге есть группы `Selector`, `URLTest`, `Fallback`, `Relay` или вложенные группы, вручную разбирать `now` в Controller API неудобно. Необязательный `mihomo-route-watch.sh` проходит цепочку групп и показывает конечный leaf-сервер:
+Если в конфиге есть группы `Selector`, `URLTest`, `Fallback`, `LoadBalance`, `Relay` или вложенные группы, вручную разбирать `now` в Controller API неудобно. Необязательный `mihomo-route-watch.sh` проходит цепочку групп и показывает конечный leaf-сервер:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh
