@@ -671,9 +671,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-Updater: скачивает во временный файл → проверяет, что он непустой → проверяет sanity-маркер `MIHOMO WATCHDOG SCRIPT` → проверка синтаксиса `sh -n` → backup текущей копии в `/opt/var/log/mihomo_watchdog.sh.bak.<timestamp>` → атомарный `mv` на место.
-
-**Нюанс с путями (важно):** он обновляет `/opt/bin/mihomo_watchdog.sh`, тогда как `install.sh` разворачивает в `/opt/etc/cron.5mins/mihomo_watchdog`. Перед обновлением проверьте, какая копия реально прописана в crontab (раздел 7.3) — иначе вы обновите файл, который никогда не выполняется.
+Updater скачивает и проверяет новый watchdog, затем атомарно обновляет канонический бинарник `/opt/bin/mihomo_watchdog.sh`. `/opt/etc/cron.5mins/mihomo_watchdog` в актуальной схеме — тонкая cron-обёртка, которая вызывает канонический файл. Известный старый managed layout (полный watchdog прямо в `cron.5mins`) `update-watchdog.sh` распознаёт по точному содержимому, сохраняет ограниченную legacy-копию и мигрирует в эту каноническую схему. Неизвестный/изменённый пользователем файл он не удаляет молча.
 
 ---
 
@@ -724,9 +722,9 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 /opt/etc/init.d/S99mihomo start
 ```
 
-3. Проверьте: `mihomo -v`, `ps | grep mihomo`, затем curl-проверку прокси из раздела 5.
+3. После запуска проверьте один процесс (`pidof mihomo`) и curl-проверку прокси из раздела 5. Не запускайте `mihomo -v` параллельно с работающим демоном.
 
-**Ручное восстановление watchdog** (если `update-watchdog.sh` пошёл не так): предыдущая копия лежит в `/opt/var/log/mihomo_watchdog.sh.bak.<timestamp>` — скопируйте её `cp` обратно на путь, который прописан в вашем crontab.
+**Watchdog:** актуальный `update-watchdog.sh` сам сохраняет распознанный legacy watchdog как `/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak` при миграции. Не восстанавливайте эту полную legacy-копию поверх современной cron-обёртки без конкретной причины; штатный путь — повторный запуск `update-watchdog.sh` и проверка Doctor.
 
 ---
 
