@@ -727,7 +727,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | Mihomo жив? | `/opt/etc/init.d/S99mihomo status` | `alive` |
 | RAM Mihomo? | `grep VmRSS /proc/$(pidof mihomo)/status` | замеряйте до/после изменений — фиксированной нормы нет |
 | Прокси пропускает трафик? | `curl -x socks5://127.0.0.1:7890 https://ipinfo.io` | IP выходного сервера |
-| Какой лист-сервер выбран сейчас / таймлайн фейловера? | `sh mihomo-route-watch.sh` (разово) или `--watch 1` (только изменения) | `GLOBAL -> ... -> <сервер>` + `CURRENT SERVER:`; изменения с таймстампами |
+| Какой лист-сервер выбран сейчас / таймлайн фейловера? | `sh mihomo-proxy-selection-watch.sh` (разово) или `--watch 1` (только изменения) | `GLOBAL -> ... -> <сервер>` + `CURRENT SERVER:`; изменения с таймстампами |
 | Watchdog работает? | `cat /opt/var/log/mihomo_watchdog.log` | свежее `[OK] All good` |
 | Запись в cron есть? | `grep mihomo_watchdog /opt/etc/crontab` | ровно одна строка |
 | Демон cron? | `ps \| grep cron` | процесс cron на месте |
@@ -738,17 +738,17 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | Место / RAM | `df -h /opt`, `free` | — |
 | Время верное? | `date` | сбитое время → SSL-ошибки везде |
 
-### Наблюдение за выбранным маршрутом
+### Наблюдение за выбранным proxy
 
-`mihomo-route-watch.sh` спрашивает Controller API (по умолчанию `http://127.0.0.1:9090`, стартовая группа `GLOBAL`), к какому конечному лист-серверу сейчас разрешается цепочка групп:
+`mihomo-proxy-selection-watch.sh` спрашивает Controller API (по умолчанию `http://127.0.0.1:9090`, стартовая группа `GLOBAL`), какой конечный leaf-сервер сейчас выбран цепочкой групп:
 
 ```bash
-sh mihomo-route-watch.sh                 # разово
-sh mihomo-route-watch.sh --watch 1       # только изменения, с таймстампами
-sh mihomo-route-watch.sh -g MyGroup -s SECRET
+sh mihomo-proxy-selection-watch.sh                 # разово
+sh mihomo-proxy-selection-watch.sh --watch 1       # только изменения, с таймстампами
+sh mihomo-proxy-selection-watch.sh -g MyGroup -s SECRET
 ```
 
-В режиме `--watch` строка печатается только когда маршрут изменился, каждая — с таймстампом: по ним измеряются точные моменты фейловера и фейлбека. Хелпер строго read-only: единственный его запрос — `GET /proxies`; он не выбирает узлы, не запускает delay-тесты и ничего не перезапускает — наблюдение за выбором на него не влияет. Нужны `curl` и `jq`, и должен быть включён Controller (`external-controller`; doctor покажет, включён ли он).
+В режиме `--watch` строка печатается только когда выбранный proxy изменился, каждая — с таймстампом: по ним измеряются точные моменты фейловера и фейлбека. Хелпер строго read-only: единственный его запрос — `GET /proxies`; он не выбирает узлы, не запускает delay-тесты и ничего не перезапускает — наблюдение за выбором на него не влияет. Нужны `curl` и `jq`, и должен быть включён Controller (`external-controller`; doctor покажет, включён ли он).
 
 ### Быстрый MT smoke test
 
