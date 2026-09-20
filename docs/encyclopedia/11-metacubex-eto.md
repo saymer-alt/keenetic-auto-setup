@@ -109,7 +109,7 @@ Mihomo
 
 - **конфигурацией** — правка `config.yaml` + `S99mihomo restart`
   (**Проверено в проекте** — основной способ проекта);
-- **CLI по SSH** — `S99mihomo status`, `mihomo -t`, curl-проверки порта
+- **CLI по SSH** — `S99mihomo status`, `mihomo-doctor.sh`, curl-проверки порта
   (**Проверено в проекте** — см. [10-mihomo-eto.md](10-mihomo-eto.md), «Минимальная
   диагностика»);
 - **API напрямую** — например, запрос версии ядра из статьи 12
