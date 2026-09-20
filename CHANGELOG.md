@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_No changes yet._
+
+---
+
+## [1.4.0] - 2026-09-20
+
 ### Added
 
 - `migrate-mihomo-mips.sh`: idempotent migration of the TUN `stack: gvisor` → `stack: mips` (the Mihomo IP Stack; requires mihomo ≥ 1.19.31, feature-detected through a `mihomo -t` gate rather than a version threshold). Read-only `--check` mode; minimal config mutation (only `stack:` values, trailing comments preserved, atomic same-filesystem replace, validated with `mihomo -t` before replacing); `config.yaml.pre-mips` backup kept after success as a persistent revert artifact and never overwritten; one-instance discipline (stop with confirmation before any binary execution, a watchdog-revived instance re-stopped before every execution and the final start, restart only when the service was running before, user-stopped services stay stopped); automatic rollback on validation/start/port failure; startup readiness after the controlled restart is a bounded wait (up to 15 s) rather than a single port probe; no config contents in stdout. Binary discovery mirrors the updater: running daemon’s `/proc/<pid>/exe` (canonical paths only), then `/opt/sbin/mihomo`, then `/opt/bin/mihomo`; recursive `find /opt` selection removed.
