@@ -42,7 +42,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 - `dns-proxy intercept enable` (transit DNS interception) in both installers:
   installer-managed persistent config; before applying — grep against `show running-config`,
   `system configuration save` only when there is an actual change; this is not protection from DoH/DoT;
-- Proxy0 is the only bridge from Keenetic → Mihomo. Its human-readable description is
+- A project-managed ProxyN is the Keenetic → Mihomo bridge. Its human-readable description is
   `mihomo t2sN` (N = interface number, Proxy0 → t2s0), synchronized with the t2s numbering
   in MagiTrickle; the internal Proxy0/Proxy1/… identifier must not be changed.
   On a clean router, the installer creates Proxy0; if the ID is occupied, Keenetic assigns
@@ -196,6 +196,7 @@ the owner edits main directly, with commit messages like "Update X"):
 The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer real installation states and cross-component contracts, then extend the existing permanent regression harness with the smallest scenario that preserves a real failure. Heavy adversarial matrices are reserved for high-consequence invariants such as atomic replacement/rollback, locking, one-Mihomo discipline, service-state restoration, and watchdog recovery. Do not build a full KeeneticOS emulator for a narrow task.
 
 There is no repository CI or linter that makes a change automatically safe — do not invent results.
+The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
 What is always available:
 - `sh -n <script>` for every changed .sh (mandatory);
 - review for busybox/POSIX compatibility (no bashisms or GNU-only options);
