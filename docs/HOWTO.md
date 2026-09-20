@@ -274,7 +274,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router with **256 MB RAM or more** | router spec / `free` on the router | **128 MB devices are not supported.** tmpfs destabilizes them — verified in production, not a theoretical warning |
+| Keenetic router: **256 MB RAM or more recommended** | router spec / `free` on the router | 128 MB-class devices may be installed as **best-effort/experimental** with no stability guarantee; the installer warns early and `disk` mode is preferable to `ram` |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
@@ -849,7 +849,7 @@ Platform notes that remain:
 
 ## 14. Known limits
 
-- **128 MB RAM: not supported.** Not a recommendation — a production-verified failure mode.
+- **128 MB RAM: best-effort/experimental.** Installation is allowed, but stability is not guaranteed; real deployments showed that memory pressure and tmpfs can destabilize the device. 256 MB+ is the supported/recommended profile.
 - **The watchdog fixes Mihomo only.** It won't fix a dead VPN server, ISP outage, DNS or config mistakes.
 - **Mihomo UDP handling has limits** — that's exactly why VoIP goes around it.
 - **Entware is not a full Linux.** BusyBox quirks (`$RANDOM`, `pidof`, `ss`, `run-parts`), trimmed packages — keep that in mind before "modernizing" the scripts.
