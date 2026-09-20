@@ -185,25 +185,50 @@ reset_healthy_heartbeat() {
 log_healthy() {
     local wan_path="$1"
     local wan_target="$2"
-    local now last elapsed
+    local now last elapsed state last_path path_changed
 
     now=$(date +%s)
     last=0
+    last_path=""
+    path_changed=0
 
     if [ -f "$HEALTHY_STATE" ]; then
-        last=$(cat "$HEALTHY_STATE" 2>/dev/null)
+        state=$(cat "$HEALTHY_STATE" 2>/dev/null)
+        case "$state" in
+            *" "*)
+                last=${state%% *}
+                last_path=${state#* }
+                ;;
+            *)
+                # Backward compatibility with the older timestamp-only state file.
+                last="$state"
+                ;;
+        esac
+
         case "$last" in
             ''|*[!0-9]*) last=0 ;;
         esac
+        case "$last_path" in
+            primary|whitelist|'') ;;
+            *) last_path="" ;;
+        esac
+    fi
+
+    if [ -n "$last_path" ] && [ "$last_path" != "$wan_path" ]; then
+        path_changed=1
     fi
 
     elapsed=$(( now - last ))
-    if [ "$last" -eq 0 ] || [ "$elapsed" -ge "$HEALTHY_LOG_INTERVAL" ]; then
+    if [ "$last" -eq 0 ] || [ "$elapsed" -ge "$HEALTHY_LOG_INTERVAL" ] || [ "$path_changed" -eq 1 ]; then
         log "[OK] All good | WAN=${wan_path} (${wan_target})"
-        echo "$now" > "$HEALTHY_STATE"
+        last="$now"
     fi
-}
 
+    # Keep the last heartbeat timestamp and the most recently observed WAN path
+    # in RAM. primary <-> whitelist transitions are visible immediately without
+    # restoring per-run healthy log noise.
+    echo "$last $wan_path" > "$HEALTHY_STATE"
+}
 rotate_log() {
     if [ -f "$LOG" ]; then
         LINES=$(wc -l < "$LOG")

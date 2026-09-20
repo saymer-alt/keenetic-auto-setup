@@ -42,10 +42,12 @@ pass "updater warns strongly but keeps legacy updates serviceable"
 grep -q '^HEALTHY_LOG_INTERVAL=1200$' "$ROOT/mihomo-watchdog.sh" || fail "watchdog healthy heartbeat must stay throttled to 20 minutes"
 grep -q 'log_healthy "$wan_path" "$wan_target_ok"' "$ROOT/mihomo-watchdog.sh" || fail "watchdog must use the throttled healthy heartbeat"
 grep -q 'reset_healthy_heartbeat' "$ROOT/mihomo-watchdog.sh" || fail "watchdog problems must force the next healthy recovery marker"
+grep -Fq '[ "$last_path" != "$wan_path" ]' "$ROOT/mihomo-watchdog.sh" || fail "watchdog must detect primary/whitelist path changes"
+grep -q 'path_changed=1' "$ROOT/mihomo-watchdog.sh" || fail "watchdog WAN path changes must bypass the 20-minute heartbeat throttle"
 if grep -q 'log "\[WAN\] Connectivity OK via' "$ROOT/mihomo-watchdog.sh"; then
     fail "watchdog must not restore the per-run WAN success log noise"
 fi
-pass "watchdog keeps immediate problem logs but throttles routine healthy noise"
+pass "watchdog throttles routine healthy noise but logs problems, recovery and WAN-path changes immediately"
 
 grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
