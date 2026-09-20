@@ -26,7 +26,7 @@ The product is the root-level scripts (there are no libraries):
 | mihomo-watchdog.sh        | cron every 5 min: WAN → port 7890 → socks5h tunnel → restart |
 | 020-bypass-wa.sh          | netfilter.d hook: mark VoIP UDP 1400/3478/3482 → policy bypass_wa |
 | S00ubifs                  | tmpfs on /opt/tmp, /opt/var/log, /opt/var/run (profiles by RAM) |
-| mihomo-interface-check.sh | diagnostics: ready-to-use `interface-name:` values for config.yaml |
+| mihomo-interface-check.sh | optional manual helper: Linux interface names for proxy-outbound `interface-name`; does not route `mitun0` |
 | mihomo-route-watch.sh     | read-only diagnostics of the current route through the Controller API (GET /proxies only) |
 
 Traffic flows (docs/01):
