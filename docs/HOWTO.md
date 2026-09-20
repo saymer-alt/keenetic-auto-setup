@@ -811,7 +811,7 @@ Classic MTU symptom on tunnels. Set tunnel MTU to 1200–1300 (1500 breaks under
 Check the hook: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — counters must grow during a call, and the `bypass_wa` policy must point to a working VPN interface. Rebuild firewall or reboot to re-trigger the netfilter hook.
 
 **Router became unstable after install**
-Almost always a 128 MB device. The toolkit is not supported there; tmpfs pushes such systems over the edge. Use `disk` mode at most — or better hardware.
+Often a 128 MB-class device. This is a best-effort profile: tmpfs can push such systems over the edge. Prefer `disk`, watch available RAM, and move to stronger hardware if instability persists.
 
 **Logs disappeared after reboot**
 By design in `ram` mode (tmpfs). Persist them yourself if needed, or use `disk` mode.
@@ -841,7 +841,7 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 
 Platform notes that remain:
 
-- **128 MB RAM models are not supported** ([docs/06](06-s00ubifs.md)) — several MT7621-era devices fall into this group; the installer's RAM gate will stop there.
+- **128 MB RAM is best-effort/experimental** ([docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; the installer warns but does not block them. Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
 - **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 
