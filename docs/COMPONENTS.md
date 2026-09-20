@@ -12,7 +12,45 @@ project prerequisite.
 | Entware / OPKG mounted at `/opt` | required platform prerequisite | packages, init scripts, cron, Mihomo and MagiTrickle live under `/opt` | `install.sh` fails immediately when `opkg` is absent |
 | KeeneticOS **Proxy client / Клиент прокси** | required KeeneticOS component | provides the `ProxyN` interface used as the Keenetic → Mihomo bridge | after creation, `install.sh` reads running-config back and aborts if the interface did not appear |
 | Internet access during installation | required install-time capability | downloads packages/scripts and the current Mihomo ipk | download/opkg failures are reported by the installer |
-| Operator shell access (normally SSH) | required installation access, not a runtime component | the supported installation/update commands are run in a shell | operator prerequisite |
+| Shell access to Entware | required operator capability, **not a required KeeneticOS component** | installation/update commands are run in a shell | use any administration path that provides the required Entware shell; the KeeneticOS SSH Server component itself is not a runtime dependency |
+
+## Audit against the KeeneticOS component list
+
+This table is intentionally about **KeeneticOS components**, not features that happen to
+be installed on one reference router.
+
+| KeeneticOS component | Project status | Evidence / reason |
+|---|---|---|
+| **Proxy client / Клиент прокси** | **REQUIRED** | Creates ProxyN, the Keenetic → Mihomo SOCKS5 bridge to 127.0.0.1:7890. A real clean install without this component silently rejected Proxy creation; install.sh now fails early on read-back. |
+| **Open package support / Поддержка открытых пакетов (OPKG)** | **REQUIRED** | The entire runtime stack under /opt (Mihomo, MagiTrickle, cron and tools) is Entware-based. |
+| **Netfilter kernel modules / Модули ядра подсистемы Netfilter** | **REQUIRED for the project VoIP bypass path** | 020-bypass-wa.sh uses iptables mangle plus mark, MARK, CONNMARK and multiport and is installed as a netfilter.d hook. Without working Netfilter/iptables support that project feature cannot be implemented. |
+| **Traffic Control kernel modules / Модули ядра Traffic Control** | **NOT REQUIRED by current project code** | No tc/qdisc/class/filter operations are used by the repository. Do not require this component merely because it is installed on a reference router. |
+| **Xtables-addons for Netfilter / Пакет расширения Xtables-addons** | **NOT PROVEN / currently NOT REQUIRED** | The project uses ordinary iptables mangle/MARK/CONNMARK/multiport operations and contains no Xtables-addons-specific target or match. Do not require it without a reproduced dependency. |
+| **Filesystem kernel modules / Модули ядра для поддержки файловых систем** | **CONDITIONAL** | Needed only insofar as the chosen Entware storage/filesystem requires them; not a universal routing/Mihomo dependency. |
+| **Storage support / Поддержка накопителей** | **CONDITIONAL** | Required for USB/external-storage Entware layouts; internal-storage Entware on supported models does not make USB storage a universal project prerequisite. |
+| **ext filesystem + ext utilities** | **CONDITIONAL** | Required when the selected Entware drive uses ext; not a Mihomo/MagiTrickle requirement by itself. |
+| **SSH Server / Сервер SSH** | **OPTIONAL administration method** | Convenient for the documented interactive shell workflow, but the project runtime does not depend on the KeeneticOS SSH server. It is not a project component prerequisite. |
+| **Content filtering / cloud ad blocking** | **NOT REQUIRED** | The project uses Keenetic DNS proxy transit interception; it does not require a cloud content-filter provider. |
+| **DNS-over-TLS proxy** | **OPTIONAL** | Upstream encrypted DNS choice; unrelated to the required classic port-53 transit interception contract. |
+| **DNS-over-HTTPS proxy** | **OPTIONAL** | Same: useful router DNS choice, not required by install.sh/MagiTrickle integration. |
+| **Ping Check** | **OPTIONAL** | The project watchdog performs its own bounded WAN/proxy checks; it does not call the Keenetic Ping Check service. |
+| **Traffic classification service** | **NOT REQUIRED by current project code** | No dependency on the Keenetic traffic-classification service is present in the repository. |
+| **Packet capture** | **OPTIONAL diagnostic tool** | Useful for manual troubleshooting, but no project script requires it. |
+| **iPerf3** | **OPTIONAL diagnostic tool** | Not used by install/runtime scripts. |
+| **DDNS / KeenDNS-related service** | **OPTIONAL** | Useful for remote access patterns described in the docs; not required for routing/Mihomo/MagiTrickle operation. |
+| **mDNS** | **NOT A PROJECT REQUIREMENT** | It may be mandatory for the router's own component set, but current project code does not depend on mDNS. |
+| **Wi-Fi controller, mobile/cloud agents, shaper, DHCP, Wi-Fi/USB interfaces** | **PLATFORM / ROUTER FEATURES, NOT PROJECT PREREQUISITES** | They may be mandatory or useful to KeeneticOS itself, but the project does not require them as install-time dependencies. |
+| **PPTP/L2TP/SSTP/OpenVPN/WireGuard/IPsec/OpenConnect/ZeroTier clients or servers** | **OPTIONAL / topology-specific** | A user may select a VPN interface as an exit, but no particular VPN technology is universally required. Servers are likewise outside the base project dependency set. |
+| **PPPoE/802.1X clients, EoIP/GRE/IP-IP, VRRP, ALGs, NetFlow, UPnP, udpxy, SNMP, captive portal** | **NOT REQUIRED** | No current install/runtime path depends on these components. |
+| **USB modem/serial/CDC/NDIS/QMI modules** | **CONDITIONAL on WAN hardware only** | Relevant only when that modem type is the router's WAN; not a project dependency. |
+| **SMB/DLNA/Transmission/FTP/SFTP/WebDAV/folder ACL components** | **NOT REQUIRED** | Storage applications are unrelated to the project runtime. |
+
+Two distinctions matter:
+
+1. **Installed on a known-good router does not mean required by the project.**
+2. **Mandatory for KeeneticOS does not mean required by this repository.** If KeeneticOS
+   forces a base component to stay installed, the project does not need to duplicate that
+   requirement unless its own code actually depends on it.
 
 ## Required KeeneticOS capabilities
 
