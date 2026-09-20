@@ -426,6 +426,33 @@ cat /opt/var/log/mihomo_watchdog.log
 
 ---
 
+### Какой proxy-сервер реально выбран сейчас?
+
+Если в конфиге есть группы `Selector`, `URLTest`, `Fallback`, `Relay` или вложенные группы, вручную разбирать `now` в Controller API неудобно. Необязательный `mihomo-route-watch.sh` проходит цепочку групп и показывает конечный leaf-сервер:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh
+```
+
+Для наблюдения за переключениями:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-route-watch.sh | sh -s -- --watch 1
+```
+
+Пример:
+
+```text
+GLOBAL -> Primary -> Sweden-1
+CURRENT SERVER: Sweden-1
+```
+
+В режиме `--watch` выводятся только изменения с временем, поэтому по ним удобно видеть failover и failback. Helper строго read-only: его единственный API-запрос — `GET /proxies`; он не выбирает узлы, не запускает delay-test и ничего не перезапускает. Нужны `curl` и `jq`, а Controller Mihomo должен быть включён. Если используется `secret`, передайте его через `-s SECRET` или `MIHOMO_API_SECRET`.
+
+Это **не замена Doctor**: Doctor отвечает «здоров ли стек», route-watch — «какой маршрут/конечный proxy выбран сейчас».
+
+---
+
 ### Cron есть?
 
 ```bash
