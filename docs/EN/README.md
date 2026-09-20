@@ -11,7 +11,7 @@ Automated installation and operation of network and supporting tools on Keenetic
 - Keenetic with Entware / OPKG installed
 - RAM and /opt storage are separate decisions:
   - **256 MB+ RAM is the supported profile** (live-tested; running from Keenetic internal storage is a proven option). **512 MB+ has the most headroom.** Active swap is not required: on 256 MB it adds extra headroom (installer/Doctor inform), on 512 MB+ it is optional.
-  - **128 MB-class devices are allowed only as best-effort/experimental and only WITH active swap**: minimum **384 MB** of active swap (512 MB preferred). Without sufficient active swap the installer stops at the early preflight, before any download or change. The project never creates or resizes swap itself. Stability is not guaranteed even with swap; prefer `disk` over `ram`.
+  - **128 MB-class devices are allowed only as best-effort/experimental and only WITH active swap**: minimum **384 MB** of active swap (512 MB preferred). Without sufficient active swap the installer stops at the early preflight, before any download or change. **zRAM caveat:** KeeneticOS auto-sizes zRAM to about the physical RAM (~128 MB), so zRAM alone does not satisfy this prerequisite - add storage-backed swap on an external device (it may coexist with zRAM; installer and Doctor evaluate total active swap). The project never creates or resizes swap itself. Stability is not guaranteed even with swap; prefer `disk` over `ram`.
 - The KeeneticOS **Proxy client / Клиент прокси** component — required: without it the Proxy* interfaces do not exist and the installer cannot create the project ProxyN
 - **Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** — required for the supported DNS profile because the project needs `dns-proxy intercept enable`; this does not require selecting a cloud filtering provider for clients
 - Router DoT and/or DoH are strongly recommended for upstream DNS: port-53 interception solves a different problem and does not itself protect Keenetic's upstream resolver traffic from ISP interference
@@ -21,6 +21,8 @@ Automated installation and operation of network and supporting tools on Keenetic
 ## 1. Installation
 
 ### Router internal storage — proven option
+
+When installing to internal storage, enabling the native KeeneticOS zRAM option is recommended: zRAM is compressed swap in RAM without writing a classic swap file to the internal NAND. It is exposed in the web UI under the system performance settings (the exact path and wording vary by firmware/language). After installation verify active swap with `mihomo-doctor.sh` (it reports the size and the backends: zRAM and/or storage-backed swap).
 
 ```bash
 opkg update && opkg install curl && \

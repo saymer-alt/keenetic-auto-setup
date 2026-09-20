@@ -42,7 +42,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-Подробности tmpfs — [docs/06](06-s00ubifs.md).
+При работе с внутренней памяти рекомендуется штатный zRAM KeeneticOS (сжатый swap в RAM без NAND swap-файла; включается в системных настройках производительности — формулировки зависят от прошивки), после установки активный swap проверяется `mihomo-doctor.sh`. Подробности tmpfs и zRAM — [docs/06](06-s00ubifs.md).
 
 ---
 

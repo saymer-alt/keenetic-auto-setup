@@ -73,11 +73,11 @@ case "$MEM_TOTAL_KB" in
                     warn "The low-RAM experiment needs ACTIVE swap: minimum 384 MB, 512 MB preferred (SwapTotal). Continuing conservatively."
                     ;;
                 0)
-                    err "128 MB-class device (${MEM_TOTAL_MB} MB) WITHOUT active swap - the low-RAM prerequisite is not met. Stopping before any download or change. The best-effort/experimental 128 MB profile requires ACTIVE swap of at least 384 MB (512 MB preferred, SwapTotal from /proc/meminfo - a swap partition counts). Enable/attach swap yourself - this project never creates or resizes swap - then re-run. Prefer disk mode over ram/tmpfs mode; stability is not guaranteed even with swap."
+                    err "128 MB-class device (${MEM_TOTAL_MB} MB) WITHOUT active swap - the low-RAM prerequisite is not met. Stopping before any download or change. The best-effort/experimental 128 MB profile requires ACTIVE swap of at least 384 MB (512 MB preferred, SwapTotal from /proc/meminfo - a swap partition counts). Note: the KeeneticOS zRAM option is auto-sized to about the physical RAM, so zRAM alone does not satisfy this prerequisite on the 128 MB class. Enable/attach swap yourself - this project never creates or resizes swap - then re-run. Prefer disk mode over ram/tmpfs mode; stability is not guaranteed even with swap."
                     ;;
                 *)
                     if [ "$SWAP_TOTAL_KB" -lt "$SWAP128_MIN_KB" ]; then
-                        err "128 MB-class device (${MEM_TOTAL_MB} MB) with only $((SWAP_TOTAL_KB / 1024)) MB active swap - the low-RAM prerequisite is not met (detected $((SWAP_TOTAL_KB / 1024)) MB, required at least 384 MB, 512 MB preferred). Stopping before any download or change. Enable/attach more swap yourself - this project never creates or resizes swap - then re-run."
+                        err "128 MB-class device (${MEM_TOTAL_MB} MB) with only $((SWAP_TOTAL_KB / 1024)) MB active swap - the low-RAM prerequisite is not met (detected $((SWAP_TOTAL_KB / 1024)) MB, required at least 384 MB, 512 MB preferred). Stopping before any download or change. If the detected swap is the KeeneticOS zRAM option: it is auto-sized to about the physical RAM, so zRAM alone is not enough here - add storage-backed swap (external device), which may coexist with zRAM. This project never creates or resizes swap; enable/attach it yourself and re-run."
                     fi
                     warn "============================================================"
                     warn "LOW-RAM / BEST-EFFORT INSTALL: ${MEM_TOTAL_MB} MB RAM + $((SWAP_TOTAL_KB / 1024)) MB active swap"
@@ -91,7 +91,11 @@ case "$MEM_TOTAL_KB" in
         elif [ "$MEM_TOTAL_KB" -lt 450000 ]; then
             case "$SWAP_TOTAL_KB" in
                 0)
-                    warn "256 MB-class device without swap: supported and live-tested; adding active swap would give extra memory headroom (optional, never required)."
+                    if [ "$MODE" = "ram" ]; then
+                        warn "256 MB-class device without swap: supported and live-tested; adding active swap would give extra memory headroom (optional, never required). Running from internal storage, the native KeeneticOS zRAM option (compressed swap in RAM, General system settings / Performance options - wording varies by firmware) adds swap without writing a NAND swap file; verify it afterwards with mihomo-doctor.sh."
+                    else
+                        warn "256 MB-class device without swap: supported and live-tested; adding active swap would give extra memory headroom (optional, never required)."
+                    fi
                     ;;
             esac
         fi

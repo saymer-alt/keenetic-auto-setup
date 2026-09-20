@@ -395,6 +395,26 @@ if is_num "$SWAP_TOTAL"; then
         info "Swap: $((SWAP_TOTAL/1024)) MB (free $((SWAP_FREE/1024)) MB)"
     fi
 fi
+# Swap backend breakdown (read-only): /proc/swaps, when readable, shows
+# which backends are actually ACTIVE - KeeneticOS zRAM (compressed swap
+# in RAM, written without a NAND swap file) vs storage-backed (block
+# device / swap file). The doctor never creates, enables or resizes swap;
+# the low-RAM prerequisite above is judged from TOTAL active swap.
+SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
+if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -gt 0 ] && [ -r "$SWAPS_SRC" ]; then
+    _zram_kb=$(awk 'NR>1 && $1 ~ /zram/ {s+=$3} END{print s+0}' "$SWAPS_SRC" 2>/dev/null)
+    _stor_kb=$(awk 'NR>1 && $1 !~ /zram/ {s+=$3} END{print s+0}' "$SWAPS_SRC" 2>/dev/null)
+    if is_num "$_zram_kb" && is_num "$_stor_kb" && [ $(( _zram_kb + _stor_kb )) -gt 0 ]; then
+        if [ "$_zram_kb" -gt 0 ] && [ "$_stor_kb" -gt 0 ]; then
+            info "Swap backends: zRAM $((_zram_kb/1024)) MB (compressed in RAM) + storage-backed $((_stor_kb/1024)) MB"
+        elif [ "$_zram_kb" -gt 0 ]; then
+            info "Swap backends: zRAM only, $((_zram_kb/1024)) MB (compressed swap in RAM - not a NAND swap file)"
+        else
+            info "Swap backends: storage-backed $((_stor_kb/1024)) MB (block device/swap file)"
+        fi
+    fi
+    unset _zram_kb _stor_kb
+fi
 
 for _mount in "$OPT_ROOT" /tmp; do
     _kb=$(df -k "$_mount" 2>/dev/null | awk 'NR==2 {print $4}')

@@ -274,7 +274,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router: **256 MB RAM or more** (supported profile; 512 MB+ has the most headroom) | router spec / `free` on the router | 128 MB-class devices: **best-effort/experimental AND only with >= 384 MB active swap** (512 MB preferred) — without it the installer stops at the early preflight, before downloads and changes; on 256/512 MB swap is optional; `disk` mode is preferable to `ram` |
+| Keenetic router: **256 MB RAM or more** (supported profile; 512 MB+ has the most headroom) | router spec / `free` on the router | 128 MB-class devices: **best-effort/experimental AND only with >= 384 MB active swap** (512 MB preferred) — without it the installer stops at the early preflight, before downloads and changes; native zRAM is auto-sized to about the RAM and does not satisfy the requirement by itself — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends); on 256/512 MB swap is optional, and zRAM is recommended when running from internal storage; `disk` mode is preferable to `ram` |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
@@ -831,7 +831,7 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 
 Platform notes that remain:
 
-- **128 MB RAM is best-effort/experimental and requires >= 384 MB active swap** (512 MB preferred; [docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; without sufficient swap the installer stops at the early preflight, with swap it prints a prominent EXPERIMENTAL warning. Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
+- **128 MB RAM is best-effort/experimental and requires >= 384 MB active swap** (512 MB preferred; [docs/06](06-s00ubifs.md)): several MT7621-era devices fall into this class; without sufficient swap the installer stops at the early preflight, with swap it prints a prominent EXPERIMENTAL warning. Native zRAM (~RAM-sized) does not satisfy the requirement alone — add storage-backed swap on an external device (it may coexist with zRAM; the Doctor reports backends). Prefer `disk`, monitor memory headroom, and keep the one-Mihomo rule strict.
 - **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
 

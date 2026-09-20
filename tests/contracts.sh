@@ -15,12 +15,14 @@ grep -q '128 MB-class devices are allowed, but stability is NOT guaranteed' "$RO
 grep -q 'WITHOUT active swap' "$ROOT/install.sh" || fail "installer must stop on 128 MB-class without active swap, before any download or change"
 grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB-class active-swap minimum (384 MB) must stay a named gate constant"
 grep -q 'adding active swap would give extra memory headroom (optional, never required)' "$ROOT/install.sh" || fail "256 MB without swap must stay non-blocking (optional recommendation only)"
+grep -q 'zRAM alone does not satisfy this prerequisite' "$ROOT/install.sh" || fail "installer must reject auto-sized zRAM alone on the 128 MB class"
 pass "low-RAM install remains allowed with an explicit best-effort warning and the active-swap prerequisite"
 
 grep -q 'Low-RAM prerequisite NOT met' "$ROOT/mihomo-doctor.sh" || fail "doctor must report an unmet low-RAM swap prerequisite on 128 MB-class"
 grep -q 'active swap would add memory headroom (optional, never required)' "$ROOT/mihomo-doctor.sh" || fail "doctor must treat swap as optional (info) on 256 MB-class"
 grep -qE 'stability is NOT guaranteed \(docs/06\)' "$ROOT/mihomo-doctor.sh" || fail "doctor must not present swap as making 128 MB stable"
-pass "doctor reports swap per class without making it a 256/512 MB requirement"
+grep -q 'Swap backends: zRAM' "$ROOT/mihomo-doctor.sh" || fail "doctor must classify swap backends (zRAM vs storage-backed) read-only from /proc/swaps"
+pass "doctor reports swap per class and per backend without making it a 256/512 MB requirement"
 
 grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
