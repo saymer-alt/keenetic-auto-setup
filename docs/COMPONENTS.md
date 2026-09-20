@@ -12,7 +12,7 @@ project prerequisite.
 | Entware / OPKG mounted at `/opt` | required platform prerequisite | packages, init scripts, cron, Mihomo and MagiTrickle live under `/opt` | `install.sh` fails immediately when `opkg` is absent |
 | KeeneticOS **Proxy client / Клиент прокси** | required KeeneticOS component | provides the `ProxyN` interface used as the Keenetic → Mihomo bridge | after creation, `install.sh` reads running-config back and aborts if the interface did not appear |
 | Internet access during installation | required install-time capability | downloads packages/scripts and the current Mihomo ipk | download/opkg failures are reported by the installer |
-| Shell access to Entware | required operator capability, **not a required KeeneticOS component** | installation/update commands are run in a shell | use any administration path that provides the required Entware shell; the KeeneticOS SSH Server component itself is not a runtime dependency |
+| Shell access to Entware | required operator capability, **not a required KeeneticOS component** | installation/update commands are run in a shell | use any administration path that provides the required Entware shell; the KeeneticOS SSH server component itself is not a runtime dependency |
 
 ## Audit against the KeeneticOS component list
 
