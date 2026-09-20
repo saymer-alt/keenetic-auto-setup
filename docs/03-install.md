@@ -13,6 +13,24 @@
 Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и компонент
 KeeneticOS **«Клиент прокси» (Proxy client)**. Resource-profile: 128 МБ — только best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ (512 предпочтительно; zRAM в минимум не входит); 256 МБ — активный штатный zRAM обязателен независимо от места /opt; 512 МБ+ — установка разрешена, но без любого активного zRAM/swap выдаётся явный WARN и гарантий устойчивости при memory pressure нет. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей: [COMPONENTS.md](COMPONENTS.md).
 
+### Если raw.githubusercontent.com недоступен с роутера
+
+Если браузер/ПК открывает GitHub, а сам Keenetic не может скачать `install.sh` с
+`raw.githubusercontent.com`, не нужно менять DNS или ослаблять TLS ради установки.
+
+1. Скачайте [`install.sh`](../install.sh) на ПК.
+2. Передайте файл на роутер по SCP/SFTP, например в `/tmp/install.sh`.
+3. Запустите локальный файл:
+
+```bash
+sh /tmp/install.sh
+# или для disk-режима:
+sh /tmp/install.sh disk
+```
+
+Это только Stage-0: после запуска сам installer по-прежнему выполняет свои обычные
+сетевые проверки и честно сообщит, если какой-либо следующий источник недоступен.
+
 ## Общий процесс
 
 ```id="flow1"

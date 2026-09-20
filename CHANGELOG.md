@@ -31,6 +31,8 @@ _No changes yet._
 
 ### Changed
 
+- English README synchronized with the concise Russian entry point; the detailed RAM/storage/runtime explanations remain in dedicated docs. `docs/03-install.md` now documents a minimal Stage-0 path for routers that cannot reach `raw.githubusercontent.com`: download `install.sh` on a PC, copy it to the router, and run it locally without weakening TLS/DNS settings.
+
 - README simplified back into a concise entry page: prerequisites, install/check/update commands and links only. Detailed RAM/storage policy, troubleshooting and component behavior stay in the dedicated docs. Duplicate Doctor/update commands were removed while the footer keeps a complete linked index of every project script.
 
 - Watchdog routine logging is quieter after successful field use: the health checks still run every 5 minutes, but normal success is collapsed into one `[OK] All good | WAN=primary|whitelist (...)` heartbeat at most every 20 minutes. WARN/restart/rate-limit events remain immediate and reset the heartbeat so the next healthy full check is logged at once; Doctor keeps backward compatibility with the old per-run `[WAN]` lines and still uses the next `[OK]` as the recovery marker. README now ends with a complete script index: all root runtime/manual scripts plus the developer contract smoke test are linked, with safe copy/paste commands or canonical managed paths and documentation links.
