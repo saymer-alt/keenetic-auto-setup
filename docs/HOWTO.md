@@ -591,7 +591,7 @@ Typical lines and what they mean:
 | `[RESTART] Proxy tunnel check failed` | port open, tunnel dead — often the VPN server or config |
 | `[RATE-LIMIT] Restart blocked (Ns < 300s)` | anti-loop protection working, not an error |
 
-Checks still run every 5 minutes, but the routine `[OK]` heartbeat is written at most once every 20 minutes. After a WARN/restart/rate-limit the next healthy run is logged immediately. Log rotation is built in: over 500 lines → trimmed to the last 300. Logs live in tmpfs (RAM mode) and are lost on reboot — by design.
+Checks still run every 5 minutes, but the routine `[OK]` heartbeat is written at most once every 20 minutes. After a WARN/restart/rate-limit the next healthy run is logged immediately. A successful WAN-path transition `primary ↔ whitelist` is also logged immediately, so fallback and failback remain visible without restoring per-run healthy noise. Log rotation is built in: over 500 lines → trimmed to the last 300. Logs live in tmpfs (RAM mode) and are lost on reboot — by design.
 
 ### 7.3 Which copy actually runs?
 
