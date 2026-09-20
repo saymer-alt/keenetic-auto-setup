@@ -592,15 +592,14 @@ cat /opt/var/log/mihomo_watchdog.log
 
 | Строка лога | Что означает |
 | --- | --- |
-| `[WAN] Connectivity OK via http://...` | WAN подтверждён, проверки продолжаются |
-| `[WAN] Primary targets unavailable, checking whitelist targets` | норма в сетях с ограниченным доступом |
+| `[OK] All good | WAN=primary (...)` | всё здорово; обычный WAN |
+| `[OK] All good | WAN=whitelist (...)` | всё здорово; WAN подтверждён whitelist-fallback |
 | `[WARN] WAN unreachable (primary + whitelist targets failed)` | интернета нет — watchdog правильно ничего не делает |
 | `[RESTART] Mihomo port unreachable` | Mihomo упал / не стартовал — перезапущен |
 | `[RESTART] Proxy tunnel check failed` | порт открыт, туннель мёртв — часто проблема на VPN-сервере или в конфиге |
 | `[RATE-LIMIT] Restart blocked (Ns < 300s)` | работает защита от циклов, это не ошибка |
-| `[OK] All good` | всё здорово |
 
-Ротация встроена: больше 500 строк → остаются последние 300. Логи лежат в tmpfs (RAM-режим) и пропадают при reboot — так задумано.
+Проверки идут каждые 5 минут, но штатный `[OK]` heartbeat записывается не чаще одного раза в 20 минут. После WARN/restart/rate-limit следующий успешный цикл логируется сразу. Ротация встроена: больше 500 строк → остаются последние 300. Логи лежат в tmpfs (RAM-режим) и пропадают при reboot — так задумано.
 
 ### 7.3 Какая копия реально запускается?
 

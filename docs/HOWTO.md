@@ -584,15 +584,14 @@ Typical lines and what they mean:
 
 | Log line | Meaning |
 | --- | --- |
-| `[WAN] Connectivity OK via http://...` | WAN confirmed, checks continue |
-| `[WAN] Primary targets unavailable, checking whitelist targets` | normal in restricted networks |
+| `[OK] All good | WAN=primary (...)` | everything healthy; normal WAN path |
+| `[OK] All good | WAN=whitelist (...)` | everything healthy; WAN confirmed through whitelist fallback |
 | `[WARN] WAN unreachable (primary + whitelist targets failed)` | no internet — watchdog correctly does nothing |
 | `[RESTART] Mihomo port unreachable` | Mihomo crashed / didn't start — restarted |
 | `[RESTART] Proxy tunnel check failed` | port open, tunnel dead — often the VPN server or config |
 | `[RATE-LIMIT] Restart blocked (Ns < 300s)` | anti-loop protection working, not an error |
-| `[OK] All good` | everything healthy |
 
-Log rotation is built in: over 500 lines → trimmed to the last 300. Logs live in tmpfs (RAM mode) and are lost on reboot — by design.
+Checks still run every 5 minutes, but the routine `[OK]` heartbeat is written at most once every 20 minutes. After a WARN/restart/rate-limit the next healthy run is logged immediately. Log rotation is built in: over 500 lines → trimmed to the last 300. Logs live in tmpfs (RAM mode) and are lost on reboot — by design.
 
 ### 7.3 Which copy actually runs?
 

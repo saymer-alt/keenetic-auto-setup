@@ -186,3 +186,32 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 - [Подробно об установке](docs/07-install.md)
 - [CHANGELOG](CHANGELOG.md)
 - [Лицензия](LICENSE)
+
+## 7. Служебные команды
+
+Короткая шпаргалка для ручного запуска. Подробности и ограничения — по ссылке рядом с каждой командой.
+
+- **MIPS TUN migration — `migrate-mihomo-mips.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh`  
+  [Документация](docs/HOWTO_RU.md)
+
+- **Read-only Doctor — `mihomo-doctor.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh`  
+  [Документация](docs/08-troubleshooting.md)
+
+- **Проверка Linux-интерфейсов — `mihomo-interface-check.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh`  
+  [Документация](ARCHITECTURE.md)
+
+- **Текущий proxy / failover-failback — `mihomo-proxy-selection-watch.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh`  
+  [Документация](docs/11-proxy-selection-watch.md)
+
+- **Обновление Mihomo — `update-mihomo.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh`  
+  [Документация](docs/HOWTO_RU.md)
+
+- **Обновление Watchdog — `update-watchdog.sh`**  
+  `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh`  
+  [Документация](docs/04-watchdog.md)
+

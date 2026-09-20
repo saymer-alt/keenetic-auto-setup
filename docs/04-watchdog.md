@@ -85,7 +85,9 @@ PROXY="127.0.0.1:7890"
 MIN_RESTART_INTERVAL=300
 LOG_MAX_LINES=500
 LOG_KEEP_LINES=300
+HEALTHY_LOG_INTERVAL=1200
 LOCK_DIR="/tmp/mihomo_watchdog.lock.d"
+HEALTHY_STATE="/tmp/mihomo_watchdog.healthy"
 ```
 
 ---
@@ -238,15 +240,21 @@ BusyBox:
 
 ```bash
 [INIT] log generation started (fresh tmpfs after boot or first run)
-[WAN] Connectivity OK via http://cp.cloudflare.com
-[WAN] Primary targets unavailable, checking whitelist targets
+[OK] All good | WAN=primary (http://cp.cloudflare.com)
+[OK] All good | WAN=whitelist (http://ya.ru)
 [WARN] WAN unreachable (primary + whitelist targets failed)
 [RATE-LIMIT] Restart blocked (120s < 300s) | Mihomo port unreachable
 [RESTART] Proxy tunnel check failed
 [RESTART-OK] process is running after restart
 [RESTART-FAIL] process did not come up within 10s after restart
-[OK] All good
 ```
+
+Watchdog по-прежнему выполняет проверки каждые 5 минут, но штатный healthy-heartbeat
+`[OK] All good ...` записывается не чаще одного раза в 20 минут. Это убирает
+основной шум. Любой WAN failure, restart или rate-limit сбрасывает heartbeat,
+поэтому **следующий успешный полный цикл логируется сразу** и остаётся надёжным
+маркером восстановления для Doctor. Старые строки `[WAN] Connectivity OK ...` и
+`[WAN] Primary targets unavailable ...` Doctor продолжает понимать.
 
 ---
 
@@ -342,7 +350,7 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 
 * рестарт выполнен и процесс подтверждён той же проверкой в течение 10 сек
 
-👉 нормальное подтверждение восстановления; следующая запись `[OK] All good` остаётся полной проверкой
+👉 нормальное подтверждение рестарта; следующий успешный полный цикл принудительно пишет `[OK] All good ...`, не ожидая 20-минутного heartbeat-интервала
 
 ---
 

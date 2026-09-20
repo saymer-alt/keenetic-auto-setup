@@ -1268,21 +1268,18 @@ fi
 hdr "8b. Watchdog history (read-only log analysis)"
 # =========================================================
 # Ground truth from mihomo-watchdog.sh: every log line is
-#   "%Y-%m-%d %H:%M:%S <message>" appended to the log, with
-# exactly these messages: "[OK] All good", "[WAN] Connectivity
-# OK via <target>", "[WAN] Primary targets unavailable, checking
-# whitelist targets", "[WARN] WAN unreachable (primary + whitelist
-# targets failed)", "[RESTART] <reason>", "[RATE-LIMIT] Restart
-# blocked (...) | <reason>". The only reasons are "Mihomo port
-# unreachable" and "Proxy tunnel check failed". Rotation keeps the
-# last ~300-500 lines (trimmed at the start of every run); the log
-# lives on tmpfs and is lost on reboot. [RESTART] is written BEFORE
-# the restart is executed, so a recovery is confirmed by a later
-# "[OK] All good" entry; since 2026-09 the watchdog also writes
-# "[RESTART-OK]"/"[RESTART-FAIL]" immediately after its own restart
-# (same-run outcome) and an "[INIT]" marker when it starts a fresh
-# log generation after boot. Older logs simply lack these lines -
-# all three are counted optionally and never required.
+#   "%Y-%m-%d %H:%M:%S <message>" appended to the log. Healthy checks run
+# every 5 minutes but the routine success heartbeat is intentionally
+# throttled to at most once every 20 minutes:
+#   "[OK] All good | WAN=primary (<target>)"
+#   "[OK] All good | WAN=whitelist (<target>)"
+# Problems/restarts are always logged immediately. A problem resets the
+# heartbeat throttle so the next healthy run is recorded at once, preserving
+# the recovery marker. Older logs may also contain "[WAN] Connectivity OK"
+# and "[WAN] Primary targets unavailable..." lines; they remain parseable.
+# [RESTART] is written BEFORE the restart; recovery is confirmed by a later
+# "[OK] All good..." entry. Since 2026-09 the watchdog also writes
+# "[RESTART-OK]"/"[RESTART-FAIL]" and a fresh-log "[INIT]" marker.
 # Analysis prints categories, counts and timestamps only - never
 # raw log lines.
 
@@ -1306,7 +1303,10 @@ else
             } else { bad++; next }
             if (first == "") first = ts
             last = ts
-            if (msg ~ /^\[OK\]/) { ok++; lastok = ts }
+            if (msg ~ /^\[OK\]/) {
+                ok++; lastok = ts
+                if (msg ~ /WAN=whitelist/) wanwl++
+            }
             else if (msg ~ /^\[RESTART\]/) {
                 restart++
                 lastprob = ts; lastprobk = "restart"
@@ -1443,14 +1443,14 @@ _WDEOF
                 if [ "$_age" -lt 0 ]; then
                     info "Last entry: $WD_LAST (timestamp is in the future - clock skew between log and this run?)"
                 elif [ "$_age" -gt 1800 ]; then
-                    warn "Log last updated $((_age / 60)) min ago (the watchdog runs every 5 min) - the watchdog may not be running or logging is broken"
+                    warn "Log last updated $((_age / 60)) min ago (checks run every 5 min; healthy heartbeats are rate-limited to 20 min) - the watchdog may not be running or logging is broken"
                     info "Recommendation: if the log keeps aging, check cron scheduling and the watchdog installation (sections 8, cron)"
                 else
                     info "Last entry: $WD_LAST ($((_age / 60)) min ago)"
                 fi
             fi
         fi
-        info "Healthy runs ([OK] All good) on record: $WD_OK"
+        info "Healthy heartbeats ([OK] All good) on record: $WD_OK"
 
         if [ "$WD_RESTART" -eq 0 ] && [ "$WD_RL" -eq 0 ]; then
             ok "No restarts or problem detections in the available history"
@@ -1534,7 +1534,7 @@ _WDEOF
             info "WAN full-outage runs on record: $WD_WANOUT (the watchdog deliberately does NOT restart Mihomo when WAN is down)"
         fi
         if [ "$WD_WANWL" -gt 0 ]; then
-            info "Whitelist-fallback runs (primary WAN targets unavailable, whitelist checked): $WD_WANWL - a sign of a restricted network, not of a Mihomo fault"
+            info "Whitelist-fallback heartbeats/events on record: $WD_WANWL - a sign of a restricted network, not of a Mihomo fault"
         fi
 
         # Verdict: current process state is not enough on its own

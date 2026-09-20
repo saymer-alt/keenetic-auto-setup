@@ -33,6 +33,7 @@
 LOG="/opt/var/log/mihomo_watchdog.log"
 LOCK_DIR="/tmp/mihomo_watchdog.lock.d"
 RESTART_STATE="/tmp/mihomo_watchdog.restart"
+HEALTHY_STATE="/tmp/mihomo_watchdog.healthy"
 
 
 # --- CONFIGURATION ---
@@ -59,6 +60,11 @@ MIN_RESTART_INTERVAL=300
 # Log rotation thresholds
 LOG_MAX_LINES=500
 LOG_KEEP_LINES=300
+
+# Healthy checks run every 5 minutes, but routine success logs are throttled.
+# Problem/restart events remain immediate and reset this heartbeat so the next
+# healthy run is always recorded as a recovery marker.
+HEALTHY_LOG_INTERVAL=1200
 
 
 # =========================================================
@@ -172,6 +178,32 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"
 }
 
+reset_healthy_heartbeat() {
+    rm -f "$HEALTHY_STATE"
+}
+
+log_healthy() {
+    local wan_path="$1"
+    local wan_target="$2"
+    local now last elapsed
+
+    now=$(date +%s)
+    last=0
+
+    if [ -f "$HEALTHY_STATE" ]; then
+        last=$(cat "$HEALTHY_STATE" 2>/dev/null)
+        case "$last" in
+            ''|*[!0-9]*) last=0 ;;
+        esac
+    fi
+
+    elapsed=$(( now - last ))
+    if [ "$last" -eq 0 ] || [ "$elapsed" -ge "$HEALTHY_LOG_INTERVAL" ]; then
+        log "[OK] All good | WAN=${wan_path} (${wan_target})"
+        echo "$now" > "$HEALTHY_STATE"
+    fi
+}
+
 rotate_log() {
     if [ -f "$LOG" ]; then
         LINES=$(wc -l < "$LOG")
@@ -191,6 +223,7 @@ rotate_log() {
 # single [INIT] marker so analysis can tell a fresh generation
 # from a rotated one. RAM-only; no extra persistence.
 if [ ! -f "$LOG" ]; then
+    reset_healthy_heartbeat
     log "[INIT] log generation started (fresh tmpfs after boot or first run)"
 fi
 
@@ -240,6 +273,10 @@ fi
 can_restart() {
     local reason="$1"
     local now
+
+    # Force the first healthy run after any Mihomo problem to be logged
+    # immediately, regardless of the regular heartbeat interval.
+    reset_healthy_heartbeat
     now=$(date +%s)
     local last=0
 
@@ -311,6 +348,7 @@ can_restart() {
 
 wan_ok=0
 wan_target_ok=""
+wan_path="primary"
 
 # ---------------------------------------------------------
 # Primary targets
@@ -332,7 +370,7 @@ done
 # ---------------------------------------------------------
 
 if [ "$wan_ok" -eq 0 ]; then
-    log "[WAN] Primary targets unavailable, checking whitelist targets"
+    wan_path="whitelist"
 
     for target in $WAN_WHITELIST_TARGETS; do
         if curl -s --connect-timeout 3 --max-time 6 --head "$target" >/dev/null 2>&1; then
@@ -349,11 +387,10 @@ fi
 # ---------------------------------------------------------
 
 if [ "$wan_ok" -eq 0 ]; then
+    reset_healthy_heartbeat
     log "[WARN] WAN unreachable (primary + whitelist targets failed)"
     exit 0
 fi
-
-log "[WAN] Connectivity OK via ${wan_target_ok}"
 
 
 # =========================================================
@@ -392,4 +429,4 @@ fi
 # ALL CHECKS PASSED
 # =========================================================
 
-log "[OK] All good"
+log_healthy "$wan_path" "$wan_target_ok"
