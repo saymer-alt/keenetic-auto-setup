@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# mihomo-route-watch.sh v1.1.0
+#
+# IMPORTANT: "route" here means the selected Mihomo proxy-group chain.
+# This script does NOT inspect or change Keenetic/Linux routing tables.
+#
 # =========================================================
 # MIHOMO ROUTE WATCH - read-only view of the proxy-group
 # selection chain (universal Mihomo diagnostics).
@@ -42,7 +47,7 @@
 #      the doctor will tell you)
 #   3  HTTP 401/403 - secret required or wrong
 #   4  start group not found in /proxies
-#   5  route anomaly (cycle, depth cap, unknown "now",
+#   5  selection anomaly (cycle, depth cap, unknown "now",
 #      malformed JSON response)
 #
 # Dependencies: curl, jq (both already project-standard).
@@ -58,16 +63,51 @@ MAX_HOPS=32
 
 usage() {
     cat <<'USAGE'
-Usage: mihomo-route-watch.sh [-g GROUP] [-u URL] [-s SECRET] [--watch N]
+mihomo-route-watch.sh v1.1.0
 
-  -g GROUP    starting group (default: GLOBAL)
-  -u URL      controller base URL (default: http://127.0.0.1:9090)
-  -s SECRET   controller secret (or env MIHOMO_API_SECRET)
-  --watch N   poll every N seconds, print only changes
+What it does:
+  Reads Mihomo Controller GET /proxies and follows the selected proxy-group
+  chain (Selector / URLTest / Fallback / Relay). It prints the final selected
+  proxy server. LoadBalance is reported as load-balanced because there is no
+  single selected server.
 
-Read-only: the only request ever made is GET /proxies.
-Exit codes: 0 ok, 1 usage/missing tool, 2 controller unreachable,
-3 auth (401/403), 4 group not found, 5 route anomaly.
+What it does NOT do:
+  It does not inspect Keenetic/Linux routing tables, change a proxy selection,
+  trigger delay tests, restart Mihomo, or write configuration.
+
+Requirements:
+  - run on the Keenetic/Entware shell (or another host that can reach Controller)
+  - curl and jq
+  - Mihomo Controller enabled and reachable
+
+Usage:
+  sh mihomo-route-watch.sh [-g GROUP] [-u URL] [-s SECRET] [--watch N]
+
+Options:
+  -g GROUP    starting Mihomo group (default: GLOBAL)
+  -u URL      Controller base URL (default: http://127.0.0.1:9090)
+  -s SECRET   Controller secret
+              MIHOMO_API_SECRET is preferred so the secret is not typed into
+              the command line
+  --watch N   poll every N seconds and print only changes
+  -h, --help  show this help
+  -V, --version
+              print script version
+
+Examples:
+  sh mihomo-route-watch.sh
+  sh mihomo-route-watch.sh --watch 1
+  sh mihomo-route-watch.sh -g "My Group"
+  sh mihomo-route-watch.sh -u http://192.168.1.1:9090
+  MIHOMO_API_SECRET='secret' sh mihomo-route-watch.sh --watch 1
+
+Typical output:
+  GLOBAL -> Primary -> Sweden-1
+  CURRENT SERVER: Sweden-1
+
+Read-only contract: the only HTTP request ever made is GET /proxies.
+Exit codes: 0 ok, 1 usage/missing tool, 2 Controller unreachable,
+3 auth (401/403), 4 start group not found, 5 selection anomaly.
 USAGE
 }
 
@@ -89,6 +129,7 @@ while [ $# -gt 0 ]; do
                      WATCH=$2; shift 2 ;;
         --watch=*)   WATCH=${1#--watch=}; shift ;;
         -h|--help)   usage; exit 0 ;;
+        -V|--version) echo "mihomo-route-watch.sh v1.1.0"; exit 0 ;;
         --)          shift; break ;;
         *)           usage_err "unknown option: $1" ;;
     esac
@@ -240,7 +281,7 @@ if [ -z "$WATCH" ]; then
             echo "[route-watch] start group not found in /proxies: $GROUP" >&2
             exit 4 ;;
         *)
-            echo "[route-watch] route anomaly ($RESOLVE_STATUS): $CHAIN" >&2
+            echo "[route-watch] selection anomaly ($RESOLVE_STATUS): $CHAIN" >&2
             exit 5 ;;
     esac
 fi
@@ -275,7 +316,7 @@ while :; do
                     echo "[route-watch] start group not found in /proxies: $GROUP" >&2
                     exit 4 ;;
                 *)
-                    echo "[route-watch] route anomaly ($RESOLVE_STATUS): $CHAIN" >&2
+                    echo "[route-watch] selection anomaly ($RESOLVE_STATUS): $CHAIN" >&2
                     exit 5 ;;
             esac ;;
     esac
