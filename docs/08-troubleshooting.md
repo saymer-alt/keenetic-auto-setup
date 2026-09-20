@@ -449,7 +449,7 @@ CURRENT SERVER: Sweden-1
 
 В режиме `--watch` выводятся только изменения с временем, поэтому по ним удобно видеть failover и failback. Helper строго read-only: его единственный API-запрос — `GET /proxies`; он не выбирает узлы, не запускает delay-test и ничего не перезапускает. Нужны `curl` и `jq`, а Controller Mihomo должен быть включён. Если используется `secret`, передайте его через `-s SECRET` или `MIHOMO_API_SECRET`.
 
-Это **не замена Doctor**: Doctor отвечает «здоров ли стек», route-watch — «какой маршрут/конечный proxy выбран сейчас».
+Это **не замена Doctor**: Doctor отвечает «здоров ли стек», route-watch — «какой конечный proxy выбран сейчас и когда выбор изменился». Полная инструкция с вариантами запуска, `-g`, `-u` и secret: [Mihomo Route Watch](11-route-watch.md).
 
 ---
 
