@@ -50,7 +50,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 - Keenetic Giga / Ultra / Hero / Viva и другие совместимые, включая MT7621
 - aarch64 / armv7 / mipsel / mips
-- 256MB+ RAM (128 МБ не поддерживается — см. [docs/09](09-limitations.md))
+- 256MB+ RAM — рекомендуемый/поддерживаемый профиль; 128 МБ-класс разрешён как best-effort/experimental без гарантии стабильности (см. [docs/09](09-limitations.md))
 
 ---
 
@@ -217,7 +217,7 @@ ntpd -q -p pool.ntp.org
 
 ### Решение
 
-❌ не использовать
+Установка разрешена, но это best-effort. Предпочесть `disk`, следить за свободной RAM и не запускать второй Mihomo рядом с daemon. Если система нестабильна — отказаться от `ram`/S00ubifs или перейти на устройство с 256+ МБ.
 
 ---
 
@@ -290,5 +290,5 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 ## Коротко
 
 👉 любой поддерживаемый роутер (включая MT7621) → install.sh
-👉 128MB → даже не начинай
+👉 128MB → можно, но только best-effort; предпочтительнее `disk`
 👉 если что-то пошло не так → [08-troubleshooting.md](08-troubleshooting.md)
