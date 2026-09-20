@@ -1068,7 +1068,7 @@ else
 
         if [ -z "$PROJECT_PROXY" ]; then
             if [ -n "$FOREIGN_PROXIES" ]; then
-                fail "No project ProxyN found - foreign Proxy interface(s):$FOREIGN_PROXIES (left untouched; Keenetic has no bridge into Mihomo)"
+                info "No project-managed ProxyN marker found; existing Proxy interface(s):$FOREIGN_PROXIES are left untouched and their upstream is not inferred"
             else
                 fail "No Proxy interfaces found at all - Keenetic has no bridge into Mihomo (install.sh creates Proxy0 / first free ProxyN)"
             fi
@@ -1076,18 +1076,23 @@ else
             info "Foreign Proxy interface(s) present:$FOREIGN_PROXIES - not project-managed, reported only"
         fi
 
-        _pol_state=$(printf '%s\n' "$RC_DUMP" | awk -v px="${PROJECT_PROXY:-__none__}" '
-            /^ip policy / {pdesc=0; ppermit=0; pother=0; inblk=1; next}
+        # bypass_wa is a user-owned failover policy. Its health contract is
+        # intentionally weaker than the installer-owned ProxyN contract:
+        # the policy must exist and contain at least one permitted interface.
+        # Permit order and the selected interface(s) are user routing choices,
+        # so the doctor must not require the project ProxyN to be first,
+        # present, or exclusive.
+        _pol_state=$(printf '%s\n' "$RC_DUMP" | awk '
+            /^ip policy / {pdesc=0; ppermit=0; inblk=1; next}
             inblk && /^ *description bypass_wa *$/ {pdesc=1}
-            inblk && $0 ~ "^ *permit global " px " *$" {ppermit=1}
-            inblk && /^ *permit global [A-Za-z0-9_-]+ *$/ {pother=1}
-            /^!/ {if (inblk && pdesc) {if (ppermit) st="bound"; else if (pother) st="other"} inblk=0}
-            END {if (inblk && pdesc) {if (ppermit) st="bound"; else if (pother) st="other"}; print st""}
+            inblk && /^ *permit global [A-Za-z0-9_-]+ *$/ {ppermit=1}
+            /^!/ {if (inblk && pdesc) {if (ppermit) st="nonempty"; else st="empty"} inblk=0}
+            END {if (inblk && pdesc) {if (ppermit) st="nonempty"; else st="empty"}; print st""}
         ')
         case "$_pol_state" in
-            bound) ok "bypass_wa policy permits ${PROJECT_PROXY:-the project proxy}" ;;
-            other) warn "bypass_wa policy has other interface permits but not ${PROJECT_PROXY:-the project proxy} - VoIP bypass exits elsewhere" ;;
-            *)     warn "bypass_wa policy not found or has no interface permit - VoIP bypass has no exit route" ;;
+            nonempty) ok "bypass_wa policy exists and has permitted interface(s); permit order is user-defined" ;;
+            empty)    warn "bypass_wa policy exists but has no interface permit - failover policy has no exit route" ;;
+            *)        warn "bypass_wa policy not found - expected failover policy is absent" ;;
         esac
 
         if printf '%s\n' "$RC_DUMP" | grep -q "intercept enable"; then
