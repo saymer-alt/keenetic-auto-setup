@@ -11,7 +11,7 @@ grep -q 'Proxy client / Клиент прокси' "$ROOT/docs/COMPONENTS.md" ||
 grep -q '\*\*REQUIRED\*\*' "$ROOT/docs/COMPONENTS.md" || fail "component contract must mark required capabilities"
 pass "component contract records Proxy client prerequisite"
 
-PROFILE_CONTRACT=20260921_2
+PROFILE_CONTRACT=20260921_3
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||
         fail "$_f must carry resource-profile contract $PROFILE_CONTRACT"
@@ -35,11 +35,13 @@ grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB hard floor mu
 grep -q 'SWAP_MAX_KB=2097152' "$ROOT/install.sh" || fail "installer must cap external swap at 2 GiB"
 grep -Fq "*'\\040(deleted)'*" "$ROOT/install.sh" || fail "installer must recognize kernel '(deleted)' swap sources"
 grep -q "NOT counted toward verified external-SWAP capacity" "$ROOT/install.sh" || fail "installer must exclude deleted swap sources from capacity decisions"
-grep -q '3x detected RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must expose the <=512 MB swap sizing target"
+grep -q 'project minimum floor: .*1x detected RAM' "$ROOT/install.sh" || fail "installer must WARN only below the 1x RAM swap floor"
+grep -q 'below the preferred project sizing target but meets the minimum floor' "$ROOT/install.sh" || fail "installer must keep the 1x..3x swap range informational"
+grep -q '3x RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must retain the preferred 3x RAM sizing target"
 grep -q '256 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "256 MB missing backend must WARN"
 grep -q '512 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "512 MB missing backend must WARN"
 grep -q 'Stopping before package installation or project changes' "$ROOT/install.sh" || fail "oversized external swap must be an early installer error"
-pass "installer enforces resource contract 20260921_2"
+pass "installer enforces resource contract 20260921_3"
 
 sh "$ROOT/tests/resource-scan-regression.sh" "$ROOT" ||
     fail "resource scanner must remain non-fatal for ordinary states under set -e"
@@ -47,7 +49,7 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
-pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, and zRAM+disk warning"
+pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, zRAM+disk warning, and 1x/3x swap severity"
 
 grep -Fq -- '--allow-internal-disk' "$ROOT/install.sh" || fail "installer must expose the narrow internal-disk override"
 grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage' "$ROOT/install.sh" || fail "installer must hard-stop accidental disk mode on internal /opt"
@@ -67,13 +69,16 @@ grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" ||
 grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
 grep -q '256 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 256 MB missing backend"
 grep -q '512 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 512 MB missing backend"
-grep -q 'External SWAP is below project sizing target' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain project 3x sizing target"
-pass "doctor mirrors resource contract 20260921_2"
+grep -q 'External SWAP is below project minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN below the 1x RAM swap floor"
+grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must report the 1x..3x swap range as INFO"
+pass "doctor mirrors resource contract 20260921_3"
 
 grep -q 'UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB' "$ROOT/update-mihomo.sh" || fail "updater must surface oversized external swap"
 grep -q "UP_DELETED_COUNT" "$ROOT/update-mihomo.sh" || fail "updater must exclude deleted swap sources from capacity decisions"
 grep -q 'MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 256 MB missing backend"
 grep -q 'MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 512 MB missing backend"
+grep -q 'External SWAP is below project minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must WARN below the 1x RAM swap floor"
+grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must keep the 1x..3x swap range informational"
 grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "profile warnings must not become updater hard gates"
 pass "updater mirrors resource contract without blocking legacy service"
 
