@@ -533,10 +533,13 @@ command -v tar >/dev/null || error "tar is required but not installed (busybox a
 # -----------------------------
 # 2. Resource-profile advisory (read-only; never blocks legacy updates)
 # -----------------------------
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_2
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
 UP_SWAP128_MIN_KB=393216
+UP_RAM256_MAX_KB=450000
+UP_RAM512_MAX_KB=786432
+UP_SWAP_MAX_KB=2097152
 
 _up_classify_mount() {
   case "$2" in ubifs|squashfs) echo internal; return 0 ;; tmpfs|ramfs) echo ram; return 0 ;; esac
@@ -575,6 +578,11 @@ case "$TOTAL_MEM_KB" in ''|*[!0-9]*) TOTAL_MEM_KB="" ;; esac
 case "$SWAP_TOTAL_KB" in ''|*[!0-9]*) SWAP_TOTAL_KB="" ;; esac
 UP_OPT_CLASS=$(_up_storage_class /opt)
 _up_scan_swap
+UP_SWAP_TARGET_KB=0
+if [ -n "$TOTAL_MEM_KB" ]; then
+  UP_SWAP_TARGET_KB=$((TOTAL_MEM_KB * 3))
+  [ "$UP_SWAP_TARGET_KB" -gt "$UP_SWAP_MAX_KB" ] && UP_SWAP_TARGET_KB=$UP_SWAP_MAX_KB
+fi
 
 _profile_warn_banner() {
   warn "============================================================"
@@ -584,6 +592,9 @@ _profile_warn_banner() {
   warn "============================================================"
 }
 
+if [ "$UP_EXT_KB" -gt "$UP_SWAP_MAX_KB" ] 2>/dev/null; then
+  _profile_warn_banner "UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB" "Project/vendor cap is 2048 MB; active external storage-backed swap totals $((UP_EXT_KB/1024)) MB." "Updater remains non-blocking for this existing installation; reduce the SWAP partition/file separately."
+fi
 if [ "$UP_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$UP_EXT_KB" -gt 0 ] 2>/dev/null; then
   _profile_warn_banner "MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active" "Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM." "Detected: external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. The updater will not change either backend."
 fi
@@ -596,14 +607,20 @@ if [ -n "$TOTAL_MEM_KB" ]; then
     else
       warn "128 MB-class prerequisites are present, but this remains BEST-EFFORT/EXPERIMENTAL with NO STABILITY GUARANTEE."
     fi
-  elif [ "$TOTAL_MEM_KB" -lt 450000 ]; then
-    if [ "$UP_UNVER_KB" = "-1" ]; then
-      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class backend state cannot be verified" "The project requires one ACTIVE backend: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Cannot read $UP_SWAPS; updater continues only because this is an existing installation."
-    elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
-      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class without active zRAM or external swap" "The project requires one ACTIVE backend: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Detected: /opt=$UP_OPT_CLASS, external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. Configure one backend and verify with mihomo-doctor.sh."
+  elif [ "$TOTAL_MEM_KB" -lt "$UP_RAM256_MAX_KB" ]; then
+    if [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
+      _profile_warn_banner "MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external swap" "Project policy expects one ACTIVE backend on <=512 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking for this existing installation."
+    elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_SWAP_TARGET_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$UP_SWAP_TARGET_KB" ]; then
+      warn "External SWAP is below project sizing target: $((UP_EXT_KB/1024)) MB active vs about $((UP_SWAP_TARGET_KB/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)."
+    fi
+  elif [ "$TOTAL_MEM_KB" -lt "$UP_RAM512_MAX_KB" ]; then
+    if [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
+      _profile_warn_banner "MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap" "Project policy expects one ACTIVE backend on <=512 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking for this existing installation."
+    elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_SWAP_TARGET_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$UP_SWAP_TARGET_KB" ]; then
+      warn "External SWAP is below project sizing target: $((UP_EXT_KB/1024)) MB active vs about $((UP_SWAP_TARGET_KB/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)."
     fi
   else
-    log "512 MB+ memory class: swap/zRAM is optional; absence of both is not a project warning"
+    log "Above-512 MB memory class: swap/zRAM is optional"
   fi
 else
   warn "Cannot determine total RAM from /proc/meminfo; updater continues, but the project memory profile cannot be evaluated."

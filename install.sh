@@ -49,10 +49,17 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 #     /opt is on verified EXTERNAL persistent storage AND EXTERNAL
 #     storage-backed active swap is >= 384 MB. This is a project-specific
 #     experimental floor, not a vendor-stated minimum. zRAM never satisfies it.
-#   - 256 MB-class: at least ONE active memory-pressure backend is required:
-#     native KeeneticOS zRAM OR verified EXTERNAL storage-backed swap.
-#     /opt may be internal or external.
-#   - 512 MB+: no swap/zRAM backend is required; internal/external /opt allowed.
+#   - 256 MB-class: project expects at least ONE active memory-pressure backend:
+#     native KeeneticOS zRAM OR verified EXTERNAL storage-backed swap. Absence
+#     is a WARN (installation continues), not a hard gate.
+#   - 512 MB-class: same project expectation; no backend => WARN and continue.
+#   - Above the 512 MB class: swap/zRAM is optional.
+#   - If external swap is chosen on <=512 MB-class, project target size is
+#     3x detected RAM, capped at 2 GiB. Below target => WARN, not a hard gate.
+#     Current vendor docs say ~500 MB is enough for most tasks and that usually
+#     more than 3x RAM is unnecessary; therefore 3x is PROJECT POLICY, not a
+#     vendor minimum.
+#   - External storage-backed swap above 2 GiB is a hard install ERROR.
 #   - Vendor guidance says not to use zRAM together with a disk/file swap.
 #     If both are active, warn but never change either backend automatically.
 # See docs/06-s00ubifs.md for the vendor references behind this contract.
@@ -63,9 +70,13 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # with partitions mounted under /tmp/mnt/*. Unrecognized state fails
 # conservatively where the contract requires proof.
 # This script never creates, enables, formats or resizes swap or storage.
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_2
 RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
-SWAP128_MIN_KB=393216     # project-specific 384 MB external-swap floor for experimental 128 MB profile
+RAM256_MAX_KB=450000      # below this total RAM = 256 MB-class
+RAM512_MAX_KB=786432      # below this total RAM = 512 MB-class (real ~486 MB MemTotal fits here)
+SWAP128_MIN_KB=393216     # project-specific 384 MB hard floor for experimental 128 MB profile
+SWAP_MAX_KB=2097152       # 2 GiB project/vendor cap for external storage-backed swap
+SYS_CLASS_BLOCK="${INSTALL_SYS_CLASS_BLOCK:-/sys/class/block}"
 PROC_MOUNTS="${INSTALL_MOUNTS:-/proc/mounts}"
 PROC_SWAPS="${INSTALL_SWAPS:-/proc/swaps}"
 
@@ -109,8 +120,34 @@ opt_storage_class() {
 }
 
 # scan_swap_backends -> sets SW_ZRAM_KB / SW_EXT_KB / SW_UNVER_KB (-1 = /proc/swaps unreadable)
+swap_source_capacity_kb() {
+    _ssc_src="$1"
+    _ssc_type="$2"
+    _ssc_active_kb="$3"
+    _ssc_cap=""
+    case "$_ssc_type" in
+        partition)
+            _ssc_base=${_ssc_src##*/}
+            _ssc_sectors=$(cat "$SYS_CLASS_BLOCK/$_ssc_base/size" 2>/dev/null || true)
+            case "$_ssc_sectors" in
+                ''|*[!0-9]*) : ;;
+                *) _ssc_cap=$((_ssc_sectors / 2)) ;; # sysfs block size is reported in 512-byte sectors
+            esac
+            ;;
+        file)
+            if [ -f "$_ssc_src" ]; then
+                _ssc_bytes=$(wc -c < "$_ssc_src" 2>/dev/null || true)
+                case "$_ssc_bytes" in ''|*[!0-9]*) : ;; *) _ssc_cap=$((_ssc_bytes / 1024)) ;; esac
+            fi
+            ;;
+    esac
+    [ -n "$_ssc_cap" ] || _ssc_cap="$_ssc_active_kb"
+    printf '%s' "$_ssc_cap"
+}
+
 scan_swap_backends() {
     SW_ZRAM_KB=0; SW_EXT_KB=0; SW_UNVER_KB=0
+    SW_EXT_MAX_BACKEND_KB=0; SW_EXT_OVERSIZE=0
     [ -r "$PROC_SWAPS" ] || { SW_UNVER_KB=-1; return 0; }
     while read -r _sw_file _sw_type _sw_size _sw_rest; do
         case "$_sw_file" in ''|Filename) continue ;; esac
@@ -121,23 +158,42 @@ scan_swap_backends() {
         case "$_sw_type" in
             partition)
                 # Keenetic internal storage (UBIFS) has no block-device nodes
-                # and cannot host swap - sd*/nvme* partitions are USB/NVMe disks
+                # and cannot host swap - sd*/nvme* partitions are USB/NVMe disks.
                 case "$_sw_file" in
-                    /dev/sd*|/dev/nvme*) SW_EXT_KB=$((SW_EXT_KB + _sw_size)) ;;
+                    /dev/sd*|/dev/nvme*)
+                        SW_EXT_KB=$((SW_EXT_KB + _sw_size))
+                        _sw_cap=$(swap_source_capacity_kb "$_sw_file" "$_sw_type" "$_sw_size")
+                        [ "$_sw_cap" -gt "$SW_EXT_MAX_BACKEND_KB" ] 2>/dev/null && SW_EXT_MAX_BACKEND_KB=$_sw_cap
+                        [ "$_sw_cap" -gt "$SWAP_MAX_KB" ] 2>/dev/null && SW_EXT_OVERSIZE=1
+                        ;;
                     *) SW_UNVER_KB=$((SW_UNVER_KB + _sw_size)) ;;
                 esac ;;
             file)
                 case "$(opt_storage_class "$(dirname "$_sw_file")")" in
-                    external) SW_EXT_KB=$((SW_EXT_KB + _sw_size)) ;;
+                    external)
+                        SW_EXT_KB=$((SW_EXT_KB + _sw_size))
+                        _sw_cap=$(swap_source_capacity_kb "$_sw_file" "$_sw_type" "$_sw_size")
+                        [ "$_sw_cap" -gt "$SW_EXT_MAX_BACKEND_KB" ] 2>/dev/null && SW_EXT_MAX_BACKEND_KB=$_sw_cap
+                        [ "$_sw_cap" -gt "$SWAP_MAX_KB" ] 2>/dev/null && SW_EXT_OVERSIZE=1
+                        ;;
                     *) SW_UNVER_KB=$((SW_UNVER_KB + _sw_size)) ;;
                 esac ;;
             *) SW_UNVER_KB=$((SW_UNVER_KB + _sw_size)) ;;
         esac
     done < "$PROC_SWAPS"
+    [ "$SW_EXT_KB" -gt "$SWAP_MAX_KB" ] 2>/dev/null && SW_EXT_OVERSIZE=1
 }
 
 MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
 SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+SWAP_TARGET_KB=0
+case "$MEM_TOTAL_KB" in
+    ''|*[!0-9]*) : ;;
+    *)
+        SWAP_TARGET_KB=$((MEM_TOTAL_KB * 3))
+        [ "$SWAP_TARGET_KB" -gt "$SWAP_MAX_KB" ] && SWAP_TARGET_KB=$SWAP_MAX_KB
+        ;;
+esac
 OPT_CLASS=$(opt_storage_class /opt)
 scan_swap_backends
 case "$OPT_CLASS" in
@@ -153,6 +209,9 @@ case "$SW_UNVER_KB" in
     0)  : ;;
     *)  log "Swap entries that could not be classified: $((SW_UNVER_KB / 1024)) MB" ;;
 esac
+if [ "$SW_EXT_OVERSIZE" -eq 1 ]; then
+    err "External storage-backed SWAP exceeds the 2 GiB project/vendor cap (active total: $((SW_EXT_KB / 1024)) MB; largest detected backend: $((SW_EXT_MAX_BACKEND_KB / 1024)) MB). Reduce the SWAP partition/file to <= 2048 MB and re-run. Stopping before package installation or project changes."
+fi
 if [ "$SW_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$SW_EXT_KB" -gt 0 ] 2>/dev/null; then
     warn "zRAM and external storage-backed swap are active together. Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM. Installation continues without changing either backend."
 fi
@@ -186,30 +245,32 @@ case "$MEM_TOTAL_KB" in
             warn "is still NOT guaranteed to be stable."
             warn "Never run a second Mihomo process beside the daemon."
             warn "============================================================"
-        elif [ "$MEM_TOTAL_KB" -lt 450000 ]; then
+        elif [ "$MEM_TOTAL_KB" -lt "$RAM256_MAX_KB" ]; then
             if [ "$SW_UNVER_KB" = "-1" ]; then
-                err "256 MB-class device (${MEM_TOTAL_MB} MB): cannot read $PROC_SWAPS, so neither active KeeneticOS zRAM nor verified external storage-backed swap can be proven. Stopping before any download or change. Enable one supported backend and re-run install.sh."
-            fi
-            if [ "$SW_ZRAM_KB" -gt 0 ] && [ "$SW_EXT_KB" -gt 0 ]; then
-                log "256 MB-class has both zRAM and external storage-backed swap active; capacity prerequisite is met, but review the vendor-guidance warning above and keep only one backend."
+                warn "256 MB-class device (${MEM_TOTAL_MB} MB): cannot read $PROC_SWAPS, so zRAM/external-SWAP presence cannot be verified. Project policy expects one active backend on <=512 MB-class, but installation continues."
             elif [ "$SW_ZRAM_KB" -gt 0 ]; then
-                log "256 MB-class with active zRAM - supported profile"
+                log "256 MB-class with active zRAM - supported project profile"
             elif [ "$SW_EXT_KB" -gt 0 ]; then
-                log "256 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off - supported profile"
-            elif [ "$SW_UNVER_KB" -gt 0 ]; then
-                err "256 MB-class device (${MEM_TOTAL_MB} MB): active swap exists but cannot be verified as KeeneticOS zRAM or EXTERNAL storage-backed swap. Stopping before any download or change. Use one verifiable backend and re-run install.sh."
+                log "256 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off"
+                if [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
+                    warn "External SWAP is below the project sizing target: $((SW_EXT_KB / 1024)) MB active, target about $((SWAP_TARGET_KB / 1024)) MB (3x detected RAM, capped at 2048 MB). This target is project policy, not a vendor minimum."
+                fi
             else
-                err "256 MB-class device (${MEM_TOTAL_MB} MB) requires at least one ACTIVE memory-pressure backend: KeeneticOS zRAM OR EXTERNAL storage-backed swap. Neither is active. Stopping before any download or change. When disk/file swap is used, vendor guidance says zRAM should be disabled. This project never enables zRAM or swap itself."
+                warn "256 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
+            fi
+        elif [ "$MEM_TOTAL_KB" -lt "$RAM512_MAX_KB" ]; then
+            if [ "$SW_ZRAM_KB" -gt 0 ]; then
+                log "512 MB-class with active zRAM - supported project profile"
+            elif [ "$SW_EXT_KB" -gt 0 ]; then
+                log "512 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off"
+                if [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
+                    warn "External SWAP is below the project sizing target: $((SW_EXT_KB / 1024)) MB active, target about $((SWAP_TARGET_KB / 1024)) MB (3x detected RAM, capped at 2048 MB). This target is project policy, not a vendor minimum."
+                fi
+            else
+                warn "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
             fi
         else
-            case "$SWAP_TOTAL_KB" in
-                0)
-                    log "512 MB+ device (${MEM_TOTAL_MB} MB) has no active zRAM/swap - allowed; this memory class does not require a swap backend"
-                    ;;
-                ''|*[!0-9]*)
-                    log "512 MB+ device (${MEM_TOTAL_MB} MB): active swap state cannot be verified from /proc/meminfo - allowed; no swap backend is required for this class"
-                    ;;
-            esac
+            log "Above-512 MB memory class (${MEM_TOTAL_MB} MB): swap/zRAM is optional"
         fi
         ;;
 esac

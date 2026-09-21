@@ -91,11 +91,17 @@ hdr()  { printf '\n===== %s =====\n\n' "$1"; }
 finding_action() {
     _fa_msg=$1
     case "$_fa_msg" in
+        *"External storage-backed SWAP exceeds 2 GiB"*)
+            printf '%s' "Reduce the external SWAP partition/file to 2048 MB or less, then run Doctor again."
+            ;;
+        *"External SWAP is below project sizing target"*)
+            printf '%s' "If using disk SWAP as the chosen backend, consider sizing it near the project target (3x detected RAM, never above 2048 MB). This is project policy, not a vendor minimum."
+            ;;
         *"zRAM and external storage-backed swap are active together"*)
             printf '%s' "Keep one swap backend: if using disk/file swap, disable zRAM per vendor guidance; otherwise remove/disable the disk swap and keep zRAM."
             ;;
-        *"256 MB-class"*zRAM*|*"256 MB-class"*swap*|*"256 MB-class"*backend*)
-            printf '%s' "Enable one supported backend: KeeneticOS zRAM OR external storage-backed swap. When disk/file swap is used, disable zRAM; then run Doctor again."
+        *"256 MB-class"*zRAM*|*"256 MB-class"*swap*|*"256 MB-class"*backend*|*"512 MB-class"*zRAM*|*"512 MB-class"*swap*|*"512 MB-class"*backend*)
+            printf '%s' "Enable one backend for the project profile: KeeneticOS zRAM OR external storage-backed SWAP. When disk/file SWAP is used, disable zRAM; then run Doctor again."
             ;;
         *"Low-RAM prerequisite NOT met"*"/opt"*|*"128 MB-class"*"/opt"*)
             printf '%s' "Move Entware /opt to external persistent storage; 128 MB-class devices also require at least 384 MB external storage-backed active swap (project-specific experimental floor)."
@@ -631,7 +637,11 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
 MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_2
+DOC_RAM256_MAX_KB=450000
+DOC_RAM512_MAX_KB=786432
+DOC_SWAP_MAX_KB=2097152
+DOC_SYS_CLASS_BLOCK="${DOCTOR_SYS_CLASS_BLOCK:-/sys/class/block}"
 
 # Storage/swap classification - read-only mirror of the installer preflight.
 # Keenetic conventions: internal storage is UBIFS (ubi*/mtd*, no block-device
@@ -675,8 +685,28 @@ _doc_opt_class() {
     done < "$MOUNTS_SRC"
     echo "$_doc_oc_cls"
 }
+_doc_swap_source_capacity_kb() {
+    _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
+    case "$_dsc_type" in
+        partition)
+            _dsc_base=${_dsc_src##*/}
+            _dsc_sectors=$(cat "$DOC_SYS_CLASS_BLOCK/$_dsc_base/size" 2>/dev/null || true)
+            case "$_dsc_sectors" in ''|*[!0-9]*) : ;; *) _dsc_cap=$((_dsc_sectors / 2)) ;; esac
+            ;;
+        file)
+            if [ -f "$_dsc_src" ]; then
+                _dsc_bytes=$(wc -c < "$_dsc_src" 2>/dev/null || true)
+                case "$_dsc_bytes" in ''|*[!0-9]*) : ;; *) _dsc_cap=$((_dsc_bytes / 1024)) ;; esac
+            fi
+            ;;
+    esac
+    [ -n "$_dsc_cap" ] || _dsc_cap="$_dsc_active"
+    printf '%s' "$_dsc_cap"
+}
+
 _doc_scan_swap() {
     _doc_zram_kb=0; _doc_ext_kb=0; _doc_unver_kb=0
+    _doc_ext_max_backend_kb=0; _doc_ext_oversize=0
     [ -r "$SWAPS_SRC" ] || { _doc_unver_kb=-1; return 0; }
     while read -r _doc_sw_file _doc_sw_type _doc_sw_size _doc_sw_rest; do
         case "$_doc_sw_file" in ''|Filename) continue ;; esac
@@ -687,17 +717,28 @@ _doc_scan_swap() {
         case "$_doc_sw_type" in
             partition)
                 case "$_doc_sw_file" in
-                    /dev/sd*|/dev/nvme*) _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size)) ;;
+                    /dev/sd*|/dev/nvme*)
+                        _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size))
+                        _doc_cap=$(_doc_swap_source_capacity_kb "$_doc_sw_file" "$_doc_sw_type" "$_doc_sw_size")
+                        [ "$_doc_cap" -gt "$_doc_ext_max_backend_kb" ] 2>/dev/null && _doc_ext_max_backend_kb=$_doc_cap
+                        [ "$_doc_cap" -gt "$DOC_SWAP_MAX_KB" ] 2>/dev/null && _doc_ext_oversize=1
+                        ;;
                     *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
                 esac ;;
             file)
                 case "$(_doc_opt_class "$(dirname "$_doc_sw_file")")" in
-                    external) _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size)) ;;
+                    external)
+                        _doc_ext_kb=$((_doc_ext_kb + _doc_sw_size))
+                        _doc_cap=$(_doc_swap_source_capacity_kb "$_doc_sw_file" "$_doc_sw_type" "$_doc_sw_size")
+                        [ "$_doc_cap" -gt "$_doc_ext_max_backend_kb" ] 2>/dev/null && _doc_ext_max_backend_kb=$_doc_cap
+                        [ "$_doc_cap" -gt "$DOC_SWAP_MAX_KB" ] 2>/dev/null && _doc_ext_oversize=1
+                        ;;
                     *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
                 esac ;;
             *) _doc_unver_kb=$((_doc_unver_kb + _doc_sw_size)) ;;
         esac
     done < "$SWAPS_SRC"
+    [ "$_doc_ext_kb" -gt "$DOC_SWAP_MAX_KB" ] 2>/dev/null && _doc_ext_oversize=1
 }
 
 _doc_opt=$(_doc_opt_class)
@@ -709,6 +750,14 @@ case "$_doc_opt" in
 esac
 
 _doc_scan_swap
+_doc_swap_target_kb=0
+if is_num "$MEM_TOTAL"; then
+    _doc_swap_target_kb=$((MEM_TOTAL * 3))
+    [ "$_doc_swap_target_kb" -gt "$DOC_SWAP_MAX_KB" ] && _doc_swap_target_kb=$DOC_SWAP_MAX_KB
+fi
+if [ "$_doc_ext_oversize" -eq 1 ]; then
+    fail "External storage-backed SWAP exceeds 2 GiB (active total: $((_doc_ext_kb/1024)) MB; largest detected backend: $((_doc_ext_max_backend_kb/1024)) MB) - project/vendor cap is 2048 MB"
+fi
 if [ "$_doc_zram_kb" -gt 0 ] 2>/dev/null && [ "$_doc_ext_kb" -gt 0 ] 2>/dev/null; then
     warn "zRAM and external storage-backed swap are active together - vendor guidance says not to use both; when disk/file swap is used, disable zRAM"
 fi
@@ -722,28 +771,30 @@ if is_num "$MEM_TOTAL"; then
         else
             fail "Low-RAM prerequisite NOT met ($((MEM_TOTAL/1024)) MB, only $((_doc_ext_kb/1024)) MB external storage-backed active swap on external /opt; zRAM $((_doc_zram_kb/1024)) MB does not count): >= 384 MB active swap on external storage is required, 512 MB preferred; best-effort/experimental regardless (docs/06)"
         fi
-    elif [ "$MEM_TOTAL" -lt 450000 ]; then
-        if [ "$_doc_unver_kb" = "-1" ]; then
-            fail "256 MB-class: cannot read $SWAPS_SRC, so neither active KeeneticOS zRAM nor verified external storage-backed swap can be proven"
-        elif [ "$_doc_zram_kb" -gt 0 ] && [ "$_doc_ext_kb" -gt 0 ]; then
-            ok "256 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB) plus external storage-backed swap ($((_doc_ext_kb/1024)) MB) - capacity prerequisite is met; review the coexistence warning above"
-        elif [ "$_doc_zram_kb" -gt 0 ]; then
-            ok "256 MB-class with active zRAM ($((_doc_zram_kb/1024)) MB) - supported memory profile"
+    elif [ "$MEM_TOTAL" -lt "$DOC_RAM256_MAX_KB" ]; then
+        if [ "$_doc_zram_kb" -gt 0 ]; then
+            ok "256 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB)"
         elif [ "$_doc_ext_kb" -gt 0 ]; then
-            ok "256 MB-class with external storage-backed swap ($((_doc_ext_kb/1024)) MB) and zRAM off - supported memory profile"
-        elif [ "$_doc_unver_kb" -gt 0 ]; then
-            fail "256 MB-class: active swap exists but cannot be verified as KeeneticOS zRAM or external storage-backed swap - project memory profile cannot be proven"
-        else
-            fail "256 MB-class requires one active memory-pressure backend: KeeneticOS zRAM OR external storage-backed swap; neither is active"
-        fi
-    else
-        if is_num "$SWAP_TOTAL"; then
-            if [ "$SWAP_TOTAL" -eq 0 ]; then
-                info "512 MB+ device has no active zRAM/swap - allowed; this memory class does not require a swap backend"
+            ok "256 MB-class has external storage-backed swap ($((_doc_ext_kb/1024)) MB) with zRAM off"
+            if [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
+                warn "External SWAP is below project sizing target: $((_doc_ext_kb/1024)) MB active vs about $((_doc_swap_target_kb/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)"
             fi
         else
-            info "512 MB+ device: active swap state cannot be verified - allowed; no swap backend is required for this memory class"
+            warn "256 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
         fi
+    elif [ "$MEM_TOTAL" -lt "$DOC_RAM512_MAX_KB" ]; then
+        if [ "$_doc_zram_kb" -gt 0 ]; then
+            ok "512 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB)"
+        elif [ "$_doc_ext_kb" -gt 0 ]; then
+            ok "512 MB-class has external storage-backed swap ($((_doc_ext_kb/1024)) MB) with zRAM off"
+            if [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
+                warn "External SWAP is below project sizing target: $((_doc_ext_kb/1024)) MB active vs about $((_doc_swap_target_kb/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)"
+            fi
+        else
+            warn "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
+        fi
+    else
+        info "Above-512 MB memory class: swap/zRAM is optional"
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
         warn "Very low available memory ($((MEM_AVAIL/1024)) MB) - Mihomo (UPX-packed, unpacks in RAM) and updates need headroom"
