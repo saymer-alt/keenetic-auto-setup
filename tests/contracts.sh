@@ -103,7 +103,7 @@ pass "MagiTrickle installation output is owned by install.sh"
 
 grep -q '^PROXY_COMPONENT_ID=proxy$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id proxy for Proxy client"
 grep -q 'Checking required KeeneticOS component: Proxy client' "$ROOT/install.sh" || fail "installer must check Proxy client in read-only preflight"
-grep -q 'Stopping before opkg update, package installation, or router configuration changes' "$ROOT/install.sh" || fail "missing Proxy client must stop before installer mutations"
+grep -q 'No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation' "$ROOT/install.sh" || fail "missing Proxy client must explain that project changes did not start"
 _proxy_preflight_line=$(grep -n '^require_proxy_client_component$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_update_line=$(grep -n '^log "Updating opkg\.\.\."$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 [ -n "$_proxy_preflight_line" ] && [ -n "$_opkg_update_line" ] && [ "$_proxy_preflight_line" -lt "$_opkg_update_line" ] ||

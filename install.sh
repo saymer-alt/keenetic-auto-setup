@@ -300,7 +300,7 @@ proxy_client_preflight_error() {
     echo "[ERROR] Required KeeneticOS component: «Клиент прокси» (Proxy client; component id: ${PROXY_COMPONENT_ID})." >&2
     echo "[ERROR] The project requires ProxyN -> Mihomo (SOCKS5 upstream 127.0.0.1:7890); without this component KeeneticOS cannot provide the required Proxy* interface capability." >&2
     echo "[ERROR] Enable it manually: KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов -> Proxy client / Клиент прокси." >&2
-    echo "[ERROR] The installer does not install KeeneticOS components. Stopping before opkg update, package installation, or router configuration changes." >&2
+    echo "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation." >&2
     exit 1
 }
 
