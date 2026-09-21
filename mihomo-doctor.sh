@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.0 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.1 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -56,6 +56,7 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
+MIHOMO_STAGE_MARGIN_KB=4096 # same updater staging safety margin as install.sh/update-mihomo.sh
 
 N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
 WARN_MESSAGES=""
@@ -117,8 +118,8 @@ finding_action() {
         *"Very low available memory"*)
             printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
             ;;
-        *"Low free space on "*)
-            printf '%s' "Free space on the reported filesystem before installs/updates; 32 MB is the Doctor warning threshold and some operations may need more."
+        *"Mihomo update staging headroom is insufficient on "*)
+            printf '%s' "Free space on the reported /opt filesystem before updating Mihomo. Doctor uses the current binary size plus the same 4 MB staging margin as update-mihomo.sh; the updater re-checks the actual candidate before modifying anything."
             ;;
         *"Entware root "*|*"opkg not found"*)
             printf '%s' "Install or repair Entware first, then run Doctor again."
@@ -843,16 +844,19 @@ if is_num "$SWAP_TOTAL" && [ "$SWAP_TOTAL" -gt 0 ] && [ -r "$SWAPS_SRC" ]; then
 fi
 
 for _mount in "$OPT_ROOT" /tmp; do
-    _kb=$(df -k "$_mount" 2>/dev/null | awk 'NR==2 {print $4}')
-    case "$_kb" in
-        ''|*[!0-9]*)
+    _df_line=$(df -k "$_mount" 2>/dev/null | awk 'NR==2 {print $2 " " $4}')
+    _fs_total_kb=${_df_line%% *}
+    _fs_avail_kb=${_df_line#* }
+    case "$_fs_total_kb:$_fs_avail_kb" in
+        *[!0-9:]*|:)
             info "Free space on $_mount: cannot determine"
             ;;
         *)
-            if [ "$_kb" -lt 32768 ]; then
-                warn "Low free space on $_mount: $((_kb/1024)) MB - below the 32 MB diagnostic threshold; some install/update operations may require more"
+            if [ "$_fs_total_kb" -gt 0 ]; then
+                _fs_free_pct=$((_fs_avail_kb * 100 / _fs_total_kb))
+                info "Free space on $_mount: $((_fs_avail_kb/1024)) MB of $((_fs_total_kb/1024)) MB (${_fs_free_pct}% free)"
             else
-                ok "Free space on $_mount: $((_kb/1024)) MB"
+                info "Free space on $_mount: $((_fs_avail_kb/1024)) MB"
             fi
             ;;
     esac
@@ -955,7 +959,23 @@ if [ -n "$BIN" ]; then
 
     BIN_SIZE=$(wc -c < "$BIN" 2>/dev/null)
     if is_num "$BIN_SIZE"; then
-        info "Binary: $BIN ($((BIN_SIZE/1024)) KB)"
+        BIN_SIZE_KB=$(( (BIN_SIZE + 1023) / 1024 ))
+        info "Binary: $BIN (${BIN_SIZE_KB} KB)"
+
+        _stage_avail_kb=$(df -k "$OPT_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')
+        case "$_stage_avail_kb" in
+            ''|*[!0-9]*)
+                info "Mihomo update staging headroom on $OPT_ROOT: cannot determine free space"
+                ;;
+            *)
+                _stage_need_kb=$((BIN_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))
+                if [ "$_stage_avail_kb" -lt "$_stage_need_kb" ]; then
+                    warn "Mihomo update staging headroom is insufficient on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available, current-binary estimate needs ~$((_stage_need_kb/1024)) MB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+                else
+                    ok "Mihomo update staging headroom on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available; current-binary estimate needs ~$((_stage_need_kb/1024)) MB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+                fi
+                ;;
+        esac
     fi
 
     EXTRA_BINS=$(find "$OPT_ROOT" -name mihomo -type f 2>/dev/null | grep -v "^$BIN\$" | head -n 4)
