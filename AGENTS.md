@@ -22,7 +22,7 @@ The product is the root-level scripts (there are no libraries):
 |---------------------------|------|
 | install.sh                | unified installer (architecture auto-detection: aarch64/armv7/mipsel/mips, including MT7621 — live test passed; modes `ram`\|`disk`, ram = tmpfs) |
 | update-mihomo.sh          | updates the Mihomo binary from the entware-go package for all architectures: config test, automatic rollback, one-instance |
-| update-watchdog.sh        | updates the watchdog copy in /opt/bin (sanity + sh -n + backup + mv) |
+| update-watchdog.sh        | updates/migrates the canonical watchdog using validation + same-filesystem staging + atomic rename |
 | mihomo-watchdog.sh        | cron every 5 min: WAN → port 7890 → socks5h tunnel → restart |
 | 020-bypass-wa.sh          | netfilter.d hook: mark VoIP UDP 1400/3478/3482 → policy bypass_wa |
 | S00ubifs                  | tmpfs on /opt/tmp, /opt/var/log, /opt/var/run (profiles by RAM) |
@@ -52,8 +52,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 
 ## 3. Target platforms
 
-- KeeneticOS + Entware (/opt). According to CHANGELOG, verified on KN-1810, KN-3811, KN-1913;
-  updater — on ARM64 (note in the script).
+- KeeneticOS + Entware (/opt). Live project acceptance includes MT7621/mipsel (KN-1010) and aarch64 (KN-1012), in addition to earlier field use on other Keenetic models; hardware tests complement, not replace, CI.
 - Architectures: aarch64, armv7, mipsel, mips — one install.sh for all, including
   MT7621 (live test passed); there is no separate installer anymore.
   ipk suffixes:
@@ -167,10 +166,7 @@ Default working rules:
 
 ## 8. Documentation
 
-- README.md (RU+EN) is the project entry point: the Russian version is primary and first,
-  with the full English version below; it contains a conceptual introduction, architecture,
-  use cases, ecosystem (link-generators), and Quick Start; do not duplicate details in README,
-  put them in HOWTO/docs instead.
+- README.md is the concise Russian project entry point; `docs/EN/README.md` is its synchronized English counterpart. Keep both task-oriented and move detailed behavior to HOWTO/docs instead of duplicating long explanations in the entry pages.
 - docs/HOWTO.md and docs/HOWTO_RU.md are the complete step-by-step guide (preparation,
   installation, modes, configuration, MagiTrickle, watchdog, update, rollback,
   diagnostics, MT7621, common problems). Keep README and HOWTO aligned with each other
@@ -178,8 +174,7 @@ Default working rules:
 - ARCHITECTURE.md is the main architecture document (RU): three traffic paths, roles of
   Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS architecture,
   guarantee boundaries. README links to it as the primary architecture reading.
-- docs/00–10 are detailed guides;
-  CHANGELOG.md contains changes (tags v1.0.0–v1.2.0).
+- numbered docs are focused guides; `docs/12-updates.md` and `docs/EN/UPDATES.md` are the user-facing maintenance guides. `CHANGELOG.md` records release history and the current release candidate.
 - If documentation and code disagree, the code is the source of truth. Known case:
   docs/04-watchdog.md describes an older watchdog version (pidof check, one WAN URL,
   ~100-line rotation), while the current script uses two-stage WAN + port + socks5h
