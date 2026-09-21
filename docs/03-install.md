@@ -11,7 +11,7 @@
 ## Перед запуском
 
 Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и компонент
-KeeneticOS **«Клиент прокси» (Proxy client)**. Resource-profile: 128 МБ — только best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ (512 предпочтительно; zRAM в минимум не входит); 256 МБ — активный штатный zRAM обязателен независимо от места /opt; 512 МБ+ — установка разрешена, но без любого активного zRAM/swap выдаётся явный WARN и гарантий устойчивости при memory pressure нет. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей: [COMPONENTS.md](COMPONENTS.md).
+KeeneticOS **«Клиент прокси» (Proxy client)**. Resource-profile: 128 МБ — только best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ (project-specific floor; zRAM в минимум не входит); 256 МБ — один активный backend: штатный zRAM **или** внешний storage-backed swap; 512 МБ+ — swap/zRAM не обязательны. Одновременный zRAM + дисковый swap получает WARN по рекомендации производителя. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей: [COMPONENTS.md](COMPONENTS.md).
 
 ### Если raw.githubusercontent.com недоступен с роутера
 
@@ -34,7 +34,7 @@ sh /tmp/install.sh disk
 ## Общий процесс
 
 ```id="flow1"
-1. Resource-profile preflight (read-only; 128/256 hard prerequisites, 512+ WARN without any active zRAM/swap)
+1. Resource-profile preflight (read-only; 128/256 hard prerequisites, 256 accepts zRAM or external swap, 512+ does not require swap)
 2. Подготовка (opkg, пакеты)
 3. bypass_wa policy (создание)
 4. Перехват транзитного DNS
