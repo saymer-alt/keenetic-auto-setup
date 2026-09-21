@@ -95,6 +95,7 @@ REPLACEMENT_STARTED=0
 TMP_NEW=""
 WORK_DIR=""
 STAGE_BIN=""
+MIHOMO_STAGE_MARGIN_KB=4096
 RECOVERY_FAILED=0
 MAINT_MARKER="/tmp/mihomo.maintenance"
 
@@ -917,7 +918,7 @@ chmod +x "$TMP_NEW"
 # -----------------------------
 NEW_SIZE_BYTES=$(wc -c < "$TMP_NEW")
 NEW_SIZE_KB=$(( (NEW_SIZE_BYTES + 1023) / 1024 ))
-NEED_KB=$((NEW_SIZE_KB + 4096))  # documented safety margin
+NEED_KB=$((NEW_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))  # documented safety margin
 
 get_avail_kb() {
   df -k "$MIHOMO_DIR" | awk 'NR==2 {print $4}'
