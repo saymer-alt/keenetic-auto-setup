@@ -35,6 +35,7 @@ _No changes yet._
 - `install.sh`: last-resort Mihomo install fallback — `opkg install mihomo` from the configured Entware feed. Used only after the whole GitHub path (asset lookup → download → package install) has failed before a successful install; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
 
 ### Changed
+- Documentation cleanup before v1.4.0: Russian and English entry points are synchronized, stale claims that CI does not exist were corrected, and `03-install.md` is now the user installation guide while `07-install.md` is explicitly installer internals instead of a duplicate quick-start.
 - Documentation now includes the explicit supported MagiTrickle maintenance path (`opkg update && opkg install magitrickle` followed by service restart). Re-running `install.sh` remains idempotent and does not silently upgrade an already installed MagiTrickle package.
 - README streamlined as a user-facing entry point: the Russian prerequisites link now opens a Russian component contract, the generator link opens the live GitHub Pages app, update operations have a dedicated guide, the internal testing strategy was removed from the public script index, and repeated documentation links were reduced.
 
