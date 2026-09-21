@@ -191,8 +191,9 @@ scan_swap_backends() {
     return 0
 }
 
-MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
-SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
+MEMINFO="${INSTALL_MEMINFO:-/proc/meminfo}"
+MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' "$MEMINFO" 2>/dev/null || true)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' "$MEMINFO" 2>/dev/null || true)
 SWAP_TARGET_KB=0
 case "$MEM_TOTAL_KB" in
     ''|*[!0-9]*) : ;;
