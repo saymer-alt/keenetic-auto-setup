@@ -114,11 +114,13 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 cat /opt/var/log/mihomo_watchdog.log
 ```
 
-Должно быть:
+Должно быть примерно так:
 
 ```id="ok2"
-[OK] All good
+[OK] All good | WAN=primary (...)
 ```
+
+При работе через whitelist-fallback будет `WAN=whitelist (...)`.
 
 ---
 

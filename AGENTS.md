@@ -189,7 +189,7 @@ the owner edits main directly, with commit messages like "Update X"):
 
 The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer real installation states and cross-component contracts, then extend the existing permanent regression harness with the smallest scenario that preserves a real failure. Heavy adversarial matrices are reserved for high-consequence invariants such as atomic replacement/rollback, locking, one-Mihomo discipline, service-state restoration, and watchdog recovery. Do not build a full KeeneticOS emulator for a narrow task.
 
-There is no repository CI or linter that makes a change automatically safe — do not invent results.
+Repository CI now provides shell syntax, contract smoke-test and whitespace checks, but it does not make a change automatically safe — do not invent results.
 The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
 What is always available:
 - `sh -n <script>` for every changed .sh (mandatory);
