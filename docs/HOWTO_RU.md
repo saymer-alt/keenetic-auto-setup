@@ -319,7 +319,7 @@ date                       # сбитое время → позже упадут
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
 **MT7621 / mipsel-устройства** используют тот же универсальный установщик — та же команда выше; отдельного установщика больше нет.
@@ -628,7 +628,7 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 ## 8. Обновление Mihomo
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 # или локально на роутере:
 sh update-mihomo.sh [--force]
 ```
@@ -659,9 +659,9 @@ sh update-mihomo.sh [--force]
 Для конфигураций с TUN (`mitun0`) отдельный скрипт переписывает `stack: gvisor` → `stack: mips` (Mihomo IP Stack, поддерживается с mihomo 1.19.31):
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh
 # только диагностика, без изменений:
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh -s -- --check
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh -s -- --check
 ```
 
 Свойства: гейт поддержки через `mihomo -t` (не по версии из шапки); меняются только значения `stack:` — остальной конфиг сохраняется байт-в-байт; короткий контролируемый простой (stop+подтверждение перед любым запуском бинарника); исходное состояние сервиса сохраняется (остановленный вами остаётся остановленным); backup `config.yaml.pre-mips` сохраняется после успеха и не перезаписывается; откат автоматический при провале валидации/старта/порта; идемпотентно — повторный запуск безопасный no-op; WireGuard `ip-stack` не затрагивается. Без TUN в конфиге — безопасный no-op.
@@ -671,7 +671,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 ## 9. Обновление watchdog
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 Updater скачивает и проверяет новый watchdog, затем атомарно обновляет канонический бинарник `/opt/bin/mihomo_watchdog.sh`. `/opt/etc/cron.5mins/mihomo_watchdog` в актуальной схеме — тонкая cron-обёртка, которая вызывает канонический файл. Известный старый managed layout (полный watchdog прямо в `cron.5mins`) `update-watchdog.sh` распознаёт по точному содержимому, сохраняет ограниченную legacy-копию и мигрирует в эту каноническую схему. Неизвестный/изменённый пользователем файл он не удаляет молча.
@@ -860,6 +860,6 @@ MT7621/mipsel-устройства используют тот же универ
 - **Логи в RAM пропадают при reboot** — плата за защиту флешки.
 - **IPv6 выключен намеренно** в базовой конфигурации — ради предсказуемости, а не по недосмотру. Включение — продвинутое изменение со своей проверкой (см. Типовые проблемы).
 - **Docker в этом стеке не используется.** Mihomo на Keenetic управляется init-скриптом (`/opt/etc/init.d/S99mihomo`) — watchdog и updater используют тот же механизм. Команды вида `docker restart mihomo` относятся к другим средам.
-- Production-доставка пока всё ещё смотрит на `main`, поэтому коммит в `main` меняет то, что выполнит следующий `curl | sh`. CI уже есть и обязателен как дешёвый gate; отдельная production-ветка `stable` вводится перед v1.4.0.
+- Production-доставка использует ветку `stable`; `main` остаётся веткой разработки. Изменения идут через CI и осознанное продвижение `main → stable`, после чего тег релиза ставится на точный production commit.
 
 Больше границ и рассуждения за ними: [docs/09-limitations.md](09-limitations.md).
