@@ -73,7 +73,7 @@ pass "doctor performs lightweight read-only Mihomo proxy-selection sanity"
 grep -q '=== What needs attention ===' "$ROOT/mihomo-doctor.sh" || fail "doctor must provide a human-readable findings block"
 grep -q 'Next: %s' "$ROOT/mihomo-doctor.sh" || fail "doctor findings block must include actionable next steps"
 grep -q 'No FAIL/WARN findings. No action is required' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain a clean result"
-grep -q 'Enable one supported backend: KeeneticOS zRAM OR external storage-backed swap' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the corrected 256 MB backend choice"
+grep -q 'Enable one backend for the project profile: KeeneticOS zRAM OR external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the <=512 MB backend choice"
 grep -q 'Run update-watchdog.sh, then run Doctor again' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain watchdog repair findings"
 pass "doctor summarizes WARN/FAIL findings with human-readable next steps"
 
