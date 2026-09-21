@@ -56,7 +56,8 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
-MIHOMO_STAGE_MARGIN_KB=4096 # same updater staging safety margin as install.sh/update-mihomo.sh
+# Same updater staging safety margin as install.sh/update-mihomo.sh.
+MIHOMO_STAGE_MARGIN_KB=4096
 
 N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
 WARN_MESSAGES=""
