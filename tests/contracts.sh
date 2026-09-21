@@ -202,14 +202,14 @@ pass "repeat install does not replace live Mihomo and all installer probes share
 grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
 grep -Fq 'if mkdir "$LOCK_DIR" 2>/dev/null; then' "$ROOT/update-mihomo.sh" || fail "updater lock acquisition must remain mkdir-based"
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate planned downtime with watchdog"
-grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.$"' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
-grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.$"' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
+grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
+grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
 grep -Fq 'cp -f "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must copy the current binary to rollback backup before commit"
 grep -Fq 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater commit must remain a same-filesystem atomic rename"
 grep -Fq 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must retain rollback restoration"
 ! grep -Fq 'rm -f "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must never delete the canonical binary before atomic commit"
-_stage_line=$(grep -n 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.$"' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
-_backup_line=$(grep -n 'TMP_BACKUP="$TMP_DIR/mihomo.backup.$"' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
+_stage_line=$(grep -n 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
+_backup_line=$(grep -n 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
 _commit_line=$(grep -n 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
 [ -n "$_stage_line" ] && [ -n "$_backup_line" ] && [ -n "$_commit_line" ] || fail "updater transaction line ordering could not be determined"
 [ "$_stage_line" -lt "$_backup_line" ] && [ "$_backup_line" -lt "$_commit_line" ] || fail "updater must stage, then back up, then atomically commit"
