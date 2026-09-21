@@ -332,18 +332,20 @@ In order:
 2. Creates the `bypass_wa` routing policy (only if it doesn't exist).
 3. Enables Keenetic **DNS transit interception** (`dns-proxy intercept enable`, then `system configuration save` — applied only if not already on): classic port-53 queries from LAN clients addressed straight to external resolvers are redirected into the router's DNS proxy, where MagiTrickle sees them (details in [section 6.1](#6-magitrickle)). This is part of the automatic installation — no manual post-install DNS step. Classic DNS only; DoH/DoT are not affected.
 4. **RAM mode only:** downloads `S00ubifs` to `/opt/etc/init.d/` and starts it (tmpfs for `/opt/tmp`, `/opt/var/log`, `/opt/var/run`).
-5. Detects the architecture and downloads the matching **mihomo `.ipk`** from the latest release of [`saymer-alt/entware-go`](https://github.com/saymer-alt/entware-go) (GitHub API with three fallbacks: jq → grep on JSON → repeated request → HTML scraping). As a last resort only — after the whole GitHub path has failed before a successful install (asset not found, download failed, or the package did not install) — it falls back to `opkg install mihomo` from the configured Entware feed; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
-6. **Creates the project Proxy interface (ProxyN)** — the bridge Keenetic → Mihomo — pointing at `127.0.0.1:7890` (SOCKS5, UDP enabled), human-readable name `mihomo t2sN`, and saves the config. On a clean/free router this is `Proxy0` (`mihomo t2s0`); if `Proxy0` is occupied by a foreign configuration, it is left untouched and the first free `ProxyN` is created instead.
-7. Installs **MagiTrickle** (adds its package repo, installs, starts).
-8. Installs the VoIP bypass hook `020-bypass_wa.sh` into `/opt/etc/ndm/netfilter.d/`.
-9. Installs the **watchdog** into `/opt/etc/cron.5mins/` and wires it into cron (a run-parts `cron.5mins` entry is reused if present; otherwise a direct crontab line is added).
-10. Restarts `S99mihomo` and checks that port `7890` is listening.
+5. Checks for an already installed canonical Mihomo executable (`/opt/sbin/mihomo`, then `/opt/bin/mihomo`). If one exists, package download/install is skipped: re-running `install.sh` is **not** an implicit Mihomo update. Existing binaries are updated only through `update-mihomo.sh`. If no executable is present, the installer detects the architecture and downloads the matching **mihomo `.ipk`** from the latest [`saymer-alt/entware-go`](https://github.com/saymer-alt/entware-go) release, with API/JSON/HTML fallbacks and the configured Entware feed as the last-resort initial-install source. The informational `mihomo -v` probe runs only when no daemon is confirmed running.
+6. **Bootstrap `config.yaml`**: if no config exists, writes the minimal project bootstrap with `mixed-port: 7890`; if the file is still the untouched package placeholder, replaces that placeholder. An existing user config is never modified.
+7. **Selects/creates the project Proxy interface (ProxyN)** using both project markers: description `mihomo t2sN` and upstream `127.0.0.1:7890`. A free `Proxy0` is used first; a foreign `Proxy0` is left untouched and the first free `ProxyN` is created.
+8. **Binds `bypass_wa`** to the selected project Proxy with `permit global <ProxyN>` when missing. Existing user permits are preserved and not reordered.
+9. Installs **MagiTrickle** (adds its package repo, installs, starts).
+10. Installs the VoIP bypass hook `020-bypass_wa.sh` into `/opt/etc/ndm/netfilter.d/`.
+11. Installs the **watchdog** into `/opt/etc/cron.5mins/` and wires it into cron (a run-parts `cron.5mins` entry is reused if present; otherwise a direct crontab line is added).
+12. Restarts `S99mihomo` and runs the installation self-check.
 
 ### 3.3 Is it safe to re-run?
 
 The installer is written to be idempotent: every modifying step first checks whether the object already exists (packages, policy, the project ProxyN, crontab entry). Re-running it will not duplicate things.
 
-One caveat: the mihomo `.ipk` is downloaded on every run — `opkg` will simply skip it if the same version is already installed.
+One caveat: once an executable Mihomo is already installed, re-running `install.sh` deliberately leaves that binary untouched. Installation ensures presence; replacing an existing Mihomo belongs to the transactional `update-mihomo.sh` path.
 
 Another caveat: **a foreign Proxy0 is never rewritten**. The installer recognizes a project-managed proxy only when both markers match (description `mihomo t2sN` and upstream `127.0.0.1:7890`). If Proxy0 is foreign, it is left untouched and the installer creates the first free `ProxyN`; later re-runs reuse that project ProxyN instead of creating another one.
 
