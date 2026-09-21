@@ -63,7 +63,10 @@
 - [x] обновление Mihomo без переустановки (`update-mihomo.sh`)
 - [x] обновление watchdog (`update-watchdog.sh`)
 - [x] безопасные ручные update-скрипты (валидация, maintenance coordination, rollback)
-- [ ] opt-in автообновление на роутерах: периодическая проверка новой стабильной версии и безопасное применение из production/stable-канала; по умолчанию не включать
+- [ ] **Следующий этап после v1.4.0:** отдельный opt-in `install-auto-update.sh`; основной `install.sh` автообновление не включает
+- [ ] `install-auto-update.sh` устанавливает локальный auto-updater и суточный cron с jitter; пользователь включает этот механизм отдельным осознанным запуском
+- [ ] auto-updater читает manifest из production/`stable` и обновляется только при двух разрешениях: локальный opt-in + GitHub-флаг, например `enabled=1` и `version=1.4.2`
+- [ ] пользовательские `config.yaml`, MagiTrickle-конфиги и HWID-зависимые настройки автообновление не трогает
 
 ---
 
