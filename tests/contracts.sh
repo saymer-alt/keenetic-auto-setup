@@ -105,7 +105,11 @@ grep -q '^PROXY_COMPONENT_ID=proxy$' "$ROOT/install.sh" || fail "installer must 
 grep -q '^DNS_FILTER_COMPONENT_ID=dns-filter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id dns-filter"
 grep -q '^NETFILTER_COMPONENT_ID=opkg-kmod-netfilter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS Netfilter component id"
 grep -q 'Checking required KeeneticOS components' "$ROOT/install.sh" || fail "installer must run named-component preflight"
-grep -q 'Missing required KeeneticOS component(s)' "$ROOT/install.sh" || fail "installer must report all missing required components"
+grep -q 'Missing required KeeneticOS component(s):' "$ROOT/install.sh" || fail "installer must label the missing-component list"
+grep -q 'Proxy client / Клиент прокси (${PROXY_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Proxy client clearly"
+grep -q 'Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (${DNS_FILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing dns-filter clearly"
+grep -q 'Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Netfilter clearly"
+grep -q 'Full required component contract for the current default project profile' "$ROOT/install.sh" || fail "installer must distinguish missing list from full component contract"
 grep -q 'No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation' "$ROOT/install.sh" || fail "missing KeeneticOS prerequisites must stop before installer mutations"
 _component_preflight_line=$(grep -n '^require_project_keeneticos_components$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_update_line=$(grep -n '^log "Updating opkg\.\.\."$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
