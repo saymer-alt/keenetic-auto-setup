@@ -65,6 +65,16 @@ Filename                                Type            Size    Used    Priority
 /dev/sda1                               partition       479996  0       -1
 EOF
 
+cat > "$TMP/swaps-256-below-ram" <<'EOF'
+Filename                                Type            Size    Used    Priority
+/dev/sda1                               partition       200000  0       -1
+EOF
+
+cat > "$TMP/swaps-256-between-floor-target" <<'EOF'
+Filename                                Type            Size    Used    Priority
+/dev/sda1                               partition       479996  0       -1
+EOF
+
 run_policy() {
     _mem=$1
     _mounts=$2
@@ -137,6 +147,30 @@ expect_reject     "128 MB profile rejects external swap below the 384 MB floor" 
 expect_accept     "128 MB profile accepts the exact 384 MB external-swap floor as experimental"     "$TMP/mem-128" "$TMP/mounts-external" "$TMP/swaps-128-enough"     "LOW-RAM / BEST-EFFORT INSTALL"
 
 expect_accept     "zRAM plus external swap continues but emits the coexistence warning"     "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-zram-plus-disk"     "zRAM and external storage-backed swap are active together"
+
+if ! run_policy "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-256-below-ram" "$TMP/out-swap-below-ram"; then
+    cat "$TMP/out-swap-below-ram" >&2
+    fail "256 MB external swap below 1x RAM must continue with WARN"
+fi
+grep -Fq "[WARN] External SWAP is below project minimum floor" "$TMP/out-swap-below-ram" || {
+    cat "$TMP/out-swap-below-ram" >&2
+    fail "256 MB external swap below 1x RAM must emit the minimum-floor WARN"
+}
+pass "256 MB external swap below 1x RAM is WARN-only"
+
+if ! run_policy "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-256-between-floor-target" "$TMP/out-swap-between"; then
+    cat "$TMP/out-swap-between" >&2
+    fail "256 MB external swap between 1x and 3x RAM must continue"
+fi
+grep -Fq "[setup] External SWAP is below the preferred project sizing target but meets the minimum floor" "$TMP/out-swap-between" || {
+    cat "$TMP/out-swap-between" >&2
+    fail "256 MB external swap between 1x and 3x RAM must be INFO/setup-visible"
+}
+if grep -Fq "[WARN] External SWAP" "$TMP/out-swap-between"; then
+    cat "$TMP/out-swap-between" >&2
+    fail "256 MB external swap between 1x and 3x RAM must not emit a swap-size WARN"
+fi
+pass "256 MB external swap >=1x RAM but below 3x target is informational"
 
 # Storage-mode guardrail: internal+disk is rejected unless the narrowly-scoped
 # override is explicit; external+ram is valid but must stay visible as a WARN.
