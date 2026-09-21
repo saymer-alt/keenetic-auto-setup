@@ -509,7 +509,29 @@ log "Arch: $ARCH"
 # ---------------------------
 # MIHOMO INSTALL
 # ---------------------------
-log "Installing Mihomo..."
+# install.sh owns initial installation, not upgrades of an existing Mihomo.
+# Existing canonical binaries are left untouched; update-mihomo.sh is the
+# supported transactional path for replacing an installed binary.
+resolve_installed_mihomo() {
+    for _mb in /opt/sbin/mihomo /opt/bin/mihomo; do
+        if [ -x "$_mb" ]; then
+            printf '%s\n' "$_mb"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Conservative one-Mihomo guard used by both the early informational version
+# probe and the final self-check. If pidof is unavailable, executable probes
+# are skipped rather than risking a second Mihomo process.
+mihomo_running() {
+    if command -v pidof >/dev/null 2>&1; then
+        pidof mihomo >/dev/null 2>&1
+    else
+        return 0
+    fi
+}
 
 REPO_OWNER="saymer-alt"
 REPO_NAME="entware-go"
@@ -522,87 +544,93 @@ case "$ARCH" in
     *) err "Unsupported arch: $ARCH" ;;
 esac
 
-log "Looking for mihomo ipk (${IPK_SUFFIX}) in ${REPO_OWNER}/${REPO_NAME}..."
+MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
 
-API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
-ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
-
-DOWNLOAD_URL=""
-
-# Primary: GitHub API + jq (без regex)
-if [ -n "$ASSETS_JSON" ]; then
-    DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-        .assets[]? 
-        | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk")) 
-        | .browser_download_url
-    ' 2>/dev/null | head -n 1)
-fi
-
-# Fallback 1: grep/sed на API JSON
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    log "jq filter empty, trying grep fallback on API response..."
-    if [ -n "$ASSETS_JSON" ]; then
-        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
-    fi
-fi
-
-# Fallback 2: повторный API fetch + grep (если первый был пустым)
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    log "API failed, trying direct API grep..."
-    ASSETS_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
-    if [ -n "$ASSETS_JSON" ]; then
-        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
-    fi
-fi
-
-# Fallback 3: HTML scraping
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    log "Trying HTML scraping..."
-    HTML_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest"
-    REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
-        grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' | \
-        head -n 1 | cut -d'"' -f2)
-    if [ -n "$REL_PATH" ]; then
-        DOWNLOAD_URL="https://github.com${REL_PATH}"
-    fi
-fi
-
-# GitHub Releases (saymer-alt/entware-go) are the PRIMARY package source;
-# the Entware feed install below is a LAST RESORT, not an equal alternative.
-MIHOMO_INSTALLED=0
-
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    warn "No mihomo ipk found for arch suffix: ${IPK_SUFFIX}. Check https://github.com/${REPO_OWNER}/${REPO_NAME}/releases"
+if [ -n "$MIHOMO_BIN" ]; then
+    log "Existing Mihomo binary found at $MIHOMO_BIN - package install/upgrade skipped"
+    log "Use update-mihomo.sh to update an installed Mihomo transactionally"
 else
-    log "Found: $(basename "$DOWNLOAD_URL")"
-    log "Downloading..."
-    if retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk"; then
-        log "Installing package..."
-        if opkg install "$TMP_DIR/mihomo.ipk"; then
-            MIHOMO_INSTALLED=1
-        else
-            warn "Mihomo install from the downloaded GitHub package failed"
-        fi
-    else
-        warn "Failed to download mihomo ipk"
+    log "Installing Mihomo..."
+    log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
+
+    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+    ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+    DOWNLOAD_URL=""
+
+    if [ -n "$ASSETS_JSON" ]; then
+        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
+            .assets[]?
+            | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk"))
+            | .browser_download_url
+        ' 2>/dev/null | head -n 1)
     fi
+
+    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        log "jq filter empty, trying grep fallback on API response..."
+        if [ -n "$ASSETS_JSON" ]; then
+            DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
+        fi
+    fi
+
+    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        log "API failed, trying direct API grep..."
+        ASSETS_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+        if [ -n "$ASSETS_JSON" ]; then
+            DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
+        fi
+    fi
+
+    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        log "Trying HTML scraping..."
+        HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+        REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
+            grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | \
+            head -n 1 | cut -d'"' -f2)
+        if [ -n "$REL_PATH" ]; then
+            DOWNLOAD_URL="https://github.com$REL_PATH"
+        fi
+    fi
+
+    # GitHub Releases are the primary package source; the Entware feed below
+    # is a last-resort initial-install fallback, not an upgrade path.
+    MIHOMO_INSTALLED=0
+
+    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+        warn "No mihomo ipk found for arch suffix: $IPK_SUFFIX. Check https://github.com/$REPO_OWNER/$REPO_NAME/releases"
+    else
+        log "Found: $(basename "$DOWNLOAD_URL")"
+        log "Downloading..."
+        if retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk"; then
+            log "Installing package..."
+            if opkg install "$TMP_DIR/mihomo.ipk"; then
+                MIHOMO_INSTALLED=1
+            else
+                warn "Mihomo install from the downloaded GitHub package failed"
+            fi
+        else
+            warn "Failed to download mihomo ipk"
+        fi
+    fi
+
+    rm -f "$TMP_DIR/mihomo.ipk"
+
+    if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
+        warn "GitHub Mihomo package unavailable, trying Entware feed fallback..."
+        opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
+        log "Mihomo installed from Entware feed fallback (version may be older than the GitHub release build)"
+    fi
+
+    MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
+    [ -z "$MIHOMO_BIN" ] && err "Mihomo package installation completed but no executable canonical binary was found at /opt/sbin/mihomo or /opt/bin/mihomo"
 fi
 
-# Timely cleanup after the GitHub attempt (the EXIT trap is only a backstop):
-# a failed attempt must not leave a partial ipk in /tmp.
-rm -f "$TMP_DIR/mihomo.ipk"
-
-# LAST RESORT: package `mihomo` from the configured Entware feed. Reached
-# only after the whole GitHub path failed before a successful install; the
-# feed version may be older than the GitHub release build.
-if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
-    warn "GitHub Mihomo package unavailable, trying Entware feed fallback..."
-    opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
-    log "Mihomo installed from Entware feed fallback (version may be older than the GitHub release build)"
+if mihomo_running; then
+    log "Mihomo version probe skipped - daemon is running (one-Mihomo invariant)"
+elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
+    log "Mihomo version: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
+else
+    warn "Mihomo version probe failed while no daemon was detected"
 fi
-
-MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
-log "Mihomo version: $(${MIHOMO_BIN} -v 2>/dev/null | head -1 || echo "unknown")"
 
 # ---------------------------
 # MIHOMO BOOTSTRAP CONFIG
@@ -1064,8 +1092,8 @@ sleep 2
 # ---------------------------
 # Validates what this installer promises to install. install.sh leaves a
 # bootstrap config.yaml (mixed-port 7890) in place unless a user config
-# already exists. Missing config.yaml means bootstrap creation failed — WARN,
-# not FAIL. Port 7890 is checked whenever a config exists: the bootstrap must
+# already exists. Missing config.yaml means bootstrap creation failed — FAIL.
+# Port 7890 is checked whenever a config exists: the bootstrap must
 # listen on 7890, so a miss here means Mihomo is not running properly (or a
 # user config does not define the contract port) — never a package
 # placeholder, which install.sh replaces.
@@ -1077,17 +1105,8 @@ check_warn() { echo "[WARN] $1"; WARNS=$((WARNS+1)); }
 check_fail() { echo "[FAIL] $1"; FAILS=$((FAILS+1)); }
 check_info() { echo "[info] $1"; }
 
-# One-Mihomo invariant: the self-check executes the Mihomo binary (-v/-t)
-# ONLY when no daemon is running - a second execution is the documented
-# SIGSEGV pattern on constrained hardware. Without pidof the state cannot
-# be verified, so the probes are skipped conservatively (assumed running).
-mihomo_running() {
-    if command -v pidof >/dev/null 2>&1; then
-        pidof mihomo >/dev/null 2>&1
-    else
-        return 0
-    fi
-}
+# One-Mihomo invariant: executable self-check probes reuse the conservative
+# mihomo_running() guard defined before the Mihomo install section.
 
 mihomo_contract_port_listening() {
     if command -v netstat >/dev/null 2>&1; then
