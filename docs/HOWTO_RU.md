@@ -274,7 +274,7 @@ Wi-Fi 3         → mitun0 → Mihomo (TUN)
 
 | Требование | Как проверить | Примечания |
 | --- | --- | --- |
-| Keenetic: **256 МБ RAM и больше** | спецификация / `free` на роутере | 128 МБ-класс: best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ. 256/512 МБ-класс: проект ожидает штатный zRAM **или** внешний storage-backed swap; нет обоих => WARN, установка продолжается. Для внешнего swap target ≈3× обнаруженной RAM, cap 2 ГиБ; >2 ГиБ — ошибка установки. Выше 512 МБ-класса swap/zRAM опциональны. По vendor guidance zRAM и disk/file swap одновременно не используем. |
+| Keenetic: **256 МБ RAM и больше** | спецификация / `free` на роутере | 128 МБ-класс: best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ. 256/512 МБ-класс: проект ожидает штатный zRAM **или** внешний storage-backed swap; нет обоих => WARN, установка продолжается. Для внешнего swap <1× обнаруженной RAM — WARN; 1×..3× — INFO; preferred target ≈3× RAM, cap 2 ГиБ; >2 ГиБ — ошибка установки. Выше 512 МБ-класса swap/zRAM опциональны. По vendor guidance zRAM и disk/file swap одновременно не используем. |
 | **Установлен Entware** (`/opt` существует) | команда `opkg` работает | см. шаг 2 |
 | KeeneticOS **«Клиент прокси» (Proxy client)** | компонент виден в наборе KeeneticOS | обязателен для создания проектного ProxyN; installer проверяет результат создания |
 | **Доступ к shell Entware** | например, SSH | нужен для запуска команд установки; компонент KeeneticOS *SSH-сервер* — удобный способ доступа, но не runtime-зависимость проекта |
@@ -840,7 +840,7 @@ MT7621/mipsel-устройства используют тот же универ
 
 - **128 МБ RAM — best-effort/experimental:** внешний /opt + внешний storage-backed swap >=384 МБ обязательны (project-specific floor; zRAM не входит в минимум). Даже при выполнении условий стабильность не гарантируется.
 - **256/512 МБ-класс:** проект ожидает штатный zRAM **или** внешний storage-backed swap; нет обоих — WARN, а не hard gate.
-- **Размер внешнего swap:** project target ≈3× обнаруженной RAM, но максимум 2 ГиБ; меньше target — WARN, >2 ГиБ — ошибка новой установки. В актуальной документации производителя 3× не назван минимумом: там сказано, что обычно больше 3× RAM не требуется.
+- **Размер внешнего swap:** project warning floor = 1× обнаруженной RAM; меньше 1× — WARN. Диапазон 1×..3× — INFO, а preferred target ≈3× RAM, максимум 2 ГиБ. >2 ГиБ — ошибка новой установки. В актуальной документации производителя ни 1×, ни 3× не названы обязательным минимумом; это project policy.
 - **Выше 512 МБ-класса:** swap/zRAM опциональны.
 - **zRAM + disk/file swap вместе:** vendor guidance рекомендует не использовать их одновременно; при disk swap zRAM отключают.
 - **Обновление Mihomo на MIPS/mipsel:** обслуживается тем же `update-mihomo.sh` — пакет берётся из того же фида `saymer-alt/entware-go` (суффикс `mipsel-3.4`), которым ставит `install.sh`. Подмена случайными сборками в `/opt` по-прежнему не нужна и опасна.
@@ -850,7 +850,7 @@ MT7621/mipsel-устройства используют тот же универ
 
 ## 14. Известные ограничения
 
-- **Memory-profile:** 128 МБ — best-effort/experimental только с внешним /opt + внешним swap >=384 МБ; 256/512 МБ-класс — zRAM **или** внешний storage-backed swap (нет обоих => WARN); target внешнего swap ≈3× RAM, hard cap 2 ГиБ; >512 МБ-класса swap/zRAM опциональны; совместный zRAM + disk/file swap получает WARN.
+- **Memory-profile:** 128 МБ — best-effort/experimental только с внешним /opt + внешним swap >=384 МБ; 256/512 МБ-класс — zRAM **или** внешний storage-backed swap (нет обоих => WARN); внешний swap <1× RAM => WARN, 1×..3× => INFO, preferred target ≈3× RAM, hard cap 2 ГиБ; >512 МБ-класса swap/zRAM опциональны; совместный zRAM + disk/file swap получает WARN.
 - **Watchdog чинит только Mihomo.** Он не починит мёртвый VPN-сервер, аварию у провайдера, DNS или ошибки в конфиге.
 - **bypass_wa для выбранного VoIP/real-time UDP — это осознанный выбор маршрута, а не универсальное утверждение, что Mihomo «плохо работает с UDP».**
 - **Entware — не полноценный Linux.** Причуды BusyBox (`$RANDOM`, `pidof`, `ss`, `run-parts`), урезанные пакеты — держите это в голове, прежде чем «модернизировать» скрипты.
