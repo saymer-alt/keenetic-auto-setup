@@ -245,6 +245,103 @@ probe_controller_version() {
     info "Controller evidence scope: proves the runtime version only - not proxy, network or config health (the dedicated sections below cover those)."
 }
 
+# probe_controller_proxy_state - lightweight read-only sanity check of
+# Mihomo's current proxy selection via GET /proxies. This deliberately does
+# NOT duplicate the full proxy-selection watcher: it validates the Controller
+# payload and the first selected-group hop only, never changes selection,
+# triggers delay tests, restarts Mihomo, or prints proxy/server names.
+probe_controller_proxy_state() {
+    if [ "$MIHOMO_PROCS" -eq 0 ]; then
+        info "Proxy selection sanity skipped: Mihomo is not running"
+        return 0
+    fi
+    _ps_ec=$(cfg_scalar external-controller)
+    if [ -z "$_ps_ec" ]; then
+        info "Proxy selection sanity: UNKNOWN / UNVERIFIED (external-controller not configured)"
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        info "Proxy selection sanity: UNKNOWN / UNVERIFIED (curl + jq required for read-only GET /proxies)"
+        return 0
+    fi
+
+    _ps_secret=$(grep -E "^[[:space:]]*secret:" "$CONFIG" 2>/dev/null | head -n 1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d "\"'")
+    if [ -n "$_ps_secret" ]; then
+        _ps_resp=$(curl -sS --connect-timeout 3 --max-time 8 -H "Authorization: Bearer $_ps_secret" -w '\n%{http_code}' "http://$_ps_ec/proxies" 2>/dev/null)
+    else
+        _ps_resp=$(curl -sS --connect-timeout 3 --max-time 8 -w '\n%{http_code}' "http://$_ps_ec/proxies" 2>/dev/null)
+    fi
+    _ps_rc=$?
+    if [ "$_ps_rc" -ne 0 ] || [ -z "$_ps_resp" ]; then
+        info "Proxy selection sanity: UNKNOWN / UNVERIFIED (Controller /proxies unreachable)"
+        return 0
+    fi
+
+    _ps_code=$(printf '%s\n' "$_ps_resp" | tail -n 1)
+    _ps_body=$(printf '%s\n' "$_ps_resp" | sed '$d')
+    case "$_ps_code" in
+        200) : ;;
+        401|403)
+            warn "Proxy selection sanity: Controller /proxies rejected authentication (HTTP $_ps_code)"
+            return 0 ;;
+        404)
+            warn "Proxy selection sanity: Controller /proxies returned HTTP 404"
+            return 0 ;;
+        *)
+            warn "Proxy selection sanity: Controller /proxies returned unexpected HTTP status"
+            return 0 ;;
+    esac
+
+    if ! printf '%s' "$_ps_body" | jq -e '.proxies | type == "object"' >/dev/null 2>&1; then
+        warn "Proxy selection sanity: Controller /proxies returned no usable proxies object"
+        return 0
+    fi
+    _ps_count=$(printf '%s' "$_ps_body" | jq -r '.proxies | keys | length' 2>/dev/null)
+    case "$_ps_count" in ''|*[!0-9]*) _ps_count=0 ;; esac
+
+    if ! printf '%s' "$_ps_body" | jq -e '.proxies | has("GLOBAL")' >/dev/null 2>&1; then
+        info "Controller /proxies is valid ($_ps_count entries); GLOBAL not present, selection-chain sanity skipped"
+        return 0
+    fi
+
+    _ps_gtype=$(printf '%s' "$_ps_body" | jq -r '.proxies["GLOBAL"].type // ""' 2>/dev/null)
+    _ps_gnow=$(printf '%s' "$_ps_body" | jq -r '.proxies["GLOBAL"].now // ""' 2>/dev/null)
+    if [ -z "$_ps_gnow" ]; then
+        case "$_ps_gtype" in
+            LoadBalance)
+                ok "Controller /proxies selection state is usable (GLOBAL is load-balanced; no single current choice)"
+                ;;
+            *)
+                warn "Proxy selection sanity: GLOBAL has no current choice in Controller /proxies"
+                ;;
+        esac
+        return 0
+    fi
+
+    if ! printf '%s' "$_ps_body" | jq -e --arg n "$_ps_gnow" '.proxies | has($n)' >/dev/null 2>&1; then
+        ok "Controller /proxies selection state is usable (GLOBAL reports a non-empty provider-backed/current choice)"
+        return 0
+    fi
+
+    _ps_stype=$(printf '%s' "$_ps_body" | jq -r --arg n "$_ps_gnow" '.proxies[$n].type // ""' 2>/dev/null)
+    _ps_snow=$(printf '%s' "$_ps_body" | jq -r --arg n "$_ps_gnow" '.proxies[$n].now // ""' 2>/dev/null)
+    case "$_ps_stype" in
+        Selector|URLTest|Fallback|Relay)
+            if [ -n "$_ps_snow" ]; then
+                ok "Controller /proxies selection state is usable (GLOBAL and selected group report current choices)"
+            else
+                warn "Proxy selection sanity: selected proxy group has no current choice in Controller /proxies"
+            fi
+            ;;
+        LoadBalance)
+            ok "Controller /proxies selection state is usable (GLOBAL selects a load-balanced group)"
+            ;;
+        *)
+            ok "Controller /proxies selection state is usable (GLOBAL has a current proxy choice)"
+            ;;
+    esac
+}
+
 # cfg_scalar KEY -> prints the first column-0 YAML scalar value
 # for KEY, quotes stripped. Nested keys are not matched.
 cfg_scalar() {
@@ -888,6 +985,12 @@ else
         fi
     fi
 fi
+
+# =========================================================
+hdr "6a. Mihomo proxy selection (read-only)"
+# =========================================================
+
+probe_controller_proxy_state
 
 # =========================================================
 hdr "6b. MagiTrickle (optional component, read-only)"

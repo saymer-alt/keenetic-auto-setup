@@ -64,6 +64,13 @@ grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
 pass "doctor detects the historical duplicate-watchdog backup condition"
 
+grep -q 'probe_controller_proxy_state' "$ROOT/mihomo-doctor.sh" || fail "doctor must retain Controller /proxies selection sanity check"
+grep -q 'GET /proxies' "$ROOT/mihomo-doctor.sh" || fail "doctor proxy sanity check must remain read-only"
+grep -q 'GLOBAL and selected group report current choices' "$ROOT/mihomo-doctor.sh" || fail "doctor must recognize a usable selected-group state"
+grep -q 'non-empty provider-backed/current choice' "$ROOT/mihomo-doctor.sh" || fail "doctor must accept provider-backed current choices"
+pass "doctor performs lightweight read-only Mihomo proxy-selection sanity"
+
+
 
 grep -q 'Provider-backed groups may expose the selected leaf only via' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must support provider-backed leaf names"
 grep -q 'CHAIN="$CHAIN -> $_now"' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must report terminal now leaf"
