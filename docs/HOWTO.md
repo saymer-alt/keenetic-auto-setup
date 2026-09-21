@@ -347,7 +347,7 @@ One caveat: the mihomo `.ipk` is downloaded on every run — `opkg` will simply 
 
 Another caveat: **if Proxy0 already exists, its configuration is left untouched** (including the human-readable description). That branch is deliberately hands-off: the installer never rewrites persistent router config that already works.
 
-The same applies to DNS transit interception: the installer checks the current state first and enables it (saving the config) only when it wasn't enabled. If you deliberately keep DNS transit open on a specific router, remove that block from the installer before re-running it — a re-run would turn it back on.
+The same applies to DNS transit interception: the installer checks the current state first and enables it (saving the config) only when it wasn't enabled. For the currently supported profile, `dns-proxy intercept enable` is mandatory. A router that must keep classic DNS transit open is outside this project's supported install path and requires a separate manual design.
 
 ### 3.4 Expected result
 
@@ -356,7 +356,7 @@ The same applies to DNS transit interception: the installer checks the current s
 [OK] Done
 ```
 
-A `WARN ... port 7890 not listening` at the end almost always means `config.yaml` is missing or invalid — proceed to section 5.
+A `WARN ... Port 7890 still not listening after 5s startup wait` means the contract listener never appeared after the bounded startup wait. Check Mihomo startup, `config.yaml`, and logs; the working config must preserve `mixed-port: 7890`.
 
 ---
 
@@ -462,7 +462,7 @@ Scope note: this warning applies **only to the browser-only proxy scenario**. Wi
 
 ## 6. MagiTrickle
 
-Installed by `install.sh` only (not by the 7621 installer). What Groups, Rules and Interfaces are — see *MagiTrickle 101* in the routing-model section at the top of this guide; this section is about operation.
+MagiTrickle is installed by the unified `install.sh` on supported architectures. What Groups, Rules and Interfaces are — see *MagiTrickle 101* in the routing-model section at the top of this guide; this section is about operation.
 
 MagiTrickle is the decision layer: it watches DNS queries and, per domain/subnet, chooses the route — direct or through a tunnel/policy such as Proxy0. It does not carry traffic itself; Keenetic's policy routing does that on MagiTrickle's instructions.
 
@@ -484,21 +484,12 @@ Client → Keenetic DNS → MagiTrickle → routing decision
 
 If a device sends its queries straight to an external resolver (a hardcoded `8.8.8.8`, an app with its own DNS), that traffic skips the decision layer entirely and the device's routing silently falls out of your rules. KeeneticOS has a matching feature: **transit DNS interception** (the web-UI setting sometimes labeled "transit DNS requests"; CLI `dns-proxy intercept enable`, off by default). Enabled, it redirects classic port-53 queries addressed to external servers into the router's DNS proxy, where MagiTrickle sees them.
 
-The installer does this automatically — it is **part of the installation, not a manual post-install step**. It checks the current state first (`intercept enable` present in the running config), applies the command only when needed, and saves the persistent config only when something changed. Present on KeeneticOS 3.06+ (briefly absent in 3.08); on failure the installer warns and continues.
+The installer does this automatically — it is **part of the installation, not a manual post-install step**. It checks the current state first (`intercept enable` present in the running config), applies the command only when needed, and saves the persistent config only when something changed. If enabling interception fails, or `intercept enable` is absent from the immediate read-back, installation stops with ERROR because the supported DNS contract is not satisfied.
 
 Boundaries, so nobody expects the wrong thing:
 
 - This is **classic DNS only** — it is **not** DoH/DoT protection. A browser with "secure DNS" (DoH) enabled tunnels queries over HTTPS and bypasses port 53 regardless; that is a client-side setting.
-- Devices with hardcoded external resolvers keep working — their queries are answered by the router's DNS proxy through its configured upstreams. The rare exception: something that must reach a *specific* external DNS server directly over port 53 (unusual split-DNS/AD or DNSSEC tooling). If you have that, revert per-router:
-
-```
-(config)> dns-proxy
-(config-dnspx)> no intercept enable
-(config-dnspx)> exit
-(config)> system configuration save
-```
-
-… and remove the interception block from the installer for that router, since a re-run would enable it again. Everything else about your DNS setup (DoH/DoT upstreams in Mihomo's config, the router's own resolvers, DHCP-issued DNS) is left untouched.
+- Devices with hardcoded external resolvers keep working — their queries are answered by the router's DNS proxy through its configured upstreams. If a client truly must reach a specific external DNS server directly over port 53, that conflicts with the project's currently supported DNS contract. Do not disable interception and expect the normal `install.sh` path to accept that state; it requires a separate manual design outside the supported install path. Everything else about your DNS setup (DoH/DoT upstreams in Mihomo's config, the router's own resolvers, DHCP-issued DNS) is left untouched.
 
 Verify on the router:
 
@@ -809,7 +800,7 @@ By design in `ram` mode (tmpfs). Persist them yourself if needed, or use `disk` 
 The base configuration keeps IPv6 **off on purpose** — MagiTrickle ships with IPv6 disabled and configs generated by link-generators use `ipv6: false` — so the base scheme stays predictable. If you turned IPv6 on, re-check routing, DNS and that nothing bypasses the intended IPv4 path; after that, ordinary IPv6 diagnostics apply.
 
 **A device with a hardcoded external DNS behaves differently / can't reach a specific external DNS server**
-DNS transit interception (section 6.1) redirects classic port-53 queries into the router's DNS proxy. That is intended behavior; if a specific device truly needs direct access to its DNS server, revert interception for the whole router using the commands in section 6.1.
+DNS transit interception (section 6.1) redirects classic port-53 queries into the router's DNS proxy. That is mandatory behavior for the supported profile. A client that truly needs direct port-53 access to a specific DNS server requires a separate manual design outside the normal project install path.
 
 **Whitelist network: routing works, but some domains resolve wrongly or stop opening**
 The classic trap — do not start with Mihomo. In a whitelist network this pattern is usually DNS-level, above MT/Mihomo. Diagnose in this order:

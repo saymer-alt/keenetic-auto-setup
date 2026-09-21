@@ -367,8 +367,8 @@ opkg install magitrickle
 
 Примеры предупреждений:
 
-* `Port 7890 not listening` — Mihomo не запустился или в `config.yaml` нет
-  `mixed-port: 7890`
+* `Port 7890 still not listening after 5s startup wait` — после bounded startup wait
+  контрактный listener не появился; проверьте запуск Mihomo, `config.yaml` и логи
 * `Low free space on /opt` — свободно меньше 32 МБ
 * `bypass_wa policy has no interface permit` — у политики нет выхода
 * `config.yaml not found (bootstrap missing)` — не создался bootstrap

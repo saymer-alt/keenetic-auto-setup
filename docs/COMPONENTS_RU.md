@@ -60,7 +60,9 @@
 
 - **DNS proxy + transit interception** — `dns-proxy intercept enable`. Классические
   port-53 запросы клиентов должны проходить через DNS proxy Keenetic, чтобы MagiTrickle
-  видел их и мог классифицировать маршруты. DoH/DoT — отдельный механизм.
+  видел их и мог классифицировать маршруты. В web UI это соответствует состоянию,
+  когда **транзитные DNS-запросы запрещены/блокируются**: галочка, разрешающая DNS-транзит,
+  должна быть снята. CLI при этом показывает `intercept enable`. DoH/DoT — отдельный механизм.
 - **IP policy routing** — используется политикой `bypass_wa` и её выходами.
 - **Keenetic/Entware netfilter hook** —
   `/opt/etc/ndm/netfilter.d/020-bypass_wa.sh` устанавливает VoIP marking rules при
