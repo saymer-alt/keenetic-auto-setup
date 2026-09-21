@@ -42,7 +42,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-Штатный zRAM KeeneticOS — сжатый swap в RAM без NAND swap-файла. На 256 МБ нужен один backend: zRAM **или** внешний storage-backed swap; по рекомендации производителя zRAM и disk/file swap одновременно не используем. На 512 МБ+ swap/zRAM опциональны. Фактическое состояние проверяется `mihomo-doctor.sh`. Подробности и источники — [docs/06](06-s00ubifs.md).
+Штатный zRAM KeeneticOS — сжатый swap в RAM без NAND swap-файла. На 256 МБ и 512 МБ-классе проект ожидает один backend: zRAM **или** внешний storage-backed swap; отсутствие обоих — WARN. Для внешнего swap target проекта ≈3× обнаруженной RAM, максимум 2 ГиБ; >2 ГиБ — ошибка новой установки. По рекомендации производителя zRAM и disk/file swap одновременно не используем. Выше 512 МБ-класса swap/zRAM опциональны. Фактическое состояние проверяется `mihomo-doctor.sh`. Подробности и источники — [docs/06](06-s00ubifs.md).
 
 ---
 
@@ -50,7 +50,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 - Keenetic Giga / Ultra / Hero / Viva и другие совместимые, включая MT7621
 - aarch64 / armv7 / mipsel / mips
-- 128 МБ-класс — best-effort/experimental только с внешним /opt + внешним storage-backed swap >=384 МБ (project-specific floor); 256 МБ — нужен zRAM **или** внешний storage-backed swap; 512 МБ+ — swap/zRAM опциональны (см. [docs/09](09-limitations.md))
+- 128 МБ-класс — best-effort/experimental только с внешним /opt + внешним storage-backed swap >=384 МБ; 256/512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих WARN; >512 МБ-класса — swap/zRAM опциональны (см. [docs/09](09-limitations.md))
 
 ---
 
@@ -58,7 +58,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 
 install.sh делает всё:
 
-0. Resource-profile preflight: класс устройства, расположение /opt, активный zRAM и storage-backed swap (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`); 128 МБ требуют внешний /opt + внешний swap >=384 МБ; 256 МБ требуют один backend — zRAM или внешний swap; 512 МБ+ не требуют swap
+0. Resource-profile preflight: класс устройства, расположение /opt, активный zRAM и storage-backed swap (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`); 128 МБ требуют внешний /opt + внешний swap >=384 МБ; 256/512 МБ-класс без zRAM и external swap получают WARN; внешний swap >2 ГиБ останавливает новую установку
 1. `opkg update`
 2. Базовые пакеты (`ca-bundle`, `curl`, `jq`, `nano`, `cron`)
 3. Политика `bypass_wa`

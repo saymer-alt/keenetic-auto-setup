@@ -274,7 +274,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap (project-specific floor; zRAM does not count). 256 MB: one active backend is required — native zRAM **or** verified external storage-backed swap. Vendor guidance says not to combine zRAM with disk/file swap. 512 MB+: swap/zRAM is optional. |
+| Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap. 256/512 MB-class: project expects native zRAM **or** verified external storage-backed swap; neither present => WARN, install continues. External swap target is ~3× detected RAM, capped at 2 GiB; >2 GiB is an install error. Above 512 MB-class, swap/zRAM is optional. Vendor guidance says not to combine zRAM with disk/file swap. |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
@@ -831,8 +831,9 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 Platform notes that remain:
 
 - **128 MB RAM is best-effort/experimental:** external /opt + >=384 MB external storage-backed swap are mandatory (project-specific floor; zRAM does not count). Stability is not guaranteed even when prerequisites are met.
-- **256 MB RAM:** one active backend is required — native zRAM **or** verified external storage-backed swap.
-- **512 MB+:** swap/zRAM is optional; no warning is emitted merely because both are absent.
+- **256/512 MB-class:** project expects native zRAM **or** verified external storage-backed swap; missing both is WARN, not a hard install gate.
+- **External swap sizing:** project target is ~3× detected RAM, capped at 2 GiB; smaller is WARN, >2 GiB is invalid for new installs. Current vendor docs describe ~500 MB as enough for most tasks and say more than ~3× RAM is usually unnecessary, so 3× is project policy rather than a vendor minimum.
+- **Above 512 MB-class:** swap/zRAM is optional.
 - **Do not combine zRAM with disk/file swap:** current vendor guidance says to disable zRAM when classic swap is used.
 - **Updating Mihomo on MIPS/mipsel:** handled by the same `update-mihomo.sh` — the package comes from the same `saymer-alt/entware-go` feed (suffix `mipsel-3.4`) that `install.sh` uses. Dropping random builds into `/opt` remains unnecessary and unsafe.
 - **MTU:** the classic "everything is slow" symptom on these devices is tunnel MTU, not routing (working values 1200–1300, [docs/09](09-limitations.md)).
@@ -841,7 +842,7 @@ Platform notes that remain:
 
 ## 14. Known limits
 
-- **Memory profile:** 128 MB is best-effort/experimental only with external /opt + >=384 MB external swap; 256 MB requires zRAM **or** verified external swap; 512 MB+ does not require swap/zRAM; simultaneous zRAM + disk/file swap is warned against.
+- **Memory profile:** 128 MB is best-effort/experimental only with external /opt + >=384 MB external swap; 256/512 MB-class expects zRAM **or** verified external swap (missing both => WARN); external swap target ~3× RAM, hard cap 2 GiB; above 512 MB-class swap/zRAM is optional; simultaneous zRAM + disk/file swap is warned against.
 - **The watchdog fixes Mihomo only.** It won't fix a dead VPN server, ISP outage, DNS or config mistakes.
 - **bypass_wa for selected VoIP/real-time UDP is a deliberate routing choice, not a universal claim that Mihomo handles UDP poorly.**
 - **Entware is not a full Linux.** BusyBox quirks (`$RANDOM`, `pidof`, `ss`, `run-parts`), trimmed packages — keep that in mind before "modernizing" the scripts.

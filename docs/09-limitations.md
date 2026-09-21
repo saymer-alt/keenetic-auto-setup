@@ -28,7 +28,7 @@
 
 RAM и выбор /opt-памяти — раздельные решения: работа с внутренней памяти Keenetic — проверенный вариант, внешний носитель даёт больше ресурса и запаса.
 
-Memory-profile: на 256 MB нужен один активный backend — штатный zRAM **или** внешний storage-backed swap, независимо от места /opt. zRAM и disk/file swap одновременно по рекомендации производителя не используем. На 512 MB+ swap/zRAM опциональны.
+Memory-profile: на 256 MB и 512 MB-классе проект ожидает один активный backend — штатный zRAM **или** внешний storage-backed swap. Если нет обоих, это WARN, а не hard gate. Для внешнего swap project target ≈3× обнаруженной RAM с жёстким потолком 2 ГиБ; ниже target — WARN, выше 2 ГиБ — ERROR/FAIL. zRAM и disk/file swap одновременно по рекомендации производителя не используем. Выше 512 MB-класса swap/zRAM опциональны.
 
 128 MB-класс разрешён установщиком только как **best-effort/experimental И только при выполнении всех условий: /opt на внешнем постоянном носителе + активный storage-backed swap на внешнем носителе >=384 МБ** (project-specific floor); иначе установка останавливается на раннем preflight, а неопределимое состояние даёт консервативный отказ. zRAM внешний минимум не заменяет; при disk/file swap документация производителя рекомендует zRAM отключать. Стабильность не гарантирована даже при выполнении условий.
 
@@ -56,9 +56,11 @@ Memory-profile: на 256 MB нужен один активный backend — ш�
 
 ⚠️ 128 MB — внешний /opt + внешний storage-backed swap >=384 МБ (project-specific floor; zRAM не считается), best-effort/experimental
 
-✔ 256 MB — zRAM **или** внешний storage-backed swap
+⚠️ 256 MB — zRAM **или** внешний storage-backed swap; нет обоих → WARN
 
-✔ 512+ — нормально; swap/zRAM опциональны
+⚠️ 512 MB-класс — zRAM **или** внешний storage-backed swap; нет обоих → WARN
+
+✔ >512 MB-класс — swap/zRAM опциональны
 
 ---
 
