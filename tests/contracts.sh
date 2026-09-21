@@ -197,6 +197,18 @@ grep -q 'Use update-mihomo.sh to update an installed Mihomo transactionally' "$R
 grep -q 'Mihomo version probe skipped - daemon is running (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
 pass "repeat install does not replace live Mihomo and all installer probes share one-Mihomo guard"
 
+grep -Fq 'MIHOMO_RESTART_NEEDED=0' "$ROOT/install.sh" || fail "installer must track whether Mihomo actually needs a reload"
+grep -Fq 'MIHOMO_RESTART_NEEDED=1' "$ROOT/install.sh" || fail "installer must mark binary/config changes as restart-relevant"
+grep -Fq 'if [ "$MIHOMO_RESTART_NEEDED" -eq 1 ]; then' "$ROOT/install.sh" || fail "Mihomo restart must be gated on actual installer changes"
+grep -Fq 'Mihomo binary/config unchanged and daemon is running - restart skipped' "$ROOT/install.sh" || fail "repeat install must explicitly skip unnecessary Mihomo restart"
+grep -Fq 'Mihomo binary/config unchanged but daemon is stopped - starting service' "$ROOT/install.sh" || fail "installer must still recover a stopped service"
+grep -Fq 'if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then' "$ROOT/install.sh" || fail "installer must skip startup delay when no Mihomo service action occurred"
+_restart_gate_line=$(grep -n 'if \[ "$MIHOMO_RESTART_NEEDED" -eq 1 \]; then' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_restart_cmd_line=$(grep -n '^[[:space:]]*/opt/etc/init.d/S99mihomo restart' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+[ -n "$_restart_gate_line" ] && [ -n "$_restart_cmd_line" ] || fail "installer restart gate/command ordering could not be determined"
+[ "$_restart_gate_line" -lt "$_restart_cmd_line" ] || fail "S99mihomo restart must remain behind the restart-needed gate"
+pass "repeat install skips Mihomo restart when binary/config are unchanged"
+
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
 grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
