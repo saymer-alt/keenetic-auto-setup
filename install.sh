@@ -1143,17 +1143,17 @@ wait_for_mihomo_contract_port() {
 CONFIG="/opt/etc/mihomo/config.yaml"
 
 # Mihomo binary + version
-if [ -x /opt/bin/mihomo ] || command -v mihomo >/dev/null 2>&1; then
-    MIHOMO_BIN=$(command -v mihomo 2>/dev/null || echo "/opt/bin/mihomo")
+MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
+if [ -n "$MIHOMO_BIN" ]; then
     if mihomo_running; then
         check_info "Mihomo daemon is running - binary probe (-v) skipped (one-Mihomo invariant); the running daemon itself proves the binary executes"
-    elif ${MIHOMO_BIN} -v >/dev/null 2>&1; then
-        check_ok "Mihomo binary: $(${MIHOMO_BIN} -v 2>/dev/null | head -1)"
+    elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
+        check_ok "Mihomo binary: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
     else
         check_fail "Mihomo binary exists but 'mihomo -v' failed"
     fi
 else
-    check_fail "Mihomo binary not found (/opt/bin/mihomo)"
+    check_fail "Mihomo binary not found (/opt/sbin/mihomo or /opt/bin/mihomo)"
 fi
 
 # Mihomo init script
