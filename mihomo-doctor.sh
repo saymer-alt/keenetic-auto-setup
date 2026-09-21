@@ -509,7 +509,7 @@ for _mount in "$OPT_ROOT" /tmp; do
             ;;
         *)
             if [ "$_kb" -lt 32768 ]; then
-                warn "Low free space on $_mount: $((_kb/1024)) MB - installs and updates need ~50 MB"
+                warn "Low free space on $_mount: $((_kb/1024)) MB - below the 32 MB diagnostic threshold; some install/update operations may require more"
             else
                 ok "Free space on $_mount: $((_kb/1024)) MB"
             fi
