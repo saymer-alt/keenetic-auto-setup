@@ -129,6 +129,12 @@ grep -q 'Failed to write required Mihomo bootstrap config' "$ROOT/install.sh" ||
 grep -q 'config.yaml not found (required bootstrap missing)' "$ROOT/install.sh" || fail "self-check must fail when required bootstrap is absent"
 pass "bootstrap is mandatory and exposes contract port 7890"
 
+grep -q '^wait_for_mihomo_contract_port()' "$ROOT/install.sh" || fail "installer must have a bounded Mihomo contract-port startup wait"
+grep -q '\[ "$_wp_try" -le 5 \]' "$ROOT/install.sh" || fail "contract-port startup wait must remain bounded to five seconds after the immediate check"
+grep -q 'Port 7890 still not listening after 5s startup wait' "$ROOT/install.sh" || fail "installer must warn only after the bounded startup wait"
+grep -q 'Port 7890 listening' "$ROOT/install.sh" || fail "installer must report listener success"
+pass "Mihomo contract-port self-check tolerates bounded startup latency"
+
 grep -q 'dns-proxy intercept enable' "$ROOT/install.sh" || fail "installer must enable DNS transit interception"
 grep -q 'DNS transit interception (dns-proxy intercept enable) not found' "$ROOT/install.sh" || fail "self-check must verify DNS interception"
 grep -q 'did not appear in running-config after enable' "$ROOT/install.sh" || fail "installer must fail early when DNS interception did not persist"

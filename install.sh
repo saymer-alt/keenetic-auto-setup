@@ -1046,6 +1046,36 @@ mihomo_running() {
     fi
 }
 
+mihomo_contract_port_listening() {
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tln 2>/dev/null | grep -q 7890
+        return $?
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        ss -tln 2>/dev/null | grep -q 7890
+        return $?
+    fi
+    return 2
+}
+
+wait_for_mihomo_contract_port() {
+    # Some constrained routers (observed on KN-1010 / MT7621) return from the
+    # init-script start before Mihomo has opened its listening socket. Check
+    # immediately, then allow up to five seconds for the contract port to
+    # appear. Fast devices pay no delay.
+    _wp_try=0
+    while [ "$_wp_try" -le 5 ]; do
+        mihomo_contract_port_listening
+        _wp_rc=$?
+        [ "$_wp_rc" -eq 0 ] && return 0
+        [ "$_wp_rc" -eq 2 ] && return 2
+        [ "$_wp_try" -eq 5 ] && break
+        _wp_try=$((_wp_try + 1))
+        sleep 1
+    done
+    return 1
+}
+
 CONFIG="/opt/etc/mihomo/config.yaml"
 
 # Mihomo binary + version
@@ -1179,10 +1209,15 @@ if [ -f "$CONFIG" ]; then
     else
         check_warn "Mihomo config syntax check (mihomo -t) failed"
     fi
-    if command -v netstat >/dev/null 2>&1; then
-        netstat -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening — Mihomo may not be running, or config.yaml does not define mixed-port 7890"
-    elif command -v ss >/dev/null 2>&1; then
-        ss -tln 2>/dev/null | grep -q 7890 || check_warn "Port 7890 not listening — Mihomo may not be running, or config.yaml does not define mixed-port 7890"
+    if wait_for_mihomo_contract_port; then
+        check_ok "Port 7890 listening"
+    else
+        _wp_result=$?
+        if [ "$_wp_result" -eq 2 ]; then
+            check_info "Port 7890 listener check skipped — neither netstat nor ss is available"
+        else
+            check_warn "Port 7890 still not listening after 5s startup wait — verify Mihomo startup/config/logs"
+        fi
     fi
 else
     check_fail "config.yaml not found (required bootstrap missing) — project ProxyN cannot reach Mihomo on 7890"
