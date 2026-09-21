@@ -1065,9 +1065,11 @@ wait_for_mihomo_contract_port() {
     # appear. Fast devices pay no delay.
     _wp_try=0
     while [ "$_wp_try" -le 5 ]; do
-        mihomo_contract_port_listening
-        _wp_rc=$?
-        [ "$_wp_rc" -eq 0 ] && return 0
+        if mihomo_contract_port_listening; then
+            return 0
+        else
+            _wp_rc=$?
+        fi
         [ "$_wp_rc" -eq 2 ] && return 2
         [ "$_wp_try" -eq 5 ] && break
         _wp_try=$((_wp_try + 1))
