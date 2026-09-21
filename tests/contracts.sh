@@ -30,6 +30,10 @@ grep -q '512 MB-class device .*has neither active zRAM nor verified external sto
 grep -q 'Stopping before package installation or project changes' "$ROOT/install.sh" || fail "oversized external swap must be an early installer error"
 pass "installer enforces resource contract 20260921_2"
 
+sh "$ROOT/tests/resource-scan-regression.sh" "$ROOT" ||
+    fail "resource scanner must remain non-fatal for ordinary states under set -e"
+pass "resource scanner does not abort install.sh before resource-profile policy handles the state"
+
 grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL oversized external swap"
 grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
 grep -q '256 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 256 MB missing backend"

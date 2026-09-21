@@ -188,6 +188,7 @@ scan_swap_backends() {
         esac
     done < "$PROC_SWAPS"
     [ "$SW_EXT_KB" -gt "$SWAP_MAX_KB" ] 2>/dev/null && SW_EXT_OVERSIZE=1
+    return 0
 }
 
 MEM_TOTAL_KB=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)
