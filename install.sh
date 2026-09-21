@@ -1282,20 +1282,20 @@ fi
 # Entware filesystems while still surfacing a real inability to stage an update.
 AVAIL_KB=$(df -k /opt 2>/dev/null | awk 'NR==2 {print $4}')
 BIN_SIZE_BYTES=$(wc -c < "$MIHOMO_BIN" 2>/dev/null || true)
-case "$AVAIL_KB:$BIN_SIZE_BYTES" in
-    *[!0-9:]*|:*)
-        check_info "Mihomo update staging headroom on /opt: cannot determine"
-        ;;
-    *)
-        BIN_SIZE_KB=$(( (BIN_SIZE_BYTES + 1023) / 1024 ))
-        STAGE_NEED_KB=$((BIN_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))
-        if [ "$AVAIL_KB" -lt "$STAGE_NEED_KB" ]; then
-            check_warn "Mihomo update staging headroom is insufficient on /opt: ${AVAIL_KB} KB available, current-binary estimate needs ~${STAGE_NEED_KB} KB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
-        else
-            check_ok "Mihomo update staging headroom on /opt: ${AVAIL_KB} KB available; current-binary estimate needs ~${STAGE_NEED_KB} KB"
-        fi
-        ;;
-esac
+_SPACE_VALID=1
+case "$AVAIL_KB" in ''|*[!0-9]*) _SPACE_VALID=0 ;; esac
+case "$BIN_SIZE_BYTES" in ''|*[!0-9]*) _SPACE_VALID=0 ;; esac
+if [ "$_SPACE_VALID" -ne 1 ]; then
+    check_info "Mihomo update staging headroom on /opt: cannot determine"
+else
+    BIN_SIZE_KB=$(( (BIN_SIZE_BYTES + 1023) / 1024 ))
+    STAGE_NEED_KB=$((BIN_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))
+    if [ "$AVAIL_KB" -lt "$STAGE_NEED_KB" ]; then
+        check_warn "Mihomo update staging headroom is insufficient on /opt: ${AVAIL_KB} KB available, current-binary estimate needs ~${STAGE_NEED_KB} KB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+    else
+        check_ok "Mihomo update staging headroom on /opt: ${AVAIL_KB} KB available; current-binary estimate needs ~${STAGE_NEED_KB} KB"
+    fi
+fi
 
 # Verdict
 if [ "$FAILS" -gt 0 ]; then
