@@ -20,14 +20,14 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
 ### External storage — USB HDD / NVMe
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
 ```
 
 Details → [installation](../03-install.md)
@@ -47,7 +47,7 @@ Details → [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator so
 Doctor:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
 Restart:
@@ -69,13 +69,13 @@ Details → [diagnostics and troubleshooting](../08-troubleshooting.md)
 Mihomo:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
 Watchdog:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 MagiTrickle:
@@ -92,7 +92,7 @@ Details → [updates, rollback and maintenance](UPDATES.md)
 MIPS TUN migration:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh
 ```
 
 Details → [MIPS TUN migration](UPDATES.md#mips-tun-migration)
@@ -100,7 +100,7 @@ Details → [MIPS TUN migration](UPDATES.md#mips-tun-migration)
 Linux interface check:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-interface-check.sh | sh
 ```
 
 Details → [interface-name and routing](../../ARCHITECTURE.md)
@@ -108,7 +108,7 @@ Details → [interface-name and routing](../../ARCHITECTURE.md)
 Current proxy / failover-failback:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh
 ```
 
 Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
