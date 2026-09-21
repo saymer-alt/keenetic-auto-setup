@@ -90,12 +90,13 @@ beyond what is already used (curl, jq, gzip, wget, cron, ca-bundle, nano).
 
 ## 5. Security: risk zones
 
-Delivery detail: until the separate stable delivery channel is promoted for a release,
-the public one-liners and installer-managed downloads still use raw.githubusercontent.com/main,
-so a commit to main can reach the next user's `curl | sh` (already installed watchdog
-copies on routers do not update themselves). Minimal GitHub Actions CI now runs shell
-syntax, committed contract smoke tests and whitespace checks on main and the future
-stable branch. Green CI is necessary, but real-hardware acceptance still matters.
+Delivery detail: `main` is the development branch and `stable` is the production
+delivery branch. Public one-liners and installer-managed project downloads use
+`raw.githubusercontent.com/.../stable/...` by default; development/testing may override
+the project ref explicitly. Minimal GitHub Actions CI runs shell syntax, committed contract
+smoke tests and whitespace checks on both branches. Promotion is `main → stable` only
+after green CI and focused acceptance; release tags are placed on the exact production
+commit. Green CI is necessary, but real-hardware acceptance still matters.
 
 Without an explicit task and operator confirmation, do not:
 - change persistent router configuration through ndmc (`system configuration save`,
@@ -148,8 +149,10 @@ Risk-zone specifics:
 
 ## 7. Working with Git
 
-Default working rules (there is no separate repository policy; history indicates that
-the owner edits main directly, with commit messages like "Update X"):
+Default working rules:
+- `main` is development; `stable` is production delivery. Develop on `main`, require
+  green CI, promote through a `main → stable` pull request, verify CI on the promoted
+  commit, then tag/release that exact `stable` commit;
 - before starting: `git status`; make sure you are on main and there are no unrelated
   uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
   only with explicit instruction);
@@ -260,9 +263,9 @@ a live run.
 - Determine which components the task touches (§2), reread the risk zones (§5),
   and read the relevant doc before editing, not after.
 - Any action on a live router requires an operator task.
-- Until the stable delivery channel is promoted, a commit to main can still change what
-  the next user's `curl | sh` executes. Minimal CI must be green, but it is not a
-  substitute for focused live-router acceptance when hardware behavior matters.
+- A commit to `main` is development only. Production one-liners use `stable`.
+  Do not move `stable` casually: CI must be green and focused live-router acceptance
+  still matters when hardware behavior is involved.
 - Do not claim "it works" if verification was limited to sh -n: list what was checked
   and what requires a live run on a device.
 - If the task looks like "rewrite everything properly", stop and reread §4 and docs/10:
