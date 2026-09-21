@@ -70,9 +70,13 @@ run_policy() {
     _mounts=$2
     _swaps=$3
     _out=$4
+    _mode=${5:-ram}
+    _allow_internal_disk=${6:-0}
 
     (
         set -e
+        MODE="$_mode"
+        ALLOW_INTERNAL_DISK="$_allow_internal_disk"
         INSTALL_MEMINFO="$_mem"
         INSTALL_MOUNTS="$_mounts"
         INSTALL_SWAPS="$_swaps"
@@ -133,5 +137,37 @@ expect_reject     "128 MB profile rejects external swap below the 384 MB floor" 
 expect_accept     "128 MB profile accepts the exact 384 MB external-swap floor as experimental"     "$TMP/mem-128" "$TMP/mounts-external" "$TMP/swaps-128-enough"     "LOW-RAM / BEST-EFFORT INSTALL"
 
 expect_accept     "zRAM plus external swap continues but emits the coexistence warning"     "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-zram-plus-disk"     "zRAM and external storage-backed swap are active together"
+
+# Storage-mode guardrail: internal+disk is rejected unless the narrowly-scoped
+# override is explicit; external+ram is valid but must stay visible as a WARN.
+if run_policy "$TMP/mem-256" "$TMP/mounts-internal" "$TMP/swaps-zram-plus-disk" "$TMP/out-mode" disk 0; then
+    cat "$TMP/out-mode" >&2
+    fail "internal /opt + disk mode must be rejected without explicit override"
+fi
+grep -Fq "Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage" "$TMP/out-mode" || {
+    cat "$TMP/out-mode" >&2
+    fail "internal /opt + disk rejection text missing"
+}
+pass "internal /opt + disk mode requires explicit override"
+
+if ! run_policy "$TMP/mem-256" "$TMP/mounts-internal" "$TMP/swaps-zram-plus-disk" "$TMP/out-mode-override" disk 1; then
+    cat "$TMP/out-mode-override" >&2
+    fail "explicit internal-disk override must allow the policy to continue"
+fi
+grep -Fq "Storage-mode override accepted: disk mode on internal /opt" "$TMP/out-mode-override" || {
+    cat "$TMP/out-mode-override" >&2
+    fail "internal-disk override acknowledgement missing"
+}
+pass "explicit --allow-internal-disk override is accepted"
+
+if ! run_policy "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-zram-plus-disk" "$TMP/out-ram-external" ram 0; then
+    cat "$TMP/out-ram-external" >&2
+    fail "external /opt + ram mode is a supported profile and must continue"
+fi
+grep -Fq "Storage-mode mismatch: ram mode was selected while /opt is on external persistent storage" "$TMP/out-ram-external" || {
+    cat "$TMP/out-ram-external" >&2
+    fail "external /opt + ram mode warning missing"
+}
+pass "external /opt + ram mode remains supported but visible"
 
 echo "[OK] Resource policy regression fixtures passed"
