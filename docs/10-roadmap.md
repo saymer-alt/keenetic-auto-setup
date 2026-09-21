@@ -41,7 +41,7 @@
 ### 1. Улучшение install.sh
 
 - [x] ранняя проверка RAM до сетевых загрузок/изменений
-- [x] resource-profile contract 20260920_1: 128MB-класс — только внешний /opt + внешний storage-backed swap >=384 МБ (512 предпочтительно; zRAM в минимум не входит), иначе installer FAIL; 256 МБ — активный zRAM обязателен независимо от места /opt, иначе installer/Doctor FAIL; 512 МБ+ — без любого активного zRAM/swap явный WARN, но без hard gate; updater существующих legacy-инсталляций profile-нарушения не блокирует, а выдаёт сильный WARN
+- [x] resource-profile contract 20260921_1: 128MB-класс — только внешний /opt + внешний storage-backed swap >=384 МБ (project-specific floor; zRAM не входит), иначе installer FAIL; 256 МБ — нужен один backend: zRAM или внешний storage-backed swap; 512 МБ+ swap/zRAM не требуют; совместный zRAM + disk/file swap получает WARN по vendor guidance; updater существующих legacy-инсталляций profile-нарушения не блокирует
 - [x] явная диагностика критических ошибок: Proxy client, полный read-back проектного ProxyN, обязательный bootstrap, DNS interception и финальный self-check
 - [x] проверка обязательного DNS-контракта: `dns-proxy intercept enable` применяется и немедленно читается обратно
 - [ ] необязательная диагностика здоровья upstream DNS — только если появится воспроизводимый практический кейс; не делать её hard gate установки
