@@ -12,7 +12,7 @@
 - Доступ к shell
 - Интернет
 
-Полные требования → [компоненты и prerequisites](docs/COMPONENTS.md) · [RAM / storage / ограничения](docs/09-limitations.md)
+Полные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md)
 
 ## 1. Установка
 
@@ -30,17 +30,17 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
 ```
 
-Подробности → [установка](docs/03-install.md) · [полное HOWTO](docs/HOWTO_RU.md)
+Подробности → [установка](docs/03-install.md)
 
 ## 2. Конфигурация Mihomo
 
-Генератор → [Mihomo Unified Generator](https://github.com/saymer-alt/link-generators)
+Открыть генератор → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
 
 ```bash
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Подробности → [Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [архитектура и маршрутизация](docs/01-architecture.md)
+Подробности → [что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [исходники генератора](https://github.com/saymer-alt/link-generators)
 
 ## 3. Проверка и запуск
 
@@ -62,7 +62,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 /opt/etc/init.d/S99mihomo status
 ```
 
-Диагностика → [Troubleshooting](docs/08-troubleshooting.md)
+Подробности → [диагностика и troubleshooting](docs/08-troubleshooting.md)
 
 ## 4. Обновление
 
@@ -72,15 +72,13 @@ Mihomo:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
 ```
 
-Подробности → [обновление Mihomo](docs/HOWTO_RU.md)
-
 Watchdog:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
-Подробности → [Watchdog](docs/04-watchdog.md)
+Подробности → [обновление, откат и обслуживание](docs/12-updates.md)
 
 ## 5. Дополнительные команды
 
@@ -90,7 +88,7 @@ MIPS TUN migration:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
 ```
 
-Подробности → [MIPS / update HOWTO](docs/HOWTO_RU.md)
+Подробности → [миграция TUN stack](docs/12-updates.md#mips-tun-migration)
 
 Проверка Linux-интерфейсов:
 
@@ -98,7 +96,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh
 ```
 
-Подробности → [interface-name](ARCHITECTURE.md)
+Подробности → [interface-name и маршрутизация](ARCHITECTURE.md)
 
 Текущий proxy / failover-failback:
 
@@ -113,25 +111,20 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 | Скрипт | Документация |
 | --- | --- |
 | [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
-| [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [HOWTO](docs/HOWTO_RU.md) |
+| [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [MIPS TUN migration](docs/12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Архитектура](ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](docs/11-proxy-selection-watch.md) |
-| [`update-mihomo.sh`](update-mihomo.sh) | [HOWTO](docs/HOWTO_RU.md) |
-| [`update-watchdog.sh`](update-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
+| [`update-mihomo.sh`](update-mihomo.sh) | [Обновление Mihomo](docs/12-updates.md#обновление-mihomo) |
+| [`update-watchdog.sh`](update-watchdog.sh) | [Обновление watchdog](docs/12-updates.md#обновление-watchdog) |
 | [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
 | [`020-bypass-wa.sh`](020-bypass-wa.sh) | [bypass_wa](docs/05-bypass-wa.md) |
 | [`S00ubifs`](S00ubifs) | [S00ubifs](docs/06-s00ubifs.md) |
-| [`tests/contracts.sh`](tests/contracts.sh) | [Стратегия тестирования](docs/TESTING_STRATEGY.md) |
 
-## 7. Документация
+## 7. Справочник
 
-- [Быстрый старт](docs/02-quick-start.md)
-- [Установка](docs/03-install.md)
-- [HOWTO](docs/HOWTO_RU.md)
-- [Архитектура](docs/01-architecture.md)
-- [Диагностика](docs/08-troubleshooting.md)
-- [Ограничения](docs/09-limitations.md)
+- [Полное HOWTO](docs/HOWTO_RU.md)
+- [Энциклопедия / карта системы](docs/encyclopedia/00-karta-sistemy.md)
 - [Roadmap](docs/10-roadmap.md)
 - [CHANGELOG](CHANGELOG.md)
 - [Лицензия](LICENSE)

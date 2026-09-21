@@ -34,6 +34,7 @@ _No changes yet._
 - `install.sh`: last-resort Mihomo install fallback — `opkg install mihomo` from the configured Entware feed. Used only after the whole GitHub path (asset lookup → download → package install) has failed before a successful install; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
 
 ### Changed
+- README streamlined as a user-facing entry point: the Russian prerequisites link now opens a Russian component contract, the generator link opens the live GitHub Pages app, update operations have a dedicated guide, the internal testing strategy was removed from the public script index, and repeated documentation links were reduced.
 
 - English README synchronized with the concise Russian entry point; the detailed RAM/storage/runtime explanations remain in dedicated docs. `docs/03-install.md` now documents a minimal Stage-0 path for routers that cannot reach `raw.githubusercontent.com`: download `install.sh` on a PC, copy it to the router, and run it locally without weakening TLS/DNS settings.
 

@@ -1,5 +1,7 @@
 # KeeneticOS / Entware prerequisites
 
+[Русская версия](COMPONENTS_RU.md)
+
 This document is the install-time capability contract for `keenetic-auto-setup`.
 It deliberately separates **required KeeneticOS components**, **required capabilities**,
 and **optional user choices**. Do not turn every feature seen on a working router into a
