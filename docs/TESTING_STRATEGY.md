@@ -20,7 +20,9 @@ For normal development, test in this order:
 1. **Real installation states and real bug reports.** Reproduce the smallest relevant state instead of inventing a broad failure matrix.
 2. **Cross-component contracts.** Check boundaries that can drift independently: KeeneticOS component/capability → installer, `entware-go` package → bootstrap config, ProxyN → `127.0.0.1:7890`, watchdog → canonical runtime layout.
 3. **Committed contract/regression checks.** Run `sh tests/contracts.sh` and extend it only when a real bug can be represented cheaply. Temporary adversarial harnesses used during development are not a permanent KeeneticOS emulator.
-   Minimal GitHub Actions CI runs this contract test plus shell syntax and whitespace checks automatically on pushes/pull requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
+   Minimal GitHub Actions CI runs the committed contract/regression checks plus shell syntax,
+   repository-local Markdown-link validation and whitespace checks automatically on pushes/pull
+   requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
 4. **Static/syntax review.** Run `sh -n` for changed shell scripts and review BusyBox/POSIX compatibility.
 5. **Focused synthetic failure injection** only when the change touches a high-consequence invariant.
 
@@ -60,7 +62,9 @@ Live tests must remain conservative:
 
 ## Release gate
 
-A release does not require rerunning every historical synthetic campaign. Run `sh tests/contracts.sh` plus syntax checks for changed shell scripts; the gate should then confirm:
+A release does not require rerunning every historical synthetic campaign. Run the committed
+CI checks (including `sh tests/contracts.sh`, shell syntax and local Markdown-link validation);
+the gate should then confirm:
 
 - the intended commit is the current release candidate;
 - GitHub Actions CI is green for the reviewed candidate;
