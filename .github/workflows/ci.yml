@@ -39,6 +39,9 @@ jobs:
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
+      - name: Local Markdown links
+        run: python3 tests/docs-links.py
+
       - name: Whitespace
         shell: bash
         run: |
