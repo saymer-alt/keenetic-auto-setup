@@ -106,6 +106,7 @@ grep -q '^DNS_FILTER_COMPONENT_ID=dns-filter$' "$ROOT/install.sh" || fail "insta
 grep -q '^NETFILTER_COMPONENT_ID=opkg-kmod-netfilter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS Netfilter component id"
 grep -q 'Checking required KeeneticOS components' "$ROOT/install.sh" || fail "installer must run named-component preflight"
 grep -q 'Missing required KeeneticOS component(s):' "$ROOT/install.sh" || fail "installer must label the missing-component list"
+grep -Fq 'printf '\''%s\n'\'' "${_rc_missing_lines#?}" >&2' "$ROOT/install.sh" || fail "missing-component list must not start with a blank line"
 grep -q 'Proxy client / Клиент прокси (${PROXY_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Proxy client clearly"
 grep -q 'Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (${DNS_FILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing dns-filter clearly"
 grep -q 'Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Netfilter clearly"
