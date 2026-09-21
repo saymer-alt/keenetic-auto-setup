@@ -66,7 +66,8 @@ WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
 STAGE_FILE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 TMP_FILE="/tmp/mihomo-watchdog.sh.new.$$"
-CRON_LEGACY_BAK="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"
+CRON_LEGACY_BAK="/opt/etc/mihomo_watchdog.legacy.bak"
+CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"
 CRONTAB_FILE="/opt/etc/crontab"
 CRON_DIRECT='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog'
 URL="${WATCHDOG_URL:-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-watchdog.sh}"
@@ -150,6 +151,20 @@ fi
 
 # --- ORPHANED STAGES of crashed earlier runs (exclusive namespaces) ---
 rm -f /opt/bin/.mihomo_watchdog.sh.new.* 2>/dev/null || true
+
+# Older updater generations stored the bounded legacy backup inside cron.5mins.
+# On BusyBox/run-parts an executable backup there can be scheduled as a second
+# watchdog. Move it out of the cron directory and make the backup non-executable.
+if [ -f "$CRON_LEGACY_BAK_OLD" ]; then
+    if cp -f "$CRON_LEGACY_BAK_OLD" "$CRON_LEGACY_BAK" 2>/dev/null; then
+        chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
+        rm -f "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
+        echo "[INFO] Moved legacy watchdog backup out of cron.5mins"
+    else
+        chmod -x "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
+        echo "[WARN] Could not move old watchdog backup out of cron.5mins; executable bit removed"
+    fi
+fi
 rm -f /tmp/mihomo-watchdog.sh.new.* 2>/dev/null || true
 
 # --- DOWNLOAD + VALIDATE (in RAM, before touching anything on /opt) ---
@@ -234,6 +249,7 @@ case "$CRON_ACTION" in
         # One bounded backup of the replaced managed legacy copy
         # (overwritten on every migration, never accumulates).
         if cp -f "$WATCHDOG_CRON" "$CRON_LEGACY_BAK" 2>/dev/null; then
+            chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
             echo "[INFO] Legacy watchdog copy backed up to $CRON_LEGACY_BAK"
         else
             echo "[WARN] Could not back up the legacy watchdog copy (migrating anyway)"

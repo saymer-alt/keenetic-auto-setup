@@ -237,8 +237,13 @@ resolve() {
                 return 0 ;;
         esac
         if [ "$(node_exists "$_now")" != "yes" ]; then
+            # Provider-backed groups may expose the selected leaf only via
+            # the group's "now" field without a separate top-level /proxies
+            # object for that leaf. The non-empty "now" value is still the
+            # effective selected server, so treat it as a terminal leaf.
+            CHAIN="$CHAIN -> $_now"
             LEAF="$_now"
-            RESOLVE_STATUS="unknown-now"
+            RESOLVE_STATUS="ok"
             return 0
         fi
         _visited="$_visited$_now "

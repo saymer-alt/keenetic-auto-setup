@@ -55,6 +55,16 @@ grep -q 'executable version/support probes skipped (one-Mihomo invariant)' "$ROO
 grep -Fq 'if [ "$CHECK_CAN_EXEC" -eq 1 ]; then' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check binary probes must be guarded"
 pass "migrator --check obeys the one-Mihomo invariant"
 
+grep -q 'CRON_LEGACY_BAK="/opt/etc/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must live outside cron.5mins"
+grep -q 'CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must recognize the old in-cron backup path"
+grep -q 'chmod -x "$CRON_LEGACY_BAK"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
+pass "watchdog updater cannot leave an executable legacy backup in cron.5mins"
+
+grep -q 'Provider-backed groups may expose the selected leaf only via' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must support provider-backed leaf names"
+grep -q 'CHAIN="$CHAIN -> $_now"' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must report terminal now leaf"
+pass "proxy watcher accepts a non-top-level selected leaf from group now"
+
+
 grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
