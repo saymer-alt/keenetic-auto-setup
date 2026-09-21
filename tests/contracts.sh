@@ -188,4 +188,12 @@ grep -q 'mihomo-proxy-selection-watch.sh' "$ROOT/README.md" || fail "README must
 grep -q 'docs/11-proxy-selection-watch.md' "$ROOT/README.md" || fail "README must link the shareable proxy-selection-watch guide"
 pass "proxy-selection-watch remains visible, self-explanatory, read-only and auth-aware"
 
+
+# User-facing HOWTOs must mirror the storage-mode guard and current ProxyN behavior.
+for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
+    grep -Fq -- '--allow-internal-disk' "$ROOT/$_f" || fail "$_f must document the narrow internal-disk override"
+done
+grep -Fq 'первый свободный `ProxyN`' "$ROOT/docs/HOWTO_RU.md" || fail "Russian HOWTO must describe foreign Proxy0 -> first free ProxyN"
+grep -Fq 'first free `ProxyN`' "$ROOT/docs/HOWTO.md" || fail "English HOWTO must describe foreign Proxy0 -> first free ProxyN"
+pass "RU/EN HOWTOs mirror storage-mode and ProxyN contracts"
 echo "[OK] Contract smoke tests passed"
