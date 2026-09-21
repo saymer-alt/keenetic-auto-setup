@@ -181,7 +181,7 @@ Default working rules:
 - ARCHITECTURE.md is the main architecture document (RU): three traffic paths, roles of
   Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS architecture,
   guarantee boundaries. README links to it as the primary architecture reading.
-- numbered docs are focused guides; `docs/12-updates.md` and `docs/EN/UPDATES.md` are the user-facing maintenance guides. `CHANGELOG.md` records release history and the current release candidate.
+- numbered docs are focused guides; `docs/12-updates.md` and `docs/EN/UPDATES.md` are the user-facing maintenance guides. `CHANGELOG.md` records release history and current unreleased work.
 - If documentation and code disagree, the code is the source of truth. The watchdog guide
   (`docs/04-watchdog.md`) is expected to track the current two-stage WAN + port + socks5h
   logic, 20-minute healthy heartbeat, mkdir lock and 500/300-line rotation; do not preserve

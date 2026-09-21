@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-LINK_RE = re.compile(r"!?[[^]]*](([^)]+))")
+LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 SCHEMES = {"http", "https", "mailto", "tel", "data"}
 
 
@@ -74,6 +74,10 @@ def main() -> int:
                         str(candidate.relative_to(ROOT)),
                     )
                 )
+
+    if checked == 0:
+        print("[FAIL] Local Markdown link check scanned 0 links", file=sys.stderr)
+        return 1
 
     if broken:
         for doc, raw, resolved in broken:

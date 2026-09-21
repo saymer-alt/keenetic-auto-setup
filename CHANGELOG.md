@@ -10,12 +10,7 @@ _No changes yet._
 
 ---
 
-## [1.4.0] - UNRELEASED (release candidate)
-
-> Status: v1.4.0 release candidate — not tagged or published; final release gate
-> pending after the remaining approved changes. The latest published release
-> remains [1.3.0]. This section keeps
-> the accumulated v1.4.0 notes until the owner explicitly releases the version.
+## [1.4.0] - 2026-09-21
 
 ### Added
 - Storage-mode guardrail: `disk` mode on verified internal Keenetic `/opt` now stops before package/project changes unless the operator explicitly passes `--allow-internal-disk`. The narrow override does not bypass any other safety gate. `ram` mode on external persistent `/opt` remains supported but emits a WARN so an omitted `disk` argument is visible.
@@ -37,6 +32,7 @@ _No changes yet._
 - `install.sh`: last-resort Mihomo install fallback — `opkg install mihomo` from the configured Entware feed. Used only after the whole GitHub path (asset lookup → download → package install) has failed before a successful install; the transition is logged as a WARN, and the feed version may be older than the GitHub release build.
 
 ### Changed
+- The repository-local Markdown link validator now parses standard inline links correctly and fails closed when it scans zero links. The previous regular expression silently matched nothing, so CI could report a green documentation check without validating any links.
 - Repeat installs no longer download the same opkg package indexes twice when the MagiTrickle feed is already configured. `install.sh` keeps the initial useful `opkg update` and still runs the upstream MagiTrickle repository helper on every run, but snapshots `/opt/etc/opkg/*.conf` before/after the helper and performs the second metadata refresh only when repository configuration actually changed. Fresh installs still refresh once after adding the new feed.
 - Resource-profile contract advanced to `20260921_3` to reduce noisy swap warnings on supported 256/512 MB-class routers. When external swap is the chosen backend, <1× detected RAM is now WARN; 1×..3× RAM is INFO-only and still shows the preferred 3× sizing target; >2 GiB remains an installer ERROR / Doctor FAIL. The 128 MB experimental >=384 MB hard floor, missing-backend WARN, zRAM+disk coexistence WARN and updater non-blocking legacy behavior are unchanged. Installer, Doctor, updater, regression fixtures and RU/EN documentation share the same severity model.
 - Repeat `install.sh` no longer causes an unnecessary Mihomo outage when nothing Mihomo-specific changed. The installer tracks a restart-needed flag: successful initial Mihomo installation or bootstrap `config.yaml` creation/replacement requires a reload; an unchanged running Mihomo skips restart entirely (and skips the old fixed 2-second delay), while a stopped service is started so the working-stack contract is preserved. CI pins this change-aware restart behavior and the RU/EN/install-internals documentation was synchronized.
@@ -99,6 +95,10 @@ _No changes yet._
 - Watchdog vs planned maintenance: `update-mihomo.sh` and `migrate-mihomo-mips.sh` hold a `/tmp/mihomo.maintenance` marker (pid + timestamp) for the duration of a transaction that may intentionally stop Mihomo; `mihomo-watchdog.sh` skips its entire run while a fresh marker exists, so a cron tick landing inside an update or migration cannot resurrect Mihomo mid-transaction. The marker lives in /tmp (a crashed run self-heals at reboot), a malformed timestamp is treated conservatively (skip), and markers older than one hour are ignored so a watchdog outage stays bounded.
 
 - Updater and migrator locking rewritten from the racy check-then-touch plain-file lock to an atomic, stale-safe lock directory (`/tmp/mihomo-update.lock.d`, `/tmp/mihomo-migrate.lock.d`; apply mode only — `--check` stays lock-free). The directory is created with `mkdir` as an atomic test-and-set, and an ownership-claim symlink inside it is the create-if-absent tie-breaker, so two concurrent invocations can never both believe they own the lock even on a filesystem where directory creation itself is not a reliable test-and-set. Ownership is recorded as pid + timestamp; a live holder is recognized through `/proc/<pid>/cmdline` (a reused pid or a foreign process behind the same pid is classified as stale), a dead (SIGKILLed) holder is taken over through an atomic rename claim that exactly one recoverer can win, and every takeover additionally requires that no live updater/migrator process exists in `/proc` — malformed metadata, missing pid/ts files, and clock anomalies (future or ancient timestamps after an offline boot, wall-clock rollback) therefore fail conservative or recover safely instead of overrunning a running instance. An unexpected filesystem object at a lock path (file, directory, symlink, FIFO) is reported and never removed to make acquisition succeed. Legacy compatibility: the old plain lock files (`/tmp/mihomo-update.lock`, `/tmp/mihomo-migrate.lock`) are still honored — a legacy lock backed by a live process blocks the run, an orphaned one is reclaimed — and while the new lock is held the legacy file is kept present with the holder's pid, so a still-installed old-version updater or migrator sees "another update/migration is already running" instead of racing the new generation. Residual: an old-version tool has a racy check-then-touch of its own and can slip through a microseconds-wide window; that generation is racy by design and phases out as routers update.
+
+### Tested
+
+- Final repeat-install acceptance passed on a Keenetic Giga KN-1010 (mipsel, KeeneticOS 5.1.5, 248 MB RAM, internal `/opt`, 468 MB external storage-backed swap): the installer completed successfully, reused the existing stack, performed only its initial package-metadata refresh because the MagiTrickle repository was unchanged, and skipped the unnecessary Mihomo restart. The subsequent read-only Doctor run reported `OK: 26`, `WARN: 0`, `FAIL: 0`; port 7890, Proxy0, DNS interception, MagiTrickle, bypass policy and the canonical watchdog layout were healthy.
 
 ### Removed
 
