@@ -152,7 +152,7 @@ if ! run_policy "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-256-below-ram"
     cat "$TMP/out-swap-below-ram" >&2
     fail "256 MB external swap below 1x RAM must continue with WARN"
 fi
-grep -Fq "[WARN] External SWAP is below project minimum floor" "$TMP/out-swap-below-ram" || {
+grep -Fq "[WARN] External SWAP is below the project minimum floor" "$TMP/out-swap-below-ram" || {
     cat "$TMP/out-swap-below-ram" >&2
     fail "256 MB external swap below 1x RAM must emit the minimum-floor WARN"
 }
