@@ -345,7 +345,7 @@ The installer is written to be idempotent: every modifying step first checks whe
 
 One caveat: the mihomo `.ipk` is downloaded on every run — `opkg` will simply skip it if the same version is already installed.
 
-Another caveat: **if Proxy0 already exists, its configuration is left untouched** (including the human-readable description). That branch is deliberately hands-off: the installer never rewrites persistent router config that already works.
+Another caveat: **a foreign Proxy0 is never rewritten**. The installer recognizes a project-managed proxy only when both markers match (description `mihomo t2sN` and upstream `127.0.0.1:7890`). If Proxy0 is foreign, it is left untouched and the installer creates the first free `ProxyN`; later re-runs reuse that project ProxyN instead of creating another one.
 
 The same applies to DNS transit interception: the installer checks the current state first and enables it (saving the config) only when it wasn't enabled. For the currently supported profile, `dns-proxy intercept enable` is mandatory. A router that must keep classic DNS transit open is outside this project's supported install path and requires a separate manual design.
 
@@ -364,16 +364,22 @@ A `WARN ... Port 7890 still not listening after 5s startup wait` means the contr
 
 `install.sh [ram|disk]`, default `ram`.
 
-| | `ram` (default) | `disk` |
+| Actual `/opt` | Mode | Behavior |
 | --- | --- | --- |
-| Logs, tmp, run-pid files | tmpfs (RAM) via `S00ubifs` | stay on storage |
-| Flash wear | minimized | normal Entware wear |
-| Data after reboot | logs are gone (by design) | preserved |
-| Best for | internal flash, long-term 24/7 | low-RAM devices, when persistent logs matter |
+| internal | `ram` | normal profile: `S00ubifs` moves runtime/log/tmp to tmpfs |
+| external persistent | `disk` | normal profile: runtime/log/tmp stay on external storage |
+| external persistent | `ram` | supported with WARN: runtime/log/tmp use tmpfs and become volatile |
+| internal | `disk` | **ERROR before installer-managed changes** by default: this mode skips `S00ubifs` and leaves runtime/log writes on internal flash |
 
 `S00ubifs` adapts tmpfs sizes to available RAM (profiles for <40 MB, <80 MB, ≥80 MB free). Details: [docs/06-s00ubifs.md](06-s00ubifs.md).
 
-If you chose wrong: re-running the installer with the other mode is safe (steps already done are skipped), but remove the mode's leftovers yourself — e.g. `/opt/etc/init.d/S00ubifs` when switching to `disk`.
+If `disk` mode on internal `/opt` is an intentional operator choice, use only the narrow override:
+
+```bash
+sh install.sh disk --allow-internal-disk
+```
+
+There is no generic `--force`: `--allow-internal-disk` bypasses only this storage-mode mismatch and does not disable resource/component/DNS or other safety gates. If a router was previously installed in the other mode, review leftovers from that old mode separately — for example `/opt/etc/init.d/S00ubifs` when switching to `disk`.
 
 ---
 
