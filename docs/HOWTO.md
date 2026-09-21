@@ -849,6 +849,6 @@ Platform notes that remain:
 - **Logs in RAM vanish on reboot** — the flash-protection trade.
 - **IPv6 is disabled on purpose** in the base configuration — for predictability, not by accident. Enabling it is an advanced change with its own verification (see Troubleshooting).
 - **Docker is not part of this stack.** Mihomo on Keenetic is managed by its init script (`/opt/etc/init.d/S99mihomo`) — the watchdog and the updater use the same. `docker restart mihomo`-style commands belong to other environments.
-- Committing to `main` in this repo changes what the next `curl | sh` executes — there is no staging or CI. Treat updates accordingly.
+- Production delivery still points at `main`, so a commit to `main` changes what the next `curl | sh` executes. CI is already present and acts as the required cheap gate; a separate production `stable` branch is being introduced before v1.4.0.
 
 More boundaries and the reasoning behind them: [docs/09-limitations.md](09-limitations.md) (RU).
