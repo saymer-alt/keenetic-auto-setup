@@ -60,6 +60,11 @@ grep -q 'CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"' "
 grep -q 'chmod -x "$CRON_LEGACY_BAK"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
 pass "watchdog updater cannot leave an executable legacy backup in cron.5mins"
 
+grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must know the historical in-cron watchdog backup path"
+grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
+pass "doctor detects the historical duplicate-watchdog backup condition"
+
+
 grep -q 'Provider-backed groups may expose the selected leaf only via' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must support provider-backed leaf names"
 grep -q 'CHAIN="$CHAIN -> $_now"' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must report terminal now leaf"
 pass "proxy watcher accepts a non-top-level selected leaf from group now"

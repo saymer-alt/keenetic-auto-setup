@@ -40,6 +40,7 @@ CONFIG="$CONFIG_DIR/config.yaml"
 INIT_EXPECTED="$OPT_ROOT/etc/init.d/S99mihomo"
 WATCHDOG_BIN="$OPT_ROOT/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog"
+WATCHDOG_LEGACY_BAK_OLD="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog.legacy.bak"
 WATCHDOG_LOG="$OPT_ROOT/var/log/mihomo_watchdog.log"
 CRONTAB_FILE="$OPT_ROOT/etc/crontab"
 
@@ -1256,6 +1257,17 @@ if grep -q "cron.5mins" "$CRONTAB_FILE" 2>/dev/null || grep -q "mihomo_watchdog"
     ok "Watchdog scheduled in $CRONTAB_FILE"
 else
     warn "Watchdog not scheduled in $CRONTAB_FILE (no cron.5mins/mihomo_watchdog entry)"
+fi
+
+# Historical updater generations stored the legacy full-script backup inside
+# cron.5mins. If it retained its executable bit, BusyBox/run-parts can execute
+# it as a second watchdog beside the canonical wrapper.
+if [ -e "$WATCHDOG_LEGACY_BAK_OLD" ]; then
+    if [ -x "$WATCHDOG_LEGACY_BAK_OLD" ]; then
+        warn "Executable legacy watchdog backup remains inside cron.5mins ($WATCHDOG_LEGACY_BAK_OLD) - it may run as a second watchdog; run update-watchdog.sh to move/de-exec it"
+    else
+        info "Legacy watchdog backup remains inside cron.5mins but is non-executable ($WATCHDOG_LEGACY_BAK_OLD)"
+    fi
 fi
 
 # Watchdog log content is analyzed in section 8b only: raw log
