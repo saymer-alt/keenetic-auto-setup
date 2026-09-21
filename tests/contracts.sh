@@ -50,6 +50,11 @@ if grep -q 'log "\[WAN\] Connectivity OK via' "$ROOT/mihomo-watchdog.sh"; then
 fi
 pass "watchdog throttles routine healthy noise but logs problems, recovery and WAN-path changes immediately"
 
+grep -q 'CHECK_CAN_EXEC=0' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check must default to no Mihomo execution"
+grep -q 'executable version/support probes skipped (one-Mihomo invariant)' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check must skip binary probes while daemon runs"
+grep -Fq 'if [ "$CHECK_CAN_EXEC" -eq 1 ]; then' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check binary probes must be guarded"
+pass "migrator --check obeys the one-Mihomo invariant"
+
 grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"

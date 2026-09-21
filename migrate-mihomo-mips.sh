@@ -432,35 +432,52 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     exit 0
   fi
   log "Binary: $MIHOMO_BIN"
-  read_current_ver
-  if [ -n "$CURRENT_VER" ]; then
-    log "Installed Mihomo: $CURRENT_VER"
+
+  # --check is read-only AND obeys the universal one-Mihomo invariant.
+  # A version/support probe executes the Mihomo binary, so it is allowed only
+  # when pidof is available and confirms that no daemon is running. Otherwise
+  # the config inspection below still runs, but binary support stays unknown.
+  CHECK_CAN_EXEC=0
+  if command -v pidof >/dev/null 2>&1; then
+    if pidof mihomo >/dev/null 2>&1; then
+      log "Mihomo daemon is running - executable version/support probes skipped (one-Mihomo invariant)"
+    else
+      CHECK_CAN_EXEC=1
+    fi
   else
-    warn "Could not read the version (crash under memory pressure with the daemon running?)"
+    warn "pidof unavailable - executable version/support probes skipped conservatively (one-Mihomo invariant)"
   fi
+
   # Support state controls how the config findings below may be worded:
   # supported   = the probe passed;
   # unsupported = the binary positively rejected the stack;
-  # unknown     = the probe could not run safely (crash/error, e.g. memory
-  #               pressure with the daemon running) — --check never stops a
-  #               working service to make the probe succeed.
+  # unknown     = executable probing was skipped or failed.
   GATE_STATE="unknown"
-  if support_gate "$GATE_HOME"; then
-    GATE_STATE="supported"
-    echo "[OK] tun.stack: mips is supported by this binary"
-  else
-    case "$GATE_REASON" in
-      unsupported)
-        GATE_STATE="unsupported"
-        echo "[SKIP] tun.stack: mips is NOT supported by this binary (needs mihomo >= $MIN_VERSION)"
-        ;;
-      crash)
-        warn "Support could not be verified: the probe crashed (memory pressure with the daemon running?). Apply mode performs the definitive gate after its controlled stop."
-        ;;
-      *)
-        warn "Support could not be verified: the probe failed for an unexpected reason. Apply mode performs the definitive gate after its controlled stop."
-        ;;
-    esac
+  if [ "$CHECK_CAN_EXEC" -eq 1 ]; then
+    read_current_ver
+    if [ -n "$CURRENT_VER" ]; then
+      log "Installed Mihomo: $CURRENT_VER"
+    else
+      warn "Could not read the installed Mihomo version"
+    fi
+
+    if support_gate "$GATE_HOME"; then
+      GATE_STATE="supported"
+      echo "[OK] tun.stack: mips is supported by this binary"
+    else
+      case "$GATE_REASON" in
+        unsupported)
+          GATE_STATE="unsupported"
+          echo "[SKIP] tun.stack: mips is NOT supported by this binary (needs mihomo >= $MIN_VERSION)"
+          ;;
+        crash)
+          warn "Support could not be verified: the probe crashed even though no daemon was detected. Apply mode performs the definitive gate after its controlled stop."
+          ;;
+        *)
+          warn "Support could not be verified: the probe failed for an unexpected reason. Apply mode performs the definitive gate after its controlled stop."
+          ;;
+      esac
+    fi
   fi
   if [ -f "$CONFIG" ]; then
     _g=$(count_gvisor "$CONFIG")
@@ -475,7 +492,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     elif [ "$_m" -gt 0 ]; then
       case "$GATE_STATE" in
         unsupported) warn "stack: mips is already in the config, but this binary does not support it — Mihomo may fail to load this config" ;;
-        unknown)     echo "[SKIP] already migrated (stack: mips present) — binary support unverified" ;;
+        unknown)     echo "[SKIP] already migrated (stack: mips present) — binary support unverified/skipped by one-Mihomo safety" ;;
         *)           echo "[SKIP] already migrated (stack: mips present)" ;;
       esac
     else
