@@ -307,7 +307,7 @@ component_list_has() {
 required_components_preflight_error() {
     _rc_reason="$1"
     echo "[ERROR] $_rc_reason" >&2
-    echo "[ERROR] Required KeeneticOS components for the current default project profile:" >&2
+    echo "[ERROR] Full required component contract for the current default project profile:" >&2
     echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
     echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
     echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
@@ -325,13 +325,30 @@ require_project_keeneticos_components() {
     [ -n "$KEENETIC_VERSION_DUMP" ] ||
         required_components_preflight_error "Cannot read 'show version'; required component state is UNKNOWN."
 
-    _rc_missing=""
-    component_list_has "$PROXY_COMPONENT_ID" || _rc_missing="${_rc_missing} Proxy client (${PROXY_COMPONENT_ID});"
-    component_list_has "$DNS_FILTER_COMPONENT_ID" || _rc_missing="${_rc_missing} Cloud-based content filtering (${DNS_FILTER_COMPONENT_ID});"
-    component_list_has "$NETFILTER_COMPONENT_ID" || _rc_missing="${_rc_missing} Netfilter modules (${NETFILTER_COMPONENT_ID});"
+    _rc_missing_count=0
+    _rc_missing_lines=""
 
-    [ -z "$_rc_missing" ] ||
-        required_components_preflight_error "Missing required KeeneticOS component(s):${_rc_missing}"
+    if ! component_list_has "$PROXY_COMPONENT_ID"; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - Proxy client / Клиент прокси (${PROXY_COMPONENT_ID})"
+    fi
+    if ! component_list_has "$DNS_FILTER_COMPONENT_ID"; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (${DNS_FILTER_COMPONENT_ID})"
+    fi
+    if ! component_list_has "$NETFILTER_COMPONENT_ID"; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})"
+    fi
+
+    if [ "$_rc_missing_count" -gt 0 ]; then
+        echo "[ERROR] Missing required KeeneticOS component(s):" >&2
+        printf '%s\n' "$_rc_missing_lines" >&2
+        required_components_preflight_error "Install the component(s) listed above before continuing."
+    fi
 
     log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
 }
