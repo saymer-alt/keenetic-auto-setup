@@ -847,19 +847,17 @@ for _mount in "$OPT_ROOT" /tmp; do
     _df_line=$(df -k "$_mount" 2>/dev/null | awk 'NR==2 {print $2 " " $4}')
     _fs_total_kb=${_df_line%% *}
     _fs_avail_kb=${_df_line#* }
-    case "$_fs_total_kb:$_fs_avail_kb" in
-        *[!0-9:]*|:)
-            info "Free space on $_mount: cannot determine"
-            ;;
-        *)
-            if [ "$_fs_total_kb" -gt 0 ]; then
-                _fs_free_pct=$((_fs_avail_kb * 100 / _fs_total_kb))
-                info "Free space on $_mount: $((_fs_avail_kb/1024)) MB of $((_fs_total_kb/1024)) MB (${_fs_free_pct}% free)"
-            else
-                info "Free space on $_mount: $((_fs_avail_kb/1024)) MB"
-            fi
-            ;;
-    esac
+    _fs_valid=1
+    case "$_fs_total_kb" in ''|*[!0-9]*) _fs_valid=0 ;; esac
+    case "$_fs_avail_kb" in ''|*[!0-9]*) _fs_valid=0 ;; esac
+    if [ "$_fs_valid" -ne 1 ]; then
+        info "Free space on $_mount: cannot determine"
+    elif [ "$_fs_total_kb" -gt 0 ]; then
+        _fs_free_pct=$((_fs_avail_kb * 100 / _fs_total_kb))
+        info "Free space on $_mount: $((_fs_avail_kb/1024)) MB of $((_fs_total_kb/1024)) MB (${_fs_free_pct}% free)"
+    else
+        info "Free space on $_mount: $((_fs_avail_kb/1024)) MB"
+    fi
 done
 
 # =========================================================
