@@ -106,7 +106,7 @@ Without an explicit task and operator confirmation, do not:
 - change the default route or DNS (resolv.conf, DoH in config.yaml) "for testing":
   a mistake in these areas can cut Internet access for the entire LAN and may close SSH access
   to the router;
-- weaken resource-profile handling or config/transaction safety: install.sh hard-gates unsupported 128/256 new installs, Doctor mirrors that state read-only, update-mihomo.sh only warns for legacy profile violations but must still enforce one-Mihomo/config/architecture/free-space/atomic-commit/rollback safety; watchdog cooldown and whitelist fallback protect against restart loops;
+- weaken resource-profile handling or config/transaction safety: install.sh hard-gates the unsupported 128 MB prerequisite failures and external swap above 2 GiB; on 256/512 MB-class devices a missing zRAM/external-swap backend is WARN-only by contract. Doctor mirrors those severities read-only, while update-mihomo.sh only warns for legacy profile violations but must still enforce one-Mihomo/config/architecture/free-space/atomic-commit/rollback safety; watchdog cooldown and whitelist fallback protect against restart loops;
 - run network experiments on a live router without a task.
 
 If a change in these areas is required, first understand the dependency
