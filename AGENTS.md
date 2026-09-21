@@ -73,7 +73,10 @@ Confirmed by code and docs:
   appending to crontab; is_mounted in S00ubifs). An already installed executable Mihomo at a
   canonical path is now left untouched by repeat install.sh runs; replacing an existing binary
   belongs exclusively to transactional `update-mihomo.sh`. install.sh only enters the Mihomo
-  package-download/opkg path when no executable canonical binary exists.
+  package-download/opkg path when no executable canonical binary exists. Mihomo service restart
+  is change-aware as well: an unchanged running binary/config is not restarted; a restart is
+  reserved for installer-driven binary/bootstrap changes, while a stopped service is started to
+  satisfy the install contract.
 - Idempotency of 020-bypass-wa.sh is not a style preference, but a functional requirement:
   the hook is invoked on every firewall rebuild, so `-C` before `-A` and `-F` instead
   of recreating the chain are mandatory (docs/05).

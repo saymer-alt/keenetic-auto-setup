@@ -544,6 +544,7 @@ case "$ARCH" in
     *) err "Unsupported arch: $ARCH" ;;
 esac
 
+MIHOMO_RESTART_NEEDED=0
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
 
 if [ -n "$MIHOMO_BIN" ]; then
@@ -604,6 +605,7 @@ else
             log "Installing package..."
             if opkg install "$TMP_DIR/mihomo.ipk"; then
                 MIHOMO_INSTALLED=1
+                MIHOMO_RESTART_NEEDED=1
             else
                 warn "Mihomo install from the downloaded GitHub package failed"
             fi
@@ -617,6 +619,7 @@ else
     if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
         warn "GitHub Mihomo package unavailable, trying Entware feed fallback..."
         opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
+        MIHOMO_RESTART_NEEDED=1
         log "Mihomo installed from Entware feed fallback (version may be older than the GitHub release build)"
     fi
 
@@ -673,6 +676,7 @@ ensure_bootstrap_config() {
 #   /opt/etc/init.d/S99mihomo restart
 mixed-port: 7890
 EOF
+        MIHOMO_RESTART_NEEDED=1
     else
         log "Existing Mihomo config left untouched"
     fi
@@ -1077,15 +1081,38 @@ else
 fi
 
 # ---------------------------
-# RESTART
+# MIHOMO SERVICE STATE
 # ---------------------------
+# A repeat install with an unchanged Mihomo binary/config should be a true
+# no-op for the running service. Restart only when this installer changed
+# something Mihomo must reload. If the service is stopped, start it so the
+# installer can still satisfy its working-stack contract.
+MIHOMO_SERVICE_ACTION=none
 if [ -x /opt/etc/init.d/S99mihomo ]; then
-    /opt/etc/init.d/S99mihomo restart || warn "Mihomo restart failed"
+    if [ "$MIHOMO_RESTART_NEEDED" -eq 1 ]; then
+        if mihomo_running; then
+            log "Mihomo binary/config changed - restarting service"
+            /opt/etc/init.d/S99mihomo restart || warn "Mihomo restart failed"
+            MIHOMO_SERVICE_ACTION=restart
+        else
+            log "Mihomo binary/config changed and service is stopped - starting service"
+            /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
+            MIHOMO_SERVICE_ACTION=start
+        fi
+    elif mihomo_running; then
+        log "Mihomo binary/config unchanged and daemon is running - restart skipped"
+    else
+        log "Mihomo binary/config unchanged but daemon is stopped - starting service"
+        /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
+        MIHOMO_SERVICE_ACTION=start
+    fi
 else
-    warn "S99mihomo not found, cannot restart"
+    warn "S99mihomo not found, cannot manage Mihomo service"
 fi
 
-sleep 2
+if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then
+    sleep 2
+fi
 
 # ---------------------------
 # POST-INSTALL SELF-CHECK
