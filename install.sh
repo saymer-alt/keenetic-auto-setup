@@ -15,6 +15,11 @@ echo "[*] Mode: $MODE"
 
 TMP_DIR="/tmp"
 
+# Production delivery channel. Release installs read project-managed helper files
+# from stable; development/testing may override the ref explicitly.
+PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
+PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
+
 log() { echo "[setup] $1"; }
 warn() { echo "[WARN] $1"; }
 err() { echo "[ERROR] $1"; exit 1; }
@@ -441,7 +446,7 @@ fi
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
 
-    if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/S00ubifs \
+    if retry curl -fsSL "$PROJECT_RAW_BASE/S00ubifs" \
         -o /opt/etc/init.d/S00ubifs; then
 
         chmod +x /opt/etc/init.d/S00ubifs
@@ -896,7 +901,7 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-if retry curl -fsSL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/020-bypass-wa.sh \
+if retry curl -fsSL "$PROJECT_RAW_BASE/020-bypass-wa.sh" \
     -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
 
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
@@ -917,7 +922,7 @@ log "Installing watchdog..."
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
-WATCHDOG_URL="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-watchdog.sh"
+WATCHDOG_URL="$PROJECT_RAW_BASE/mihomo-watchdog.sh"
 
 watchdog_is_canonical() {
     [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null
