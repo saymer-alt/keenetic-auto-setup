@@ -462,7 +462,7 @@ Scope note: this warning applies **only to the browser-only proxy scenario**. Wi
 
 ## 6. MagiTrickle
 
-Installed by `install.sh` only (not by the 7621 installer). What Groups, Rules and Interfaces are — see *MagiTrickle 101* in the routing-model section at the top of this guide; this section is about operation.
+MagiTrickle is installed by the unified `install.sh` on supported architectures. What Groups, Rules and Interfaces are — see *MagiTrickle 101* in the routing-model section at the top of this guide; this section is about operation.
 
 MagiTrickle is the decision layer: it watches DNS queries and, per domain/subnet, chooses the route — direct or through a tunnel/policy such as Proxy0. It does not carry traffic itself; Keenetic's policy routing does that on MagiTrickle's instructions.
 
