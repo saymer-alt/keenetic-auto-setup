@@ -150,8 +150,12 @@ Risk-zone specifics:
 
 Default working rules:
 - `main` is development; `stable` is production delivery. Develop on `main`, require
-  green CI, promote through a `main → stable` pull request, verify CI on the promoted
-  commit, then tag/release that exact `stable` commit;
+  green CI, promote through a `main → stable` pull request, and verify CI on the promoted
+  commit. After a successful promotion, if `main` has not received newer development
+  commits and `stable` is a descendant with the same promoted tree, fast-forward `main`
+  to the `stable` merge commit (no force) so branch history is synchronized and GitHub
+  does not advertise a misleading reverse `stable → main` PR. Then tag/release that exact
+  production commit;
 - before starting: `git status`; make sure you are on main and there are no unrelated
   uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
   only with explicit instruction);
