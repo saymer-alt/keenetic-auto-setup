@@ -222,7 +222,7 @@ curl: (60) SSL certificate problem
 ### Решение
 
 👉 сначала стандартные причины: время (`ntpd -q -p pool.ntp.org`) и DNS
-(`cat /opt/etc/resolv.conf`) — см. [07-install.md](07-install.md)
+(`cat /opt/etc/resolv.conf`) — см. [03-install.md](03-install.md)
 
 ---
 
