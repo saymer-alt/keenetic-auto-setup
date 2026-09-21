@@ -943,7 +943,21 @@ ensure_bypass_policy_exit "$PROXY_IFACE"
 # ---------------------------
 # MAGITRICKLE
 # ---------------------------
-log "Adding MagiTrickle package repository..."
+# Keep running the upstream helper on every installer run so future feed-layout
+# changes can still be applied. A second full opkg update is needed only when
+# that helper actually changes the opkg repository configuration: otherwise the
+# initial opkg update above has already refreshed the existing MagiTrickle feeds.
+opkg_repo_snapshot() {
+    for _opkg_conf in /opt/etc/opkg/*.conf; do
+        [ -f "$_opkg_conf" ] || continue
+        printf '%s\n' "### $_opkg_conf"
+        cat "$_opkg_conf" 2>/dev/null || true
+    done
+}
+
+MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)
+
+log "Ensuring MagiTrickle package repository..."
 # The upstream helper prints an interactive "do not forget to install magitrickle"
 # reminder. install.sh performs that step itself, so suppress helper stdout to avoid
 # telling users to repeat an action that is already automated. Keep stderr visible.
@@ -955,8 +969,13 @@ else
     err "Failed to add MagiTrickle package repository"
 fi
 
-log "Refreshing package metadata for MagiTrickle..."
-opkg update || err "opkg update after adding the MagiTrickle repository failed"
+MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
+if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
+    log "MagiTrickle repository configuration changed - refreshing package metadata..."
+    retry opkg update || err "opkg update after changing the MagiTrickle repository failed"
+else
+    log "MagiTrickle repository configuration unchanged - initial opkg update already refreshed its metadata"
+fi
 
 log "Installing MagiTrickle package..."
 pkg_ensure magitrickle
