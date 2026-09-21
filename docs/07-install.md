@@ -1,297 +1,132 @@
-# Подробно об установке (install.sh)
+# 07 — внутреннее устройство install.sh
 
-Как работает установка через единый `install.sh` и что он делает на роутере.
+Эта страница описывает **техническую реализацию** единого installer'а. Для обычной
+установки используйте [03-install.md](03-install.md); здесь нет второго quick-start.
 
----
+## Граница ответственности
 
-## Быстрый выбор
+`install.sh` поддерживает aarch64 / armv7 / mipsel / mips и два режима хранения:
 
-👉 Если не хочешь читать:
+- `ram` — проект включает `S00ubifs` для tmpfs runtime-каталогов;
+- `disk` — внешний persistent `/opt`, `S00ubifs` не ставится.
 
-| Ситуация | Скрипт |
-|----------|--------|
-| Любая поддерживаемая архитектура (aarch64 / armv7 / mipsel / mips, включая MT7621) | install.sh |
-| Режим | по умолчанию `ram` (tmpfs); для внешнего носителя — `sh install.sh disk` |
+Перед installer-managed загрузками и изменениями выполняются два read-only gate:
 
-Установщик один для всех архитектур: команда та же, что в [Quick Start](02-quick-start.md).
+1. resource-profile (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`);
+2. обязательные компоненты KeeneticOS: `proxy`, `dns-filter`,
+   `opkg-kmod-netfilter`.
 
----
+Подробные требования: [COMPONENTS_RU.md](COMPONENTS_RU.md).
 
-## Как понять, что у тебя
+## Архитектура Entware
 
-```bash
-opkg print-architecture | awk '/^arch/{print $2}'
+Installer читает `opkg print-architecture` и выбирает один из поддерживаемых package
+suffix:
+
+| Архитектура | Package suffix |
+|---|---|
+| aarch64 | `aarch64-3.10` |
+| armv7 | `armv7-3.2` |
+| mipsel | `mipsel-3.4` |
+| mips | `mips-3.4` |
+
+Один и тот же `install.sh` используется и на MT7621/mipsel; отдельного installer'а
+для MT7621 больше нет.
+
+## Источник Mihomo и fallback
+
+Основной источник — готовый архитектурный `.ipk` из release `latest` репозитория
+`saymer-alt/entware-go`.
+
+Порядок:
+
+1. GitHub API;
+2. резервный разбор ответа/страницы release;
+3. скачивание найденного asset;
+4. `opkg install <downloaded.ipk>`;
+5. если весь GitHub-путь не дал успешной установки — last resort
+   `opkg install mihomo` из настроенного Entware feed.
+
+Переход к Entware feed всегда виден как WARN: версия там может отставать от
+`entware-go:latest`.
+
+## Bootstrap config.yaml
+
+Project contract endpoint — `127.0.0.1:7890`.
+
+На чистой установке installer гарантирует минимальный bootstrap:
+
+```yaml
+mixed-port: 7890
 ```
 
-Примеры:
+Существующий пользовательский `config.yaml` не переписывается. Нетронутый пакетный
+placeholder может быть заменён bootstrap'ом; актуальный `entware-go` пакет сам также
+содержит `mixed-port: 7890`.
 
-- `aarch64-3.10` → install.sh
-- `armv7-3.2` → install.sh
-- `mipsel-3.4` → install.sh
-- `mips-3.4` → install.sh
+## ProxyN и bypass_wa
 
----
+Проектный Proxy-интерфейс определяется **двумя** признаками:
 
-## Режимы: ram и disk
+- description `mihomo t2sN`;
+- upstream `127.0.0.1:7890`.
 
-- `ram` (по умолчанию) — логи и временные файлы в tmpfs, защита флеш-памяти.
-- `disk` — установка с данными на внешнем носителе (USB HDD / NVMe).
+Если проектного интерфейса нет, используется свободный `ProxyN`; чужой `Proxy0`
+не перезаписывается.
 
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
-```
+Политика `bypass_wa` получает `permit global <ProjectProxyN>`, при этом существующие
+ручные permits не удаляются и не переупорядочиваются.
 
-Штатный zRAM KeeneticOS — сжатый swap в RAM без NAND swap-файла. На 256 МБ и 512 МБ-классе проект ожидает один backend: zRAM **или** внешний storage-backed swap; отсутствие обоих — WARN. Для внешнего swap target проекта ≈3× обнаруженной RAM, максимум 2 ГиБ; >2 ГиБ — ошибка новой установки. По рекомендации производителя zRAM и disk/file swap одновременно не используем. Выше 512 МБ-класса swap/zRAM опциональны. Фактическое состояние проверяется `mihomo-doctor.sh`. Подробности и источники — [docs/06](06-s00ubifs.md).
+## DNS interception
 
----
+Поддерживаемый профиль требует `dns-proxy intercept enable`.
 
-## Для кого
+Installer сначала читает состояние, при необходимости включает его и сразу проверяет
+running-config. Отсутствие read-back считается ошибкой совместимости, а не успешной
+установкой.
 
-- Keenetic Giga / Ultra / Hero / Viva и другие совместимые, включая MT7621
-- aarch64 / armv7 / mipsel / mips
-- 128 МБ-класс — best-effort/experimental только с внешним /opt + внешним storage-backed swap >=384 МБ; 256/512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих WARN; >512 МБ-класса — swap/zRAM опциональны (см. [docs/09](09-limitations.md))
+## MagiTrickle
 
----
+Installer добавляет upstream repository MagiTrickle, обновляет metadata и гарантирует
+наличие пакета. Если MagiTrickle уже установлен, повторный install не используется как
+скрытый package-updater.
 
-## Общая логика установки
+Явное обновление существующей установки описано в [12-updates.md](12-updates.md).
 
-install.sh делает всё:
+## Watchdog
 
-0. Resource-profile preflight: класс устройства, расположение /opt, активный zRAM и storage-backed swap (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`); 128 МБ требуют внешний /opt + внешний swap >=384 МБ; 256/512 МБ-класс без zRAM и external swap получают WARN; внешний swap >2 ГиБ останавливает новую установку
-1. `opkg update`
-2. Базовые пакеты (`ca-bundle`, `curl`, `jq`, `nano`, `cron`)
-3. Политика `bypass_wa`
-4. Перехват транзитного DNS (`dns-proxy intercept enable`)
-5. S00ubifs (только ram-режим)
-6. Установка Mihomo
-7. Bootstrap `config.yaml` (`mixed-port: 7890`)
-8. Выбор проектного Proxy-интерфейса (`Proxy0` или первый свободный `ProxyN`)
-9. Привязка `bypass_wa` к проектному Proxy
-10. MagiTrickle
-11. VoIP-хук `020-bypass_wa.sh`
-12. Watchdog
-13. Перезапуск Mihomo и финальный self-check
+Канонический layout:
 
----
+- `/opt/bin/mihomo_watchdog.sh` — полный script;
+- `/opt/etc/cron.5mins/mihomo_watchdog` — thin wrapper.
 
-## Проверка сертификатов (HTTPS)
+На чистой установке watchdog проходит marker + `sh -n`, затем staged copy делается
+на filesystem назначения и фиксируется atomic rename. Исторические layouts мигрирует
+`update-watchdog.sh`, а не installer.
 
-Скачивание идёт по HTTPS с проверкой сертификатов:
+## Финальный self-check
 
-```bash
-curl -fSsL https://...
-```
+После restart Mihomo installer проверяет ProxyN, DNS interception, bypass, watchdog,
+cron, MagiTrickle, `S00ubifs` в `ram`-режиме, contract port `7890` и свободное
+место на `/opt`.
 
-✔ проверка сертификатов
-✔ безопасная загрузка
+Правило одного Mihomo универсально: если daemon уже работает, self-check не запускает
+второй экземпляр через `mihomo -v` или `mihomo -t`.
 
----
+После старта contract port проверяется сразу, затем с bounded retry до 5 секунд.
+Это устраняет ложный startup WARN на более медленном MT7621, не скрывая реальный отказ.
 
-## Автоопределение архитектуры
+## Повторный запуск
 
-```bash
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
-    sub(/[-_].*/,"",$2); print $2; exit
-}')
-```
+Installer проектируется идемпотентным: существующий project ProxyN переиспользуется,
+DNS interception не дублируется, project-managed layouts распознаются, пользовательский
+Mihomo config не переписывается.
 
-Поддерживаемые суффиксы пакетов: `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4`.
+Installer не является универсальным updater'ом. Для обновления Mihomo, MagiTrickle и
+watchdog используйте [12-updates.md](12-updates.md).
 
----
+## Диагностика
 
-## Откуда берётся Mihomo
-
-PRIMARY — актуальный release `saymer-alt/entware-go`:
-
-```bash
-https://api.github.com/repos/saymer-alt/entware-go/releases/latest
-```
-
-✔ версия из актуального релиза, без хардкода в скрипте
-
-### Fallback-цепочка поиска пакета
-
-Если GitHub API не отвечает или jq не нашёл пакет:
-
-👉 grep по JSON → повторный запрос → парсинг HTML-страницы релизов
-
-### Last resort — Entware feed
-
-Если весь GitHub-путь провалился до успешной установки (asset не найден,
-скачивание не удалось, пакет не установился):
-
-👉 `opkg install mihomo` из настроенного Entware feed
-
-Переход печатается WARN'ом. Версия из Entware feed может быть старее сборки GitHub.
-
----
-
-## Самая частая проблема №1 — DNS
-
-### Симптом
-
-```bash
-curl: (6) Could not resolve host
-```
-
----
-
-### Причина
-
-👉 DNS не работает в Entware
-
----
-
-### Решение
-
-⚠️ Не перезаписывай `/opt/etc/resolv.conf` публичными резолверами вручную:
-файлом управляет KeeneticOS (обычно это симлинк на `/etc/resolv.conf`), а
-ручные резолверы обходят `dns-proxy intercept` и ломают DNS-transit
-(MagiTrickle). Сначала диагностика — `ls -l /opt/etc/resolv.conf`,
-`cat /opt/etc/resolv.conf`, `mihomo-doctor.sh`; штатные пути описаны в
-[08-troubleshooting.md](08-troubleshooting.md).
-
----
-
-## Самая частая проблема №2 — время
-
-### Симптом
-
-* SSL ошибки
-* opkg не качает
-
----
-
-### Причина
-
-👉 неправильное время
-
----
-
-### Решение
-
-```bash
-ntpd -q -p pool.ntp.org
-```
-
----
-
-## Самая частая проблема №3 — DoH/DNS
-
-### Симптом
-
-* всё установилось
-* но ничего не работает
-* прокси не выходит в интернет
-
----
-
-### Причина
-
-👉 кривые DoH серверы
-
----
-
-### Решение
-
-Использовать нормальные:
-
-* [https://cloudflare-dns.com/dns-query](https://cloudflare-dns.com/dns-query)
-* [https://dns.google/dns-query](https://dns.google/dns-query)
-* [https://dns.quad9.net/dns-query](https://dns.quad9.net/dns-query)
-
----
-
-## Самая частая проблема №4 — 128MB роутеры
-
-### Симптом
-
-* установка проходит
-* потом всё ломается
-
----
-
-### Причина
-
-👉 не хватает RAM
-
----
-
-### Решение
-
-Установка разрешена только при внешнем /opt и внешнем storage-backed swap >=384 МБ (project-specific floor; zRAM не считается), и это best-effort. Следить за свободной RAM и не запускать второй Mihomo рядом с daemon. Если система нестабильна — отказаться от `ram`/S00ubifs или перейти на устройство с 256+ МБ.
-
----
-
-## После установки (обязательно)
-
-### 1. Добавить config.yaml
-
-```bash
-nano /opt/etc/mihomo/config.yaml
-```
-
----
-
-### 2. Перезапустить
-
-```bash
-/opt/etc/init.d/S99mihomo restart
-```
-
----
-
-### 3. Проверить
-
-```bash
-/opt/etc/init.d/S99mihomo status
-```
-
----
-
-### 4. Проверить прокси
-
-```bash
-curl -x socks5://127.0.0.1:7890 https://ipinfo.io
-```
-
----
-
-## Важно
-
-👉 Без config.yaml всё "установилось", но ничего не работает
-
----
-
-## Self-check в конце установки
-
-В конце install.sh выполняет самопроверку и печатает `[ok] / [WARN] / [FAIL]` по каждому
-пункту: бинарник Mihomo (исполняемые `-v`/`-t` проверки выполняются только когда демон не запущен; при работающем Mihomo соблюдается правило одного экземпляра), init-скрипт `S99mihomo`, проектный Proxy-интерфейс,
-перехват транзитного DNS, bypass-правила, permit в политике `bypass_wa`, watchdog
-(бинарник, cron-обёртка, запись в crontab), cron, MagiTrickle, S00ubifs (в ram-режиме),
-порт 7890 и свободное место на `/opt`.
-
-- любой `[FAIL]` — установка считается неполной, скрипт завершается с ошибкой;
-- `[WARN]` установку не прерывают, но их стоит просмотреть.
-
----
-
-## Когда переустанавливать
-
-* сломался Entware
-* кривой DNS
-* экспериментировал и всё развалилось
-
-Повторный запуск безопасен: изменяющие шаги сначала проверяют, существует ли объект
-(пакеты, политика, Proxy-интерфейс, запись в crontab) и ничего не задублируют.
-Нюанс: mihomo-пакет скачивается при каждом запуске — opkg пропустит ту же версию,
-новую установит.
-
----
-
-## Коротко
-
-👉 любой поддерживаемый роутер (включая MT7621) → install.sh
-👉 128MB → можно, но только best-effort; предпочтительнее `disk`
-👉 если что-то пошло не так → [08-troubleshooting.md](08-troubleshooting.md)
+- [03-install.md](03-install.md) — пользовательская установка;
+- [08-troubleshooting.md](08-troubleshooting.md) — диагностика;
+- `mihomo-doctor.sh` — read-only проверка установленного стека.
