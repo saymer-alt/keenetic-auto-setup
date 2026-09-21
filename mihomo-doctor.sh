@@ -56,12 +56,181 @@ CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
 
 N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
+WARN_MESSAGES=""
+FAIL_MESSAGES=""
+
+append_finding() {
+    _af_kind=$1
+    _af_msg=$2
+    case "$_af_kind" in
+        WARN)
+            if [ -n "$WARN_MESSAGES" ]; then
+                WARN_MESSAGES="$WARN_MESSAGES
+$_af_msg"
+            else
+                WARN_MESSAGES=$_af_msg
+            fi
+            ;;
+        FAIL)
+            if [ -n "$FAIL_MESSAGES" ]; then
+                FAIL_MESSAGES="$FAIL_MESSAGES
+$_af_msg"
+            else
+                FAIL_MESSAGES=$_af_msg
+            fi
+            ;;
+    esac
+}
 
 ok()   { printf '[OK]   %s\n' "$1"; N_OK=$((N_OK+1)); }
-warn() { printf '[WARN] %s\n' "$1"; N_WARN=$((N_WARN+1)); }
-fail() { printf '[FAIL] %s\n' "$1"; N_FAIL=$((N_FAIL+1)); }
+warn() { printf '[WARN] %s\n' "$1"; N_WARN=$((N_WARN+1)); append_finding WARN "$1"; }
+fail() { printf '[FAIL] %s\n' "$1"; N_FAIL=$((N_FAIL+1)); append_finding FAIL "$1"; }
 info() { printf '[INFO] %s\n' "$1"; N_INFO=$((N_INFO+1)); }
 hdr()  { printf '\n===== %s =====\n\n' "$1"; }
+
+finding_action() {
+    _fa_msg=$1
+    case "$_fa_msg" in
+        *"256 MB-class"*zRAM*|*"256 MB-class"*ZRAM*)
+            printf '%s' "Enable KeeneticOS compressed system swap (zRAM), then run Doctor again."
+            ;;
+        *"Low-RAM prerequisite NOT met"*"/opt"*|*"128 MB-class"*"/opt"*)
+            printf '%s' "Move Entware /opt to external persistent storage; 128 MB-class devices also require at least 384 MB external storage-backed active swap (512 MB preferred)."
+            ;;
+        *"Low-RAM prerequisite NOT met"*swap*|*"128 MB-class"*swap*)
+            printf '%s' "Provide at least 384 MB active swap on external storage (512 MB preferred), then run Doctor again."
+            ;;
+        *"512 MB+"*"no active zRAM/swap"*|*"512 MB+"*"state cannot be verified"*)
+            printf '%s' "Operation is allowed, but enabling KeeneticOS zRAM or another suitable swap backend is recommended for memory-pressure protection."
+            ;;
+        *"Very low available memory"*)
+            printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
+            ;;
+        *"Low free space on "*)
+            printf '%s' "Free space on the reported filesystem before installs/updates; 32 MB is the Doctor warning threshold and some operations may need more."
+            ;;
+        *"Entware root "*|*"opkg not found"*)
+            printf '%s' "Install or repair Entware first, then run Doctor again."
+            ;;
+        *"Neither curl nor wget available"*|*"No curl/wget"*)
+            printf '%s' "Install curl or wget in Entware; project downloads and update checks need one of them."
+            ;;
+        *"Mihomo binary not found"*)
+            printf '%s' "Restore/install the project Mihomo binary with install.sh after preserving your user config."
+            ;;
+        *"Mihomo binary exists but is not executable"*)
+            printf '%s' "Restore executable permission on the reported Mihomo binary (chmod +x), then re-run Doctor."
+            ;;
+        *"Mihomo binary"*cannot*execute*|*"Mihomo binary"*SIGSEGV*|*"Mihomo binary"*Segmentation*|*"Mihomo binary"*killed*|*"Mihomo binary exits with an error"*)
+            printf '%s' "Do not keep retrying the binary blindly; inspect the reported architecture/runtime state and repair or reinstall Mihomo before normal use."
+            ;;
+        *"config.yaml not found"*)
+            printf '%s' "Restore your Mihomo config or run install.sh for a fresh project bootstrap."
+            ;;
+        *"config.yaml is not readable"*)
+            printf '%s' "Fix permissions/ownership so the Mihomo service can read config.yaml, then run Doctor again."
+            ;;
+        *"Contract port "*"not among the configured ports"*|*"contract port "*"NOT listening"*|*"configured port "*"not listening"*|*"No port defined in config"*)
+            printf '%s' "Check Mihomo inbound configuration and keep the project contract port 7890 reachable by ProxyN/watchdog."
+            ;;
+        *"Config test FAILED"*)
+            printf '%s' "Fix or regenerate config.yaml for this Mihomo version before restarting normal traffic."
+            ;;
+        *"Multiple mihomo processes"*)
+            printf '%s' "Stop stale duplicate Mihomo processes; the project invariant is exactly one running Mihomo."
+            ;;
+        *"Mihomo init script"*|*"Mihomo is running"*"no init script"*|*"Mihomo is not running and no init script exists"*)
+            printf '%s' "Repair the project service installation/init script so Mihomo has one managed boot path."
+            ;;
+        *"Mihomo service is stopped"*)
+            printf '%s' "If this was intentional, no action is needed; otherwise start/repair the Mihomo service and re-check."
+            ;;
+        *"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*"Functional DNS query via "*)
+            printf '%s' "If MagiTrickle is intended on this router, repair/restart its package/service or DNS remap and run Doctor again."
+            ;;
+        *"No Proxy interfaces found at all"*)
+            printf '%s' "Install/enable the KeeneticOS Proxy client component and run install.sh to create the project ProxyN bridge."
+            ;;
+        *"Cannot read/validate running-config"*)
+            printf '%s' "Retry when Keenetic ndmc is responsive; Doctor deliberately makes no proxy-state assumption while running-config is unreadable."
+            ;;
+        *"bypass_wa policy exists but has no interface permit"*)
+            printf '%s' "Add the intended interface permit to bypass_wa if failover is used; otherwise the policy has no exit route."
+            ;;
+        *"bypass_wa policy not found"*)
+            printf '%s' "Run install.sh or create the intended bypass_wa failover policy if this project routing path is required."
+            ;;
+        *"DNS transit interception not found"*)
+            printf '%s' "Enable Keenetic DNS transit interception (dns-proxy intercept enable); install.sh configures it."
+            ;;
+        *"Executable legacy watchdog backup remains inside cron.5mins"*|*"Legacy watchdog layout"*|*"Canonical watchdog present but the cron wrapper is missing"*|*"Watchdog not scheduled"*|*"Watchdog not installed"*|*"Unknown file at "*"cron.5mins"*)
+            printf '%s' "Run update-watchdog.sh, then run Doctor again."
+            ;;
+        *"Canonical watchdog present but not executable"*)
+            printf '%s' "Repair the watchdog installation with update-watchdog.sh."
+            ;;
+        *"Watchdog log not found"*|*"Watchdog log exists but is not readable"*|*"Watchdog log is empty"*|*"Log last updated "*)
+            printf '%s' "Verify cron/watchdog scheduling and wait for a normal 5-minute check cycle, then run Doctor again."
+            ;;
+        *"Restart outcome failures"*|*"No healthy check recorded after the last problem event"*|*"No '[OK] All good' entry found"*|*"Repeated failures"*|*"Watchdog interventions in the last 24h"*|*"Historical stability: WARN"*)
+            printf '%s' "Review new watchdog events after the latest fixes; if fresh failures continue, inspect WAN/proxy availability and Mihomo runtime separately."
+            ;;
+        *"DNS resolution FAILED"*)
+            printf '%s' "Fix router/WAN DNS resolution before relying on project downloads or remote proxy health."
+            ;;
+        *"GitHub"*unreachable*|*"raw.githubusercontent.com unreachable"*)
+            printf '%s' "Restore network access to GitHub/raw.githubusercontent.com; running Mihomo may keep working, but installs/updates cannot fetch files."
+            ;;
+        *"GitHub API rate-limited"*)
+            printf '%s' "No router repair is needed; retry the availability check later."
+            ;;
+        *"No mihomo package for suffix "*)
+            printf '%s' "Do not force an update from the GitHub package path; wait for/build the matching entware-go package or use the documented feed fallback."
+            ;;
+        *"Proxy selection sanity:"*)
+            printf '%s' "Check the configured Mihomo Controller/secret and current proxy group selection; the Doctor only performs read-only GET /proxies."
+            ;;
+        *)
+            printf '%s' "Review the matching diagnostic section above; Doctor made no changes to the router."
+            ;;
+    esac
+}
+
+print_finding_group() {
+    _pfg_kind=$1
+    _pfg_data=$2
+    [ -n "$_pfg_data" ] || return 0
+    printf '%s\n' "$_pfg_data" | while IFS= read -r _pfg_msg; do
+        [ -n "$_pfg_msg" ] || continue
+        printf '[%s] %s\n' "$_pfg_kind" "$_pfg_msg"
+        printf '       Next: %s\n' "$(finding_action "$_pfg_msg")"
+    done
+}
+
+print_human_result() {
+    echo
+    echo "=== What needs attention ==="
+    if [ "$N_FAIL" -eq 0 ] && [ "$N_WARN" -eq 0 ]; then
+        echo "[OK] No FAIL/WARN findings. No action is required by the current Doctor checks."
+        return 0
+    fi
+
+    if [ "$N_FAIL" -gt 0 ]; then
+        printf '\nBlocking problems (%d):\n' "$N_FAIL"
+        print_finding_group FAIL "$FAIL_MESSAGES"
+    fi
+    if [ "$N_WARN" -gt 0 ]; then
+        printf '\nWarnings (%d):\n' "$N_WARN"
+        print_finding_group WARN "$WARN_MESSAGES"
+    fi
+
+    echo
+    if [ "$N_FAIL" -gt 0 ]; then
+        printf 'Result: %d blocking problem(s) and %d warning(s) need attention.\n' "$N_FAIL" "$N_WARN"
+    else
+        printf 'Result: no blocking problems; %d warning(s) should be reviewed.\n' "$N_WARN"
+    fi
+}
 
 is_num() {
     case "$1" in
@@ -1792,6 +1961,7 @@ fi
 # =========================================================
 echo
 info "Doctor is read-only: no files, services or settings were changed."
+print_human_result
 echo
 echo "=== Mihomo Doctor Summary ==="
 printf 'OK:   %d\n' "$N_OK"

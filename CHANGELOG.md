@@ -18,6 +18,7 @@ _No changes yet._
 > the accumulated v1.4.0 notes until the owner explicitly releases the version.
 
 ### Added
+- `mihomo-doctor.sh`: final human-readable `What needs attention` block. Every FAIL/WARN emitted during the technical report is collected and repeated at the end with a concrete `Next:` action for known project conditions (memory profile/zRAM, low space, Mihomo/config/service, ProxyN/bypass/DNS, MagiTrickle, watchdog/history, network/package delivery, Controller selection). A clean run explicitly says that no action is required. The detailed report, numeric counters, exit codes and read-only behavior are unchanged.
 - `mihomo-doctor.sh`: lightweight read-only Mihomo proxy-selection sanity via Controller `GET /proxies`. It validates the proxies object and the first `GLOBAL`/selected-group hop without changing selection, triggering delay tests, restarting Mihomo or printing proxy/server names. A non-empty provider-backed choice is accepted even when it has no separate top-level `/proxies` object; empty current choices and malformed/unexpected Controller responses are surfaced as WARN/INFO as appropriate. The full chain/watch mode remains in `mihomo-proxy-selection-watch.sh` rather than being duplicated in Doctor.
 
 - Minimal GitHub Actions CI: on pushes and pull requests to `main` and the future `stable` branch it runs `sh -n` over tracked shell scripts (plus `S00ubifs`), `sh tests/contracts.sh`, and commit-range whitespace checks. This is a cheap pre-merge/pre-promotion gate, not a replacement for live Keenetic acceptance.

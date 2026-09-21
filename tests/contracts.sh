@@ -70,6 +70,14 @@ grep -q 'GLOBAL and selected group report current choices' "$ROOT/mihomo-doctor.
 grep -q 'non-empty provider-backed/current choice' "$ROOT/mihomo-doctor.sh" || fail "doctor must accept provider-backed current choices"
 pass "doctor performs lightweight read-only Mihomo proxy-selection sanity"
 
+grep -q '=== What needs attention ===' "$ROOT/mihomo-doctor.sh" || fail "doctor must provide a human-readable findings block"
+grep -q 'Next: %s' "$ROOT/mihomo-doctor.sh" || fail "doctor findings block must include actionable next steps"
+grep -q 'No FAIL/WARN findings. No action is required' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain a clean result"
+grep -q 'Enable KeeneticOS compressed system swap (zRAM)' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the common 256 MB zRAM failure"
+grep -q 'Run update-watchdog.sh, then run Doctor again' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain watchdog repair findings"
+pass "doctor summarizes WARN/FAIL findings with human-readable next steps"
+
+
 
 
 grep -q 'Provider-backed groups may expose the selected leaf only via' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy watcher must support provider-backed leaf names"
