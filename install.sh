@@ -44,19 +44,18 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # RAM / STORAGE / SWAP PREFLIGHT
 # ---------------------------
 # Memory capacity, /opt location and swap backends are detected from live
-# system state - never guessed. Resource-profile contract 20260920_1:
+# system state - never guessed. Resource-profile contract 20260921_1:
 #   - 128 MB-class: best-effort/experimental. Installation is REFUSED unless
 #     /opt is on verified EXTERNAL persistent storage AND EXTERNAL
-#     storage-backed active swap is >= 384 MB (512 MB preferred). zRAM may
-#     coexist, but it never counts toward the external-swap minimum.
-#   - 256 MB-class: ACTIVE native KeeneticOS zRAM ("Compressed RAM disk for
-#     system swap") is REQUIRED regardless of whether /opt is internal or
-#     external. If zRAM cannot be proven active, installation stops early.
-#   - 512 MB+: installation is allowed with internal or external /opt. At least
-#     one active memory-pressure fallback (zRAM or other active swap) is the
-#     recommended project profile; if none is active the installer emits an
-#     explicit WARN and continues without a project stability guarantee under
-#     memory pressure.
+#     storage-backed active swap is >= 384 MB. This is a project-specific
+#     experimental floor, not a vendor-stated minimum. zRAM never satisfies it.
+#   - 256 MB-class: at least ONE active memory-pressure backend is required:
+#     native KeeneticOS zRAM OR verified EXTERNAL storage-backed swap.
+#     /opt may be internal or external.
+#   - 512 MB+: no swap/zRAM backend is required; internal/external /opt allowed.
+#   - Vendor guidance says not to use zRAM together with a disk/file swap.
+#     If both are active, warn but never change either backend automatically.
+# See docs/06-s00ubifs.md for the vendor references behind this contract.
 # Detection: /proc/meminfo (RAM/totals), /proc/swaps (active swap entries),
 # /proc/mounts (deepest mount carrying a path). Keenetic conventions used for
 # classification: internal storage is UBIFS (ubi*/mtd*, no block-device
@@ -64,9 +63,9 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # with partitions mounted under /tmp/mnt/*. Unrecognized state fails
 # conservatively where the contract requires proof.
 # This script never creates, enables, formats or resizes swap or storage.
-RESOURCE_PROFILE_CONTRACT_VERSION=20260920_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
 RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
-SWAP128_MIN_KB=393216     # 384 MB EXTERNAL storage-backed swap minimum on 128 MB-class (512 MB preferred)
+SWAP128_MIN_KB=393216     # project-specific 384 MB external-swap floor for experimental 128 MB profile
 PROC_MOUNTS="${INSTALL_MOUNTS:-/proc/mounts}"
 PROC_SWAPS="${INSTALL_SWAPS:-/proc/swaps}"
 
@@ -154,6 +153,9 @@ case "$SW_UNVER_KB" in
     0)  : ;;
     *)  log "Swap entries that could not be classified: $((SW_UNVER_KB / 1024)) MB" ;;
 esac
+if [ "$SW_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$SW_EXT_KB" -gt 0 ] 2>/dev/null; then
+    warn "zRAM and external storage-backed swap are active together. Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM. Installation continues without changing either backend."
+fi
 case "$MEM_TOTAL_KB" in
     ''|*[!0-9]*)
         warn "Cannot determine total RAM from /proc/meminfo; continuing without the low-RAM preflight"
@@ -168,37 +170,44 @@ case "$MEM_TOTAL_KB" in
             case "$OPT_CLASS" in
                 external) ;;
                 internal|ram)
-                    err "128 MB-class device (${MEM_TOTAL_MB} MB): /opt is on INTERNAL storage - the low-RAM prerequisite is not met. Stopping before any download or change. The best-effort/experimental 128 MB profile requires /opt on EXTERNAL persistent storage plus EXTERNAL storage-backed active swap of at least 384 MB (512 MB preferred). Move Entware to external storage yourself - this project never mounts or formats anything - then re-run."
+                    err "128 MB-class device (${MEM_TOTAL_MB} MB): /opt is on INTERNAL storage - the low-RAM prerequisite is not met. Stopping before any download or change. The best-effort/experimental 128 MB profile requires /opt on EXTERNAL persistent storage plus EXTERNAL storage-backed active swap of at least 384 MB (project-specific floor). Move Entware to external storage yourself - this project never mounts or formats anything - then re-run."
                     ;;
                 *)
-                    err "128 MB-class device (${MEM_TOTAL_MB} MB): cannot verify that /opt is on external persistent storage (unrecognized mount state in $PROC_MOUNTS). Stopping conservatively before any download or change. The best-effort/experimental 128 MB profile requires external /opt plus EXTERNAL storage-backed active swap of at least 384 MB (512 MB preferred). Verify the mount state yourself and re-run."
+                    err "128 MB-class device (${MEM_TOTAL_MB} MB): cannot verify that /opt is on external persistent storage (unrecognized mount state in $PROC_MOUNTS). Stopping conservatively before any download or change. The best-effort/experimental 128 MB profile requires external /opt plus EXTERNAL storage-backed active swap of at least 384 MB (project-specific floor). Verify the mount state yourself and re-run."
                     ;;
             esac
             if [ "$SW_EXT_KB" -lt "$SWAP128_MIN_KB" ]; then
-                err "128 MB-class device (${MEM_TOTAL_MB} MB): only $((SW_EXT_KB / 1024)) MB of EXTERNAL storage-backed active swap detected - the low-RAM prerequisite is not met (required at least 384 MB on external storage, 512 MB preferred). Active zRAM: $((SW_ZRAM_KB / 1024)) MB - zRAM does NOT count toward the required external-swap minimum; storage-backed swap on external storage may coexist with it. This project never creates or resizes swap; enable/attach it yourself and re-run."
+                err "128 MB-class device (${MEM_TOTAL_MB} MB): only $((SW_EXT_KB / 1024)) MB of EXTERNAL storage-backed active swap detected - the low-RAM prerequisite is not met (required at least 384 MB on external storage, 512 MB preferred). Active zRAM: $((SW_ZRAM_KB / 1024)) MB - zRAM does NOT count toward the required external-swap minimum; vendor guidance says zRAM should be disabled when disk/file swap is used. This project never creates or resizes swap; enable/attach the external swap yourself and re-run."
             fi
             warn "============================================================"
             warn "LOW-RAM / BEST-EFFORT INSTALL: ${MEM_TOTAL_MB} MB RAM + $((SW_EXT_KB / 1024)) MB external storage-backed swap"
             warn "EXPERIMENTAL / NO STABILITY GUARANTEE: prerequisites met (external /opt,"
-            warn ">= 384 MB external storage-backed swap, 512 MB preferred) - this profile"
+            warn ">= 384 MB external storage-backed swap) - this profile"
             warn "is still NOT guaranteed to be stable."
             warn "Never run a second Mihomo process beside the daemon."
             warn "============================================================"
         elif [ "$MEM_TOTAL_KB" -lt 450000 ]; then
             if [ "$SW_UNVER_KB" = "-1" ]; then
-                err "256 MB-class device (${MEM_TOTAL_MB} MB): cannot verify the required ACTIVE KeeneticOS zRAM because $PROC_SWAPS is unreadable. Stopping before any download or change. Enable/verify Keenetic compressed system swap (zRAM) and re-run install.sh."
+                err "256 MB-class device (${MEM_TOTAL_MB} MB): cannot read $PROC_SWAPS, so neither active KeeneticOS zRAM nor verified external storage-backed swap can be proven. Stopping before any download or change. Enable one supported backend and re-run install.sh."
             fi
-            if [ "$SW_ZRAM_KB" -le 0 ]; then
-                err "256 MB-class device (${MEM_TOTAL_MB} MB) requires ACTIVE native KeeneticOS zRAM ('Compressed RAM disk for system swap') regardless of whether /opt is internal or external. It is not active. Stopping before any download or change. Enable Keenetic compressed system swap (zRAM) and re-run install.sh. This project never enables zRAM or swap itself."
+            if [ "$SW_ZRAM_KB" -gt 0 ] && [ "$SW_EXT_KB" -gt 0 ]; then
+                log "256 MB-class has both zRAM and external storage-backed swap active; capacity prerequisite is met, but review the vendor-guidance warning above and keep only one backend."
+            elif [ "$SW_ZRAM_KB" -gt 0 ]; then
+                log "256 MB-class with active zRAM - supported profile"
+            elif [ "$SW_EXT_KB" -gt 0 ]; then
+                log "256 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off - supported profile"
+            elif [ "$SW_UNVER_KB" -gt 0 ]; then
+                err "256 MB-class device (${MEM_TOTAL_MB} MB): active swap exists but cannot be verified as KeeneticOS zRAM or EXTERNAL storage-backed swap. Stopping before any download or change. Use one verifiable backend and re-run install.sh."
+            else
+                err "256 MB-class device (${MEM_TOTAL_MB} MB) requires at least one ACTIVE memory-pressure backend: KeeneticOS zRAM OR EXTERNAL storage-backed swap. Neither is active. Stopping before any download or change. When disk/file swap is used, vendor guidance says zRAM should be disabled. This project never enables zRAM or swap itself."
             fi
-            log "256 MB-class with active zRAM - supported profile"
         else
             case "$SWAP_TOTAL_KB" in
                 0)
-                    warn "512 MB+ device (${MEM_TOTAL_MB} MB) has NO active zRAM/swap. Installation will continue, but this is outside the recommended project memory profile; KeeneticOS and its components share RAM with Entware/Mihomo, so no stability guarantee is made under memory pressure. Enable native KeeneticOS zRAM or another suitable active swap backend and verify with mihomo-doctor.sh."
+                    log "512 MB+ device (${MEM_TOTAL_MB} MB) has no active zRAM/swap - allowed; this memory class does not require a swap backend"
                     ;;
                 ''|*[!0-9]*)
-                    warn "512 MB+ device (${MEM_TOTAL_MB} MB): active zRAM/swap state cannot be verified from /proc/meminfo. Installation will continue, but the memory-pressure fallback state is UNKNOWN; verify it with mihomo-doctor.sh."
+                    log "512 MB+ device (${MEM_TOTAL_MB} MB): active swap state cannot be verified from /proc/meminfo - allowed; no swap backend is required for this class"
                     ;;
             esac
         fi

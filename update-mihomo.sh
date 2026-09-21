@@ -533,7 +533,7 @@ command -v tar >/dev/null || error "tar is required but not installed (busybox a
 # -----------------------------
 # 2. Resource-profile advisory (read-only; never blocks legacy updates)
 # -----------------------------
-RESOURCE_PROFILE_CONTRACT_VERSION=20260920_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
 UP_SWAP128_MIN_KB=393216
@@ -584,24 +584,26 @@ _profile_warn_banner() {
   warn "============================================================"
 }
 
+if [ "$UP_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$UP_EXT_KB" -gt 0 ] 2>/dev/null; then
+  _profile_warn_banner "MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active" "Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM." "Detected: external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. The updater will not change either backend."
+fi
+
 if [ -n "$TOTAL_MEM_KB" ]; then
   log "Total RAM: ${TOTAL_MEM_KB} KB"
   if [ "$TOTAL_MEM_KB" -lt 200000 ]; then
     if [ "$UP_OPT_CLASS" != external ] || [ "$UP_EXT_KB" -lt "$UP_SWAP128_MIN_KB" ]; then
-      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 128 MB-class" "Current project contract requires verified external /opt plus >=384 MB EXTERNAL storage-backed active swap (512 MB preferred); zRAM does not count toward that minimum." "Detected: /opt=$UP_OPT_CLASS, external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. Project stability/support guarantees do not apply to this layout."
+      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 128 MB-class" "Current project contract requires verified external /opt plus >=384 MB EXTERNAL storage-backed active swap (project-specific experimental floor); zRAM does not count toward that minimum." "Detected: /opt=$UP_OPT_CLASS, external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. Project stability/support guarantees do not apply to this layout."
     else
       warn "128 MB-class prerequisites are present, but this remains BEST-EFFORT/EXPERIMENTAL with NO STABILITY GUARANTEE."
     fi
   elif [ "$TOTAL_MEM_KB" -lt 450000 ]; then
-    if [ "$UP_ZRAM_KB" -le 0 ]; then
-      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class without active KeeneticOS zRAM" "The supported project profile requires ACTIVE native KeeneticOS zRAM regardless of /opt placement." "Detected: /opt=$UP_OPT_CLASS, zRAM=$((UP_ZRAM_KB/1024)) MB. Enable compressed system swap and verify with mihomo-doctor.sh."
+    if [ "$UP_UNVER_KB" = "-1" ]; then
+      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class backend state cannot be verified" "The project requires one ACTIVE backend: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Cannot read $UP_SWAPS; updater continues only because this is an existing installation."
+    elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
+      _profile_warn_banner "UNSUPPORTED MEMORY PROFILE: 256 MB-class without active zRAM or external swap" "The project requires one ACTIVE backend: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Detected: /opt=$UP_OPT_CLASS, external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. Configure one backend and verify with mihomo-doctor.sh."
     fi
   else
-    if [ "$SWAP_TOTAL_KB" = "0" ]; then
-      _profile_warn_banner "MEMORY PROFILE WARNING: 512 MB+ with no active zRAM/swap" "Operation is allowed, but the recommended project profile keeps at least one active memory-pressure fallback." "KeeneticOS and its components share RAM with Entware/Mihomo; no project stability guarantee is made under memory pressure without a fallback."
-    elif [ -z "$SWAP_TOTAL_KB" ]; then
-      warn "512 MB+ device: active zRAM/swap state cannot be verified; updater continues, but memory-pressure fallback state is UNKNOWN."
-    fi
+    log "512 MB+ memory class: swap/zRAM is optional; absence of both is not a project warning"
   fi
 else
   warn "Cannot determine total RAM from /proc/meminfo; updater continues, but the project memory profile cannot be evaluated."

@@ -11,7 +11,7 @@ grep -q 'Proxy client / Клиент прокси' "$ROOT/docs/COMPONENTS.md" ||
 grep -q '\*\*REQUIRED\*\*' "$ROOT/docs/COMPONENTS.md" || fail "component contract must mark required capabilities"
 pass "component contract records Proxy client prerequisite"
 
-PROFILE_CONTRACT=20260920_1
+PROFILE_CONTRACT=20260921_1
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||
         fail "$_f must carry resource-profile contract $PROFILE_CONTRACT"
@@ -23,20 +23,25 @@ grep -q 'EXPERIMENTAL / NO STABILITY GUARANTEE' "$ROOT/install.sh" || fail "128 
 grep -q 'requires /opt on EXTERNAL persistent storage' "$ROOT/install.sh" || fail "128 MB-class requires external /opt"
 grep -q 'EXTERNAL storage-backed active swap' "$ROOT/install.sh" || fail "128 MB-class requires external swap >=384 MB"
 grep -q 'does NOT count toward the required external-swap minimum' "$ROOT/install.sh" || fail "zRAM must not satisfy 128 MB external-swap minimum"
-grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB external-swap minimum must remain 384 MB"
-grep -q 'requires ACTIVE native KeeneticOS zRAM' "$ROOT/install.sh" || fail "256 MB must require zRAM regardless of /opt"
-grep -q '512 MB+ device' "$ROOT/install.sh" || fail "512 MB+ without fallback must warn"
-pass "installer enforces approved resource profile"
+grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB external-swap project floor must remain 384 MB"
+grep -q 'requires at least one ACTIVE memory-pressure backend' "$ROOT/install.sh" || fail "256 MB must accept one of two supported memory backends"
+grep -q 'KeeneticOS zRAM OR EXTERNAL storage-backed swap' "$ROOT/install.sh" || fail "256 MB contract must allow zRAM or external storage-backed swap"
+grep -q 'Vendor guidance says not to use zRAM together with a disk/file swap' "$ROOT/install.sh" || fail "installer must warn against simultaneous zRAM and disk swap"
+if grep -q 'requires ACTIVE native KeeneticOS zRAM' "$ROOT/install.sh"; then fail "installer must not require zRAM when external swap is active"; fi
+grep -q '512 MB+ device.*no active zRAM/swap - allowed' "$ROOT/install.sh" || fail "512 MB+ without swap must be allowed"
+pass "installer enforces corrected resource profile"
 
 grep -q 'Low-RAM prerequisite NOT met' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL unmet 128 MB prerequisite"
-grep -q 'regardless of /opt placement' "$ROOT/mihomo-doctor.sh" || fail "doctor must require zRAM for all 256 MB layouts"
-grep -q '512 MB+ device has no active zRAM/swap' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN on 512 MB+ without fallback"
+grep -q '256 MB-class with external storage-backed swap' "$ROOT/mihomo-doctor.sh" || fail "doctor must accept external swap as the 256 MB alternative to zRAM"
+grep -q 'zRAM and external storage-backed swap are active together' "$ROOT/mihomo-doctor.sh" || fail "doctor must surface the vendor coexistence warning"
+grep -q '512 MB+ device has no active zRAM/swap - allowed' "$ROOT/mihomo-doctor.sh" || fail "doctor must treat 512 MB+ without swap as allowed"
 grep -q 'Swap backends: zRAM' "$ROOT/mihomo-doctor.sh" || fail "doctor must classify swap backends"
-pass "doctor mirrors approved resource profile"
+pass "doctor mirrors corrected resource profile"
 
 grep -q 'UNSUPPORTED MEMORY PROFILE: 128 MB-class' "$ROOT/update-mihomo.sh" || fail "updater must warn unsupported 128 MB legacy layouts"
-grep -q 'UNSUPPORTED MEMORY PROFILE: 256 MB-class' "$ROOT/update-mihomo.sh" || fail "updater must warn 256 MB without zRAM"
-grep -q 'MEMORY PROFILE WARNING: 512 MB+' "$ROOT/update-mihomo.sh" || fail "updater must warn 512 MB+ without fallback"
+grep -q 'UNSUPPORTED MEMORY PROFILE: 256 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 256 MB only when neither backend is active"
+grep -q 'MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater must warn against simultaneous zRAM and disk swap"
+if grep -q 'MEMORY PROFILE WARNING: 512 MB+ with no active zRAM/swap' "$ROOT/update-mihomo.sh"; then fail "updater must not warn solely because 512 MB+ has no swap"; fi
 grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "profile warning must not become updater hard gate"
 pass "updater warns strongly but keeps legacy updates serviceable"
 
@@ -73,7 +78,7 @@ pass "doctor performs lightweight read-only Mihomo proxy-selection sanity"
 grep -q '=== What needs attention ===' "$ROOT/mihomo-doctor.sh" || fail "doctor must provide a human-readable findings block"
 grep -q 'Next: %s' "$ROOT/mihomo-doctor.sh" || fail "doctor findings block must include actionable next steps"
 grep -q 'No FAIL/WARN findings. No action is required' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain a clean result"
-grep -q 'Enable KeeneticOS compressed system swap (zRAM)' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the common 256 MB zRAM failure"
+grep -q 'Enable one supported backend: KeeneticOS zRAM OR external storage-backed swap' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the corrected 256 MB backend choice"
 grep -q 'Run update-watchdog.sh, then run Doctor again' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain watchdog repair findings"
 pass "doctor summarizes WARN/FAIL findings with human-readable next steps"
 

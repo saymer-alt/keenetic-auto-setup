@@ -91,17 +91,17 @@ hdr()  { printf '\n===== %s =====\n\n' "$1"; }
 finding_action() {
     _fa_msg=$1
     case "$_fa_msg" in
-        *"256 MB-class"*zRAM*|*"256 MB-class"*ZRAM*)
-            printf '%s' "Enable KeeneticOS compressed system swap (zRAM), then run Doctor again."
+        *"zRAM and external storage-backed swap are active together"*)
+            printf '%s' "Keep one swap backend: if using disk/file swap, disable zRAM per vendor guidance; otherwise remove/disable the disk swap and keep zRAM."
+            ;;
+        *"256 MB-class"*zRAM*|*"256 MB-class"*swap*|*"256 MB-class"*backend*)
+            printf '%s' "Enable one supported backend: KeeneticOS zRAM OR external storage-backed swap. When disk/file swap is used, disable zRAM; then run Doctor again."
             ;;
         *"Low-RAM prerequisite NOT met"*"/opt"*|*"128 MB-class"*"/opt"*)
-            printf '%s' "Move Entware /opt to external persistent storage; 128 MB-class devices also require at least 384 MB external storage-backed active swap (512 MB preferred)."
+            printf '%s' "Move Entware /opt to external persistent storage; 128 MB-class devices also require at least 384 MB external storage-backed active swap (project-specific experimental floor)."
             ;;
         *"Low-RAM prerequisite NOT met"*swap*|*"128 MB-class"*swap*)
-            printf '%s' "Provide at least 384 MB active swap on external storage (512 MB preferred), then run Doctor again."
-            ;;
-        *"512 MB+"*"no active zRAM/swap"*|*"512 MB+"*"state cannot be verified"*)
-            printf '%s' "Operation is allowed, but enabling KeeneticOS zRAM or another suitable swap backend is recommended for memory-pressure protection."
+            printf '%s' "Provide at least 384 MB active swap on external storage (project-specific experimental floor), then run Doctor again."
             ;;
         *"Very low available memory"*)
             printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
@@ -631,7 +631,7 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
 MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
-RESOURCE_PROFILE_CONTRACT_VERSION=20260920_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_1
 
 # Storage/swap classification - read-only mirror of the installer preflight.
 # Keenetic conventions: internal storage is UBIFS (ubi*/mtd*, no block-device
@@ -709,11 +709,14 @@ case "$_doc_opt" in
 esac
 
 _doc_scan_swap
+if [ "$_doc_zram_kb" -gt 0 ] 2>/dev/null && [ "$_doc_ext_kb" -gt 0 ] 2>/dev/null; then
+    warn "zRAM and external storage-backed swap are active together - vendor guidance says not to use both; when disk/file swap is used, disable zRAM"
+fi
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
     if [ "$MEM_TOTAL" -lt 200000 ]; then
         if [ "$_doc_opt" != external ]; then
-            fail "Low-RAM prerequisite NOT met (/opt is not on verified external persistent storage): the 128 MB-class best-effort/experimental profile requires external /opt plus >= 384 MB active swap on external storage, 512 MB preferred; zRAM does not count (docs/06)"
+            fail "Low-RAM prerequisite NOT met (/opt is not on verified external persistent storage): the 128 MB-class best-effort/experimental profile requires external /opt plus >= 384 MB active swap on external storage, project-specific experimental floor; zRAM does not count (docs/06)"
         elif [ "$_doc_ext_kb" -ge 393216 ]; then
             warn "Low-RAM / best-effort profile ($((MEM_TOTAL/1024)) MB + $((_doc_ext_kb/1024)) MB external storage-backed swap on external /opt): prerequisite met - still EXPERIMENTAL, stability is NOT guaranteed (docs/06)"
         else
@@ -721,19 +724,25 @@ if is_num "$MEM_TOTAL"; then
         fi
     elif [ "$MEM_TOTAL" -lt 450000 ]; then
         if [ "$_doc_unver_kb" = "-1" ]; then
-            fail "256 MB-class: cannot verify the required ACTIVE KeeneticOS zRAM because $SWAPS_SRC is unreadable - project memory profile cannot be proven"
+            fail "256 MB-class: cannot read $SWAPS_SRC, so neither active KeeneticOS zRAM nor verified external storage-backed swap can be proven"
+        elif [ "$_doc_zram_kb" -gt 0 ] && [ "$_doc_ext_kb" -gt 0 ]; then
+            ok "256 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB) plus external storage-backed swap ($((_doc_ext_kb/1024)) MB) - capacity prerequisite is met; review the coexistence warning above"
         elif [ "$_doc_zram_kb" -gt 0 ]; then
             ok "256 MB-class with active zRAM ($((_doc_zram_kb/1024)) MB) - supported memory profile"
+        elif [ "$_doc_ext_kb" -gt 0 ]; then
+            ok "256 MB-class with external storage-backed swap ($((_doc_ext_kb/1024)) MB) and zRAM off - supported memory profile"
+        elif [ "$_doc_unver_kb" -gt 0 ]; then
+            fail "256 MB-class: active swap exists but cannot be verified as KeeneticOS zRAM or external storage-backed swap - project memory profile cannot be proven"
         else
-            fail "256 MB-class requires ACTIVE KeeneticOS zRAM (compressed system swap) regardless of /opt placement - project memory profile not met; enable Keenetic compressed swap and re-check"
+            fail "256 MB-class requires one active memory-pressure backend: KeeneticOS zRAM OR external storage-backed swap; neither is active"
         fi
     else
         if is_num "$SWAP_TOTAL"; then
             if [ "$SWAP_TOTAL" -eq 0 ]; then
-                warn "512 MB+ device has no active zRAM/swap - operation is allowed, but this is outside the recommended project memory profile and stability under memory pressure is not guaranteed"
+                info "512 MB+ device has no active zRAM/swap - allowed; this memory class does not require a swap backend"
             fi
         else
-            warn "512 MB+ device: active zRAM/swap state cannot be verified - memory-pressure fallback state UNKNOWN"
+            info "512 MB+ device: active swap state cannot be verified - allowed; no swap backend is required for this memory class"
         fi
     fi
     if is_num "$MEM_AVAIL" && [ "$MEM_AVAIL" -lt 25000 ]; then
