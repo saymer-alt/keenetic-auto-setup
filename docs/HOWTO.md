@@ -339,13 +339,13 @@ In order:
 9. Installs **MagiTrickle** (adds its package repo, installs, starts).
 10. Installs the VoIP bypass hook `020-bypass_wa.sh` into `/opt/etc/ndm/netfilter.d/`.
 11. Installs the **watchdog** into `/opt/etc/cron.5mins/` and wires it into cron (a run-parts `cron.5mins` entry is reused if present; otherwise a direct crontab line is added).
-12. Restarts `S99mihomo` and runs the installation self-check.
+12. Manages `S99mihomo` based on actual installer changes: restart only when Mihomo was installed or the bootstrap `config.yaml` changed; when binary/config are unchanged and the daemon is already running, restart is skipped. A stopped daemon is started. Then the installation self-check runs.
 
 ### 3.3 Is it safe to re-run?
 
 The installer is written to be idempotent: every modifying step first checks whether the object already exists (packages, policy, the project ProxyN, crontab entry). Re-running it will not duplicate things.
 
-One caveat: once an executable Mihomo is already installed, re-running `install.sh` deliberately leaves that binary untouched. Installation ensures presence; replacing an existing Mihomo belongs to the transactional `update-mihomo.sh` path.
+One caveat: once an executable Mihomo is already installed, re-running `install.sh` deliberately leaves that binary untouched. Installation ensures presence; replacing an existing Mihomo belongs to the transactional `update-mihomo.sh` path. If the binary and bootstrap config are unchanged and the daemon is already running, the repeat install also **skips the Mihomo restart**.
 
 Another caveat: **a foreign Proxy0 is never rewritten**. The installer recognizes a project-managed proxy only when both markers match (description `mihomo t2sN` and upstream `127.0.0.1:7890`). If Proxy0 is foreign, it is left untouched and the installer creates the first free `ProxyN`; later re-runs reuse that project ProxyN instead of creating another one.
 
