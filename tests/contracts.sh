@@ -127,7 +127,7 @@ grep -q 'CHAIN="$CHAIN -> $_now"' "$ROOT/mihomo-proxy-selection-watch.sh" || fai
 pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 
-grep -q 'Adding MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
+grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
 if grep -q 'pkg_ensure magitrickle || warn' "$ROOT/install.sh"; then
@@ -213,6 +213,14 @@ _restart_cmd_line=$(grep -n '^[[:space:]]*/opt/etc/init.d/S99mihomo restart' "$R
 [ -n "$_restart_gate_line" ] && [ -n "$_restart_cmd_line" ] || fail "installer restart gate/command ordering could not be determined"
 [ "$_restart_gate_line" -lt "$_restart_cmd_line" ] || fail "S99mihomo restart must remain behind the restart-needed gate"
 pass "repeat install skips Mihomo restart when binary/config are unchanged"
+
+grep -q '^opkg_repo_snapshot()' "$ROOT/install.sh" || fail "installer must snapshot opkg repository configuration around the MagiTrickle helper"
+grep -Fq 'MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)' "$ROOT/install.sh" || fail "installer must capture repository configuration before the MagiTrickle helper"
+grep -Fq 'MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)' "$ROOT/install.sh" || fail "installer must capture repository configuration after the MagiTrickle helper"
+grep -Fq 'if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then' "$ROOT/install.sh" || fail "second opkg update must be gated on an actual repository-config change"
+grep -Fq 'initial opkg update already refreshed its metadata' "$ROOT/install.sh" || fail "unchanged MagiTrickle repo must skip the duplicate metadata refresh"
+grep -Fq 'retry opkg update || err "opkg update after changing the MagiTrickle repository failed"' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still refresh metadata reliably"
+pass "MagiTrickle helper avoids duplicate opkg update when repository configuration is unchanged"
 
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
