@@ -286,6 +286,43 @@ case "$MEM_TOTAL_KB" in
 esac
 
 # ---------------------------
+# REQUIRED KEENETICOS COMPONENT PREFLIGHT
+# ---------------------------
+# Proxy client is a hard project prerequisite. KeeneticOS reports installed
+# components in "show version" under ndw.components; the component id is
+# "proxy". Verify it read-only BEFORE opkg update, package installation, or
+# any persistent Keenetic configuration change.
+PROXY_COMPONENT_ID=proxy
+
+proxy_client_preflight_error() {
+    _pc_reason="$1"
+    echo "[ERROR] $_pc_reason" >&2
+    echo "[ERROR] Required KeeneticOS component: «Клиент прокси» (Proxy client; component id: ${PROXY_COMPONENT_ID})." >&2
+    echo "[ERROR] The project requires ProxyN -> Mihomo (SOCKS5 upstream 127.0.0.1:7890); without this component KeeneticOS cannot provide the required Proxy* interface capability." >&2
+    echo "[ERROR] Enable it manually: KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов -> Proxy client / Клиент прокси." >&2
+    echo "[ERROR] The installer does not install KeeneticOS components. Stopping before opkg update, package installation, or router configuration changes." >&2
+    exit 1
+}
+
+require_proxy_client_component() {
+    log "Checking required KeeneticOS component: Proxy client"
+    command -v ndmc >/dev/null 2>&1 ||
+        proxy_client_preflight_error "Cannot verify KeeneticOS components because ndmc is not available."
+
+    _pc_version=$(ndmc -c "show version" 2>/dev/null || true)
+    [ -n "$_pc_version" ] ||
+        proxy_client_preflight_error "Cannot read 'show version'; required component state is UNKNOWN."
+
+    if ! printf '%s\n' "$_pc_version" | grep -Eq '(^|[,:[:space:]])proxy([,[:space:]]|$)'; then
+        proxy_client_preflight_error "Required KeeneticOS component «Клиент прокси» (Proxy client) is not installed."
+    fi
+
+    log "Required KeeneticOS component present: Proxy client (${PROXY_COMPONENT_ID})"
+}
+
+require_proxy_client_component
+
+# ---------------------------
 # OPKG UPDATE
 # ---------------------------
 log "Updating opkg..."
@@ -624,18 +661,14 @@ create_project_proxy() {
 }
 
 proxy_client_missing() {
-    # The project Proxy interface did not take effect after an attempted
-    # creation. On real hardware (Keenetic Hopper, 2026-09) this is the
-    # signature of the KeeneticOS "Proxy client / Клиент прокси" component
-    # being absent: without it the interface type itself does not exist.
-    # Fail before any dependent mutation (bypass_wa binding, watchdog,
-    # restart) and tell the operator exactly what to install. The installer
-    # never installs KeeneticOS components itself.
+    # Safety net after the early read-only component preflight: the component
+    # was reported installed by show version, but the requested Proxy interface
+    # still did not materialize. Fail before dependent mutations and avoid
+    # misdiagnosing this as a simple missing-component case.
     _pi="$1"
     echo "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания." >&2
-    echo "[ERROR] Наиболее вероятная причина: в KeeneticOS не установлен компонент «Клиент прокси» (Proxy client) — без него интерфейсы Proxy* не существуют. Этот компонент обязателен для проекта (ProxyN → Mihomo)." >&2
-    echo "[ERROR] Установите компонент вручную: KeeneticOS → General system settings / Общие настройки системы → KeeneticOS update and components / Обновление и компоненты KeeneticOS → Change component set / Изменить набор компонентов → Proxy client / Клиент прокси." >&2
-    echo "[ERROR] Установщик сам компоненты KeeneticOS не устанавливает. После установки компонента запустите установщик повторно." >&2
+    echo "[ERROR] Ранний preflight видел установленный компонент «Клиент прокси» (Proxy client), поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight." >&2
+    echo "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает." >&2
     exit 1
 }
 

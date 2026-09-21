@@ -35,18 +35,19 @@ sh /tmp/install.sh disk
 
 ```id="flow1"
 1. Resource-profile preflight (read-only; 128 МБ — special hard gate; 256/512 МБ-класс — zRAM или external swap, отсутствие обоих WARN; внешний swap >2 ГиБ — ERROR)
-2. Подготовка (opkg, пакеты)
-3. bypass_wa policy (создание)
-4. Перехват транзитного DNS
-5. S00ubifs (RAM режим)
-6. Установка Mihomo
-7. Bootstrap config.yaml (mixed-port: 7890)
-8. Выбор проектного Proxy-интерфейса (ProxyN)
-9. Привязка bypass_wa к проектному Proxy
-10. Установка MagiTrickle
-11. VoIP-хук 020-bypass_wa.sh
-12. Watchdog + cron
-13. Рестарт Mihomo и самопроверка
+2. Обязательный KeeneticOS preflight (read-only): компонент «Клиент прокси» / Proxy client (`proxy`) должен быть установлен; иначе остановка до `opkg update` и любых изменений роутера
+3. Подготовка (opkg, пакеты)
+4. bypass_wa policy (создание)
+5. Перехват транзитного DNS
+6. S00ubifs (RAM режим)
+7. Установка Mihomo
+8. Bootstrap config.yaml (mixed-port: 7890)
+9. Выбор проектного Proxy-интерфейса (ProxyN)
+10. Привязка bypass_wa к проектному Proxy
+11. Установка MagiTrickle
+12. VoIP-хук 020-bypass_wa.sh
+13. Watchdog + cron
+14. Рестарт Mihomo и самопроверка
 ```
 
 ---
