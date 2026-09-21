@@ -72,7 +72,7 @@ http://127.0.0.1:9090
 Подключитесь по SSH к Keenetic/Entware и скачайте скрипт во временный каталог:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh \
   -o /tmp/mihomo-proxy-selection-watch.sh
 ```
 
@@ -145,19 +145,19 @@ MIHOMO_API_SECRET='ваш_secret' sh /tmp/mihomo-proxy-selection-watch.sh --watc
 Разовый просмотр:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh
 ```
 
 Watch-режим:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh -s -- --watch 1
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh -s -- --watch 1
 ```
 
 С secret:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh \
   | MIHOMO_API_SECRET='ваш_secret' sh -s -- --watch 1
 ```
 

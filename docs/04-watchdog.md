@@ -382,7 +382,7 @@ grep mihomo_watchdog /opt/etc/crontab
 ```
 
 Чинить так (supported path): `curl -fSsL
-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh` —
+https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh` —
 он нормализует планирование в канонический layout (и мигрирует исторические
 управляемые layout'ы).
 

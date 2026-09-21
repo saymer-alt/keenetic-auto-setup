@@ -18,6 +18,17 @@ for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
 done
 pass "installer, doctor and updater pin the same resource-profile contract version"
 
+grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" || fail "installer production ref must default to stable"
+grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
+grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
+if grep -q 'raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/' "$ROOT/install.sh"; then
+    fail "installer must not fetch project-managed runtime files from main"
+fi
+if grep -q 'raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/' "$ROOT/update-watchdog.sh"; then
+    fail "watchdog updater must not fetch canonical watchdog from main"
+fi
+pass "production project delivery defaults to stable with explicit ref override"
+
 grep -q 'LOW-RAM / BEST-EFFORT INSTALL' "$ROOT/install.sh" || fail "installer must warn clearly on low-RAM devices"
 grep -q 'EXPERIMENTAL / NO STABILITY GUARANTEE' "$ROOT/install.sh" || fail "128 MB must stay explicitly experimental"
 grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB hard floor must remain 384 MB"

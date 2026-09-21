@@ -52,6 +52,8 @@ MT_INIT="$OPT_ROOT/etc/init.d/S99magitrickle"
 MT_PIDFILE="$OPT_ROOT/var/run/magitrickle.pid"
 
 ENTWARE_REPO="saymer-alt/entware-go"
+PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
+PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
 
@@ -1952,7 +1954,7 @@ else
     NET_GITHUB=0
 fi
 
-fetch_url "https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/README.md"
+fetch_url "$PROJECT_RAW_BASE/README.md"
 if [ "$FETCH_RC" -eq 127 ]; then
     info "raw.githubusercontent.com check skipped (no curl/wget)"
 elif [ -n "$FETCH_OUT" ]; then

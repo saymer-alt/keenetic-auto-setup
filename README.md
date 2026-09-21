@@ -20,14 +20,14 @@
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
 ### Внешний носитель — USB HDD / NVMe
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh -s -- disk
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
 ```
 
 Подробности → [установка](docs/03-install.md)
@@ -47,7 +47,7 @@ nano /opt/etc/mihomo/config.yaml
 Doctor:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
 Перезапуск:
@@ -69,13 +69,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 Mihomo:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
 Watchdog:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 MagiTrickle:
@@ -92,7 +92,7 @@ opkg update && opkg install magitrickle
 MIPS TUN migration:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh
 ```
 
 Подробности → [миграция TUN stack](docs/12-updates.md#mips-tun-migration)
@@ -100,7 +100,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 Проверка Linux-интерфейсов:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-interface-check.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-interface-check.sh | sh
 ```
 
 Подробности → [interface-name и маршрутизация](ARCHITECTURE.md)
@@ -108,7 +108,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 Текущий proxy / failover-failback:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh
 ```
 
 Подробности → [Proxy Selection Watch](docs/11-proxy-selection-watch.md)

@@ -103,7 +103,7 @@ external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-
 При работающем Mihomo используйте read-only Doctor и **не запускайте `mihomo -t` параллельно**:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh -o /tmp/mihomo-doctor.sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh -o /tmp/mihomo-doctor.sh
 chmod +x /tmp/mihomo-doctor.sh
 /tmp/mihomo-doctor.sh
 ```

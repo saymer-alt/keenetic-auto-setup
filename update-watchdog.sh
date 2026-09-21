@@ -54,13 +54,17 @@
 # migrates. Re-running against an already-canonical router is a no-op.
 #
 # Usage:
-#   curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+#   curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 #   or locally:
 #   ./update-watchdog.sh
 #
 # Environment:
 #   WATCHDOG_URL - override source URL (optional)
+#   KEENETIC_AUTO_SETUP_REF - override project channel/ref (default: stable)
 # =========================================================
+
+PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
+PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
@@ -70,7 +74,7 @@ CRON_LEGACY_BAK="/opt/etc/mihomo_watchdog.legacy.bak"
 CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"
 CRONTAB_FILE="/opt/etc/crontab"
 CRON_DIRECT='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog'
-URL="${WATCHDOG_URL:-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-watchdog.sh}"
+URL="${WATCHDOG_URL:-$PROJECT_RAW_BASE/mihomo-watchdog.sh}"
 
 # Known MANAGED legacy watchdog bodies. The pre-canonicalization
 # installers downloaded the watchdog straight into the cron file, so the

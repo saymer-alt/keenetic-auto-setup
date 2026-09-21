@@ -10,8 +10,12 @@
 
 ## Перед запуском
 
-Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и компонент
-KeeneticOS **«Клиент прокси» (Proxy client)**. Resource-profile: 128 МБ — best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ; 256 МБ и 512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих даёт WARN и не блокирует установку; внешний swap target ≈3× обнаруженной RAM, но не более 2 ГиБ, а >2 ГиБ — ошибка новой установки. Выше 512 МБ-класса swap/zRAM опциональны. Одновременный zRAM + disk/file swap получает WARN по рекомендации производителя. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей: [COMPONENTS.md](COMPONENTS.md).
+Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и три компонента
+KeeneticOS: **«Клиент прокси» (Proxy client)** (`proxy`),
+**«Фильтрация контента и блокировка рекламы при помощи облачных сервисов»**
+(`dns-filter`) и **«Модули ядра подсистемы Netfilter»**
+(`opkg-kmod-netfilter`). Resource-profile: 128 МБ — best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ; 256 МБ и 512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих даёт WARN и не блокирует установку; внешний swap target ≈3× обнаруженной RAM, но не более 2 ГиБ, а >2 ГиБ — ошибка новой установки. Выше 512 МБ-класса swap/zRAM опциональны. Одновременный zRAM + disk/file swap получает WARN по рекомендации производителя. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей:
+[COMPONENTS_RU.md](COMPONENTS_RU.md).
 
 ### Если raw.githubusercontent.com недоступен с роутера
 
@@ -433,12 +437,13 @@ which opkg
 
 ---
 
-## Подробнее про установку
+## Внутреннее устройство installer
 
-Как именно работает install.sh — архитектуры, источник пакета, fallback-цепочка,
-self-check:
+Пользовательская установка и эксплуатационные шаги описаны на этой странице.
+Технические детали самого `install.sh` — определение архитектуры, источники пакета,
+fallback-цепочка, bootstrap и self-check — вынесены отдельно:
 
-→ `07-install.md`
+→ [07-install.md — внутреннее устройство install.sh](07-install.md)
 
 ---
 

@@ -319,7 +319,7 @@ If `opkg update` fails: check DNS first (`cat /opt/etc/resolv.conf` — usually 
 
 ```bash
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/install.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
 **MT7621 / mipsel devices** run the same universal installer — the same command above; there is no separate installer anymore.
@@ -616,7 +616,7 @@ Shows jitter, WAN target selection and every decision. Make sure `/opt/var/log` 
 ## 8. Updating Mihomo
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-mihomo.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 # or locally on the router:
 sh update-mihomo.sh [--force]
 ```
@@ -647,9 +647,9 @@ Notes:
 For configurations with TUN (`mitun0`), a separate script rewrites `stack: gvisor` → `stack: mips` (the Mihomo IP Stack, supported since mihomo 1.19.31):
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh
 # diagnosis only, no changes:
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/migrate-mihomo-mips.sh | sh -s -- --check
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh -s -- --check
 ```
 
 Properties: the support gate is a `mihomo -t` probe (not a version read from the banner); only `stack:` values change — the rest of the config is preserved byte-for-byte; a short controlled downtime (stop + confirmation before any binary execution); the original service state is preserved (a service you stopped stays stopped); the `config.yaml.pre-mips` backup is kept after success and never overwritten; rollback is automatic when validation/start/port fails; idempotent — a second run is a safe no-op; the WireGuard `ip-stack` is not touched. Without TUN in the config it is a safe no-op.
@@ -659,7 +659,7 @@ Properties: the support gate is a `mihomo -t` probe (not a version read from the
 ## 9. Updating the watchdog
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 The updater: downloads to a temp file → checks it is non-empty → checks the `MIHOMO WATCHDOG SCRIPT` sanity marker → `sh -n` syntax check → stages on the destination filesystem (`/opt/bin/.mihomo_watchdog.sh.new.$$`) → atomic `mv` into place. There is **no backup copy** of the replaced watchdog by design (the staged copy is validated before the atomic rename, so a half-written watchdog cannot appear); a re-run of the updater or the installer always restores the canonical script. A bounded backup is kept only for a replaced *managed legacy cron file* (`/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak`).
@@ -849,6 +849,6 @@ Platform notes that remain:
 - **Logs in RAM vanish on reboot** — the flash-protection trade.
 - **IPv6 is disabled on purpose** in the base configuration — for predictability, not by accident. Enabling it is an advanced change with its own verification (see Troubleshooting).
 - **Docker is not part of this stack.** Mihomo on Keenetic is managed by its init script (`/opt/etc/init.d/S99mihomo`) — the watchdog and the updater use the same. `docker restart mihomo`-style commands belong to other environments.
-- Committing to `main` in this repo changes what the next `curl | sh` executes — there is no staging or CI. Treat updates accordingly.
+- Production delivery uses the `stable` branch; `main` remains the development branch. Changes pass CI and an explicit `main → stable` promotion before a release tag is placed on the exact production commit.
 
 More boundaries and the reasoning behind them: [docs/09-limitations.md](09-limitations.md) (RU).
