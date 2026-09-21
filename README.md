@@ -78,6 +78,13 @@ Watchdog:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
 ```
 
+MagiTrickle:
+
+```bash
+opkg update && opkg install magitrickle
+/opt/etc/init.d/S99magitrickle restart
+```
+
 Подробности → [обновление, откат и обслуживание](docs/12-updates.md)
 
 ## 5. Дополнительные команды

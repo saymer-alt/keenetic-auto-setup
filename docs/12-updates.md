@@ -42,6 +42,32 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main
 Подробная модель rollback и one-Mihomo invariant описана в
 [HOWTO → Обновление Mihomo](HOWTO_RU.md#8-обновление-mihomo).
 
+## Обновление MagiTrickle
+
+MagiTrickle обновляется штатным Entware/opkg-путём из уже подключённого пакета
+MagiTrickle:
+
+```bash
+opkg update && opkg install magitrickle
+/opt/etc/init.d/S99magitrickle restart
+```
+
+Повторный `install.sh` намеренно не используется как автообновлятор уже установленного
+MagiTrickle: installer обеспечивает наличие пакета и сервиса, а обновление существующей
+установки остаётся явной maintenance-операцией.
+
+Проверить установленную версию:
+
+```bash
+opkg list-installed | grep '^magitrickle '
+```
+
+После обновления можно запустить Doctor:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-doctor.sh | sh
+```
+
 ## Обновление watchdog
 
 ```bash
