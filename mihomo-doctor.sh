@@ -101,8 +101,8 @@ finding_action() {
         *"External storage-backed SWAP exceeds 2 GiB"*)
             printf '%s' "Reduce the external SWAP partition/file to 2048 MB or less, then run Doctor again."
             ;;
-        *"External SWAP is below project sizing target"*)
-            printf '%s' "If using disk SWAP as the chosen backend, consider sizing it near the project target (3x detected RAM, never above 2048 MB). This is project policy, not a vendor minimum."
+        *"External SWAP is below project minimum floor"*)
+            printf '%s' "If using disk SWAP as the chosen backend, increase it to at least about 1x detected RAM. The preferred project target remains 3x RAM, capped at 2048 MB; these are project thresholds, not vendor minimums."
             ;;
         *"zRAM and external storage-backed swap are active together"*)
             printf '%s' "Keep one swap backend: if using disk/file swap, disable zRAM per vendor guidance; otherwise remove/disable the disk swap and keep zRAM."
@@ -644,7 +644,7 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
 MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_2
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_3
 DOC_RAM256_MAX_KB=450000
 DOC_RAM512_MAX_KB=786432
 DOC_SWAP_MAX_KB=2097152
@@ -792,8 +792,10 @@ if is_num "$MEM_TOTAL"; then
             ok "256 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB)"
         elif [ "$_doc_ext_kb" -gt 0 ]; then
             ok "256 MB-class has external storage-backed swap ($((_doc_ext_kb/1024)) MB) with zRAM off"
-            if [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
-                warn "External SWAP is below project sizing target: $((_doc_ext_kb/1024)) MB active vs about $((_doc_swap_target_kb/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)"
+            if [ "$_doc_ext_kb" -lt "$MEM_TOTAL" ]; then
+                warn "External SWAP is below project minimum floor: $((_doc_ext_kb/1024)) MB active vs about $((MEM_TOTAL/1024)) MB minimum (1x detected RAM; project policy, not vendor minimum)"
+            elif [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
+                info "External SWAP is below preferred project sizing target but meets the minimum floor: $((_doc_ext_kb/1024)) MB active, minimum about $((MEM_TOTAL/1024)) MB (1x RAM), preferred target about $((_doc_swap_target_kb/1024)) MB (3x RAM, capped at 2048 MB)"
             fi
         else
             warn "256 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
@@ -803,8 +805,10 @@ if is_num "$MEM_TOTAL"; then
             ok "512 MB-class has active zRAM ($((_doc_zram_kb/1024)) MB)"
         elif [ "$_doc_ext_kb" -gt 0 ]; then
             ok "512 MB-class has external storage-backed swap ($((_doc_ext_kb/1024)) MB) with zRAM off"
-            if [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
-                warn "External SWAP is below project sizing target: $((_doc_ext_kb/1024)) MB active vs about $((_doc_swap_target_kb/1024)) MB target (3x detected RAM, capped at 2048 MB; project policy, not vendor minimum)"
+            if [ "$_doc_ext_kb" -lt "$MEM_TOTAL" ]; then
+                warn "External SWAP is below project minimum floor: $((_doc_ext_kb/1024)) MB active vs about $((MEM_TOTAL/1024)) MB minimum (1x detected RAM; project policy, not vendor minimum)"
+            elif [ "$_doc_swap_target_kb" -gt 0 ] && [ "$_doc_ext_kb" -lt "$_doc_swap_target_kb" ]; then
+                info "External SWAP is below preferred project sizing target but meets the minimum floor: $((_doc_ext_kb/1024)) MB active, minimum about $((MEM_TOTAL/1024)) MB (1x RAM), preferred target about $((_doc_swap_target_kb/1024)) MB (3x RAM, capped at 2048 MB)"
             fi
         else
             warn "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
