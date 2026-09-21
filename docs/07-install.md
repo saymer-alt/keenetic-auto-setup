@@ -115,9 +115,12 @@ Installer добавляет upstream repository MagiTrickle, обновляет
 
 ## Финальный self-check
 
-После restart Mihomo installer проверяет ProxyN, DNS interception, bypass, watchdog,
-cron, MagiTrickle, `S00ubifs` в `ram`-режиме, contract port `7890` и свободное
-место на `/opt`.
+Перед self-check installer управляет сервисом Mihomo change-aware: restart нужен только
+если этот запуск установил binary или записал/заменил bootstrap `config.yaml`. Если
+binary/config не менялись и daemon уже работает, restart пропускается; остановленный
+daemon запускается. После этого installer проверяет ProxyN, DNS interception, bypass,
+watchdog, cron, MagiTrickle, `S00ubifs` в `ram`-режиме, contract port `7890` и
+свободное место на `/opt`.
 
 Правило одного Mihomo универсально: если daemon уже работает, self-check не запускает
 второй экземпляр через `mihomo -v` или `mihomo -t`.
@@ -129,7 +132,8 @@ cron, MagiTrickle, `S00ubifs` в `ram`-режиме, contract port `7890` и с�
 
 Installer проектируется идемпотентным: существующий project ProxyN переиспользуется,
 DNS interception не дублируется, project-managed layouts распознаются, пользовательский
-Mihomo config не переписывается.
+Mihomo config не переписывается. Полностью неизменный repeat-run не рестартует уже
+работающий Mihomo и не создаёт лишний planned outage.
 
 Installer не является универсальным updater'ом. Для обновления Mihomo, MagiTrickle и
 watchdog используйте [12-updates.md](12-updates.md).
