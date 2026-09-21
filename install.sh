@@ -346,7 +346,7 @@ require_project_keeneticos_components() {
 
     if [ "$_rc_missing_count" -gt 0 ]; then
         echo "[ERROR] Missing required KeeneticOS component(s):" >&2
-        printf '%s\n' "$_rc_missing_lines" >&2
+        printf '%s\n' "${_rc_missing_lines#?}" >&2
         required_components_preflight_error "Install the component(s) listed above before continuing."
     fi
 
