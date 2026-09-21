@@ -394,7 +394,7 @@ opkg install magitrickle
 
 * `Port 7890 still not listening after 5s startup wait` — после bounded startup wait
   контрактный listener не появился; проверьте запуск Mihomo, `config.yaml` и логи
-* `Low free space on /opt` — свободно меньше 32 МБ
+* `Mihomo update staging headroom is insufficient on /opt` — свободного места уже недостаточно даже для staging по оценке `текущий бинарник Mihomo + 4 МБ safety margin`; `update-mihomo.sh` перед реальным обновлением повторно считает место по фактическому candidate
 * `bypass_wa policy has no interface permit` — у политики нет выхода
 * `config.yaml not found (bootstrap missing)` — не создался bootstrap
 

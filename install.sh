@@ -39,6 +39,7 @@ TMP_DIR="/tmp"
 # from stable; development/testing may override the ref explicitly.
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
+MIHOMO_STAGE_MARGIN_KB=4096
 
 log() { echo "[setup] $1"; }
 warn() { echo "[WARN] $1"; }
@@ -1275,20 +1276,26 @@ if [ -f "$CONFIG" ] &&    grep -qE '^[[:space:]]*(tproxy-port|redir-port):' "$CO
     check_warn "config.yaml defines only transparent-proxy ports (tproxy/redir) and no SOCKS5/Mixed endpoint — the project ProxyN upstream (127.0.0.1:7890) needs one, e.g. 'mixed-port: 7890' (user config is never modified by the installer)"
 fi
 
-# Free space on /opt (critical low)
+# Free-space / update-staging headroom on /opt.
+# Use the same model as update-mihomo.sh: current binary size + 4 MB margin.
+# This avoids a fixed absolute threshold that is noisy on small internal
+# Entware filesystems while still surfacing a real inability to stage an update.
 AVAIL_KB=$(df -k /opt 2>/dev/null | awk 'NR==2 {print $4}')
-case "$AVAIL_KB" in
-    ''|*[!0-9]*)
-        check_warn "Cannot determine free space on /opt"
-        ;;
-    *)
-        if [ "$AVAIL_KB" -lt 32768 ]; then
-            check_warn "Low free space on /opt: ${AVAIL_KB} KB"
-        else
-            check_ok "Free space on /opt: ${AVAIL_KB} KB"
-        fi
-        ;;
-esac
+BIN_SIZE_BYTES=$(wc -c < "$MIHOMO_BIN" 2>/dev/null || true)
+_SPACE_VALID=1
+case "$AVAIL_KB" in ''|*[!0-9]*) _SPACE_VALID=0 ;; esac
+case "$BIN_SIZE_BYTES" in ''|*[!0-9]*) _SPACE_VALID=0 ;; esac
+if [ "$_SPACE_VALID" -ne 1 ]; then
+    check_info "Mihomo update staging headroom on /opt: cannot determine"
+else
+    BIN_SIZE_KB=$(( (BIN_SIZE_BYTES + 1023) / 1024 ))
+    STAGE_NEED_KB=$((BIN_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))
+    if [ "$AVAIL_KB" -lt "$STAGE_NEED_KB" ]; then
+        check_warn "Mihomo update staging headroom is insufficient on /opt: ${AVAIL_KB} KB available, current-binary estimate needs ~${STAGE_NEED_KB} KB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+    else
+        check_ok "Mihomo update staging headroom on /opt: ${AVAIL_KB} KB available; current-binary estimate needs ~${STAGE_NEED_KB} KB"
+    fi
+fi
 
 # Verdict
 if [ "$FAILS" -gt 0 ]; then
