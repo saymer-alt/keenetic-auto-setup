@@ -22,6 +22,8 @@ grep -q 'LOW-RAM / BEST-EFFORT INSTALL' "$ROOT/install.sh" || fail "installer mu
 grep -q 'EXPERIMENTAL / NO STABILITY GUARANTEE' "$ROOT/install.sh" || fail "128 MB must stay explicitly experimental"
 grep -q 'SWAP128_MIN_KB=393216' "$ROOT/install.sh" || fail "128 MB hard floor must remain 384 MB"
 grep -q 'SWAP_MAX_KB=2097152' "$ROOT/install.sh" || fail "installer must cap external swap at 2 GiB"
+grep -Fq "*'\\040(deleted)'*" "$ROOT/install.sh" || fail "installer must recognize kernel '(deleted)' swap sources"
+grep -q "NOT counted toward verified external-SWAP capacity" "$ROOT/install.sh" || fail "installer must exclude deleted swap sources from capacity decisions"
 grep -q '3x detected RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must expose the <=512 MB swap sizing target"
 grep -q '256 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "256 MB missing backend must WARN"
 grep -q '512 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "512 MB missing backend must WARN"
@@ -29,12 +31,14 @@ grep -q 'Stopping before package installation or project changes' "$ROOT/install
 pass "installer enforces resource contract 20260921_2"
 
 grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL oversized external swap"
+grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
 grep -q '256 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 256 MB missing backend"
 grep -q '512 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 512 MB missing backend"
 grep -q 'External SWAP is below project sizing target' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain project 3x sizing target"
 pass "doctor mirrors resource contract 20260921_2"
 
 grep -q 'UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB' "$ROOT/update-mihomo.sh" || fail "updater must surface oversized external swap"
+grep -q "UP_DELETED_COUNT" "$ROOT/update-mihomo.sh" || fail "updater must exclude deleted swap sources from capacity decisions"
 grep -q 'MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 256 MB missing backend"
 grep -q 'MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 512 MB missing backend"
 grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "profile warnings must not become updater hard gates"

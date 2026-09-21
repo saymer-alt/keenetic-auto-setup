@@ -147,12 +147,18 @@ swap_source_capacity_kb() {
 
 scan_swap_backends() {
     SW_ZRAM_KB=0; SW_EXT_KB=0; SW_UNVER_KB=0
+    SW_DELETED_KB=0; SW_DELETED_COUNT=0
     SW_EXT_MAX_BACKEND_KB=0; SW_EXT_OVERSIZE=0
     [ -r "$PROC_SWAPS" ] || { SW_UNVER_KB=-1; return 0; }
     while read -r _sw_file _sw_type _sw_size _sw_rest; do
         case "$_sw_file" in ''|Filename) continue ;; esac
         case "$_sw_size" in ''|*[!0-9]*) continue ;; esac
         case "$_sw_file" in
+            *'\040(deleted)'*|*' (deleted)'*)
+                SW_DELETED_KB=$((SW_DELETED_KB + _sw_size))
+                SW_DELETED_COUNT=$((SW_DELETED_COUNT + 1))
+                continue
+                ;;
             *zram*) SW_ZRAM_KB=$((SW_ZRAM_KB + _sw_size)); continue ;;
         esac
         case "$_sw_type" in
@@ -209,6 +215,9 @@ case "$SW_UNVER_KB" in
     0)  : ;;
     *)  log "Swap entries that could not be classified: $((SW_UNVER_KB / 1024)) MB" ;;
 esac
+if [ "$SW_DELETED_COUNT" -gt 0 ]; then
+    warn "$SW_DELETED_COUNT swap source(s) are marked '(deleted)' in $PROC_SWAPS ($((SW_DELETED_KB / 1024)) MB active according to the kernel). They are treated as stale/ambiguous and are NOT counted toward verified external-SWAP capacity, sizing target, or the 2 GiB check. Reboot or clean up the stale swap state before relying on it."
+fi
 if [ "$SW_EXT_OVERSIZE" -eq 1 ]; then
     err "External storage-backed SWAP exceeds the 2 GiB project/vendor cap (active total: $((SW_EXT_KB / 1024)) MB; largest detected backend: $((SW_EXT_MAX_BACKEND_KB / 1024)) MB). Reduce the SWAP partition/file to <= 2048 MB and re-run. Stopping before package installation or project changes."
 fi

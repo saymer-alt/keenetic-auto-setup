@@ -559,11 +559,19 @@ _up_storage_class() {
 }
 _up_scan_swap() {
   UP_ZRAM_KB=0; UP_EXT_KB=0; UP_UNVER_KB=0
+  UP_DELETED_KB=0; UP_DELETED_COUNT=0
   [ -r "$UP_SWAPS" ] || { UP_UNVER_KB=-1; return 0; }
   while read -r _up_sw_file _up_sw_type _up_sw_size _up_sw_rest; do
     case "$_up_sw_file" in ''|Filename) continue ;; esac
     case "$_up_sw_size" in ''|*[!0-9]*) continue ;; esac
-    case "$_up_sw_file" in *zram*) UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue ;; esac
+    case "$_up_sw_file" in
+      *'\040(deleted)'*|*' (deleted)'*)
+        UP_DELETED_KB=$((UP_DELETED_KB + _up_sw_size))
+        UP_DELETED_COUNT=$((UP_DELETED_COUNT + 1))
+        continue
+        ;;
+      *zram*) UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue ;;
+    esac
     case "$_up_sw_type" in
       partition) case "$_up_sw_file" in /dev/sd*|/dev/nvme*) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
       file) case "$(_up_storage_class "$(dirname "$_up_sw_file")")" in external) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
@@ -592,6 +600,9 @@ _profile_warn_banner() {
   warn "============================================================"
 }
 
+if [ "$UP_DELETED_COUNT" -gt 0 ]; then
+  warn "$UP_DELETED_COUNT swap source(s) are marked '(deleted)' in $UP_SWAPS ($((UP_DELETED_KB/1024)) MB active according to the kernel); ignored for verified external-SWAP capacity, sizing and 2 GiB checks."
+fi
 if [ "$UP_EXT_KB" -gt "$UP_SWAP_MAX_KB" ] 2>/dev/null; then
   _profile_warn_banner "UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB" "Project/vendor cap is 2048 MB; active external storage-backed swap totals $((UP_EXT_KB/1024)) MB." "Updater remains non-blocking for this existing installation; reduce the SWAP partition/file separately."
 fi

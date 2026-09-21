@@ -91,6 +91,9 @@ hdr()  { printf '\n===== %s =====\n\n' "$1"; }
 finding_action() {
     _fa_msg=$1
     case "$_fa_msg" in
+        *"swap source(s) are marked '(deleted)'"*)
+            printf '%s' "Reboot or remove the stale swap state so /proc/swaps contains only current backends, then run Doctor again."
+            ;;
         *"External storage-backed SWAP exceeds 2 GiB"*)
             printf '%s' "Reduce the external SWAP partition/file to 2048 MB or less, then run Doctor again."
             ;;
@@ -706,12 +709,18 @@ _doc_swap_source_capacity_kb() {
 
 _doc_scan_swap() {
     _doc_zram_kb=0; _doc_ext_kb=0; _doc_unver_kb=0
+    _doc_deleted_kb=0; _doc_deleted_count=0
     _doc_ext_max_backend_kb=0; _doc_ext_oversize=0
     [ -r "$SWAPS_SRC" ] || { _doc_unver_kb=-1; return 0; }
     while read -r _doc_sw_file _doc_sw_type _doc_sw_size _doc_sw_rest; do
         case "$_doc_sw_file" in ''|Filename) continue ;; esac
         case "$_doc_sw_size" in ''|*[!0-9]*) continue ;; esac
         case "$_doc_sw_file" in
+            *'\040(deleted)'*|*' (deleted)'*)
+                _doc_deleted_kb=$((_doc_deleted_kb + _doc_sw_size))
+                _doc_deleted_count=$((_doc_deleted_count + 1))
+                continue
+                ;;
             *zram*) _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue ;;
         esac
         case "$_doc_sw_type" in
@@ -754,6 +763,9 @@ _doc_swap_target_kb=0
 if is_num "$MEM_TOTAL"; then
     _doc_swap_target_kb=$((MEM_TOTAL * 3))
     [ "$_doc_swap_target_kb" -gt "$DOC_SWAP_MAX_KB" ] && _doc_swap_target_kb=$DOC_SWAP_MAX_KB
+fi
+if [ "$_doc_deleted_count" -gt 0 ]; then
+    warn "$_doc_deleted_count swap source(s) are marked '(deleted)' in $SWAPS_SRC ($((_doc_deleted_kb/1024)) MB active according to the kernel) - stale/ambiguous entries are ignored for verified external-SWAP capacity, sizing target and 2 GiB checks"
 fi
 if [ "$_doc_ext_oversize" -eq 1 ]; then
     fail "External storage-backed SWAP exceeds 2 GiB (active total: $((_doc_ext_kb/1024)) MB; largest detected backend: $((_doc_ext_max_backend_kb/1024)) MB) - project/vendor cap is 2048 MB"
