@@ -70,7 +70,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # RAM / STORAGE / SWAP PREFLIGHT
 # ---------------------------
 # Memory capacity, /opt location and swap backends are detected from live
-# system state - never guessed. Resource-profile contract 20260921_1:
+# system state - never guessed. Resource-profile contract 20260921_3:
 #   - 128 MB-class: best-effort/experimental. Installation is REFUSED unless
 #     /opt is on verified EXTERNAL persistent storage AND EXTERNAL
 #     storage-backed active swap is >= 384 MB. This is a project-specific
@@ -80,11 +80,12 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 #     is a WARN (installation continues), not a hard gate.
 #   - 512 MB-class: same project expectation; no backend => WARN and continue.
 #   - Above the 512 MB class: swap/zRAM is optional.
-#   - If external swap is chosen on <=512 MB-class, project target size is
-#     3x detected RAM, capped at 2 GiB. Below target => WARN, not a hard gate.
-#     Current vendor docs say ~500 MB is enough for most tasks and that usually
-#     more than 3x RAM is unnecessary; therefore 3x is PROJECT POLICY, not a
-#     vendor minimum.
+#   - If external swap is chosen on 256/512 MB-class, 1x detected RAM is the
+#     project minimum floor for warning severity. Below 1x => WARN; from 1x up
+#     to the preferred 3x target => INFO only. The preferred target is 3x RAM,
+#     capped at 2 GiB. Current vendor docs say ~500 MB is enough for most tasks
+#     and that usually more than 3x RAM is unnecessary; neither 1x nor 3x is a
+#     vendor-stated minimum.
 #   - External storage-backed swap above 2 GiB is a hard install ERROR.
 #   - Vendor guidance says not to use zRAM together with a disk/file swap.
 #     If both are active, warn but never change either backend automatically.
@@ -96,7 +97,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # with partitions mounted under /tmp/mnt/*. Unrecognized state fails
 # conservatively where the contract requires proof.
 # This script never creates, enables, formats or resizes swap or storage.
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_2
+RESOURCE_PROFILE_CONTRACT_VERSION=20260921_3
 RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
 RAM256_MAX_KB=450000      # below this total RAM = 256 MB-class
 RAM512_MAX_KB=786432      # below this total RAM = 512 MB-class (real ~486 MB MemTotal fits here)
@@ -305,8 +306,10 @@ case "$MEM_TOTAL_KB" in
                 log "256 MB-class with active zRAM - supported project profile"
             elif [ "$SW_EXT_KB" -gt 0 ]; then
                 log "256 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off"
-                if [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
-                    warn "External SWAP is below the project sizing target: $((SW_EXT_KB / 1024)) MB active, target about $((SWAP_TARGET_KB / 1024)) MB (3x detected RAM, capped at 2048 MB). This target is project policy, not a vendor minimum."
+                if [ "$SW_EXT_KB" -lt "$MEM_TOTAL_KB" ]; then
+                    warn "External SWAP is below the project minimum floor: $((SW_EXT_KB / 1024)) MB active vs about $((MEM_TOTAL_KB / 1024)) MB minimum (1x detected RAM). Installation continues; this is project policy, not a vendor minimum."
+                elif [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
+                    log "External SWAP is below the preferred project sizing target but meets the minimum floor: $((SW_EXT_KB / 1024)) MB active, minimum about $((MEM_TOTAL_KB / 1024)) MB (1x RAM), preferred target about $((SWAP_TARGET_KB / 1024)) MB (3x RAM, capped at 2048 MB)."
                 fi
             else
                 warn "256 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
@@ -316,8 +319,10 @@ case "$MEM_TOTAL_KB" in
                 log "512 MB-class with active zRAM - supported project profile"
             elif [ "$SW_EXT_KB" -gt 0 ]; then
                 log "512 MB-class with external storage-backed swap ($((SW_EXT_KB / 1024)) MB) and zRAM off"
-                if [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
-                    warn "External SWAP is below the project sizing target: $((SW_EXT_KB / 1024)) MB active, target about $((SWAP_TARGET_KB / 1024)) MB (3x detected RAM, capped at 2048 MB). This target is project policy, not a vendor minimum."
+                if [ "$SW_EXT_KB" -lt "$MEM_TOTAL_KB" ]; then
+                    warn "External SWAP is below the project minimum floor: $((SW_EXT_KB / 1024)) MB active vs about $((MEM_TOTAL_KB / 1024)) MB minimum (1x detected RAM). Installation continues; this is project policy, not a vendor minimum."
+                elif [ "$SWAP_TARGET_KB" -gt 0 ] && [ "$SW_EXT_KB" -lt "$SWAP_TARGET_KB" ]; then
+                    log "External SWAP is below the preferred project sizing target but meets the minimum floor: $((SW_EXT_KB / 1024)) MB active, minimum about $((MEM_TOTAL_KB / 1024)) MB (1x RAM), preferred target about $((SWAP_TARGET_KB / 1024)) MB (3x RAM, capped at 2048 MB)."
                 fi
             else
                 warn "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
