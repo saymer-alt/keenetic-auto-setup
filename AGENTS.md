@@ -70,10 +70,10 @@ The most sensitive parts — change only for an explicit task and with full unde
 Confirmed by code and docs:
 - Re-running install.sh is designed to be safe: mutating steps are guarded by checks
   (pkg_ensure; `show ip policy` / `show interface Proxy0` before creation; grep before
-  appending to crontab; is_mounted in S00ubifs). However, the mihomo ipk is downloaded and
-  installed on every run (opkg skips the same version and installs a newer one); how an upgrade
-  handles a user `/opt/etc/mihomo/config.yaml` depends on package conffiles and has not been
-  verified here.
+  appending to crontab; is_mounted in S00ubifs). An already installed executable Mihomo at a
+  canonical path is now left untouched by repeat install.sh runs; replacing an existing binary
+  belongs exclusively to transactional `update-mihomo.sh`. install.sh only enters the Mihomo
+  package-download/opkg path when no executable canonical binary exists.
 - Idempotency of 020-bypass-wa.sh is not a style preference, but a functional requirement:
   the hook is invoked on every firewall rebuild, so `-C` before `-A` and `-F` instead
   of recreating the chain are mandatory (docs/05).
@@ -92,8 +92,8 @@ beyond what is already used (curl, jq, gzip, wget, cron, ca-bundle, nano).
 Delivery detail: `main` is the development branch and `stable` is the production
 delivery branch. Public one-liners and installer-managed project downloads use
 `raw.githubusercontent.com/.../stable/...` by default; development/testing may override
-the project ref explicitly. Minimal GitHub Actions CI runs shell syntax, committed contract
-smoke tests and whitespace checks on both branches. Promotion is `main → stable` only
+the project ref explicitly. Minimal GitHub Actions CI runs shell syntax, committed contract/
+regression smoke tests, local Markdown-link validation and whitespace checks on both branches. Promotion is `main → stable` only
 after green CI and focused acceptance; release tags are placed on the exact production
 commit. Green CI is necessary, but real-hardware acceptance still matters.
 
@@ -179,10 +179,10 @@ Default working rules:
   Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS architecture,
   guarantee boundaries. README links to it as the primary architecture reading.
 - numbered docs are focused guides; `docs/12-updates.md` and `docs/EN/UPDATES.md` are the user-facing maintenance guides. `CHANGELOG.md` records release history and the current release candidate.
-- If documentation and code disagree, the code is the source of truth. Known case:
-  docs/04-watchdog.md describes an older watchdog version (pidof check, one WAN URL,
-  ~100-line rotation), while the current script uses two-stage WAN + port + socks5h
-  and 500/300-line rotation.
+- If documentation and code disagree, the code is the source of truth. The watchdog guide
+  (`docs/04-watchdog.md`) is expected to track the current two-stage WAN + port + socks5h
+  logic, 20-minute healthy heartbeat, mkdir lock and 500/300-line rotation; do not preserve
+  stale "known difference" notes when the guide has already been updated.
 - When script behavior changes, consider updating README and the relevant doc in the same
   change; a significant shift should get a CHANGELOG entry (the "same commit" format is
   a proposal).
@@ -191,7 +191,7 @@ Default working rules:
 
 The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer real installation states and cross-component contracts, then extend the existing permanent regression harness with the smallest scenario that preserves a real failure. Heavy adversarial matrices are reserved for high-consequence invariants such as atomic replacement/rollback, locking, one-Mihomo discipline, service-state restoration, and watchdog recovery. Do not build a full KeeneticOS emulator for a narrow task.
 
-Repository CI now provides shell syntax, contract smoke-test and whitespace checks, but it does not make a change automatically safe — do not invent results.
+Repository CI now provides shell syntax, contract/regression smoke tests, repository-local Markdown-link checks and whitespace checks, but it does not make a change automatically safe — do not invent results.
 The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
 What is always available:
 - `sh -n <script>` for every changed .sh (mandatory);

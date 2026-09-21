@@ -152,7 +152,7 @@ DIRECT  /  proxy-group  /  proxy
 
 | Элемент | Что это здесь | Пометка |
 | --- | --- | --- |
-| Версия | актуальная сборка из latest release `saymer-alt/entware-go`; так ставит универсальный `install.sh`. Если весь GitHub-путь провалился до успешной установки, установщик переходит к последнему резерву — `opkg install mihomo` из настроенного Entware feed (версия из feed может быть старее GitHub-сборки) | Проверено в проекте |
+| Версия | initial install при отсутствии canonical binary берёт актуальную сборку из latest release `saymer-alt/entware-go`; fallback — `opkg install mihomo` из настроенного Entware feed. Повторный `install.sh` уже установленный Mihomo не заменяет: обновление выполняет `update-mihomo.sh` | Проверено в проекте |
 | Запуск | `/opt/etc/init.d/S99mihomo` (`status` / `restart`) | Проверено в проекте |
 | Рабочий каталог и конфиг | `/opt/etc/mihomo`, конфиг — `config.yaml` | Проверено в проекте (`-d /opt/etc/mihomo`) |
 | Вход | **mixed-port `127.0.0.1:7890`** (одновременно HTTP- и SOCKS5-прокси) | Проверено в проекте (базовый конфиг) |

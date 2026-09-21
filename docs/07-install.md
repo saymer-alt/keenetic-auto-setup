@@ -35,10 +35,18 @@ suffix:
 
 ## Источник Mihomo и fallback
 
-Основной источник — готовый архитектурный `.ipk` из release `latest` репозитория
+Перед package-path installer ищет executable canonical binary:
+`/opt/sbin/mihomo`, затем `/opt/bin/mihomo`.
+
+Если binary уже существует, repeat `install.sh` **не скачивает и не переустанавливает
+Mihomo**. Замена существующего binary принадлежит только транзакционному
+`update-mihomo.sh`.
+
+Только для initial install, когда canonical binary отсутствует, основной источник —
+готовый архитектурный `.ipk` из release `latest` репозитория
 `saymer-alt/entware-go`.
 
-Порядок:
+Порядок initial-install path:
 
 1. GitHub API;
 2. резервный разбор ответа/страницы release;
@@ -48,7 +56,8 @@ suffix:
    `opkg install mihomo` из настроенного Entware feed.
 
 Переход к Entware feed всегда виден как WARN: версия там может отставать от
-`entware-go:latest`.
+`entware-go:latest`. Информационный `mihomo -v` выполняется только при
+подтверждённо остановленном daemon; иначе probe пропускается по one-Mihomo invariant.
 
 ## Bootstrap config.yaml
 

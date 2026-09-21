@@ -200,6 +200,16 @@ mihomo_*.ipk
 
 ### Как происходит
 
+Сначала installer ищет уже установленный executable Mihomo в канонических путях
+`/opt/sbin/mihomo` и `/opt/bin/mihomo`.
+
+- если binary уже есть — package download/install **пропускается**; повторный
+  `install.sh` не является скрытым updater'ом. Для замены существующего Mihomo
+  используется только транзакционный `update-mihomo.sh`;
+- если binary отсутствует — выполняется initial-install path ниже.
+
+Initial-install path:
+
 1. Ищет `.ipk` нужной архитектуры в актуальном release `saymer-alt/entware-go` (GitHub API)
 2. Если API или jq не сработали — fallback: grep по JSON, повторный запрос, парсинг HTML релизов
 3. Скачивает пакет
@@ -208,6 +218,10 @@ mihomo_*.ipk
    не удалось или пакет не установился) — последний резерв: `opkg install mihomo`
    из настроенного Entware feed. Переход печатается WARN'ом; версия из Entware feed
    может быть старее сборки GitHub
+
+Информационный `mihomo -v` выполняется только когда installer может подтвердить,
+что daemon не запущен. При работающем daemon probe пропускается по one-Mihomo
+invariant.
 
 ### Где лежит
 

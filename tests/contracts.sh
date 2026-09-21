@@ -189,6 +189,32 @@ grep -q 'docs/11-proxy-selection-watch.md' "$ROOT/README.md" || fail "README mus
 pass "proxy-selection-watch remains visible, self-explanatory, read-only and auth-aware"
 
 
+# Installer/update ownership and one-Mihomo safety.
+grep -q '^resolve_installed_mihomo()' "$ROOT/install.sh" || fail "installer must resolve existing Mihomo before deciding to install"
+grep -q 'Existing Mihomo binary found at .*package install/upgrade skipped' "$ROOT/install.sh" || fail "repeat install must leave an existing Mihomo binary untouched"
+grep -q 'Use update-mihomo.sh to update an installed Mihomo transactionally' "$ROOT/install.sh" || fail "installer must direct existing-binary updates to update-mihomo.sh"
+[ "$(grep -c '^mihomo_running()' "$ROOT/install.sh")" -eq 1 ] || fail "installer must have exactly one shared one-Mihomo daemon guard"
+grep -q 'Mihomo version probe skipped - daemon is running (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
+pass "repeat install does not replace live Mihomo and all installer probes share one-Mihomo guard"
+
+# Permanent contracts for the two previously fixed high-consequence updater bugs:
+# stale/racy locking and non-atomic cross-filesystem replacement.
+grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
+grep -Fq 'if mkdir "$LOCK_DIR" 2>/dev/null; then' "$ROOT/update-mihomo.sh" || fail "updater lock acquisition must remain mkdir-based"
+grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate planned downtime with watchdog"
+grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
+grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
+grep -Fq 'cp -f "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must copy the current binary to rollback backup before commit"
+grep -Fq 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater commit must remain a same-filesystem atomic rename"
+grep -Fq 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must retain rollback restoration"
+! grep -Fq 'rm -f "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must never delete the canonical binary before atomic commit"
+_stage_line=$(grep -n 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
+_backup_line=$(grep -n 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
+_commit_line=$(grep -n 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
+[ -n "$_stage_line" ] && [ -n "$_backup_line" ] && [ -n "$_commit_line" ] || fail "updater transaction line ordering could not be determined"
+[ "$_stage_line" -lt "$_backup_line" ] && [ "$_backup_line" -lt "$_commit_line" ] || fail "updater must stage, then back up, then atomically commit"
+pass "updater lock/stage/backup/atomic-commit/rollback invariants remain pinned"
+
 # User-facing HOWTOs must mirror the storage-mode guard and current ProxyN behavior.
 for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
     grep -Fq -- '--allow-internal-disk' "$ROOT/$_f" || fail "$_f must document the narrow internal-disk override"
