@@ -157,7 +157,7 @@ grep mihomo_watchdog /opt/etc/crontab
 Если запись нет/кривая — supported-путь:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 Если сам cron-демон не запущен:
@@ -195,7 +195,7 @@ OK
 удаляет и чужие/нужные записи. Supported-путь нормализует планирование сам:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/update-watchdog.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh
 ```
 
 Он схлопывает дубли управляемой прямой строки в одну и убирает прямую
@@ -485,13 +485,13 @@ cat /opt/var/log/mihomo_watchdog.log
 Если в конфиге есть группы `Selector`, `URLTest`, `Fallback`, `LoadBalance`, `Relay` или вложенные группы, вручную разбирать `now` в Controller API неудобно. Необязательный `mihomo-proxy-selection-watch.sh` проходит цепочку групп и показывает конечный leaf-сервер:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh
 ```
 
 Для наблюдения за переключениями:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/mihomo-proxy-selection-watch.sh | sh -s -- --watch 1
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-proxy-selection-watch.sh | sh -s -- --watch 1
 ```
 
 Пример:
