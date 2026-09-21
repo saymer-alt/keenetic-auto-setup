@@ -5,9 +5,29 @@ set -e
 echo "=== Keenetic Auto Setup ==="
 
 MODE="${1:-ram}"
+ALLOW_INTERNAL_DISK=0
 
 if [ "$MODE" != "ram" ] && [ "$MODE" != "disk" ]; then
-    echo "Usage: sh install.sh [ram|disk]"
+    echo "Usage: sh install.sh [ram|disk] [--allow-internal-disk]" >&2
+    exit 1
+fi
+
+case "${2:-}" in
+    "") ;;
+    --allow-internal-disk) ALLOW_INTERNAL_DISK=1 ;;
+    *)
+        echo "Usage: sh install.sh [ram|disk] [--allow-internal-disk]" >&2
+        exit 1
+        ;;
+esac
+
+if [ -n "${3:-}" ]; then
+    echo "Usage: sh install.sh [ram|disk] [--allow-internal-disk]" >&2
+    exit 1
+fi
+
+if [ "$ALLOW_INTERNAL_DISK" -eq 1 ] && [ "$MODE" != "disk" ]; then
+    echo "[ERROR] --allow-internal-disk is valid only with disk mode." >&2
     exit 1
 fi
 
@@ -215,6 +235,22 @@ case "$OPT_CLASS" in
     ram)      log "/opt: RAM-backed (tmpfs/ramfs) - not persistent" ;;
     *)        log "/opt: storage class cannot be determined (unrecognized mount state)" ;;
 esac
+
+# Storage-mode guardrail:
+#   internal /opt + disk mode skips S00ubifs and leaves runtime/log writes on
+#   internal flash. Treat that as an accidental mismatch unless the operator
+#   explicitly opts in with the narrowly scoped override.
+#   external /opt + ram mode is supported (tmpfs runtime on external Entware),
+#   but warn because omitting "disk" is an easy mistake.
+if [ "$MODE" = "disk" ] && [ "$OPT_CLASS" = "internal" ]; then
+    if [ "$ALLOW_INTERNAL_DISK" -eq 1 ]; then
+        warn "Storage-mode override accepted: disk mode on internal /opt. S00ubifs will be skipped, so /opt/tmp, /opt/var/log and /opt/var/run remain on internal storage. This is an explicit operator choice."
+    else
+        err "Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage. disk mode skips S00ubifs and keeps runtime/log writes on internal flash. Re-run without 'disk' (default ram mode). If this is intentional, use: sh install.sh disk --allow-internal-disk"
+    fi
+elif [ "$MODE" = "ram" ] && [ "$OPT_CLASS" = "external" ]; then
+    warn "Storage-mode mismatch: ram mode was selected while /opt is on external persistent storage. This is supported, but /opt/tmp, /opt/var/log and /opt/var/run will use tmpfs and logs will be volatile. Use disk mode if you intended runtime/logs to stay on the external storage."
+fi
 [ "$SW_ZRAM_KB" -gt 0 ] 2>/dev/null && log "zRAM swap active: $((SW_ZRAM_KB / 1024)) MB"
 [ "$SW_EXT_KB" -gt 0 ] 2>/dev/null && log "External storage-backed swap: $((SW_EXT_KB / 1024)) MB"
 case "$SW_UNVER_KB" in

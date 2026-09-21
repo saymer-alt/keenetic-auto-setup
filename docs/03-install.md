@@ -32,6 +32,31 @@ sh /tmp/install.sh
 sh /tmp/install.sh disk
 ```
 
+Режим хранения проверяется против фактического `/opt`:
+
+- внутренний `/opt` + `ram` — штатный профиль;
+- внешний persistent `/opt` + `disk` — штатный профиль;
+- внешний `/opt` + `ram` — поддерживается, но installer печатает WARN: runtime/log
+  каталоги будут tmpfs и их содержимое будет теряться после reboot;
+- внутренний `/opt` + `disk` — по умолчанию **ERROR до изменений**, потому что
+  `disk` отключает `S00ubifs` и оставляет runtime/log writes на внутренней флешке.
+
+Если `disk` на внутреннем `/opt` нужен осознанно, используется только узкий override:
+
+```bash
+sh /tmp/install.sh disk --allow-internal-disk
+```
+
+Для pipe-вызова:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | \
+sh -s -- disk --allow-internal-disk
+```
+
+Общего `--force` у installer нет: override относится только к этому конкретному
+storage-mode mismatch и не отключает другие safety gates.
+
 Это только Stage-0: после запуска сам installer по-прежнему выполняет свои обычные
 сетевые проверки и честно сообщит, если какой-либо следующий источник недоступен.
 
