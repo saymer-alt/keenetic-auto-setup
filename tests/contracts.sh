@@ -101,14 +101,17 @@ if grep -q 'pkg_ensure magitrickle || warn' "$ROOT/install.sh"; then
 fi
 pass "MagiTrickle installation output is owned by install.sh"
 
-grep -q '^PROXY_COMPONENT_ID=proxy$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id proxy for Proxy client"
-grep -q 'Checking required KeeneticOS component: Proxy client' "$ROOT/install.sh" || fail "installer must check Proxy client in read-only preflight"
-grep -q 'No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation' "$ROOT/install.sh" || fail "missing Proxy client must explain that project changes did not start"
-_proxy_preflight_line=$(grep -n '^require_proxy_client_component$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+grep -q '^PROXY_COMPONENT_ID=proxy$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id proxy"
+grep -q '^DNS_FILTER_COMPONENT_ID=dns-filter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id dns-filter"
+grep -q '^NETFILTER_COMPONENT_ID=opkg-kmod-netfilter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS Netfilter component id"
+grep -q 'Checking required KeeneticOS components' "$ROOT/install.sh" || fail "installer must run named-component preflight"
+grep -q 'Missing required KeeneticOS component(s)' "$ROOT/install.sh" || fail "installer must report all missing required components"
+grep -q 'No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation' "$ROOT/install.sh" || fail "missing KeeneticOS prerequisites must stop before installer mutations"
+_component_preflight_line=$(grep -n '^require_project_keeneticos_components$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_update_line=$(grep -n '^log "Updating opkg\.\.\."$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
-[ -n "$_proxy_preflight_line" ] && [ -n "$_opkg_update_line" ] && [ "$_proxy_preflight_line" -lt "$_opkg_update_line" ] ||
-    fail "Proxy client preflight must run before opkg update"
-pass "Proxy client hard prerequisite is verified before opkg or router changes"
+[ -n "$_component_preflight_line" ] && [ -n "$_opkg_update_line" ] && [ "$_component_preflight_line" -lt "$_opkg_update_line" ] ||
+    fail "KeeneticOS component preflight must run before opkg update"
+pass "required KeeneticOS components are verified before opkg or router changes"
 
 grep -q 'proxy_client_missing' "$ROOT/install.sh" || fail "installer must retain post-create Proxy capability safety net"
 grep -q 'running-config after create' "$ROOT/install.sh" || fail "installer must read Proxy creation back"

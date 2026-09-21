@@ -288,40 +288,55 @@ esac
 # ---------------------------
 # REQUIRED KEENETICOS COMPONENT PREFLIGHT
 # ---------------------------
-# Proxy client is a hard project prerequisite. KeeneticOS reports installed
-# components in "show version" under ndw.components; the component id is
-# "proxy". Verify it read-only BEFORE opkg update, package installation, or
-# any persistent Keenetic configuration change.
+# Current default project install depends on three named KeeneticOS components:
+#   proxy                -> Proxy client / Клиент прокси
+#   dns-filter           -> Cloud-based content filtering and ad blocking
+#   opkg-kmod-netfilter  -> Kernel modules for Netfilter
+# Open Package support itself is verified earlier by command -v opkg.
+# Read the component set from "show version" and fail BEFORE installer-managed
+# opkg update, package installation, or persistent router configuration changes.
 PROXY_COMPONENT_ID=proxy
+DNS_FILTER_COMPONENT_ID=dns-filter
+NETFILTER_COMPONENT_ID=opkg-kmod-netfilter
 
-proxy_client_preflight_error() {
-    _pc_reason="$1"
-    echo "[ERROR] $_pc_reason" >&2
-    echo "[ERROR] Required KeeneticOS component: «Клиент прокси» (Proxy client; component id: ${PROXY_COMPONENT_ID})." >&2
-    echo "[ERROR] The project requires ProxyN -> Mihomo (SOCKS5 upstream 127.0.0.1:7890); without this component KeeneticOS cannot provide the required Proxy* interface capability." >&2
-    echo "[ERROR] Enable it manually: KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов -> Proxy client / Клиент прокси." >&2
+component_list_has() {
+    _clh_id="$1"
+    printf '%s\n' "$KEENETIC_VERSION_DUMP" | grep -Eq "(^|[,:[:space:]])${_clh_id}([,[:space:]]|$)"
+}
+
+required_components_preflight_error() {
+    _rc_reason="$1"
+    echo "[ERROR] $_rc_reason" >&2
+    echo "[ERROR] Required KeeneticOS components for the current default project profile:" >&2
+    echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
+    echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
+    echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
+    echo "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов." >&2
     echo "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation." >&2
     exit 1
 }
 
-require_proxy_client_component() {
-    log "Checking required KeeneticOS component: Proxy client"
+require_project_keeneticos_components() {
+    log "Checking required KeeneticOS components"
     command -v ndmc >/dev/null 2>&1 ||
-        proxy_client_preflight_error "Cannot verify KeeneticOS components because ndmc is not available."
+        required_components_preflight_error "Cannot verify KeeneticOS components because ndmc is not available."
 
-    _pc_version=$(ndmc -c "show version" 2>/dev/null || true)
-    [ -n "$_pc_version" ] ||
-        proxy_client_preflight_error "Cannot read 'show version'; required component state is UNKNOWN."
+    KEENETIC_VERSION_DUMP=$(ndmc -c "show version" 2>/dev/null || true)
+    [ -n "$KEENETIC_VERSION_DUMP" ] ||
+        required_components_preflight_error "Cannot read 'show version'; required component state is UNKNOWN."
 
-    if ! printf '%s\n' "$_pc_version" | grep -Eq '(^|[,:[:space:]])proxy([,[:space:]]|$)'; then
-        proxy_client_preflight_error "Required KeeneticOS component «Клиент прокси» (Proxy client) is not installed."
-    fi
+    _rc_missing=""
+    component_list_has "$PROXY_COMPONENT_ID" || _rc_missing="${_rc_missing} Proxy client (${PROXY_COMPONENT_ID});"
+    component_list_has "$DNS_FILTER_COMPONENT_ID" || _rc_missing="${_rc_missing} Cloud-based content filtering (${DNS_FILTER_COMPONENT_ID});"
+    component_list_has "$NETFILTER_COMPONENT_ID" || _rc_missing="${_rc_missing} Netfilter modules (${NETFILTER_COMPONENT_ID});"
 
-    log "Required KeeneticOS component present: Proxy client (${PROXY_COMPONENT_ID})"
+    [ -z "$_rc_missing" ] ||
+        required_components_preflight_error "Missing required KeeneticOS component(s):${_rc_missing}"
+
+    log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
 }
 
-require_proxy_client_component
-
+require_project_keeneticos_components
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
@@ -667,7 +682,7 @@ proxy_client_missing() {
     # misdiagnosing this as a simple missing-component case.
     _pi="$1"
     echo "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания." >&2
-    echo "[ERROR] Ранний preflight видел установленный компонент «Клиент прокси» (Proxy client), поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight." >&2
+    echo "[ERROR] Ранний component preflight видел полный обязательный набор KeeneticOS, поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight." >&2
     echo "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает." >&2
     exit 1
 }

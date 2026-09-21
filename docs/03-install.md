@@ -35,7 +35,7 @@ sh /tmp/install.sh disk
 
 ```id="flow1"
 1. Resource-profile preflight (read-only; 128 МБ — special hard gate; 256/512 МБ-класс — zRAM или external swap, отсутствие обоих WARN; внешний swap >2 ГиБ — ERROR)
-2. Обязательный KeeneticOS preflight (read-only): компонент «Клиент прокси» / Proxy client (`proxy`) должен быть установлен; иначе остановка до `opkg update` и любых изменений роутера
+2. Обязательный KeeneticOS preflight (read-only): проверяются `proxy` (Proxy client), `dns-filter` (интернет-фильтры/DNS interception) и `opkg-kmod-netfilter` (Netfilter для VoIP bypass); при отсутствии любого из них установка останавливается до installer-managed `opkg update` и любых изменений роутера
 3. Подготовка (opkg, пакеты)
 4. bypass_wa policy (создание)
 5. Перехват транзитного DNS
