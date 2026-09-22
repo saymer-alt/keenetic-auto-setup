@@ -6,8 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Testing
+- Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
+
 ### Documentation
 - Added the first Part III encyclopedia article: a source-verified guide to the MetaCubeXD 1.273.1 web interface, including the proxy-group Target/Recommended/Unfix/latency-test buttons, display modes, sorting, card density, batch tests, provider controls, Smart Recommendation/Auto Switch, `rule/global/direct`, Core vs XD settings, and the distinction between view-only and state-changing actions.
+- Expanded Part III with dedicated Russian guides for Controller/API security and remote access, proxy-providers, GEOIP/GEOSITE data, and Mihomo logging; linked older Part II placeholders to the completed articles.
+- Reclassified `tun.stack: mips` on Keenetic from an unverified experiment to a supported optional migration path backed by the existing migrator and live MT7621 lifecycle testing, while avoiding a universal performance claim or automatic/default migration.
+- Roadmap now records the deliberate decision not to add heavier watchdog probes, configurable VoIP complexity, a second monitoring stack, or a project-specific GUI without a reproducible field need.
 
 ---
 

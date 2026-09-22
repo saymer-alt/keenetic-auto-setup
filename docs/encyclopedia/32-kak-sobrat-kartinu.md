@@ -112,6 +112,7 @@ Mihomo: внутренний DNS (fake-ip) + правила сверху вни�
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — три пути трафика и границы
   архитектуры.
 - [../../docs/HOWTO_RU.md](../../docs/HOWTO_RU.md) — практическая эксплуатация.
-- Часть III начата: [40-interfejs-metacubexd.md](40-interfejs-metacubexd.md) —
-  подробный разбор web-интерфейса и кнопок metacubexd; безопасность API и удалённый
-  доступ остаются следующими темами этой части.
+- Часть III (эксплуатация): [40-interfejs-metacubexd.md](40-interfejs-metacubexd.md) —
+  интерфейс · [41-controller-api-security.md](41-controller-api-security.md) — API и
+  безопасность · [42-proxy-providers.md](42-proxy-providers.md) — providers ·
+  [43-geodata.md](43-geodata.md) — GEO-данные · [44-logs.md](44-logs.md) — логи.
