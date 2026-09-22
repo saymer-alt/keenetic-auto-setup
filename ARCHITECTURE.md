@@ -235,6 +235,40 @@ DNS upstream                  ← выбор резолвера
 
 Связка с роутингом: DNS-классификация — входные данные для MagiTrickle, поэтому DNS-проблемы маскируются под проблемы маршрутизации. Чинить нужно уровень выше.
 
+
+### DNS upstream через Mihomo / ProxyN — экспериментальный путь
+
+У Keenetic secure-DNS upstream можно привязать к конкретному интерфейсу: официальный CLI для DoT/DoH поддерживает `on <interface>`, а с KeeneticOS 3.8 — ещё и `domain <domain>` для domain-scoped upstream. Это открывает полезную схему для сетей, где сам DNS-резолвер доступен только через прокси:
+
+```text
+Client classic DNS
+    ↓
+Keenetic DNS-proxy / MagiTrickle
+    ↓
+DoT/DoH upstream, bound `on ProxyN`
+    ↓
+ProxyN → SOCKS5 127.0.0.1:7890
+    ↓
+Mihomo rules / proxy-group
+    ↓
+remote DNS resolver
+```
+
+Здесь `ProxyN` — именно внутреннее имя интерфейса Keenetic (`Proxy0`, `Proxy1`, ...). Его человекочитаемая подпись у проекта — `mihomo t2sN`; web UI может показывать подпись, но CLI-параметр `on` принимает имя интерфейса.
+
+**Что уже известно:**
+
+- проектный ProxyN — штатный Keenetic → Mihomo bridge на SOCKS5 `127.0.0.1:7890`; этот путь не требует TUN;
+- `mitun0` в такую цепочку не входит. В частности, `tun.auto-route: false` в типичном конфиге генератора не мешает DNS, который вошёл через ProxyN;
+- Keenetic документирует привязку DoT/DoH upstream к интерфейсу через `on <interface>` ([CLI reference](https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1810_tr.pdf));
+- в текущем базовом профиле `link-generators` с `rules: MATCH,GLOBAL` и без `DIRECT` соединение, попавшее в Mihomo через ProxyN, не имеет скрытого direct-fallback внутри Mihomo: оно либо идёт через выбранный `GLOBAL`, либо не проходит. Для произвольного пользовательского конфига это **не гарантия** — наличие более ранних `DIRECT`-правил нужно проверять в MetaCubeX/Controller.
+
+**Что ещё не считается подтверждённым контрактом проекта:** на 2026-09-22 полный end-to-end путь secure DNS `Keenetic DNS-proxy → ProxyN → Mihomo → proxy → resolver` ещё не прошёл отдельный live acceptance на KeeneticOS 5.1.5. Поэтому это документированный эксперимент, а не автоматическая настройка `install.sh`.
+
+Первым тестом выбран **DoT**, а не обычный UDP/53 и не DoH. У DoT есть явный IP назначения и TCP/853, поэтому путь проще наблюдать; для Quad9, например, `9.9.9.9:853` + SNI `dns.quad9.net` документированы самим сервисом ([Quad9 services](https://docs.quad9.net/services/)). DoH добавляет bootstrap-разрешение hostname, а обычный DNS/UDP через ProxyN отдельно зависит от SOCKS5 UDP / дальнейшего UDP-транспорта и пока остаётся вторым этапом проверки.
+
+Практический безопасный тест описан в [HOWTO_RU.md, §6.3](docs/HOWTO_RU.md#63-эксперимент-secure-dns-upstream-через-mihomoproxyn).
+
 ## Дополнительные Wi-Fi/LAN сети
 
 KeeneticOS позволяет создавать дополнительные сегменты — гостевые Wi-Fi на каждый диапазон и проводные сегменты, каждый со своей подсетью и DHCP — и привязывать их к политикам подключений. Доступное число зависит от модели и версии OS (смотрите страницу «Сегменты» своего web UI, фиксированной цифры в документации нет).

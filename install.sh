@@ -374,12 +374,16 @@ esac
 # ---------------------------
 # REQUIRED KEENETICOS COMPONENT PREFLIGHT
 # ---------------------------
-# Current default project install always depends on three named KeeneticOS
-# components. External Entware /opt additionally requires the two EXT4 storage
-# components so the filesystem is supported and can be checked/repaired:
+# Current default project install depends on three fixed named KeeneticOS
+# components plus at least ONE secure-DNS proxy component. Keenetic's Proxy
+# Client documentation warns that Internet access through a proxy may work
+# incorrectly without DoT/DoH and recommends enabling DNS-over-TLS or
+# DNS-over-HTTPS for reliable proxy access. External Entware /opt additionally
+# requires the two EXT4 storage components:
 #   proxy                -> Proxy client / Клиент прокси
 #   dns-filter           -> Cloud-based content filtering and ad blocking
 #   opkg-kmod-netfilter  -> Kernel modules for Netfilter
+#   dns-tls OR dns-https -> at least one secure-DNS proxy component
 #   ext                  -> Ext filesystem / Файловая система Ext (external /opt)
 #   ext-utils            -> EXT4 filesystem utilities / Утилиты EXT4 (external /opt)
 # Open Package support itself is verified earlier by command -v opkg.
@@ -388,6 +392,8 @@ esac
 PROXY_COMPONENT_ID=proxy
 DNS_FILTER_COMPONENT_ID=dns-filter
 NETFILTER_COMPONENT_ID=opkg-kmod-netfilter
+DNS_TLS_COMPONENT_ID=dns-tls
+DNS_HTTPS_COMPONENT_ID=dns-https
 EXT_COMPONENT_ID=ext
 EXT_UTILS_COMPONENT_ID=ext-utils
 
@@ -403,6 +409,7 @@ required_components_preflight_error() {
     echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
     echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
     echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
+    echo "[ERROR]   - At least ONE secure DNS proxy component: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID}) — Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client." >&2
     if [ "$OPT_CLASS" = "external" ]; then
         echo "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile." >&2
         echo "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)." >&2
@@ -439,6 +446,22 @@ require_project_keeneticos_components() {
         _rc_missing_lines="${_rc_missing_lines}
 [ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})"
     fi
+    _rc_secure_dns_present=""
+    if component_list_has "$DNS_TLS_COMPONENT_ID"; then
+        _rc_secure_dns_present="$DNS_TLS_COMPONENT_ID"
+    fi
+    if component_list_has "$DNS_HTTPS_COMPONENT_ID"; then
+        if [ -n "$_rc_secure_dns_present" ]; then
+            _rc_secure_dns_present="$_rc_secure_dns_present + $DNS_HTTPS_COMPONENT_ID"
+        else
+            _rc_secure_dns_present="$DNS_HTTPS_COMPONENT_ID"
+        fi
+    fi
+    if [ -z "$_rc_secure_dns_present" ]; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - At least one secure DNS proxy component is required: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID})"
+    fi
     if [ "$OPT_CLASS" = "external" ] && ! component_list_has "$EXT_COMPONENT_ID"; then
         _rc_missing_count=$((_rc_missing_count + 1))
         _rc_missing_lines="${_rc_missing_lines}
@@ -457,9 +480,9 @@ require_project_keeneticos_components() {
     fi
 
     if [ "$OPT_CLASS" = "external" ]; then
-        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, ${EXT_COMPONENT_ID}, ${EXT_UTILS_COMPONENT_ID}"
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, secure DNS: ${_rc_secure_dns_present}, ${EXT_COMPONENT_ID}, ${EXT_UTILS_COMPONENT_ID}"
     else
-        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, secure DNS: ${_rc_secure_dns_present}"
     fi
 }
 

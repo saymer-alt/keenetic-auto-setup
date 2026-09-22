@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The supported ProxyN profile now requires at least one KeeneticOS secure-DNS proxy component: `dns-tls` (DNS-over-TLS) **or** `dns-https` (DNS-over-HTTPS). `install.sh` hard-fails before mutations when both are absent; `mihomo-doctor.sh` mirrors that state as FAIL. The requirement follows Keenetic's Proxy Client guidance that reliable Internet access through proxy connections should use DoT/DoH; the project intentionally requires one, not both, and still leaves the concrete resolver/upstream to the operator.
+
+### Documentation
+- Documented the experimental router secure-DNS path `Keenetic DNS-proxy → ProxyN → SOCKS5 127.0.0.1:7890 → Mihomo → proxy → resolver`, including the explicit separation from `mitun0`, the current `MATCH,GLOBAL`/no-`DIRECT` generator behavior, and a domain-scoped DoT-first acceptance procedure. The docs clearly mark the end-to-end path as not yet live-accepted on KeeneticOS 5.1.5.
+- Corrected the Keenetic DoT/DoH CLI syntax in RU/EN HOWTO and documented the official `on <interface>` / `domain <domain>` capabilities used by the experiment.
+
 ---
 
 ## [1.4.1] - 2026-09-22

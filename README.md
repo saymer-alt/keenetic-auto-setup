@@ -11,6 +11,7 @@
 - Keenetic с Entware / OPKG
 - Доступ к shell
 - Интернет
+- KeeneticOS: **Клиент прокси** (`proxy`) и хотя бы один secure-DNS компонент — `dns-tls` **или** `dns-https`
 - Если `/opt` на внешнем USB/NVMe: **только EXT4**; компоненты KeeneticOS `ext` и `ext-utils` обязательны
 
 Полные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md)
