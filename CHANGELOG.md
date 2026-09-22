@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+- Added the first Part III encyclopedia article: a source-verified guide to the MetaCubeXD 1.273.1 web interface, including the proxy-group Target/Recommended/Unfix/latency-test buttons, display modes, sorting, card density, batch tests, provider controls, Smart Recommendation/Auto Switch, `rule/global/direct`, Core vs XD settings, and the distinction between view-only and state-changing actions.
+
 ---
 
 ## [1.4.2] - 2026-09-22

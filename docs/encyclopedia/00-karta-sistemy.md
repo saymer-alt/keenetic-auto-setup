@@ -191,6 +191,7 @@ REST API Mihomo (обычно на порту 9090). Через этот API п�
 - [13-127-0-0-1-i-ip-routera.md](13-127-0-0-1-i-ip-routera.md) — про 127.0.0.1 и IP роутера.
 - [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) — DNS Mihomo и fake-ip (Part II).
 - Часть II (анатомия Mihomo): [27-porty-i-config-yaml.md](27-porty-i-config-yaml.md) — порты и config.yaml · [28-proxies.md](28-proxies.md) — прокси · [29-proxy-groups.md](29-proxy-groups.md) — группы · [30-rules.md](30-rules.md) — правила · [31-tun.md](31-tun.md) — TUN · [32-kak-sobrat-kartinu.md](32-kak-sobrat-kartinu.md) — вся картина.
+- Часть III (панель и API): [40-interfejs-metacubexd.md](40-interfejs-metacubexd.md) — подробный разбор экранов metacubexd, кнопок страницы «Прокси», тестов задержки, рекомендаций и runtime-действий.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — полная архитектура: три пути трафика,
   ProxyN vs mitun0, DNS-перехват, границы проекта.
 - [../HOWTO_RU.md](../HOWTO_RU.md) — полное практическое руководство.
