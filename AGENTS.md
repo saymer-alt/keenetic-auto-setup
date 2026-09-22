@@ -52,7 +52,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 
 ## 3. Target platforms
 
-- KeeneticOS + Entware (/opt). Current release acceptance covers KN-1010, KN-1012, KN-3811, KN-3812 and KN-1812. Architecture-specific evidence explicitly recorded in the repository includes MT7621/mipsel on KN-1010 and aarch64 on KN-1012; do not infer the architecture of the other models from this sentence. Earlier field use also includes other Keenetic models; hardware tests complement, not replace, CI.
+- KeeneticOS + Entware (/opt). Current release acceptance covers **KN-1010 (MT7621AT / mipsel)** plus **KN-1012, KN-3811, KN-3812 and KN-1812 (AArch64 / ARM64)**. This mapping is backed by Keenetic's own Command Reference / OPKG-Entware documentation: KN-1010 uses the mipsel archive; KN-1012/3811/3812 use MT7981B AArch64, and KN-1812 uses MT7988D AArch64. Earlier field use also includes other Keenetic models; hardware tests complement, not replace, CI.
 - Architectures: aarch64, armv7, mipsel, mips — one install.sh for all, including
   MT7621 (live test passed); there is no separate installer anymore.
   ipk suffixes:
