@@ -64,16 +64,24 @@ Live tests must remain conservative:
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
 
-Current release model set confirmed by the operator: **KN-1010, KN-1012, KN-3811, KN-3812, KN-1812**. The table below only assigns architectures where that mapping is explicitly recorded by project evidence; it does not guess the architecture of the remaining models.
+Current release model set confirmed by the operator: **KN-1010, KN-1012, KN-3811, KN-3812, KN-1812**. Architecture mapping below is taken from Keenetic's official Command Reference and OPKG/Entware guidance, not inferred from model naming.
 
 | Architecture | Current evidence | Status |
 |---|---|---|
-| `aarch64` | KN-1012 live acceptance, including repeat install + Doctor on KeeneticOS 5.1.5 | current live evidence |
-| `mipsel` | KN-1010 / MT7621 live acceptance, including universal installer lifecycle and MIPS-stack migration findings | current live evidence |
+| `aarch64` | KN-1012 / MT7981B Cortex-A53, KN-3811 / MT7981B Cortex-A53, KN-3812 / MT7981B Cortex-A53, KN-1812 / MT7988D Cortex-A73; all four are current-release live-tested models | current live evidence |
+| `mipsel` | KN-1010 / MT7621AT MIPS 1004KEc; Keenetic's OPKG guide specifies the `mipsel` archive; live acceptance includes universal installer lifecycle and MIPS-stack migration findings | current live evidence |
 | `armv7` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 | big-endian `mips` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 
-Earlier field use on KN-1810 and KN-1913 remains valid historical evidence. KN-3811 is now also part of the current release model set above. Historical model coverage is not presented as a substitute for current per-architecture acceptance.
+Official Keenetic references used for the mapping:
+
+- KN-1010 Command Reference / OPKG: <https://docs.help.keenetic.com/cli/3.1/en/cli_manual_kn-1010_tr.pdf> · <https://support.keenetic.ru/eaeu/giga/kn-1010/ru/18482-installing-opkg-entware-in-the-router-s-internal-memory.html>
+- KN-1012 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1012.pdf> · <https://destek.keenetic.com.tr/hero/kn-1012/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
+- KN-3811 Command Reference: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.2/ru/cli_manual_kn-3811_ru.pdf>
+- KN-3812 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/5.0/en/cli_manual_kn-3812.pdf> · <https://support.keenetic.ru/eaeu/hopper-se/kn-3812/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
+- KN-1812 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1812.pdf> · <https://support.keenetic.com/eu/titan/kn-1812/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
+
+Earlier field use on KN-1810 and KN-1913 remains valid historical evidence. Historical model coverage is not presented as a substitute for the current per-architecture acceptance above.
 
 Do not buy/find hardware or create synthetic emulation merely to make every matrix cell
 green. When an `armv7` or big-endian `mips` router naturally becomes available, run

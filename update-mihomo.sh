@@ -75,7 +75,8 @@
 #   sh update-mihomo.sh
 #   sh update-mihomo.sh --force     # replace even if the version already matches
 #
-# Tested on: Keenetic ARM64 (aarch64) with Entware
+# Supported package paths: aarch64 / armv7 / mipsel / mips.
+# Current release hardware acceptance covers aarch64 and mipsel; see docs/TESTING_STRATEGY.md.
 # Author: saymer-alt
 # Repository: https://github.com/saymer-alt/keenetic-auto-setup
 
