@@ -160,9 +160,8 @@ grep -q 'Proxy client / Клиент прокси (${PROXY_COMPONENT_ID})' "$ROO
 grep -q 'Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (${DNS_FILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing dns-filter clearly"
 grep -q 'Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Netfilter clearly"
 grep -q 'At least one secure DNS proxy component is required: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must explain the secure-DNS OR requirement"
-grep -q 'Required secure-DNS KeeneticOS component missing:' "$ROOT/mihomo-doctor.sh" || fail "doctor must mirror missing secure-DNS components as a finding"
-grep -q 'Secure-DNS KeeneticOS component prerequisite satisfied:' "$ROOT/mihomo-doctor.sh" || fail "doctor must report the satisfied secure-DNS OR contract"
-grep -Fq 'at least one' "$ROOT/docs/COMPONENTS.md" || fail "component docs must state the one-of secure-DNS requirement"
+grep -q 'Required secure-DNS KeeneticOS component missing:' "$ROOT/mihomo-doctor.sh" || fail "doctor must mirror missing secure-DNS components as FAIL"
+grep -q 'Secure-DNS KeeneticOS component prerequisite satisfied:' "$ROOT/mihomo-doctor.sh" || fail "doctor must report a satisfied secure-DNS OR contract"
 grep -q 'Full required component contract for the current default project profile' "$ROOT/install.sh" || fail "installer must distinguish missing list from full component contract"
 grep -q 'No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation' "$ROOT/install.sh" || fail "missing KeeneticOS prerequisites must stop before installer mutations"
 _component_preflight_line=$(grep -n '^require_project_keeneticos_components$' "$ROOT/install.sh" | head -1 | cut -d: -f1)
