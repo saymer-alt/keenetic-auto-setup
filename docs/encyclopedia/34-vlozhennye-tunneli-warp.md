@@ -270,6 +270,40 @@ Cloudflare сейчас публикует такую карту WARP ingress д
 
 Источник: [Cloudflare One Client with firewall](https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/deployment/firewall/).
 
+### Consumer WARP MASQUE: H3 и H2 — это разные transport/address pools
+
+Отдельно от официальной Zero Trust-таблицы выше есть **consumer WARP MASQUE**, который исследует [WARPSCOUT](35-warpscout.md). В текущем upstream WARPSCOUT (`master` commit `b49ef5e8a466164a64d669951521b58944346bc8`) два MASQUE transport'а разведены явно:
+
+| WARPSCOUT | Транспорт | IPv4 pool, который сканирует upstream | IPv6 pool |
+|---|---|---|---|
+| `-p masque` | **HTTP/3 / QUIC / UDP** | `162.159.198.1`, `162.159.198.2` | `2606:4700:103::1`, `::2`; `2606:4700:104::1`, `::2` |
+| `-p masque-h2` | **HTTP/2 / TLS / TCP** | `162.159.198.0/24`, `162.159.199.0/24` | `2606:4700:103::/48`, `2606:4700:104::/48` |
+
+WARPSCOUT проверяет для MASQUE числовые порты `443`, `500`, `1701`, `4500`, `4443`, `8443`, `8095`; для H3 это UDP/QUIC, для H2 — TCP/TLS. Это **upstream knowledge/measurements WARPSCOUT**, а не обещание Cloudflare, что эти consumer pools навсегда останутся такими же.
+
+Источники WARPSCOUT:
+
+- [README_RU.md](https://github.com/vernette/warpscout/blob/b49ef5e8a466164a64d669951521b58944346bc8/README_RU.md);
+- [docs/ru/masque.md](https://github.com/vernette/warpscout/blob/b49ef5e8a466164a64d669951521b58944346bc8/docs/ru/masque.md);
+- [masque.go](https://github.com/vernette/warpscout/blob/b49ef5e8a466164a64d669951521b58944346bc8/masque.go).
+
+Ещё один важный нюанс: у MASQUE SNI является частью внешнего TLS/QUIC handshake. Upstream WARPSCOUT прямо предупреждает, что SNI, который проходит на H3, может не пройти на H2, поэтому `find-sni` запускается отдельно для нужного transport:
+
+~~~text
+warpscout find-sni -p masque
+warpscout find-sni -p masque-h2
+~~~
+
+### Native WireGuard Keenetic ≠ MASQUE
+
+Не пытайтесь просто вставить MASQUE H2/H3 address в поле **«Адрес и порт пира»** обычного WireGuard connection Keenetic. Это другой протокол.
+
+- native Keenetic WireGuard/AWG connection ждёт WireGuard/AWG peer;
+- MASQUE H3/H2 требует MASQUE-capable client;
+- WARPSCOUT умеет выдавать MASQUE-конфиг для `usque`, а `-conf-type mihomo` — MASQUE outbound для Mihomo; для H2 upstream генерирует тот же `type: masque`, но с `network: h2`.
+
+То есть для нашей статьи 34 основной router-side path остаётся **WireGuard/WARP via ProxyN**. MASQUE — альтернативная ветка, которую логичнее поднимать внутри Mihomo/отдельного MASQUE-клиента, а не маскировать под WireGuard.
+
 ### Почему эту таблицу нельзя копировать вслепую в Keenetic
 
 Наша ручная схема — это не официальный Cloudflare One Client daemon. У штатного клиента есть собственная логика выбора ingress, fallback ports и override endpoint'ов. У обычного WireGuard peer в Keenetic такой логики нет: он подключается к тому endpoint, который записан в конфигурации.
@@ -410,5 +444,6 @@ WARP → ProxyN → Mihomo → WARP → ...
 
 - [31-tun.md](31-tun.md) — почему `tun.mtu` Mihomo и MTU Keenetic WireGuard — разные параметры.
 - [32-kak-sobrat-kartinu.md](32-kak-sobrat-kartinu.md) — вход трафика через ProxyN и TUN.
+- [35-warpscout.md](35-warpscout.md) — как читать `NODE`/`SEEN AS`, выбирать colo по endpoint/port и не путать это со страной выхода; отдельный разбор MASQUE H2/H3.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — общая архитектура проекта.
 - [../HOWTO_RU.md](../HOWTO_RU.md) — практическая эксплуатация.

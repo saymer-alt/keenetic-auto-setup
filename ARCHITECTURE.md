@@ -340,7 +340,7 @@ allow-lan: true
 - **colo** (дата-центр Cloudflare, через который проходит подключение) и **страна выхода/public IP** — разные понятия; смена colo сама по себе не меняет exit IP и не «переносит» вас в другую страну;
 - при этом смена colo может практически влиять на качество и доступность отдельных сервисов (например, Telegram или YouTube) даже при том же exit IP.
 
-Поэтому colo имеет практическое значение как параметр отладки, но не как способ выбора геолокации. Для исследования доступных и выбираемых colo существует инструмент [vernette/warpscout](https://github.com/vernette/warpscout) — детали в его документации.
+Поэтому colo имеет практическое значение как параметр отладки, но не как способ выбора геолокации. Для исследования endpoint/port → `NODE` существует [vernette/warpscout](https://github.com/vernette/warpscout): у него `NODE`/`NODE LOCATION` отделены от `SEEN AS`, а для WG/AWG один и тот же IP на разных ports может попасть на разные colos. MASQUE H3/H2 у WARPSCOUT — отдельные transport/address pools и не дают такого же выбора node по endpoint в одном scan. Практический разбор — [docs/encyclopedia/35-warpscout.md](docs/encyclopedia/35-warpscout.md).
 
 ## MT TEST — быстрый smoke test
 
