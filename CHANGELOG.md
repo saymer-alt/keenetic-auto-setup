@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Roadmap now records the deliberate decision not to add heavier watchdog probes, configurable VoIP complexity, a second monitoring stack, or a project-specific GUI without a reproducible field need.
 - Closed remaining documentation debt that did not require live router work: removed the secure-DNS prerequisite contradiction in RU/EN component matrices, refreshed the hardware acceptance scope, documented intentionally untested destructive power-loss faults as residual risk instead of a hidden test obligation, and added a dedicated sniffer encyclopedia article linked from DNS/rules docs.
 - Corrected the current release hardware evidence to the operator-confirmed model set and cross-checked architectures against official Keenetic references: KN-1010 = MT7621AT / `mipsel`; KN-1012, KN-3811 and KN-3812 = MT7981B AArch64; KN-1812 = MT7988D AArch64.
+- Removed stale architecture-specific `Tested on` comments from the updater/watchdog headers: they now point to the maintained hardware evidence matrix instead of implying narrower historical coverage.
 
 ---
 

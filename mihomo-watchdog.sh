@@ -4,7 +4,8 @@
 # MIHOMO WATCHDOG SCRIPT - PRODUCTION VERSION
 # ---------------------------------------------------------
 # Embedded Linux watchdog for Mihomo proxy
-# Tested on Keenetic + Entware systems (MT7621 / MIPS).
+# Current release hardware acceptance includes Keenetic + Entware on mipsel and aarch64.
+# See docs/TESTING_STRATEGY.md for the model/architecture evidence matrix.
 
 # All WAN checks are performed DIRECTLY, without Mihomo.
 
