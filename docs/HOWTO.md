@@ -278,6 +278,7 @@ Check every point — most failed installs trace back to one of these:
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2; if `/opt` is external, the project supports EXT4 only |
 | **External `/opt`: `ext` + `ext-utils`** | `show version` contains both component ids | required only for the external Entware profile; `ext-utils` provides the supported EXT4 check/repair tooling |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
+| **DNS-over-TLS proxy (`dns-tls`) or DNS-over-HTTPS proxy (`dns-https`)** | `show version` contains at least one of the two component ids | OR prerequisite for ProxyN: Keenetic recommends DoT/DoH for reliable Proxy Client access; both are not required |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
 | **Internet reachable from the router** | `opkg update` succeeds | DNS and correct time are the usual blockers (see [Troubleshooting](#12-troubleshooting)) |
 
@@ -298,7 +299,7 @@ opkg print-architecture | awk '/^arch/{print $2}'
 
 The toolkit installs *into* Entware — it does not install Entware itself.
 
-1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or an external USB/NVMe device. For external `/opt`, the project supports **EXT4 only** and requires **Ext filesystem (`ext`)** plus **EXT4 filesystem utilities (`ext-utils`)**. Also install the required **Proxy client / Клиент прокси** component — without it Keenetic cannot create the project ProxyN. See [COMPONENTS.md](COMPONENTS.md) for the full prerequisite matrix.
+1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or an external USB/NVMe device. For external `/opt`, the project supports **EXT4 only** and requires **Ext filesystem (`ext`)** plus **EXT4 filesystem utilities (`ext-utils`)**. Also install the required **Proxy client / Клиент прокси** component and at least one secure-DNS proxy component — **DNS-over-TLS (`dns-tls`) or DNS-over-HTTPS (`dns-https`)**. Keenetic recommends DoT/DoH for reliable Proxy Client access; both secure-DNS components are not required. See [COMPONENTS.md](COMPONENTS.md) for the full prerequisite matrix.
 2. Reboot when the component asks.
 3. Verify from SSH:
 
