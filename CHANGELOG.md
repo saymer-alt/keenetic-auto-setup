@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [1.4.1] - 2026-09-22
+
 ### Added
 - External Entware storage safety contract: new installs accept external `/opt` only when the actual mounted filesystem is EXT4. `install.sh` reads the deepest `/opt` mount from `/proc/mounts` and rejects NTFS/exFAT/FAT/unknown external layouts before package or router changes; it never formats or converts storage.
 - External `/opt` now adds two required KeeneticOS component checks to the existing read-only preflight: `ext` (Ext filesystem) and `ext-utils` (EXT4 filesystem utilities). Internal-storage installs keep the existing universal component set.
