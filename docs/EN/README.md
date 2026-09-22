@@ -11,6 +11,7 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 - Keenetic with Entware / OPKG
 - Shell access
 - Internet access
+- KeeneticOS: **Proxy client** (`proxy`) and at least one secure-DNS component — `dns-tls` **or** `dns-https`
 - If `/opt` is on external USB/NVMe storage: **EXT4 only**; KeeneticOS components `ext` and `ext-utils` are required
 
 Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md)

@@ -17,6 +17,7 @@
 | KeeneticOS **Клиент прокси / Proxy client** (`proxy`) | обязательный компонент KeeneticOS | создаёт интерфейс `ProxyN` — мост Keenetic → Mihomo | ранний read-only preflight через `show version`; после создания ProxyN остаётся проверка running-config |
 | KeeneticOS **Фильтрация контента и блокировка рекламы при помощи облачных сервисов** (`dns-filter`) | обязательный компонент для поддерживаемого DNS-interception профиля | предоставляет семейство возможностей DNS filter/interception, на котором основан обязательный `dns-proxy intercept enable` | ранний read-only preflight через `show version`; затем команда включается и проверяется по running-config |
 | KeeneticOS **Модули ядра подсистемы Netfilter** (`opkg-kmod-netfilter`) | обязательный компонент для штатного VoIP bypass | `020-bypass-wa.sh` использует iptables mangle/MARK/CONNMARK/multiport и netfilter hook Keenetic | ранний read-only preflight через `show version`; фактическая установка правил остаётся runtime-проверкой |
+| KeeneticOS **DNS-over-TLS proxy** (`dns-tls`) **ИЛИ DNS-over-HTTPS proxy** (`dns-https`) | **обязателен хотя бы один из двух** | официальный гайд Keenetic для Proxy Client предупреждает, что доступ через proxy может работать некорректно без DoT/DoH, и рекомендует включить DoT или DoH для надёжной работы | installer проверяет OR-контракт через `show version`; Doctor зеркально FAIL'ит отсутствие обоих |
 | KeeneticOS **Файловая система Ext** (`ext`) | **обязателен при внешнем `/opt`** | поддерживаемый внешний Entware-профиль проекта — EXT4 | при внешнем `/opt` ранний read-only preflight требует component id `ext` |
 | KeeneticOS **Утилиты EXT4** (`ext-utils`) | **обязательны при внешнем `/opt`** | дают штатные средства проверки/исправления EXT4; в KeeneticOS 5.1 проверка накопителя доступна через Storage & Devices/CLI при наличии filesystem utilities | при внешнем `/opt` ранний read-only preflight требует component id `ext-utils` |
 | Интернет во время установки | обязательная install-time возможность | нужны загрузка пакетов, скриптов и актуального Mihomo ipk | ошибки download/opkg сообщает installer |
@@ -36,8 +37,8 @@
 | **Поддержка накопителей** | **УСЛОВНО** | нужна для USB/NVMe-варианта; внутренняя Entware-установка не делает USB универсальным prerequisite |
 | **Файловая система Ext** (`ext`) + **Утилиты EXT4** (`ext-utils`) | **ОБЯЗАТЕЛЬНЫ для внешнего Entware `/opt`** | проект сознательно поддерживает внешний `/opt` только на EXT4; `ext-utils` обеспечивает штатную проверку/исправление файловой системы |
 | **SSH server** | **ОПЦИОНАЛЬНЫЙ способ администрирования** | удобен для shell, но runtime проекта от него не зависит |
-| **DNS-over-TLS proxy** | **НАСТОЯТЕЛЬНО РЕКОМЕНДУЕТСЯ** | защищает upstream DNS роутера от простого наблюдения/подмены со стороны провайдера |
-| **DNS-over-HTTPS proxy** | **НАСТОЯТЕЛЬНО РЕКОМЕНДУЕТСЯ** | та же эксплуатационная цель; DoH и DoT не обязаны быть включены одновременно |
+| **DNS-over-TLS proxy** (`dns-tls`) | **ОДИН ИЗ `dns-tls` / `dns-https` ОБЯЗАТЕЛЕН** | Keenetic рекомендует DoT/DoH для надёжного Internet access через Proxy Client; второй secure-DNS компонент не обязателен |
+| **DNS-over-HTTPS proxy** (`dns-https`) | **ОДИН ИЗ `dns-tls` / `dns-https` ОБЯЗАТЕЛЕН** | тот же Proxy Client contract; проект намеренно проверяет OR, а не требует оба компонента |
 | **Internet connection status monitoring / Ping Check** | **РЕКОМЕНДУЕТСЯ** | полезен для штатной WAN/failover-диагностики Keenetic, хотя watchdog проекта использует собственные проверки |
 | **Traffic classification engine** | **РЕКОМЕНДУЕТСЯ** | полезен для наблюдаемости, но код проекта его не вызывает |
 | **Packet capture** | **РЕКОМЕНДУЕТСЯ для диагностики** | помогает доказать DNS/routing/VPN поведение пакетами |
@@ -62,6 +63,8 @@
 
 1. **Установлено на известном рабочем роутере ≠ обязательно для проекта.**
 2. **Обязательно для самого KeeneticOS ≠ обязательно для этого репозитория.**
+
+Официальное основание secure-DNS prerequisite: Keenetic Proxy Client предупреждает, что доступ к интернет-ресурсам через proxy может работать некорректно без DoT/DoH, и для надёжной работы рекомендует включить DNS-over-TLS или DNS-over-HTTPS: <https://support.keenetic.com/peak/kn-2710/en/49443-proxy-client.html>.
 
 ## Обязательные возможности KeeneticOS
 
@@ -95,9 +98,10 @@ MagiTrickle.
 
 ## Условное и опциональное
 
-- **DoH / DoT компоненты и серверы** — рекомендуемая эксплуатационная база, но не
-  жёсткая зависимость installer. На whitelist-сетях фактическая доступность resolver'а
-  важнее теории.
+- **Выбор конкретного DoT/DoH upstream и второго secure-DNS компонента** остаётся
+  эксплуатационным выбором. Но сам supported ProxyN profile теперь требует наличие
+  **хотя бы одного** компонента `dns-tls` / `dns-https`. Installer не навязывает
+  конкретный resolver: на whitelist-сетях его фактическая доступность важнее теории.
 - **WireGuard / AmneziaWG / SSTP / OpenConnect / другие VPN-клиенты** — пользовательские
   выходы; ни один не обязателен для базовой установки.
 - **Mihomo external Controller / Web UI** — опциональны.
