@@ -446,7 +446,18 @@ require_project_keeneticos_components() {
         _rc_missing_lines="${_rc_missing_lines}
 [ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})"
     fi
-    if ! component_list_has "$DNS_TLS_COMPONENT_ID" && ! component_list_has "$DNS_HTTPS_COMPONENT_ID"; then
+    _rc_secure_dns_present=""
+    if component_list_has "$DNS_TLS_COMPONENT_ID"; then
+        _rc_secure_dns_present="$DNS_TLS_COMPONENT_ID"
+    fi
+    if component_list_has "$DNS_HTTPS_COMPONENT_ID"; then
+        if [ -n "$_rc_secure_dns_present" ]; then
+            _rc_secure_dns_present="$_rc_secure_dns_present + $DNS_HTTPS_COMPONENT_ID"
+        else
+            _rc_secure_dns_present="$DNS_HTTPS_COMPONENT_ID"
+        fi
+    fi
+    if [ -z "$_rc_secure_dns_present" ]; then
         _rc_missing_count=$((_rc_missing_count + 1))
         _rc_missing_lines="${_rc_missing_lines}
 [ERROR]   - At least one secure DNS proxy component is required: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID})"
@@ -469,9 +480,9 @@ require_project_keeneticos_components() {
     fi
 
     if [ "$OPT_CLASS" = "external" ]; then
-        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, ${EXT_COMPONENT_ID}, ${EXT_UTILS_COMPONENT_ID}"
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, secure DNS: ${_rc_secure_dns_present}, ${EXT_COMPONENT_ID}, ${EXT_UTILS_COMPONENT_ID}"
     else
-        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, secure DNS: ${_rc_secure_dns_present}"
     fi
 }
 
