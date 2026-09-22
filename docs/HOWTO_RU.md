@@ -278,6 +278,7 @@ Wi-Fi 3         → mitun0 → Mihomo (TUN)
 | **Установлен Entware** (`/opt` существует) | команда `opkg` работает | см. шаг 2; если `/opt` внешний, проект поддерживает только EXT4 |
 | **Внешний `/opt`: `ext` + `ext-utils`** | `show version` содержит оба component id | обязательны только для внешнего Entware-профиля; `ext-utils` даёт штатные средства проверки/исправления EXT4 |
 | KeeneticOS **«Клиент прокси» (Proxy client)** | компонент виден в наборе KeeneticOS | обязателен для создания проектного ProxyN; installer проверяет результат создания |
+| **DNS-over-TLS proxy (`dns-tls`) или DNS-over-HTTPS proxy (`dns-https`)** | `show version` содержит хотя бы один из двух component id | OR-prerequisite для ProxyN: Keenetic рекомендует DoT/DoH для надёжного доступа через Proxy Client; оба одновременно не требуются |
 | **Доступ к shell Entware** | например, SSH | нужен для запуска команд установки; компонент KeeneticOS *SSH-сервер* — удобный способ доступа, но не runtime-зависимость проекта |
 | **Интернет доступен с роутера** | `opkg update` проходит без ошибок | типовые блокеры — DNS и время (см. [Типовые проблемы](#12-типовые-проблемы)) |
 
