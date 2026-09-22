@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+- Documented the experimental router secure-DNS path `Keenetic DNS-proxy → ProxyN → SOCKS5 127.0.0.1:7890 → Mihomo → proxy → resolver`, including the explicit separation from `mitun0`, the current `MATCH,GLOBAL`/no-`DIRECT` generator behavior, and a domain-scoped DoT-first acceptance procedure. The docs clearly mark the end-to-end path as not yet live-accepted on KeeneticOS 5.1.5.
+- Corrected the Keenetic DoT/DoH CLI syntax in RU/EN HOWTO and documented the official `on <interface>` / `domain <domain>` capabilities used by the experiment.
+
 ---
 
 ## [1.4.1] - 2026-09-22
