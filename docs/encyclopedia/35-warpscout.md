@@ -226,7 +226,144 @@ warpscout scan -p masque-h2 -conf warp.yaml -conf-type mihomo
 1. **обычный endpoint/port selection** — выбираем удобный `NODE`/colo, `SEEN AS` может остаться прежним;
 2. **WARP-in-WARP / `-through`** — отдельная вложенная топология, где меняется сама точка, из которой строится внутренний туннель.
 
-Upstream: [docs/ru/warp-in-warp.md](https://github.com/vernette/warpscout/blob/b49ef5e8a466164a64d669951521b58944346bc8/docs/ru/warp-in-warp.md).
+### Два WARP-слоя — два разных key/device
+
+Upstream WARPSCOUT специально регистрирует **второе WireGuard-устройство для внешнего туннеля**: Cloudflare не принимает вложенные WARP-туннели, если они используют один и тот же private key. Поэтому outer и inner WARP в `-through` — две разные WARP identity/key pair.
+
+Это важно отличать от другой схемы:
+
+~~~text
+Mieru / VLESS / Hysteria2 / другой VPS transport
+                 ↓ dialer-proxy
+             MASQUE WARP
+~~~
+
+Здесь внешний слой **не WARP**, поэтому второй WARP private key не нужен. Mihomo официально поддерживает `dialer-proxy` у MASQUE outbound. Например, обсуждавшийся нами шаблон выглядел как `dialer-proxy: "Estonia Mieru"`: это означает «строить MASQUE через внешний Mieru proxy», а не «вложить второй WARP». Сам этот конкретный transport-chain не помечаем как live-tested, пока он не подтверждён отдельным acceptance.
+
+Официальная конфигурация Mihomo MASQUE: [Mihomo Docs — MASQUE](https://wiki.metacubex.one/ru/config/proxies/masque/).
+
+Upstream WARPSCOUT: [docs/ru/warp-in-warp.md](https://github.com/vernette/warpscout/blob/b49ef5e8a466164a64d669951521b58944346bc8/docs/ru/warp-in-warp.md).
+
+---
+
+## Наши полевые наблюдения 2026: почему здесь столько оговорок
+
+Этот раздел — **история операторских тестов проекта**, а не текущая спецификация Cloudflare. Он полезен именно тем, что показывает, как быстро можно сделать неправильный вывод, если смешать endpoint, colo и exit geography.
+
+### 24–25 июня: H3 и H2 выглядели намного уже/шире соответственно
+
+В июньских тестах MASQUE H3/QUIC стабильно удавалось поднять только на:
+
+~~~text
+162.159.198.2:443
+162.159.199.2:443
+~~~
+
+а H2 проходил на разных протестированных адресах из `162.159.198.*` / `162.159.199.*` и на ports:
+
+~~~text
+443, 500, 1701, 4500, 4443, 8443, 8095
+~~~
+
+Это **не надо копировать как актуальный hardcoded pool**. Уже текущий WARPSCOUT в сентябре описывает H3 иначе (`162.159.198.1/.2` плюс IPv6 addresses), а H2 сканирует целые `/24`. Именно поэтому документация выше говорит: consumer endpoint pools и фактическая доступность — предмет повторного скана, а не вечная таблица.
+
+### 25 июня: одна технология, разные провайдеры — разные Cloudflare paths
+
+В одном и том же периоде операторские наблюдения давали разные точки обработки в зависимости от исходной сети: домашний 2КОМ/Алмател — Riga, рабочая сеть — Domodedovo, Tele2 — Finland, Megafon — Germany.
+
+Тогда мы ещё не всегда строго разделяли `NODE` и `SEEN AS`, поэтому эти записи нельзя ретроспективно превращать в точную таблицу exit-country. Но они хорошо подтверждают главный вывод: **BGP/path исходной сети реально влияет на то, куда Cloudflare принимает WARP**, и один endpoint сам по себе не гарантирует один colo.
+
+### 19 августа: `colo=FRA`, но `loc=CH`
+
+В реальном Cloudflare trace одновременно наблюдалось:
+
+~~~text
+colo=FRA
+loc=CH
+warp=on
+http=http/3
+~~~
+
+Это практически идеальный пример различия:
+
+~~~text
+FRA = Cloudflare colo / место обработки
+CH  = география, с которой виден WARP egress
+~~~
+
+То есть даже хороший иностранный colo не надо автоматически читать как «та же страна выхода».
+
+### 19 августа: перебор endpoint'ов не всегда меняет node
+
+Был и обратный результат: прямые MASQUE/AWG тесты с заменой endpoint IP/port продолжали приходить в DME. Это важный контрпример к идее «достаточно подобрать другой Cloudflare IP — и colo обязательно сменится». Если текущий network path жёстко ведёт в один edge, адресный перебор может не помочь.
+
+---
+
+## Практический паттерн Mihomo: H3 + H2 одновременно
+
+У нас реально использовался паттерн, где оба MASQUE transport'а существуют одновременно:
+
+~~~yaml
+proxies:
+  - name: WARP-MASQUE-QUIC
+    type: masque
+    server: <current-h3-endpoint>
+    port: 443
+    private-key: <private-key>
+    public-key: <public-key>
+    ip: 172.16.0.2/32
+    mtu: 1280
+    sni: <current-working-sni>
+    udp: true
+
+  - name: WARP-MASQUE-H2-443
+    type: masque
+    server: <current-h2-endpoint>
+    port: 443
+    private-key: <private-key>
+    public-key: <public-key>
+    ip: 172.16.0.2/32
+    mtu: 1280
+    sni: <current-working-sni>
+    udp: true
+    network: h2
+~~~
+
+`type: masque`, `ip`, `mtu`, `sni`, `network: h2` и `dialer-proxy` соответствуют текущей официальной схеме Mihomo MASQUE. Endpoint и SNI в примере намеренно не зафиксированы: их надо брать из актуального скана/acceptance. В полевых конфигах июня–августа 2026 у нас использовался `sni: 4pda.to`, но это историческое наблюдение, а не вечный рекомендуемый SNI.
+
+Поверх этих двух proxies у нас был `Fastest_MASQUE` как `url-test` между QUIC и H2. Один из реально использовавшихся вариантов имел (исторический health-check URL сохранён как часть полевого примера):
+
+~~~yaml
+proxy-groups:
+  - name: Fastest_MASQUE
+    type: url-test
+    proxies:
+      - WARP-MASQUE-QUIC
+      - WARP-MASQUE-H2-443
+    url: https://google.com/generate_204
+    interval: 300
+    tolerance: 50
+    expected-status: 204
+~~~
+
+Смысл паттерна — не «H3 всегда быстрее H2», а держать оба транспорта и позволять Mihomo выбирать живой/быстрый вариант. Но важно помнить ограничение: HTTP `url-test` проверяет HTTP-доступность/задержку, а не весь спектр проблем внутри конкретного WARP transport. После серьёзного изменения endpoint/SNI всё равно нужен фактический traffic check. Для нового конфига текущая документация Mihomo показывает `https://www.gstatic.com/generate_204` как типичный URL health-check; исторический `https://google.com/generate_204` выше не является проектным стандартом.
+
+Официальная схема полей: [Mihomo Docs — MASQUE](https://wiki.metacubex.one/ru/config/proxies/masque/).
+
+---
+
+## Почему в нашем проекте обычно не нужен отдельный `usque` daemon
+
+Upstream WARPSCOUT умеет выдавать native MASQUE config для `usque`, и это нормальный самостоятельный вариант. Но в нашем стеке MASQUE уже умеет **сам Mihomo** — с H3/H2, routing/groups, `dialer-proxy`, TUN/rules/DNS-интеграцией.
+
+Поэтому для `keenetic-auto-setup`/наших Mihomo-схем более естественный экспорт:
+
+~~~sh
+warpscout scan -p masque -conf warp.yaml -conf-type mihomo
+warpscout scan -p masque-h2 -conf warp.yaml -conf-type mihomo
+~~~
+
+`usque` остаётся полезным upstream-клиентом и эталонной точкой сравнения, но не является обязательной зависимостью проекта.
 
 ---
 
