@@ -275,7 +275,8 @@ Check every point — most failed installs trace back to one of these:
 | Requirement | How to check | Notes |
 | --- | --- | --- |
 | Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap. 256/512 MB-class: project expects native zRAM **or** verified external storage-backed swap; neither present => WARN, install continues. External swap below 1× detected RAM is WARN; 1×..3× is INFO; the preferred target is ~3× RAM, capped at 2 GiB; >2 GiB is an install error. Above 512 MB-class, swap/zRAM is optional. Vendor guidance says not to combine zRAM with disk/file swap. |
-| **Entware installed** (`/opt` exists) | `opkg` command works | See step 2 |
+| **Entware installed** (`/opt` exists) | `opkg` command works | See step 2; if `/opt` is external, the project supports EXT4 only |
+| **External `/opt`: `ext` + `ext-utils`** | `show version` contains both component ids | required only for the external Entware profile; `ext-utils` provides the supported EXT4 check/repair tooling |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
 | **Internet reachable from the router** | `opkg update` succeeds | DNS and correct time are the usual blockers (see [Troubleshooting](#12-troubleshooting)) |
@@ -297,15 +298,18 @@ opkg print-architecture | awk '/^arch/{print $2}'
 
 The toolkit installs *into* Entware — it does not install Entware itself.
 
-1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or a USB drive formatted as ext4. Also install the required **Proxy client / Клиент прокси** component — without it Keenetic cannot create the project ProxyN. See [COMPONENTS.md](COMPONENTS.md) for the full prerequisite matrix.
+1. In KeeneticOS, enable the OPKG/Entware component (*General settings → Opkg / Entware* or via the *KeeneticOS components* menu, depending on firmware version) and select a storage location: internal storage (on models that support it) or an external USB/NVMe device. For external `/opt`, the project supports **EXT4 only** and requires **Ext filesystem (`ext`)** plus **EXT4 filesystem utilities (`ext-utils`)**. Also install the required **Proxy client / Клиент прокси** component — without it Keenetic cannot create the project ProxyN. See [COMPONENTS.md](COMPONENTS.md) for the full prerequisite matrix.
 2. Reboot when the component asks.
 3. Verify from SSH:
 
 ```bash
 ls /opt                    # Entware root must exist
+grep ' /opt ' /proc/mounts # external /opt is expected to be ext4
 opkg update                # must end without errors
 date                       # wrong time → SSL errors later
 ```
+
+Modern KeeneticOS may technically work with other filesystems, but **NTFS/exFAT/FAT and other filesystems are outside this project's supported external Entware profile**. `install.sh` reads the actual filesystem from `/proc/mounts` and rejects a new install on external non-EXT4 `/opt`; it never formats or converts the drive itself. Since KeeneticOS 5.1, the Storage & Devices/CLI tooling can run filesystem checks when the matching utilities component is installed; that is why `ext-utils` is required. We do not claim that a filesystem check automatically runs on every boot.
 
 If `opkg update` fails: check DNS first (`cat /opt/etc/resolv.conf` — usually a symlink to `/etc/resolv.conf` managed by KeeneticOS; do not overwrite it with public resolvers manually, that breaks DNS-transit; diagnostics in the Troubleshooting section) and time (`ntpd -q -p pool.ntp.org`) — these are the two most common causes.
 
@@ -328,7 +332,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 In order:
 
-1. `opkg update`, then installs `ca-bundle`, `curl`, `jq`, `nano`, `cron` (skips what's already there).
+1. Before mutations, checks RAM/swap/storage, the actual `/opt` filesystem and required KeeneticOS components. External `/opt` is accepted only on EXT4 and requires `ext` plus `ext-utils`. It then runs `opkg update` and installs `ca-bundle`, `curl`, `jq`, `nano`, `cron` (skips what's already there).
 2. Creates the `bypass_wa` routing policy (only if it doesn't exist).
 3. Enables Keenetic **DNS transit interception** (`dns-proxy intercept enable`, then `system configuration save` — applied only if not already on): classic port-53 queries from LAN clients addressed straight to external resolvers are redirected into the router's DNS proxy, where MagiTrickle sees them (details in [section 6.1](#6-magitrickle)). This is part of the automatic installation — no manual post-install DNS step. Classic DNS only; DoH/DoT are not affected.
 4. **RAM mode only:** downloads `S00ubifs` to `/opt/etc/init.d/` and starts it (tmpfs for `/opt/tmp`, `/opt/var/log`, `/opt/var/run`).
@@ -369,9 +373,11 @@ A `WARN ... Port 7890 still not listening after 5s startup wait` means the contr
 | Actual `/opt` | Mode | Behavior |
 | --- | --- | --- |
 | internal | `ram` | normal profile: `S00ubifs` moves runtime/log/tmp to tmpfs |
-| external persistent | `disk` | normal profile: runtime/log/tmp stay on external storage |
-| external persistent | `ram` | supported with WARN: runtime/log/tmp use tmpfs and become volatile |
+| external persistent **EXT4** | `disk` | normal profile: runtime/log/tmp stay on external storage; `ext` + `ext-utils` are required |
+| external persistent **EXT4** | `ram` | supported with WARN: runtime/log/tmp use tmpfs and become volatile; external `/opt` still requires EXT4 plus `ext` + `ext-utils` |
 | internal | `disk` | **ERROR before installer-managed changes** by default: this mode skips `S00ubifs` and leaves runtime/log writes on internal flash |
+
+External `/opt` on NTFS/exFAT/FAT/another filesystem is a **new-install ERROR regardless of `ram`/`disk` mode**. The narrow `--allow-internal-disk` override applies only to internal storage and never bypasses the EXT4/component safety gates.
 
 `S00ubifs` adapts tmpfs sizes to available RAM (profiles for <40 MB, <80 MB, ≥80 MB free). Details: [docs/06-s00ubifs.md](06-s00ubifs.md).
 

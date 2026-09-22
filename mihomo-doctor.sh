@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.1 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.2 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -58,6 +58,11 @@ CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
 # Same updater staging safety margin as install.sh/update-mihomo.sh.
 MIHOMO_STAGE_MARGIN_KB=4096
+# A single recovered watchdog intervention in 24h is informational noise, not
+# evidence of instability. Two or more recent interventions are WARN; any
+# recent rate-limited event remains WARN because it means another problem was
+# detected while restart cooldown was active.
+WATCHDOG_RECENT_WARN_THRESHOLD=2
 
 N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
 WARN_MESSAGES=""
@@ -115,6 +120,12 @@ finding_action() {
             ;;
         *"Low-RAM prerequisite NOT met"*swap*|*"128 MB-class"*swap*)
             printf '%s' "Provide at least 384 MB active swap on external storage (project-specific experimental floor), then run Doctor again."
+            ;;
+        *"Unsupported external /opt filesystem:"*)
+            printf '%s' "Migrate/reformat the external Entware storage to EXT4, verify that Keenetic mounts it and Entware starts from it, then run Doctor again. This project never formats or converts storage."
+            ;;
+        *"Required external-storage KeeneticOS component missing:"*)
+            printf '%s' "Install the reported KeeneticOS component in General system settings -> KeeneticOS update and components. External /opt requires both ext and ext-utils; ext-utils provides the supported filesystem check/repair tooling."
             ;;
         *"Very low available memory"*)
             printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
@@ -692,6 +703,25 @@ _doc_opt_class() {
     done < "$MOUNTS_SRC"
     echo "$_doc_oc_cls"
 }
+
+_doc_opt_fstype() {
+    _doc_of_path="${1:-$OPT_ROOT}" _doc_of_bl=0 _doc_of_fst=unknown
+    [ -r "$MOUNTS_SRC" ] || { echo unknown; return 0; }
+    while read -r _doc_of_src _doc_of_mp _doc_of_type _doc_of_rest; do
+        case "$_doc_of_path" in
+            "$_doc_of_mp") ;;
+            *) case "$_doc_of_path" in
+                   "$_doc_of_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _doc_of_len=${#_doc_of_mp}
+        [ "$_doc_of_len" -ge "$_doc_of_bl" ] || continue
+        _doc_of_bl=$_doc_of_len
+        _doc_of_fst=$_doc_of_type
+    done < "$MOUNTS_SRC"
+    echo "$_doc_of_fst"
+}
 _doc_swap_source_capacity_kb() {
     _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
     case "$_dsc_type" in
@@ -755,12 +785,36 @@ _doc_scan_swap() {
 }
 
 _doc_opt=$(_doc_opt_class)
+_doc_opt_fstype_value=$(_doc_opt_fstype)
 case "$_doc_opt" in
-    internal) info "/opt storage: internal Keenetic storage" ;;
-    external) info "/opt storage: external persistent storage" ;;
+    internal) info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
+    external) info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
     ram)      info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent" ;;
-    *)        info "/opt storage: cannot determine (unrecognized mount state)" ;;
+    *)        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
 esac
+
+if [ "$_doc_opt" = external ]; then
+    if [ "$_doc_opt_fstype_value" = ext4 ]; then
+        ok "External /opt filesystem is EXT4 (supported project storage contract)"
+    else
+        fail "Unsupported external /opt filesystem: ${_doc_opt_fstype_value:-unknown} - project contract supports external Entware only on EXT4"
+    fi
+
+    if [ -n "${SV_OUT:-}" ]; then
+        if printf '%s\n' "$SV_OUT" | grep -Eq '(^|[,:[:space:]])ext([,[:space:]]|$)'; then
+            ok "External-storage KeeneticOS component present: ext"
+        else
+            fail "Required external-storage KeeneticOS component missing: ext (Ext filesystem / Файловая система Ext)"
+        fi
+        if printf '%s\n' "$SV_OUT" | grep -Eq '(^|[,:[:space:]])ext-utils([,[:space:]]|$)'; then
+            ok "External-storage KeeneticOS component present: ext-utils"
+        else
+            fail "Required external-storage KeeneticOS component missing: ext-utils (EXT4 filesystem utilities / Утилиты EXT4)"
+        fi
+    else
+        info "External-storage component state (ext/ext-utils): UNKNOWN / UNVERIFIED because show version is unavailable"
+    fi
+fi
 
 _doc_scan_swap
 _doc_swap_target_kb=0
@@ -1752,6 +1806,7 @@ else
     WD_FIRST=""; WD_LAST=""; WD_LASTOK=""
     WD_LASTPROB=""; WD_LASTPROBK=""; WD_SERIESKEY=""; WD_PEVENTS=""
     WD_ROK=0; WD_RFAIL=0; WD_INIT=0; WD_LASTROK=""; WD_LASTRFAIL=""
+    WD_RECOVERY_CONFIRMED=0
 
     while IFS= read -r _line; do
         _k=${_line%%=*}
@@ -1867,6 +1922,7 @@ _WDEOF
                 if [ -n "$_e_ok" ] && [ -n "$_e_prob" ]; then
                     if [ "$_e_ok" -gt "$_e_prob" ]; then
                         info "Last healthy check after the last problem: $WD_LASTOK - recovered as of that check"
+                        WD_RECOVERY_CONFIRMED=1
                     else
                         warn "No healthy check recorded after the last problem event ($WD_LASTPROB)"
                         WD_STAB="WARN"; WD_STAB_WHY="no confirmed recovery after the last problem"
@@ -1885,11 +1941,14 @@ _WDEOF
             fi
         fi
 
-        # Recent interventions: last 24h from this run's clock
-        WD_RECENT=0; WD_RECENT_UNKNOWN=0
+        # Recent interventions: last 24h from this run's clock. Severity is
+        # intentionally calm: one ordinary restart with confirmed recovery is
+        # INFO. Repeated interventions (2+) or any rate-limited problem are WARN.
+        WD_RECENT=0; WD_RECENT_RESTART=0; WD_RECENT_RL=0; WD_RECENT_UNKNOWN=0
         _now=$(date +%s)
         set -- $WD_PEVENTS
         while [ $# -ge 3 ]; do
+            _etype=$1
             _ts="$2 $3"; shift 3
             _e=$(date -d "$_ts" +%s 2>/dev/null)
             case "$_e" in ''|*[!0-9]*)
@@ -1899,11 +1958,24 @@ _WDEOF
             esac
             if [ $((_now - _e)) -ge 0 ] && [ $((_now - _e)) -lt 86400 ]; then
                 WD_RECENT=$((WD_RECENT + 1))
+                case "$_etype" in
+                    restart)      WD_RECENT_RESTART=$((WD_RECENT_RESTART + 1)) ;;
+                    rate-limited) WD_RECENT_RL=$((WD_RECENT_RL + 1)) ;;
+                esac
             fi
         done
-        if [ "$WD_RECENT" -gt 0 ]; then
-            warn "Watchdog interventions in the last 24h: $WD_RECENT problem event(s) (restarts + suppressed restarts)"
-            WD_STAB="WARN"; WD_STAB_WHY="watchdog interventions in the last 24h"
+        if [ "$WD_RECENT_RL" -gt 0 ]; then
+            warn "Watchdog interventions in the last 24h: $WD_RECENT problem event(s), including $WD_RECENT_RL rate-limited detection(s) during restart cooldown"
+            WD_STAB="WARN"; WD_STAB_WHY="rate-limited watchdog problem detection in the last 24h"
+        elif [ "$WD_RECENT" -ge "$WATCHDOG_RECENT_WARN_THRESHOLD" ]; then
+            warn "Watchdog interventions in the last 24h: $WD_RECENT problem event(s) - repeated recent interventions exceed the project INFO threshold of one"
+            WD_STAB="WARN"; WD_STAB_WHY="repeated watchdog interventions in the last 24h"
+        elif [ "$WD_RECENT" -eq 1 ]; then
+            if [ "$WD_RECOVERY_CONFIRMED" -eq 1 ]; then
+                info "Watchdog interventions in the last 24h: 1 isolated restart, followed by a healthy check - informational only"
+            else
+                info "Watchdog interventions in the last 24h: 1 isolated restart - count alone is informational; recovery state is evaluated separately above"
+            fi
         elif [ "$WD_PEN" -gt 0 ] && [ "$WD_RECENT_UNKNOWN" -eq "$WD_PEN" ]; then
             info "Problem events exist in history but their age cannot be determined (unparseable timestamps)"
         elif [ "$WD_PEN" -gt 0 ]; then
@@ -1926,8 +1998,10 @@ _WDEOF
                 warn "Historical stability: WARN - $WD_STAB_WHY (and the service is currently stopped)"
             fi
         else
-            if [ "$WD_PEN" -gt 0 ]; then
-                ok "Historical stability: OK - no interventions in the last 24h (older events on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
+            if [ "$WD_RECENT" -eq 1 ] && [ "$WD_RECOVERY_CONFIRMED" -eq 1 ]; then
+                ok "Historical stability: OK - one isolated watchdog restart in the last 24h was followed by a healthy check; no repeated/rate-limited pattern is present"
+            elif [ "$WD_PEN" -gt 0 ]; then
+                ok "Historical stability: OK - no warning-level recent intervention pattern (older or isolated events may be on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
             else
                 ok "Historical stability: OK - no watchdog interventions on record (service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
             fi

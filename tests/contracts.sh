@@ -56,6 +56,13 @@ grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on interna
 grep -Fq 'Storage-mode mismatch: ram mode was selected while /opt is on external persistent storage' "$ROOT/install.sh" || fail "installer must warn on external /opt + ram mode"
 pass "installer storage-mode mismatch guardrail is explicit and narrowly overridable"
 
+grep -q '^EXT_COMPONENT_ID=ext$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id ext for external storage"
+grep -q '^EXT_UTILS_COMPONENT_ID=ext-utils$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id ext-utils for external storage"
+grep -Fq "The project supports external Entware /opt only on EXT4" "$ROOT/install.sh" || fail "installer must hard-gate external Entware to EXT4"
+grep -Fq 'Unsupported external /opt filesystem:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must diagnose unsupported external /opt filesystems"
+grep -Fq 'UNSUPPORTED EXTERNAL /opt FILESYSTEM:' "$ROOT/update-mihomo.sh" || fail "updater must warn on legacy non-EXT4 external /opt"
+pass "external Entware storage contract is EXT4-only and mirrored by installer/Doctor/updater"
+
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q '^MIHOMO_STAGE_MARGIN_KB=4096$' "$ROOT/$_f" || fail "$_f must use the shared 4 MB Mihomo staging margin"
 done
@@ -106,6 +113,13 @@ grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
 pass "doctor detects the historical duplicate-watchdog backup condition"
 
+grep -q '^WATCHDOG_RECENT_WARN_THRESHOLD=2$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep one recovered watchdog intervention per 24h informational"
+grep -Fq 'Watchdog interventions in the last 24h: 1 isolated restart, followed by a healthy check - informational only' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain a single recovered recent restart as INFO"
+grep -Fq 'elif [ "$WD_RECENT" -ge "$WATCHDOG_RECENT_WARN_THRESHOLD" ]; then' "$ROOT/mihomo-doctor.sh" || fail "Doctor must warn only when the recent intervention count reaches the repeated-event threshold"
+grep -Fq 'if [ "$WD_RECENT_RL" -gt 0 ]; then' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep recent rate-limited watchdog detections warning-level"
+grep -Fq 'Historical stability: OK - one isolated watchdog restart in the last 24h was followed by a healthy check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep recovered single-event history at OK"
+pass "doctor treats one recovered watchdog restart per 24h as INFO while preserving repeated/rate-limited WARNs"
+
 grep -q 'probe_controller_proxy_state' "$ROOT/mihomo-doctor.sh" || fail "doctor must retain Controller /proxies selection sanity check"
 grep -q 'GET /proxies' "$ROOT/mihomo-doctor.sh" || fail "doctor proxy sanity check must remain read-only"
 grep -q 'GLOBAL and selected group report current choices' "$ROOT/mihomo-doctor.sh" || fail "doctor must recognize a usable selected-group state"
@@ -138,6 +152,8 @@ pass "MagiTrickle installation output is owned by install.sh"
 grep -q '^PROXY_COMPONENT_ID=proxy$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id proxy"
 grep -q '^DNS_FILTER_COMPONENT_ID=dns-filter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS component id dns-filter"
 grep -q '^NETFILTER_COMPONENT_ID=opkg-kmod-netfilter$' "$ROOT/install.sh" || fail "installer must use KeeneticOS Netfilter component id"
+grep -q '^EXT_COMPONENT_ID=ext$' "$ROOT/install.sh" || fail "installer must use KeeneticOS Ext filesystem component id"
+grep -q '^EXT_UTILS_COMPONENT_ID=ext-utils$' "$ROOT/install.sh" || fail "installer must use KeeneticOS EXT4 utilities component id"
 grep -q 'Checking required KeeneticOS components' "$ROOT/install.sh" || fail "installer must run named-component preflight"
 grep -q 'Missing required KeeneticOS component(s):' "$ROOT/install.sh" || fail "installer must label the missing-component list"
 grep -Fq 'printf '\''%s\n'\'' "${_rc_missing_lines#?}" >&2' "$ROOT/install.sh" || fail "missing-component list must not start with a blank line"
@@ -246,5 +262,9 @@ for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
 done
 grep -Fq 'первый свободный `ProxyN`' "$ROOT/docs/HOWTO_RU.md" || fail "Russian HOWTO must describe foreign Proxy0 -> first free ProxyN"
 grep -Fq 'first free `ProxyN`' "$ROOT/docs/HOWTO.md" || fail "English HOWTO must describe foreign Proxy0 -> first free ProxyN"
-pass "RU/EN HOWTOs mirror storage-mode and ProxyN contracts"
+for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
+    grep -Fqi 'EXT4' "$ROOT/$_f" || fail "$_f must document the external EXT4 storage contract"
+    grep -Fq 'ext-utils' "$ROOT/$_f" || fail "$_f must document the external ext-utils prerequisite"
+done
+pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
 echo "[OK] Contract smoke tests passed"

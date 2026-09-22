@@ -6,7 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No changes yet._
+### Added
+- External Entware storage safety contract: new installs accept external `/opt` only when the actual mounted filesystem is EXT4. `install.sh` reads the deepest `/opt` mount from `/proc/mounts` and rejects NTFS/exFAT/FAT/unknown external layouts before package or router changes; it never formats or converts storage.
+- External `/opt` now adds two required KeeneticOS component checks to the existing read-only preflight: `ext` (Ext filesystem) and `ext-utils` (EXT4 filesystem utilities). Internal-storage installs keep the existing universal component set.
+- `mihomo-doctor.sh` reports the actual `/opt` filesystem and FAILs unsupported external filesystems or missing `ext`/`ext-utils`. Resource-policy regression fixtures now include an NTFS external `/opt` reject and an unverified disk-mode reject.
+
+### Changed
+- `update-mihomo.sh` mirrors the EXT4 storage contract as a non-blocking legacy warning: existing non-EXT4 installations can still be serviced while migration is planned; updater transaction safety remains unchanged.
+- RU/EN prerequisites, HOWTO and limitations documentation now state the project-level EXT4-only external storage policy and distinguish it from broader filesystem support that may exist in KeeneticOS.
+- `mihomo-doctor.sh` watchdog-history severity is less noisy: one isolated restart within 24 hours is INFO when a later healthy check confirms recovery. WARN is reserved for repeated recent interventions (2+), any recent rate-limited detection during cooldown, failed restart verification, missing recovery, or existing repeated-failure conditions.
 
 ---
 

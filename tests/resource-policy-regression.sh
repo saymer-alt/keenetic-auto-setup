@@ -32,6 +32,14 @@ cat > "$TMP/mounts-internal" <<'EOF'
 ubi0_0 /opt ubifs rw 0 0
 EOF
 
+cat > "$TMP/mounts-external-ntfs" <<'EOF'
+/dev/sda2 /opt ntfs rw 0 0
+EOF
+
+cat > "$TMP/mounts-unknown" <<'EOF'
+overlay / overlay rw 0 0
+EOF
+
 cat > "$TMP/mem-128" <<'EOF'
 MemTotal:         131072 kB
 SwapTotal:             0 kB
@@ -106,9 +114,11 @@ expect_reject() {
     _mounts=$3
     _swaps=$4
     _needle=$5
+    _mode=${6:-ram}
+    _allow_internal_disk=${7:-0}
     _out="$TMP/out-reject"
 
-    if run_policy "$_mem" "$_mounts" "$_swaps" "$_out"; then
+    if run_policy "$_mem" "$_mounts" "$_swaps" "$_out" "$_mode" "$_allow_internal_disk"; then
         cat "$_out" >&2
         fail "$_name: policy unexpectedly accepted fixture"
     fi
@@ -139,6 +149,10 @@ expect_accept() {
 }
 
 expect_reject     "external swap above 2 GiB is a hard install reject"     "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-oversize"     "External storage-backed SWAP exceeds the 2 GiB project/vendor cap"
+
+expect_reject     "external Entware on NTFS is rejected by the EXT4-only project contract"     "$TMP/mem-256" "$TMP/mounts-external-ntfs" "$TMP/swaps-256-between-floor-target"     "Unsupported external /opt filesystem: detected 'ntfs'"
+
+expect_reject     "disk mode rejects an unverified /opt mount/filesystem"     "$TMP/mem-256" "$TMP/mounts-unknown" "$TMP/swaps-256-between-floor-target"     "Cannot verify the /opt storage/filesystem for disk mode" disk
 
 expect_reject     "128 MB profile rejects internal /opt even with enough external swap"     "$TMP/mem-128" "$TMP/mounts-internal" "$TMP/swaps-128-enough"     "/opt is on INTERNAL storage"
 
