@@ -146,6 +146,29 @@ opt_storage_class() {
     echo "$_osc_cls"
 }
 
+# opt_mount_fstype PATH -> filesystem type of the deepest mount carrying PATH.
+# This is deliberately independent from the storage-class classifier: external
+# storage can be NTFS/exFAT/etc., but the project supports external Entware only
+# when the actual /opt filesystem is ext4.
+opt_mount_fstype() {
+    _omf_path="$1" _omf_bl=0 _omf_fst=unknown
+    [ -r "$PROC_MOUNTS" ] || { echo unknown; return 0; }
+    while read -r _omf_src _omf_mp _omf_type _omf_rest; do
+        case "$_omf_path" in
+            "$_omf_mp") ;;
+            *) case "$_omf_path" in
+                   "$_omf_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _omf_len=${#_omf_mp}
+        [ "$_omf_len" -ge "$_omf_bl" ] || continue
+        _omf_bl=$_omf_len
+        _omf_fst=$_omf_type
+    done < "$PROC_MOUNTS"
+    echo "$_omf_fst"
+}
+
 # scan_swap_backends -> sets SW_ZRAM_KB / SW_EXT_KB / SW_UNVER_KB (-1 = /proc/swaps unreadable)
 swap_source_capacity_kb() {
     _ssc_src="$1"
@@ -230,13 +253,28 @@ case "$MEM_TOTAL_KB" in
         ;;
 esac
 OPT_CLASS=$(opt_storage_class /opt)
+OPT_FSTYPE=$(opt_mount_fstype /opt)
 scan_swap_backends
 case "$OPT_CLASS" in
-    internal) log "/opt: internal Keenetic storage" ;;
-    external) log "/opt: external persistent storage" ;;
+    internal) log "/opt: internal Keenetic storage (filesystem: ${OPT_FSTYPE:-unknown})" ;;
+    external) log "/opt: external persistent storage (filesystem: ${OPT_FSTYPE:-unknown})" ;;
     ram)      log "/opt: RAM-backed (tmpfs/ramfs) - not persistent" ;;
-    *)        log "/opt: storage class cannot be determined (unrecognized mount state)" ;;
+    *)        log "/opt: storage class cannot be determined (filesystem: ${OPT_FSTYPE:-unknown})" ;;
 esac
+
+# External-storage filesystem contract:
+# Keenetic's current OPKG guidance requires an EXT filesystem and recommends
+# ext4. This project intentionally narrows the supported external Entware
+# profile to ext4 only. We do not format, convert or repair storage here.
+if [ "$OPT_CLASS" = "external" ] && [ "$OPT_FSTYPE" != "ext4" ]; then
+    err "Unsupported external /opt filesystem: detected '${OPT_FSTYPE:-unknown}'. The project supports external Entware /opt only on EXT4. Reformat/migrate the OPKG storage to EXT4 yourself, verify Entware starts from it, then re-run. The installer never formats or converts storage."
+fi
+if [ "$MODE" = "disk" ] && [ "$OPT_CLASS" = "ram" ]; then
+    err "Storage-mode mismatch: disk mode was selected while /opt is RAM-backed. disk mode requires persistent storage (external EXT4, or the explicit internal-storage override)."
+fi
+if [ "$MODE" = "disk" ] && [ "$OPT_CLASS" = "unknown" ]; then
+    err "Cannot verify the /opt storage/filesystem for disk mode from $PROC_MOUNTS. Refusing to continue because the disk-mode storage contract requires a proven persistent layout; external Entware must be on EXT4."
+fi
 
 # Storage-mode guardrail:
 #   internal /opt + disk mode skips S00ubifs and leaves runtime/log writes on
@@ -336,16 +374,22 @@ esac
 # ---------------------------
 # REQUIRED KEENETICOS COMPONENT PREFLIGHT
 # ---------------------------
-# Current default project install depends on three named KeeneticOS components:
+# Current default project install always depends on three named KeeneticOS
+# components. External Entware /opt additionally requires the two EXT4 storage
+# components so the filesystem is supported and can be checked/repaired:
 #   proxy                -> Proxy client / Клиент прокси
 #   dns-filter           -> Cloud-based content filtering and ad blocking
 #   opkg-kmod-netfilter  -> Kernel modules for Netfilter
+#   ext                  -> Ext filesystem / Файловая система Ext (external /opt)
+#   ext-utils            -> EXT4 filesystem utilities / Утилиты EXT4 (external /opt)
 # Open Package support itself is verified earlier by command -v opkg.
 # Read the component set from "show version" and fail BEFORE installer-managed
 # opkg update, package installation, or persistent router configuration changes.
 PROXY_COMPONENT_ID=proxy
 DNS_FILTER_COMPONENT_ID=dns-filter
 NETFILTER_COMPONENT_ID=opkg-kmod-netfilter
+EXT_COMPONENT_ID=ext
+EXT_UTILS_COMPONENT_ID=ext-utils
 
 component_list_has() {
     _clh_id="$1"
@@ -359,6 +403,10 @@ required_components_preflight_error() {
     echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
     echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
     echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
+    if [ "$OPT_CLASS" = "external" ]; then
+        echo "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile." >&2
+        echo "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)." >&2
+    fi
     echo "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов." >&2
     echo "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation." >&2
     exit 1
@@ -391,6 +439,16 @@ require_project_keeneticos_components() {
         _rc_missing_lines="${_rc_missing_lines}
 [ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})"
     fi
+    if [ "$OPT_CLASS" = "external" ] && ! component_list_has "$EXT_COMPONENT_ID"; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - Ext filesystem / Файловая система Ext (${EXT_COMPONENT_ID})"
+    fi
+    if [ "$OPT_CLASS" = "external" ] && ! component_list_has "$EXT_UTILS_COMPONENT_ID"; then
+        _rc_missing_count=$((_rc_missing_count + 1))
+        _rc_missing_lines="${_rc_missing_lines}
+[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (${EXT_UTILS_COMPONENT_ID})"
+    fi
 
     if [ "$_rc_missing_count" -gt 0 ]; then
         echo "[ERROR] Missing required KeeneticOS component(s):" >&2
@@ -398,7 +456,11 @@ require_project_keeneticos_components() {
         required_components_preflight_error "Install the component(s) listed above before continuing."
     fi
 
-    log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
+    if [ "$OPT_CLASS" = "external" ]; then
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}, ${EXT_COMPONENT_ID}, ${EXT_UTILS_COMPONENT_ID}"
+    else
+        log "Required KeeneticOS components present: ${PROXY_COMPONENT_ID}, ${DNS_FILTER_COMPONENT_ID}, ${NETFILTER_COMPONENT_ID}"
+    fi
 }
 
 require_project_keeneticos_components

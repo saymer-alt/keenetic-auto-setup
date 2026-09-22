@@ -558,6 +558,16 @@ _up_storage_class() {
   done < "$UP_MOUNTS"
   echo "$_up_cls"
 }
+_up_storage_fstype() {
+  _up_path="$1"; _up_bl=0; _up_fst=unknown
+  [ -r "$UP_MOUNTS" ] || { echo unknown; return 0; }
+  while read -r _up_src _up_mp _up_type _up_rest; do
+    case "$_up_path" in "$_up_mp") ;; *) case "$_up_path" in "$_up_mp"/*) ;; *) continue ;; esac ;; esac
+    _up_len=${#_up_mp}; [ "$_up_len" -ge "$_up_bl" ] || continue
+    _up_bl=$_up_len; _up_fst=$_up_type
+  done < "$UP_MOUNTS"
+  echo "$_up_fst"
+}
 _up_scan_swap() {
   UP_ZRAM_KB=0; UP_EXT_KB=0; UP_UNVER_KB=0
   UP_DELETED_KB=0; UP_DELETED_COUNT=0
@@ -586,6 +596,7 @@ SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null)
 case "$TOTAL_MEM_KB" in ''|*[!0-9]*) TOTAL_MEM_KB="" ;; esac
 case "$SWAP_TOTAL_KB" in ''|*[!0-9]*) SWAP_TOTAL_KB="" ;; esac
 UP_OPT_CLASS=$(_up_storage_class /opt)
+UP_OPT_FSTYPE=$(_up_storage_fstype /opt)
 _up_scan_swap
 UP_SWAP_TARGET_KB=0
 if [ -n "$TOTAL_MEM_KB" ]; then
@@ -601,6 +612,9 @@ _profile_warn_banner() {
   warn "============================================================"
 }
 
+if [ "$UP_OPT_CLASS" = external ] && [ "$UP_OPT_FSTYPE" != ext4 ]; then
+  _profile_warn_banner "UNSUPPORTED EXTERNAL /opt FILESYSTEM: ${UP_OPT_FSTYPE:-unknown}" "Current project contract supports external Entware /opt only on EXT4." "This updater remains non-blocking for an existing legacy installation; migrate/reformat storage separately. The updater never formats or converts filesystems."
+fi
 if [ "$UP_DELETED_COUNT" -gt 0 ]; then
   warn "$UP_DELETED_COUNT swap source(s) are marked '(deleted)' in $UP_SWAPS ($((UP_DELETED_KB/1024)) MB active according to the kernel); ignored for verified external-SWAP capacity, sizing and 2 GiB checks."
 fi

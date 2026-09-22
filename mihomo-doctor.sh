@@ -116,6 +116,12 @@ finding_action() {
         *"Low-RAM prerequisite NOT met"*swap*|*"128 MB-class"*swap*)
             printf '%s' "Provide at least 384 MB active swap on external storage (project-specific experimental floor), then run Doctor again."
             ;;
+        *"Unsupported external /opt filesystem:"*)
+            printf '%s' "Migrate/reformat the external Entware storage to EXT4, verify that Keenetic mounts it and Entware starts from it, then run Doctor again. This project never formats or converts storage."
+            ;;
+        *"Required external-storage KeeneticOS component missing:"*)
+            printf '%s' "Install the reported KeeneticOS component in General system settings -> KeeneticOS update and components. External /opt requires both ext and ext-utils; ext-utils provides the supported filesystem check/repair tooling."
+            ;;
         *"Very low available memory"*)
             printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
             ;;
@@ -692,6 +698,25 @@ _doc_opt_class() {
     done < "$MOUNTS_SRC"
     echo "$_doc_oc_cls"
 }
+
+_doc_opt_fstype() {
+    _doc_of_path="${1:-$OPT_ROOT}" _doc_of_bl=0 _doc_of_fst=unknown
+    [ -r "$MOUNTS_SRC" ] || { echo unknown; return 0; }
+    while read -r _doc_of_src _doc_of_mp _doc_of_type _doc_of_rest; do
+        case "$_doc_of_path" in
+            "$_doc_of_mp") ;;
+            *) case "$_doc_of_path" in
+                   "$_doc_of_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _doc_of_len=${#_doc_of_mp}
+        [ "$_doc_of_len" -ge "$_doc_of_bl" ] || continue
+        _doc_of_bl=$_doc_of_len
+        _doc_of_fst=$_doc_of_type
+    done < "$MOUNTS_SRC"
+    echo "$_doc_of_fst"
+}
 _doc_swap_source_capacity_kb() {
     _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
     case "$_dsc_type" in
@@ -755,12 +780,36 @@ _doc_scan_swap() {
 }
 
 _doc_opt=$(_doc_opt_class)
+_doc_opt_fstype_value=$(_doc_opt_fstype)
 case "$_doc_opt" in
-    internal) info "/opt storage: internal Keenetic storage" ;;
-    external) info "/opt storage: external persistent storage" ;;
+    internal) info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
+    external) info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
     ram)      info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent" ;;
-    *)        info "/opt storage: cannot determine (unrecognized mount state)" ;;
+    *)        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
 esac
+
+if [ "$_doc_opt" = external ]; then
+    if [ "$_doc_opt_fstype_value" = ext4 ]; then
+        ok "External /opt filesystem is EXT4 (supported project storage contract)"
+    else
+        fail "Unsupported external /opt filesystem: ${_doc_opt_fstype_value:-unknown} - project contract supports external Entware only on EXT4"
+    fi
+
+    if [ -n "${SV_OUT:-}" ]; then
+        if printf '%s\n' "$SV_OUT" | grep -Eq '(^|[,:[:space:]])ext([,[:space:]]|$)'; then
+            ok "External-storage KeeneticOS component present: ext"
+        else
+            fail "Required external-storage KeeneticOS component missing: ext (Ext filesystem / Файловая система Ext)"
+        fi
+        if printf '%s\n' "$SV_OUT" | grep -Eq '(^|[,:[:space:]])ext-utils([,[:space:]]|$)'; then
+            ok "External-storage KeeneticOS component present: ext-utils"
+        else
+            fail "Required external-storage KeeneticOS component missing: ext-utils (EXT4 filesystem utilities / Утилиты EXT4)"
+        fi
+    else
+        info "External-storage component state (ext/ext-utils): UNKNOWN / UNVERIFIED because show version is unavailable"
+    fi
+fi
 
 _doc_scan_swap
 _doc_swap_target_kb=0
