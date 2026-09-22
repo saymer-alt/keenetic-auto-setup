@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - `update-mihomo.sh` mirrors the EXT4 storage contract as a non-blocking legacy warning: existing non-EXT4 installations can still be serviced while migration is planned; updater transaction safety remains unchanged.
 - RU/EN prerequisites, HOWTO and limitations documentation now state the project-level EXT4-only external storage policy and distinguish it from broader filesystem support that may exist in KeeneticOS.
+- `mihomo-doctor.sh` watchdog-history severity is less noisy: one isolated restart within 24 hours is INFO when a later healthy check confirms recovery. WARN is reserved for repeated recent interventions (2+), any recent rate-limited detection during cooldown, failed restart verification, missing recovery, or existing repeated-failure conditions.
 
 ---
 
