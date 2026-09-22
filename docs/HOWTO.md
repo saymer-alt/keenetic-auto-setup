@@ -532,7 +532,7 @@ Section 6.1 controls *where clients send their DNS*. This section is the next la
 
 - Native DoT and DoH upstreams since OS 3.0; requires the *DNS-over-TLS proxy* / *DNS-over-HTTPS proxy* system components.
 - Web UI: *Internet safety → DNS configuration* — add a server by IP or FQDN plus the TLS domain (specifying the TLS domain prevents hijacking); connection interface can be pinned. Up to 8 DoT/DoH servers; when several are set, the resolver prioritizes them by measured response time. When DoT/DoH is configured, ISP-provided and manually registered plain DNS servers are not used.
-- CLI equivalents: `dns-proxy tls upstream <address> <tls-domain>` (e.g. `dns-proxy tls upstream 1.1.1.1 cloudflare-dns.com`) and `dns-proxy https upstream <url>` (e.g. `dns-proxy https upstream https://dns.comss.one/dns-query`).
+- CLI syntax from the Keenetic reference: DoT — `dns-proxy tls upstream <address> [port] sni <fqdn> [on <interface>] [domain <domain>]`; DoH — `dns-proxy https upstream <url> [json|dnsm] [on <interface>] [domain <domain>]`. `on` pins a secure-DNS upstream to a specific interface, while `domain` scopes it to a selected domain/zone.
 - Alternatively, OS 3.8+ has built-in public DNS filter profiles (AdGuard, Cloudflare, OpenDNS, Quad9, Yandex.DNS and others) that enable encrypted DNS without manual setup — note those are *filtering profiles*, check the filtering level before using one.
 
 **The resolvers worth knowing** — all natively configurable in Keenetic:
@@ -564,6 +564,67 @@ nslookup ya.ru 77.88.8.8          # plain DNS reachability of a candidate
 ```
 
 An upstream whose `R.Sent` keeps growing while `A.Rcvd` stays at zero is unreachable from this network — swap it. A full step-by-step failure scenario lives in [Troubleshooting](#12-troubleshooting).
+
+
+### 6.3 Experiment: secure-DNS upstream through Mihomo/ProxyN
+
+This is **not an automatic `install.sh` feature and not yet a production contract of the project**. It is documented because Keenetic natively supports binding DoT/DoH upstreams to an interface with `on <interface>`, while the project-managed ProxyN is already an explicit Keenetic → Mihomo bridge:
+
+```text
+client DNS
+    ↓
+Keenetic DNS-proxy / MagiTrickle
+    ↓
+DoT/DoH upstream `on ProxyN`
+    ↓
+ProxyN → SOCKS5 127.0.0.1:7890
+    ↓
+Mihomo → rules / GLOBAL → selected proxy
+    ↓
+remote DNS resolver
+```
+
+Use the **internal interface name** in CLI (`Proxy0`, `Proxy1`, ...), not just its human-readable description `mihomo t2sN`. A clean installation normally gets `Proxy0`, but the project intentionally does not guarantee that number: if the slot belongs to foreign configuration, the installer selects the next free ProxyN.
+
+Why **DoT** is the first test:
+
+- the destination IP and TCP/853 are explicit, so the path is easier to prove;
+- SNI preserves normal TLS certificate verification;
+- DoH adds hostname bootstrap resolution;
+- plain UDP/53 through ProxyN separately depends on SOCKS5 UDP and the downstream UDP transport, so it is a second-stage test rather than an assumption.
+
+The official Keenetic CLI supports both `on <interface>` and `domain <domain>`. The example below uses Quad9 `9.9.9.9:853` / `dns.quad9.net`. **Before testing, make sure the same `9.9.9.9:853` upstream is not already configured**, because removal is addressed by IP/port.
+
+1. Find the actual project ProxyN in running-config: it must have both the `mihomo t2sN` description and the SOCKS5 upstream `127.0.0.1:7890`.
+2. Add a temporary domain-scoped DoT upstream. For the common `Proxy0` case:
+
+```text
+dns-proxy tls upstream 9.9.9.9 853 sni dns.quad9.net on Proxy0 domain example.com
+```
+
+Do **not** run `system configuration save` yet.
+
+3. From a client, query a name in that zone through the router DNS, for example `www.example.com`, while checking:
+
+```bash
+ndmc -c "show dns-proxy"
+```
+
+MetaCubeX/Controller should show a connection to `9.9.9.9:853`. With the current base `link-generators` profile using `rules: MATCH,GLOBAL` and no `DIRECT`, the expected selection is `MATCH → GLOBAL → selected VLESS`. If your Mihomo config contains custom `DIRECT`/IP-CIDR rules, merely reaching Mihomo does **not** prove proxied egress — verify the rule and outbound actually selected.
+
+4. Stronger proof is the absence of a direct WAN → `9.9.9.9:853` flow while the corresponding Mihomo connection exists; if `tcpdump` or server-side telemetry is available, use it as an additional check.
+
+5. Remove the temporary entry after the test:
+
+```text
+no dns-proxy tls upstream 9.9.9.9 853
+```
+
+Only save the router configuration after the end-to-end path has been confirmed.
+
+**What is not part of this path:** `mitun0`. DNS bound `on ProxyN` enters Mihomo through the SOCKS5 mixed port `7890`; `tun.auto-route: false` is unrelated to that path. The project does not currently recommend binding router DNS directly to `mitun0`: that is a different Mihomo entry path with more complicated bootstrap/loop boundaries.
+
+Status as of 2026-09-22: the Keenetic CLI capability and the ProxyN architecture are confirmed by documentation/code, but the full secure-DNS path has not yet had a dedicated live acceptance on KeeneticOS 5.1.5. Until that test exists, treat this section as an **experimental procedure**, not a ready-made project configuration.
 
 ---
 
