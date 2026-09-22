@@ -113,6 +113,13 @@ grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
 pass "doctor detects the historical duplicate-watchdog backup condition"
 
+grep -q '^WATCHDOG_RECENT_WARN_THRESHOLD=2$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep one recovered watchdog intervention per 24h informational"
+grep -Fq 'Watchdog interventions in the last 24h: 1 isolated restart, followed by a healthy check - informational only' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain a single recovered recent restart as INFO"
+grep -Fq 'elif [ "$WD_RECENT" -ge "$WATCHDOG_RECENT_WARN_THRESHOLD" ]; then' "$ROOT/mihomo-doctor.sh" || fail "Doctor must warn only when the recent intervention count reaches the repeated-event threshold"
+grep -Fq 'if [ "$WD_RECENT_RL" -gt 0 ]; then' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep recent rate-limited watchdog detections warning-level"
+grep -Fq 'Historical stability: OK - one isolated watchdog restart in the last 24h was followed by a healthy check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep recovered single-event history at OK"
+pass "doctor treats one recovered watchdog restart per 24h as INFO while preserving repeated/rate-limited WARNs"
+
 grep -q 'probe_controller_proxy_state' "$ROOT/mihomo-doctor.sh" || fail "doctor must retain Controller /proxies selection sanity check"
 grep -q 'GET /proxies' "$ROOT/mihomo-doctor.sh" || fail "doctor proxy sanity check must remain read-only"
 grep -q 'GLOBAL and selected group report current choices' "$ROOT/mihomo-doctor.sh" || fail "doctor must recognize a usable selected-group state"
