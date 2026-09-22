@@ -631,30 +631,35 @@ if command -v ndmc >/dev/null 2>&1; then
     if [ -n "$_OS_HWID" ]; then info "Hardware ID: $_OS_HWID"; else info "Hardware ID: not reported by ndmc"; fi
 
     # Mirror the installer's named KeeneticOS component contract read-only.
-    _doctor_component_has() {
-        _dch_id="$1"
-        printf '%s\n' "$SV_OUT" | grep -Eq "(^|[,:[:space:]])${_dch_id}([,[:space:]]|$)"
-    }
-    for _drc_id in proxy dns-filter opkg-kmod-netfilter; do
-        if _doctor_component_has "$_drc_id"; then
-            ok "Required KeeneticOS component present: $_drc_id"
-        else
-            fail "Required KeeneticOS component missing: $_drc_id"
-        fi
-    done
-    if _doctor_component_has dns-tls || _doctor_component_has dns-https; then
-        _secure_dns_components=""
-        _doctor_component_has dns-tls && _secure_dns_components="dns-tls"
-        if _doctor_component_has dns-https; then
-            if [ -n "$_secure_dns_components" ]; then
-                _secure_dns_components="$_secure_dns_components + dns-https"
+    # Missing evidence is UNKNOWN, not proof that every component is absent.
+    if [ -n "$SV_OUT" ]; then
+        _doctor_component_has() {
+            _dch_id="$1"
+            printf '%s\n' "$SV_OUT" | grep -Eq "(^|[,:[:space:]])${_dch_id}([,[:space:]]|$)"
+        }
+        for _drc_id in proxy dns-filter opkg-kmod-netfilter; do
+            if _doctor_component_has "$_drc_id"; then
+                ok "Required KeeneticOS component present: $_drc_id"
             else
-                _secure_dns_components="dns-https"
+                fail "Required KeeneticOS component missing: $_drc_id"
             fi
+        done
+        if _doctor_component_has dns-tls || _doctor_component_has dns-https; then
+            _secure_dns_components=""
+            _doctor_component_has dns-tls && _secure_dns_components="dns-tls"
+            if _doctor_component_has dns-https; then
+                if [ -n "$_secure_dns_components" ]; then
+                    _secure_dns_components="$_secure_dns_components + dns-https"
+                else
+                    _secure_dns_components="dns-https"
+                fi
+            fi
+            ok "Secure-DNS KeeneticOS component prerequisite satisfied: $_secure_dns_components"
+        else
+            fail "Required secure-DNS KeeneticOS component missing: install at least one of dns-tls (DNS-over-TLS proxy) or dns-https (DNS-over-HTTPS proxy)"
         fi
-        ok "Secure-DNS KeeneticOS component prerequisite satisfied: $_secure_dns_components"
     else
-        fail "Required secure-DNS KeeneticOS component missing: install at least one of dns-tls (DNS-over-TLS proxy) or dns-https (DNS-over-HTTPS proxy)"
+        info "Required KeeneticOS component state: UNKNOWN / UNVERIFIED because show version is unavailable"
     fi
 else
     info "ndmc not available - Keenetic model/component info skipped"
