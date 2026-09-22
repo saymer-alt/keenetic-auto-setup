@@ -96,8 +96,9 @@ IP-правила (`IP-CIDR`, `GEOIP`…) сравнивают **адрес**. �
 
 - DNS-механизма ядра — fake-ip-маппинг или сопоставление через встроенный DNS
   (разбор — [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md));
-- **sniffer** — извлечение домена прямо из трафика (TLS/HTTP/QUIC) — тоже
-  [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md), блок «Sniffer — не DNS».
+- **sniffer** — извлечение домена прямо из трафика (TLS/HTTP/QUIC) — обзор рядом
+  с DNS в [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md), подробности в
+  [33-sniffer.md](33-sniffer.md).
 
 Правила, DNS и sniffer — три разных механизма; правила только используют то, что
 те дали.
@@ -122,7 +123,6 @@ IP-правила (`IP-CIDR`, `GEOIP`…) сравнивают **адрес**. �
 
 - [29-proxy-groups.md](29-proxy-groups.md) — выходы, на которые ссылаются правила.
 - [28-proxies.md](28-proxies.md) — узлы.
-- [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) — откуда у правил домены (DNS и
-  sniffer).
+- [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) — DNS/fake-ip; [33-sniffer.md](33-sniffer.md) — отдельный разбор sniffer.
 - [31-tun.md](31-tun.md) — второй способ входа трафика в ядро.
 - Полный список типов правил — [официальная документация](https://wiki.metacubex.one/ru/config/rules/).

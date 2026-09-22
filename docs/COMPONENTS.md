@@ -99,7 +99,7 @@ These are not KeeneticOS components.
 
 ## Conditional / optional
 
-- **DoH / DoT components and servers** — **strongly recommended operational baseline**, not a hard code dependency. The project requires classic DNS interception independently, but router upstream DNS should normally be encrypted so an interfering ISP cannot trivially observe or rewrite plaintext upstream DNS. Resolver reachability still wins over theory, especially on whitelist networks.
+- **Secure-DNS component vs resolver choice** — the supported ProxyN profile **requires at least one** of `dns-tls` / `dns-https`. Which one is used, which upstream resolver it points to, and whether the second component is installed remain operational choices. Classic DNS interception is a separate project contract, and resolver reachability still wins over theory, especially on whitelist networks.
 - **WireGuard / AmneziaWG / SSTP / OpenConnect / other VPN clients** — optional exits
   selected by the operator or MagiTrickle; none is a universal project prerequisite.
 - **Mihomo external Controller / Web UI** — optional. Mihomo routing and ProxyN do not
@@ -108,7 +108,7 @@ These are not KeeneticOS components.
   exposure to WAN/untrusted networks is outside that trust boundary.
 - **TUN / `mitun0`** — created only by a user Mihomo config that enables TUN. The
   bootstrap config does not require it.
-- **Encrypted DNS on the router** — operational choice, not an installation prerequisite.
+- **Concrete encrypted-DNS upstream/resolver** — operational choice. This does not remove the install prerequisite above: the supported ProxyN profile still requires at least one of `dns-tls` / `dns-https`.
 
 ## Component-audit rule
 
@@ -121,4 +121,6 @@ When a real clean installation fails because a KeeneticOS capability is absent:
 5. update this document and the user-facing prerequisites.
 
 The September 2026 external clean-install failure that exposed the missing **Proxy client**
-component is the reference example for this process.
+component, followed by the current explicit component contract (`proxy`, `dns-filter`,
+`opkg-kmod-netfilter`, secure-DNS OR `dns-tls`/`dns-https`, plus `ext` + `ext-utils`
+for external `/opt`), is the reference example for this process.
