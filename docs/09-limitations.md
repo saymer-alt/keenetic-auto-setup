@@ -92,27 +92,35 @@ KeeneticOS может технически поддерживать и друг�
 
 ### Причина
 
-👉 MTU в VPN (WireGuard / AWG / Reality)
+👉 эффективный path MTU становится меньше из-за encapsulation; во вложенной цепочке каждый дополнительный tunnel/proxy layer съедает запас размера пакета
 
 ---
 
 ### Реальный кейс
 
-👉 MTU = 1500 → проблемы  
-👉 MTU = 1200 → стабильно  
+В схеме `Keenetic WireGuard/WARP → ProxyN → Mihomo → VPS → Cloudflare` рабочим оказался **MTU 1200**. Это значение относится к MTU **Keenetic WireGuard/WARP connection**, а не автоматически к `tun.mtu` Mihomo.
 
 ---
 
-### Почему
+### Важно различать
 
-- фрагментация пакетов
-- DPI / провайдер режет большие пакеты
+- WAN MTU;
+- MTU WireGuard/AWG interface в Keenetic;
+- `tun.mtu` у Mihomo/`mitun0`.
+
+Если WireGuard peer строится через ProxyN/SOCKS5 `127.0.0.1:7890`, Mihomo TUN может вообще не участвовать в этой цепочке.
 
 ---
 
 ### Решение
 
-👉 уменьшать MTU (1200–1300)
+👉 не назначать 1200–1300 всем туннелям автоматически; сначала подтвердить MTU-симптом
+
+👉 для нашей вложенной WARP-схемы 1200 — проверенная рабочая точка, а 1200–1300 — только практический диапазон диагностики
+
+👉 «Подстройка TCP MSS» помогает внутреннему TCP, но не заменяет правильный MTU для UDP/QUIC/WireGuard
+
+Подробности: [encyclopedia/34-vlozhennye-tunneli-warp.md](encyclopedia/34-vlozhennye-tunneli-warp.md).
 
 ---
 

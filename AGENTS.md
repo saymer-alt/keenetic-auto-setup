@@ -125,8 +125,7 @@ Risk-zone specifics:
   README: "WAN failure does not mean Mihomo is broken").
 - S00ubifs: tmpfs data is lost on reboot — by design; on 128 MB-class devices, tmpfs
   destabilizes the system; expanding the directory list requires a RAM assessment.
-- Tunnel MTU: the symptom "slow / some sites do not work" points to MTU
-  (working values 1200–1300, docs/09), not routing.
+- Tunnel MTU: "slow / some sites do not work" can be a path-MTU symptom. Do not treat 1200–1300 as a universal default: 1200 is a live-working anchor for the documented nested Keenetic WARP-over-ProxyN/Mihomo topology. Distinguish the Keenetic WireGuard/WARP MTU from Mihomo `tun.mtu` (`mitun0`); see docs/09 and encyclopedia/34.
 
 ## 6. AI agent working rules
 
@@ -244,8 +243,7 @@ a live run.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
 - External Entware storage: supported new-install profile is EXT4 only. NTFS/exFAT/FAT or an unverified external `/opt` must not be silently accepted; external `/opt` requires `ext` + `ext-utils`. Do not make installer formatting/repair automatic.
 - 128 MB RAM: known low-headroom risk (docs/06). New installation is allowed only as best-effort/experimental with verified external /opt + >=384 MB external storage-backed active swap (project-specific floor; zRAM does not count). 256 MB and 512 MB-class devices should have zRAM OR verified external storage-backed swap; missing both is WARN. External swap below 1x detected RAM is WARN; 1x..3x is INFO with 3x as the preferred target, capped at 2 GiB; >2 GiB is invalid for new installs. Above the 512 MB-class, swap/zRAM is optional. If zRAM and disk/file swap are both active, warn per vendor guidance; never auto-toggle either backend. Do not weaken these profile rules or try to "make it work" by silently bypassing them.
-- Tunnel MTU 1500 → "everything is slow / does not work"; working values 1200–1300
-  (docs/09).
+- Nested-tunnel MTU is topology-specific. In the documented Keenetic WARP-over-ProxyN/Mihomo chain, MTU 1200 is live-working; 1200–1300 is only a troubleshooting range, not a universal default. Do not confuse the router WireGuard MTU with Mihomo `tun.mtu` (docs/09, encyclopedia/34).
 - DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
 - Incorrect system time → SSL errors → "opkg update failed"; start diagnosis with `date`.
 - Re-running install.sh does not clean an existing crontab or remove old components.

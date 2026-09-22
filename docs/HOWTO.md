@@ -236,7 +236,7 @@ One important nuance: **creating a segment does not automatically put it under M
 
 ### Advanced notes: tunnels through Mihomo, and WARP colo
 
-- **Chaining a router-side tunnel through Mihomo.** Keenetic can build its own tunnels (AWG, SSTP, OpenConnect, WireGuard). An advanced setup can route such a tunnel's traffic through a Mihomo proxy — the chain then exits with the public IP/country of the remote proxy. Nested tunnels make MTU especially important: the right value is specific to each chain (one of our WARP-based schemes runs happily at 1200 — that is an example, not a recommendation). See the MTU item in [Troubleshooting](#12-troubleshooting).
+- **WireGuard/WARP through Mihomo.** KeeneticOS 4.1 added WireGuard peer `connect via`, so a WARP tunnel can use the project ProxyN (`mihomo t2sN`) → Mihomo → selected VPS as its underlying transport. In that topology the VPS carries the encrypted WARP tunnel while the final full-tunnel egress is Cloudflare, not the VPS. VPS geography may influence Cloudflare routing, but WARP does not guarantee country selection. WireGuard requires working UDP end-to-end; the project ProxyN enables SOCKS5 UDP. Full topology, trust boundaries, loop prevention and acceptance are documented in [34-vlozhennye-tunneli-warp.md](encyclopedia/34-vlozhennye-tunneli-warp.md) (RU).
 - **WARP / MASQUE and Cloudflare colo.** Changing the Cloudflare colo does **not** change your exit country or public IP by itself — colo and exit-IP geolocation are different things. In practice, though, a different colo can improve how some services (e.g. Telegram or YouTube) behave even when the exit IP stays the same. So colo has practical value, but it is not a way to "pick an exit country". For exploring which colos are reachable/selectable there is [vernette/warpscout](https://github.com/vernette/warpscout) — a research tool; see its own docs.
 
 ### DNS ≠ routing
@@ -861,7 +861,7 @@ Duplicate lines in `/opt/etc/crontab` — easy to create by hand-editing. Do not
 Not an error — the 300 s anti-loop protection doing its job.
 
 **Slow browsing / some sites broken, everything else fine**
-Classic MTU symptom on tunnels. Set tunnel MTU to 1200–1300 (1500 breaks under many ISPs' DPI/PPPoE). This is an MTU problem, not a routing problem.
+This can be a path-MTU symptom after extra encapsulation. Do not treat 1200–1300 as a universal default: lower MTU only on the problematic chain and retest. For the documented nested `Keenetic WireGuard/WARP → ProxyN → Mihomo → VPS → Cloudflare` topology, MTU **1200** is a verified working anchor; 1200–1300 is a practical troubleshooting range. Do not confuse the Keenetic WireGuard MTU with Mihomo `tun.mtu`: when WARP enters Mihomo through SOCKS5 `:7890`, `mitun0` may not participate at all. See [the nested-chain article](encyclopedia/34-vlozhennye-tunneli-warp.md) (RU).
 
 **VoIP still broken**
 Check the hook: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — counters must grow during a call, and the `bypass_wa` policy must point to a working VPN interface. Rebuild firewall or reboot to re-trigger the netfilter hook.

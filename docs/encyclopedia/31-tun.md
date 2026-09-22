@@ -49,7 +49,7 @@ Proxy0 передаёт соединения на `127.0.0.1:7890`. TUN — вт
 | `auto-redirect` | Linux: автоматически настраивает iptables/nftables для редиректа TCP (требует `auto-route`) |
 | `auto-detect-interface` | собственный механизм TUN для автоопределения выходного интерфейса; документация для multi-WAN рекомендует задавать выход вручную. Не путать с глобальным `interface-name`: в нашей проверенной Keenetic-схеме он используется для proxy-outbound dialer и сам по себе не переключает путь `mitun0` на другой WAN (см. ARCHITECTURE) |
 | `dns-hijack` | перехват DNS: соединения под условие (например, `any:53`) перенаправляются во **внутренний DNS-модуль ядра** |
-| `mtu` | MTU интерфейса |
+| `mtu` | MTU именно Mihomo TUN-интерфейса (`mitun0` в нашей схеме); это **не** MTU отдельного WireGuard/WARP connection, созданного в KeeneticOS |
 | `strict-route` | жёсткие маршруты при `auto-route` (защита от утечек; может ломать часть ПО) |
 
 ### Не путать: четыре разных понятия вокруг «mips» и TUN
@@ -121,8 +121,10 @@ TUN с `dns-hijack` меняет именно это: DNS-запросы кли�
   его не создаёт и не делает TUN обязательной частью проекта. При этом миграция
   существующего `tun.stack: gvisor` → `mips` имеет отдельный безопасный инструмент и
   live-проверялась на Keenetic/MT7621. Это не означает, что любой TUN-конфиг или любой
-  MTU автоматически правильный: для конкретной схемы всё равно нужна проверка трафика;
-  при цепочках помните про практический диапазон MTU 1200–1300 (docs/09).
+  MTU автоматически правильный: для конкретной схемы всё равно нужна проверка трафика.
+  Важно не переносить MTU из другой точки цепочки: в WARP-over-ProxyN схеме значение
+  `1200` относится к Keenetic WireGuard/WARP interface, а не к `tun.mtu` Mihomo;
+  подробности — [34-vlozhennye-tunneli-warp.md](34-vlozhennye-tunneli-warp.md) и docs/09.
 
 ---
 
@@ -133,4 +135,5 @@ TUN с `dns-hijack` меняет именно это: DNS-запросы кли�
 - [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) — DNS Mihomo и fake-ip, которые при
   TUN начинают обслуживать клиентов.
 - [30-rules.md](30-rules.md) — что ядро делает с захваченным трафиком.
+- [34-vlozhennye-tunneli-warp.md](34-vlozhennye-tunneli-warp.md) — отдельный WireGuard/WARP поверх ProxyN/Mihomo и почему его MTU не равен `tun.mtu`.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — mitun0 vs ProxyN в архитектуре.
