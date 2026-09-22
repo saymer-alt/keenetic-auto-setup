@@ -11,10 +11,12 @@ project prerequisite.
 
 | Item | Class | Why the project needs it | How failure is detected |
 |---|---|---|---|
-| Entware / OPKG mounted at `/opt` | required platform prerequisite | packages, init scripts, cron, Mihomo and MagiTrickle live under `/opt` | `install.sh` fails immediately when `opkg` is absent |
+| Entware / OPKG mounted at `/opt` | required platform prerequisite | packages, init scripts, cron, Mihomo and MagiTrickle live under `/opt`; when `/opt` is external, the project-supported profile is EXT4 only | `install.sh` checks `opkg`, the `/opt` storage class and its actual filesystem from `/proc/mounts`; a new install on external non-EXT4 is rejected |
 | KeeneticOS **Proxy client / Клиент прокси** (`proxy`) | required KeeneticOS component | provides the `ProxyN` interface used as the Keenetic → Mihomo bridge | early read-only `show version` component preflight; Proxy creation read-back remains a safety net |
 | KeeneticOS **Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** (`dns-filter`) | required KeeneticOS component for the current supported DNS-interception profile | supplies the DNS-filter/interception component family used by the mandatory `dns-proxy intercept enable` profile | early read-only `show version` component preflight; the later `dns-proxy intercept enable` + read-back remains the capability safety net |
 | KeeneticOS **Kernel modules for Netfilter / Модули ядра подсистемы Netfilter** (`opkg-kmod-netfilter`) | required KeeneticOS component for the current default VoIP bypass path | `020-bypass-wa.sh` uses iptables mangle/MARK/CONNMARK/multiport and the Keenetic netfilter hook | early read-only `show version` component preflight; runtime rule installation remains the capability proof |
+| KeeneticOS **Ext filesystem** (`ext`) | **required when `/opt` is external** | the project's supported external Entware profile is EXT4 only | external `/opt` adds a read-only `show version` requirement for component id `ext` |
+| KeeneticOS **EXT4 filesystem utilities** (`ext-utils`) | **required when `/opt` is external** | provides the platform check/repair tooling for EXT4; KeeneticOS 5.1 exposes storage checks when the corresponding filesystem utilities are installed | external `/opt` adds a read-only `show version` requirement for component id `ext-utils` |
 | Internet access during installation | required install-time capability | downloads packages/scripts and the current Mihomo ipk | download/opkg failures are reported by the installer |
 | Shell access to Entware | required operator capability, **not a required KeeneticOS component** | installation/update commands are run in a shell | use any administration path that provides the required Entware shell; the KeeneticOS SSH server component itself is not a runtime dependency |
 
@@ -30,9 +32,9 @@ be installed on one reference router.
 | **Kernel modules for Netfilter / Модули ядра подсистемы Netfilter** (`opkg-kmod-netfilter`) | **REQUIRED for the project VoIP bypass path** | 020-bypass-wa.sh uses iptables mangle plus mark, MARK, CONNMARK and multiport and is installed as a netfilter.d hook. Without working Netfilter/iptables support that project feature cannot be implemented. |
 | **Kernel modules for Traffic Control support / Модули ядра Traffic Control** | **NOT REQUIRED by current project code** | No tc/qdisc/class/filter operations are used by the repository. Do not require this component merely because it is installed on a reference router. |
 | **Extension package Xtables-addons for Netfilter / Пакет расширения Xtables-addons** | **NOT PROVEN / currently NOT REQUIRED** | The project uses ordinary iptables mangle/MARK/CONNMARK/multiport operations and contains no Xtables-addons-specific target or match. Do not require it without a reproduced dependency. |
-| **Kernel modules for filesystems support / Модули ядра для поддержки файловых систем** | **CONDITIONAL** | Needed only insofar as the chosen Entware storage/filesystem requires them; not a universal routing/Mihomo dependency. |
+| **Kernel modules for filesystems support / Модули ядра для поддержки файловых систем** | **CONDITIONAL** | Platform support depends on the chosen storage; this does not replace the project's separate EXT4-only external `/opt` contract. |
 | **Storage support / Поддержка накопителей** | **CONDITIONAL** | Required for USB/external-storage Entware layouts; internal-storage Entware on supported models does not make USB storage a universal project prerequisite. |
-| **ext filesystem + ext utilities** | **CONDITIONAL** | Required when the selected Entware drive uses ext; not a Mihomo/MagiTrickle requirement by itself. |
+| **Ext filesystem** (`ext`) + **EXT4 filesystem utilities** (`ext-utils`) | **REQUIRED for external Entware `/opt`** | The project deliberately supports external `/opt` only on EXT4; `ext-utils` supplies the platform filesystem check/repair tooling. |
 | **SSH server / Сервер SSH** | **OPTIONAL administration method** | Convenient for the documented interactive shell workflow, but the project runtime does not depend on the KeeneticOS SSH server. It is not a project component prerequisite. |
 | **Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов** (`dns-filter`) | **REQUIRED for the supported DNS-interception profile** | Keenetic exposes the DNS-filter/interception machinery through this component family. The project requires `dns-proxy intercept enable`; if that command/capability is absent, install.sh cannot satisfy the MagiTrickle DNS contract and must fail rather than silently continue. Installing this component does **not** mean that a third-party filtering service must be selected for clients. |
 | **DNS-over-TLS proxy** | **STRONGLY RECOMMENDED** | Not a hard MagiTrickle dependency, but encrypted router upstream DNS prevents the ISP from trivially observing/modifying classic plaintext upstream DNS. Use reachable trusted resolvers appropriate to the network. |
@@ -48,6 +50,14 @@ be installed on one reference router.
 | **PPPoE/802.1X clients, EoIP/GRE/IP-IP, VRRP, ALGs, NetFlow, UPnP, udpxy, SNMP, captive portal** | **NOT REQUIRED** | No current install/runtime path depends on these components. |
 | **USB modem/serial/CDC/NDIS/QMI modules** | **CONDITIONAL on WAN hardware only** | Relevant only when that modem type is the router's WAN; not a project dependency. |
 | **SMB/DLNA/Transmission/FTP/SFTP/WebDAV/folder ACL components** | **NOT REQUIRED** | Storage applications are unrelated to the project runtime. |
+
+### External-storage contract
+
+For `/opt` on USB/NVMe, this project supports **EXT4 only**. Modern KeeneticOS can technically mount/use other filesystems, and some OPKG versions permit additional layouts, but those are deliberately outside the supported `keenetic-auto-setup` profile. New installs reject NTFS, exFAT, FAT and other external `/opt` filesystems.
+
+This follows Keenetic's current OPKG guidance, which requires an Ext filesystem for USB storage and recommends journaled EXT4: <https://support.keenetic.com/hero-dsl/kn-2410/en/18481-opkg.html>.
+
+External `/opt` also requires component ids `ext` and `ext-utils`. Since KeeneticOS 5.1, the Storage & Devices tools can run a filesystem check when the corresponding filesystem utilities are installed: <https://support.keenetic.com/hero-4g-plus/kn-2311/en/44933-managing-usb-drives-in-the-web-interface.html>. The project does **not** claim that Keenetic automatically runs fsck on every boot; what is confirmed is the supported check/repair mechanism. The installer and Doctor never format, convert or repair the filesystem themselves.
 
 Two distinctions matter:
 
