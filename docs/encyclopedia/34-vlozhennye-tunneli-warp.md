@@ -385,6 +385,12 @@ WARP → ProxyN → Mihomo → WARP → ...
 
 Поэтому `Mihomo/VPS → WARP` — осмысленная двухслойная конструкция. `VPN → proxy → VPN → proxy → WARP` без конкретной задачи обычно даёт больше эксплуатационной боли, чем пользы. Это **рекомендация проекта**, а не hard limit KeeneticOS.
 
+### Не путать с WARP-in-WARP
+
+Если оба слоя являются WARP/WireGuard, это уже другая схема. WARPSCOUT `-through` для такого случая регистрирует отдельное outer WARP device/key pair: два вложенных WARP-туннеля не должны использовать один private key.
+
+Если же внешний транспорт — Mieru/VLESS/Hysteria2/обычный VPS proxy, а внутренний слой — MASQUE/WARP через Mihomo `dialer-proxy`, второго WARP key нет: внешний слой вообще не WARP. Подробный разбор и исторические тесты — [35-warpscout.md](35-warpscout.md).
+
 ---
 
 ## Проверка после настройки
