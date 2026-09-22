@@ -10,11 +10,11 @@
 
 ## Перед запуском
 
-Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и три компонента
+Обязательные prerequisites: Entware/OPKG, доступ в shell, Интернет и три универсальных компонента
 KeeneticOS: **«Клиент прокси» (Proxy client)** (`proxy`),
 **«Фильтрация контента и блокировка рекламы при помощи облачных сервисов»**
 (`dns-filter`) и **«Модули ядра подсистемы Netfilter»**
-(`opkg-kmod-netfilter`). Resource-profile: 128 МБ — best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ; 256 МБ и 512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих даёт WARN и не блокирует установку; для внешнего swap <1× обнаруженной RAM даётся WARN, диапазон 1×..3× считается нормальным и отмечается только INFO, preferred target ≈3× RAM, но не более 2 ГиБ; >2 ГиБ — ошибка новой установки. Выше 512 МБ-класса swap/zRAM опциональны. Одновременный zRAM + disk/file swap получает WARN по рекомендации производителя. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей:
+(`opkg-kmod-netfilter`). Для внешнего Entware `/opt` действует дополнительный storage-контракт: **только EXT4**, плюс обязательные компоненты **«Файловая система Ext» (`ext`)** и **«Утилиты EXT4» (`ext-utils`)**. Resource-profile: 128 МБ — best-effort/experimental с внешним /opt + внешним storage-backed swap >=384 МБ; 256 МБ и 512 МБ-класс — ожидается zRAM **или** внешний storage-backed swap, отсутствие обоих даёт WARN и не блокирует установку; для внешнего swap <1× обнаруженной RAM даётся WARN, диапазон 1×..3× считается нормальным и отмечается только INFO, preferred target ≈3× RAM, но не более 2 ГиБ; >2 ГиБ — ошибка новой установки. Выше 512 МБ-класса swap/zRAM опциональны. Одновременный zRAM + disk/file swap получает WARN по рекомендации производителя. Без Proxy client проектный ProxyN не создаётся. Полная матрица обязательных, условных и необязательных возможностей:
 [COMPONENTS_RU.md](COMPONENTS_RU.md).
 
 ### Если raw.githubusercontent.com недоступен с роутера
@@ -35,8 +35,8 @@ sh /tmp/install.sh disk
 Режим хранения проверяется против фактического `/opt`:
 
 - внутренний `/opt` + `ram` — штатный профиль;
-- внешний persistent `/opt` + `disk` — штатный профиль;
-- внешний `/opt` + `ram` — поддерживается, но installer печатает WARN: runtime/log
+- внешний persistent `/opt` + `disk` — штатный профиль **только если реальная ФС EXT4** и установлены `ext` + `ext-utils`;
+- внешний `/opt` + `ram` — поддерживается **только на EXT4** (также нужны `ext` + `ext-utils`), но installer печатает WARN: runtime/log
   каталоги будут tmpfs и их содержимое будет теряться после reboot;
 - внутренний `/opt` + `disk` — по умолчанию **ERROR до изменений**, потому что
   `disk` отключает `S00ubifs` и оставляет runtime/log writes на внутренней флешке.
@@ -55,7 +55,9 @@ sh -s -- disk --allow-internal-disk
 ```
 
 Общего `--force` у installer нет: override относится только к этому конкретному
-storage-mode mismatch и не отключает другие safety gates.
+storage-mode mismatch и не отключает другие safety gates. Он **не** разрешает внешний `/opt` на NTFS/exFAT/FAT или другой ФС.
+
+Installer определяет фактическую ФС `/opt` по `/proc/mounts`. Современный KeeneticOS может технически поддерживать и другие файловые системы, но проект намеренно сужает внешний Entware-профиль до EXT4. Сам installer никогда не форматирует, не конвертирует и не исправляет накопитель. `ext-utils` нужен для штатного механизма проверки/исправления EXT4 в KeeneticOS 5.1+; автоматический fsck при каждом старте проект не предполагает и не заявляет.
 
 Это только Stage-0: после запуска сам installer по-прежнему выполняет свои обычные
 сетевые проверки и честно сообщит, если какой-либо следующий источник недоступен.
@@ -63,8 +65,8 @@ storage-mode mismatch и не отключает другие safety gates.
 ## Общий процесс
 
 ```id="flow1"
-1. Resource-profile preflight (read-only; 128 МБ — special hard gate; 256/512 МБ-класс — zRAM или external swap, отсутствие обоих WARN; внешний swap >2 ГиБ — ERROR)
-2. Обязательный KeeneticOS preflight (read-only): проверяются `proxy` (Proxy client), `dns-filter` (интернет-фильтры/DNS interception) и `opkg-kmod-netfilter` (Netfilter для VoIP bypass); при отсутствии любого из них установка останавливается до installer-managed `opkg update` и любых изменений роутера
+1. Resource/storage preflight (read-only): RAM/swap, класс `/opt` и его реальная ФС; внешний `/opt` non-EXT4 — ERROR до изменений; 128 МБ — special hard gate; 256/512 МБ-класс — zRAM или external swap, отсутствие обоих WARN; внешний swap >2 ГиБ — ERROR
+2. Обязательный KeeneticOS preflight (read-only): всегда проверяются `proxy` (Proxy client), `dns-filter` (интернет-фильтры/DNS interception) и `opkg-kmod-netfilter` (Netfilter для VoIP bypass); при внешнем `/opt` дополнительно обязательны `ext` и `ext-utils`; при отсутствии нужного компонента установка останавливается до installer-managed `opkg update` и любых изменений роутера
 3. Подготовка (opkg, пакеты)
 4. bypass_wa policy (создание)
 5. Перехват транзитного DNS
