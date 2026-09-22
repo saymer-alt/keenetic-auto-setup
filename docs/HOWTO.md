@@ -282,7 +282,7 @@ Check every point — most failed installs trace back to one of these:
 | **Entware shell access** | for example, SSH | needed to run installation commands; the KeeneticOS *SSH server* is a convenient access method, not a project runtime dependency |
 | **Internet reachable from the router** | `opkg update` succeeds | DNS and correct time are the usual blockers (see [Troubleshooting](#12-troubleshooting)) |
 
-Tested on: KN-1810, KN-3811, KN-1913 (see [CHANGELOG](../CHANGELOG.md)).
+Current live acceptance: **KN-1010 / MT7621 / mipsel** and **KN-1012 / aarch64**. Earlier field testing/use also includes **KN-1810, KN-3811, KN-1913** (see [CHANGELOG](../CHANGELOG.md)). The code and package paths also support `armv7` and big-endian `mips`, but the current repository does not record equally fresh live acceptance for those two architectures.
 
 Which installer do you need?
 

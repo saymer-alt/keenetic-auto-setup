@@ -44,7 +44,7 @@
 - [x] resource-profile contract 20260921_3: 128MB-класс — только внешний /opt + внешний storage-backed swap >=384 МБ, иначе installer FAIL; 256/512 МБ-класс — ожидается zRAM или внешний storage-backed swap, отсутствие обоих WARN; внешний swap <1× detected RAM WARN, 1×..3× INFO, preferred target 3× RAM, cap 2 ГиБ, >2 ГиБ installer ERROR/Doctor FAIL; >512 МБ-класса swap/zRAM опциональны; совместный zRAM + disk/file swap получает WARN по vendor guidance; updater существующих legacy-инсталляций profile-нарушения не блокирует
 - [x] явная диагностика критических ошибок: Proxy client, полный read-back проектного ProxyN, обязательный bootstrap, DNS interception и финальный self-check
 - [x] проверка обязательного DNS-контракта: `dns-proxy intercept enable` применяется и немедленно читается обратно
-- [ ] необязательная диагностика здоровья upstream DNS — только если появится воспроизводимый практический кейс; не делать её hard gate установки
+**Не активная задача:** отдельную диагностику здоровья upstream DNS добавлять только после воспроизводимого практического кейса; не превращать её в hard gate установки.
 
 ---
 
@@ -106,7 +106,7 @@ Doctor + watchdog + MetaCubeXD закрывают локальную экспл�
 - [x] финальный self-check в `install.sh`
 - [x] маленький постоянный contract smoke test — `tests/contracts.sh`
 - [x] отдельные CI-регрессии для высокорисковых транзакций — `tests/transaction-invariants.py` (updater rollback/order, watchdog atomic update/preservation, MIPS migrator)
-- [ ] расширять Doctor только по новым воспроизводимым полевым кейсам; не превращать его в repair tool
+**Правило развития Doctor:** расширять только по новым воспроизводимым полевым кейсам; не превращать его в repair tool.
 
 ---
 

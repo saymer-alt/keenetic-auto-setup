@@ -220,7 +220,7 @@ default-nameserver:
 адрес назначения соединения, а `skip-domain` не трогает служебные домены
 (`+.lan`, `+.push.apple.com`…). Весь этот блок — *общее поведение Mihomo по
 официальной документации*; значения в placeholder — **Проверено в проекте**.
-Подробный разбор sniffer — материал отдельной будущей статьи.
+Подробный разбор sniffer — [33-sniffer.md](33-sniffer.md).
 
 ---
 
@@ -274,5 +274,5 @@ bootstrap-конфиге проекта DNS-блока нет.
 - [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — раздел DNS-архитектуры: почему
   DNS-решения в этой системе независимы.
 - [30-rules.md](30-rules.md) и [31-tun.md](31-tun.md) — правила и TUN (включая
-  dns-hijack); [32-kak-sobrat-kartinu.md](32-kak-sobrat-kartinu.md) — вся картина
-  вместе.
+  dns-hijack); [33-sniffer.md](33-sniffer.md) — отдельный разбор sniffer;
+  [32-kak-sobrat-kartinu.md](32-kak-sobrat-kartinu.md) — вся картина вместе.

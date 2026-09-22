@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Expanded Part III with dedicated Russian guides for Controller/API security and remote access, proxy-providers, GEOIP/GEOSITE data, and Mihomo logging; linked older Part II placeholders to the completed articles.
 - Reclassified `tun.stack: mips` on Keenetic from an unverified experiment to a supported optional migration path backed by the existing migrator and live MT7621 lifecycle testing, while avoiding a universal performance claim or automatic/default migration.
 - Roadmap now records the deliberate decision not to add heavier watchdog probes, configurable VoIP complexity, a second monitoring stack, or a project-specific GUI without a reproducible field need.
+- Closed remaining documentation debt that did not require live router work: removed the secure-DNS prerequisite contradiction in RU/EN component matrices, refreshed the hardware acceptance scope, documented intentionally untested destructive power-loss faults as residual risk instead of a hidden test obligation, and added a dedicated sniffer encyclopedia article linked from DNS/rules docs.
 
 ---
 

@@ -60,6 +60,38 @@ Live tests must remain conservative:
 - use a short planned outage when executable Mihomo validation is required rather than running a second Mihomo beside the daemon;
 - never publish private addresses, credentials, configuration secrets, or raw diagnostics from a user's router as test fixtures.
 
+## Current hardware evidence
+
+The support matrix distinguishes **code/package support** from fresh hardware acceptance:
+
+| Architecture | Current evidence | Status |
+|---|---|---|
+| `aarch64` | KN-1012 live acceptance, including repeat install + Doctor on KeeneticOS 5.1.5 | current live evidence |
+| `mipsel` | KN-1010 / MT7621 live acceptance, including universal installer lifecycle and MIPS-stack migration findings | current live evidence |
+| `armv7` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
+| big-endian `mips` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
+
+Earlier field use on KN-1810, KN-3811 and KN-1913 remains valid historical evidence, but
+is not presented as a substitute for current per-architecture acceptance.
+
+Do not buy/find hardware or create synthetic emulation merely to make every matrix cell
+green. When an `armv7` or big-endian `mips` router naturally becomes available, run
+the same conservative install → Doctor → update/reboot acceptance and record the result.
+
+## Deliberately untested destructive faults
+
+A deliberate hard power cut in the microsecond around updater/migrator commit is **not**
+a required production-router test. The safety model is architectural instead:
+
+- the old canonical file remains present until a same-filesystem atomic rename commit;
+- rollback material is prepared before the risky phase where applicable;
+- orphaned managed stage files are bounded and cleaned by the next maintenance run;
+- temporary maintenance coordination lives under `/tmp` and naturally disappears on reboot.
+
+If a real spontaneous power-loss incident ever exposes a recovery gap, preserve the exact
+evidence and add the smallest regression for that failure. Until then this is a documented
+residual fault class, not an action item.
+
 ## Release gate
 
 A release does not require rerunning every historical synthetic campaign. Run the committed
