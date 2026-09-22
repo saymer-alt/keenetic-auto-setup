@@ -313,7 +313,7 @@ proxies:
     public-key: <public-key>
     ip: 172.16.0.2/32
     mtu: 1280
-    sni: 4pda.to
+    sni: <current-working-sni>
     udp: true
 
   - name: WARP-MASQUE-H2-443
@@ -324,14 +324,14 @@ proxies:
     public-key: <public-key>
     ip: 172.16.0.2/32
     mtu: 1280
-    sni: 4pda.to
+    sni: <current-working-sni>
     udp: true
     network: h2
 ~~~
 
-`type: masque`, `ip`, `mtu`, `sni`, `network: h2` и `dialer-proxy` соответствуют текущей официальной схеме Mihomo MASQUE. Endpoint'ы в примере намеренно не зафиксированы: их надо брать из актуального скана/конфига.
+`type: masque`, `ip`, `mtu`, `sni`, `network: h2` и `dialer-proxy` соответствуют текущей официальной схеме Mihomo MASQUE. Endpoint и SNI в примере намеренно не зафиксированы: их надо брать из актуального скана/acceptance. В полевых конфигах июня–августа 2026 у нас использовался `sni: 4pda.to`, но это историческое наблюдение, а не вечный рекомендуемый SNI.
 
-Поверх этих двух proxies у нас был `Fastest_MASQUE` как `url-test` между QUIC и H2. Один из реально использовавшихся вариантов имел:
+Поверх этих двух proxies у нас был `Fastest_MASQUE` как `url-test` между QUIC и H2. Один из реально использовавшихся вариантов имел (исторический health-check URL сохранён как часть полевого примера):
 
 ~~~yaml
 proxy-groups:
@@ -346,7 +346,7 @@ proxy-groups:
     expected-status: 204
 ~~~
 
-Смысл паттерна — не «H3 всегда быстрее H2», а держать оба транспорта и позволять Mihomo выбирать живой/быстрый вариант. Но важно помнить ограничение: HTTP `url-test` проверяет HTTP-доступность/задержку, а не весь спектр проблем внутри конкретного WARP transport. После серьёзного изменения endpoint/SNI всё равно нужен фактический traffic check.
+Смысл паттерна — не «H3 всегда быстрее H2», а держать оба транспорта и позволять Mihomo выбирать живой/быстрый вариант. Но важно помнить ограничение: HTTP `url-test` проверяет HTTP-доступность/задержку, а не весь спектр проблем внутри конкретного WARP transport. После серьёзного изменения endpoint/SNI всё равно нужен фактический traffic check. Для нового конфига текущая документация Mihomo показывает `https://www.gstatic.com/generate_204` как типичный URL health-check; исторический `https://google.com/generate_204` выше не является проектным стандартом.
 
 Официальная схема полей: [Mihomo Docs — MASQUE](https://wiki.metacubex.one/ru/config/proxies/masque/).
 
