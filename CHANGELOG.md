@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Closed remaining documentation debt that did not require live router work: removed the secure-DNS prerequisite contradiction in RU/EN component matrices, refreshed the hardware acceptance scope, documented intentionally untested destructive power-loss faults as residual risk instead of a hidden test obligation, and added a dedicated sniffer encyclopedia article linked from DNS/rules docs.
 - Corrected the current release hardware evidence to the operator-confirmed model set and cross-checked architectures against official Keenetic references: KN-1010 = MT7621AT / `mipsel`; KN-1012, KN-3811 and KN-3812 = MT7981B AArch64; KN-1812 = MT7988D AArch64.
 - Removed stale architecture-specific `Tested on` comments from the updater/watchdog headers: they now point to the maintained hardware evidence matrix instead of implying narrower historical coverage.
+- Documented the advanced Keenetic WireGuard/WARP-over-ProxyN topology: KeeneticOS WireGuard `connect via`, the project SOCKS5-UDP ProxyN, Mihomo-selected VPS as transport, Cloudflare as final WARP egress, trust/visibility boundaries, loop prevention, and an explicit recommendation against gratuitous >2-layer tunnel chains. MTU guidance now distinguishes Keenetic WireGuard MTU from Mihomo `tun.mtu`; 1200 is recorded as the live-working nested-WARP anchor rather than a universal default.
 
 ---
 
