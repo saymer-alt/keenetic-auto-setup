@@ -11,6 +11,7 @@
 - Keenetic с Entware / OPKG
 - Доступ к shell
 - Интернет
+- Если `/opt` на внешнем USB/NVMe: **только EXT4**; компоненты KeeneticOS `ext` и `ext-utils` обязательны
 
 Полные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md)
 
@@ -23,7 +24,9 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
-### Внешний носитель — USB HDD / NVMe
+### Внешний носитель — USB HDD / NVMe (EXT4)
+
+Перед запуском убедитесь, что `/opt` действительно расположен на EXT4 и в KeeneticOS установлены компоненты **Файловая система Ext** (`ext`) и **Утилиты EXT4** (`ext-utils`). NTFS/exFAT и другие ФС не входят в поддерживаемый внешний профиль проекта.
 
 ```bash
 opkg update && opkg install curl && \
