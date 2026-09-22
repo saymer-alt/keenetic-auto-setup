@@ -11,6 +11,7 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 - Keenetic with Entware / OPKG
 - Shell access
 - Internet access
+- If `/opt` is on external USB/NVMe storage: **EXT4 only**; KeeneticOS components `ext` and `ext-utils` are required
 
 Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md)
 
@@ -23,7 +24,9 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
-### External storage — USB HDD / NVMe
+### External storage — USB HDD / NVMe (EXT4)
+
+Before running the installer, verify that `/opt` is actually on EXT4 and that KeeneticOS has **Ext filesystem** (`ext`) and **EXT4 filesystem utilities** (`ext-utils`) installed. NTFS/exFAT and other filesystems are outside the project's supported external-storage profile.
 
 ```bash
 opkg update && opkg install curl && \
