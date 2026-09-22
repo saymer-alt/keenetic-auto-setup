@@ -16,8 +16,7 @@
 Источники:
 
 - [KeeneticOS 3.9: Proxy Client](https://support.keenetic.com/hero/kn-1011/en/26123-keeneticos-3-9.html);
-- [KeeneticOS 4.1: WireGuard underlying connection / `via`](https://support.keenetic.com/hero/kn-1012/en/36576-keeneticos-4-1.html);
-- [KeeneticOS 4.1: SOCKS5 UDP for Proxy connection](https://support.keenetic.com/starter/kn-1112/en/32140-keeneticos-4-1.html);
+- [KeeneticOS 4.1 release history: WireGuard `connect via` and SOCKS5 UDP for Proxy connections](https://support.keenetic.com/starter/kn-1112/en/32140-keeneticos-4-1.html);
 - [Keenetic Proxy Client manual](https://support.keenetic.com/hopper-dsl/kn-3611/en/49443-proxy-client.html).
 
 ---
@@ -111,6 +110,14 @@ Keenetic официально описывает политику как наб�
 
 Для VPN connection в policy также должна быть включена опция Keenetic **«Использовать для выхода в Интернет»**; иначе интерфейс не является обычным Internet gateway для этого policy.
 
+### DNS после привязки отдельной policy
+
+У Keenetic есть ещё одна связанная, но отдельная деталь: DNS servers, полученные от connections, применяются с учётом состава policy. Официальная документация говорит, что в policy добавляются DNS servers от включённых в неё connections; вручную добавленный DNS с `Connection = Any` используется всеми policies.
+
+Поэтому симптом «через WARP по IP ходит, а домены перестали резолвиться после переноса клиента в отдельную policy» не надо сразу списывать на Mihomo/WireGuard. Сначала проверьте DNS именно в контексте этой policy и нашу отдельную цепочку DNS interception/upstream.
+
+Это **не повод автоматически переводить DNS на WARP**: в проекте DNS — отдельный слой, описанный в HOWTO/ARCHITECTURE, и менять его надо только понимая bootstrap и loop boundaries.
+
 Официальное описание: [Keenetic — Connection policies](https://support.keenetic.com/carrier/kn-1721/en/17892-connection-policies.html).
 
 Это ещё одна причина не путать два уровня:
@@ -139,11 +146,11 @@ select Estonia VPS → WARP tunnel enters Cloudflare from Estonian-side path
 
 При этом **финальный public IP остаётся Cloudflare**, если traffic действительно выходит через WARP.
 
-Но здесь нельзя превращать наблюдаемое поведение в гарантию страны. Cloudflare прямо пишет, что consumer WARP не предназначен для выбора/подмены страны, а конкретный Cloudflare data center зависит от сетевой маршрутизации. Поэтому формулировка проекта такая:
+Но здесь нельзя превращать наблюдаемое поведение в гарантию страны. В актуальном FAQ Cloudflare пишет, что WARP заменяет исходный IP на Cloudflare IP, который представляет **примерное местоположение пользователя**, а выбранный Cloudflare data center не обязан быть физически ближайшим: на него влияют маршрутизация провайдера, доступность площадок и то, какие locations вообще WARP-enabled. Поэтому формулировка проекта такая:
 
-> География выбранного Mihomo/VPS часто влияет на то, где Cloudflare примет туннель и какой egress получится на практике, но WARP не является контрактным country selector.
+> География выбранного Mihomo/VPS может менять наружный маршрут до Cloudflare и наблюдаемый WARP path, но это не детерминированный country selector и не контракт «VPS в стране X → Cloudflare exit строго в стране X».
 
-Cloudflare: [WARP modes](https://developers.cloudflare.com/warp-client/warp-modes/) и [WARP FAQ](https://developers.cloudflare.com/warp-client/known-issues-and-faq/).
+Cloudflare: [WARP FAQ](https://developers.cloudflare.com/warp-client/known-issues-and-faq/).
 
 После смены Mihomo node проверяйте новый WireGuard handshake, счётчики RX/TX и внешний IP. Если старый UDP state не переехал сразу, проще переподнять WARP connection, чем угадывать.
 
