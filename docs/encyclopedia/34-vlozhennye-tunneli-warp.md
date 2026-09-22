@@ -92,6 +92,37 @@ interface {name} wireguard peer {key} connect via {via}
 
 Именно сочетание этих двух настроек создаёт вложенную цепочку.
 
+### Fail-closed или fallback: политика решает отдельно
+
+`connect via ProxyN` **не означает**, что клиентский трафик обязательно останется только в WARP при аварии. Это определяет уже Connection Policy.
+
+Keenetic официально описывает политику как набор разрешённых Internet connections с приоритетами: если более приоритетное соединение становится недоступным, система может перейти на следующее разрешённое соединение.
+
+Поэтому для privacy-sensitive WARP-профиля заранее выберите требуемое поведение:
+
+| Цель | Что оставить включённым в policy | Результат при падении WARP |
+|---|---|---|
+| **fail-closed** | только WARP/WireGuard connection | клиент теряет Internet вместо выхода напрямую |
+| **fail-open / резервирование** | WARP + ISP/другой VPN в нужном порядке | Keenetic может перейти на следующий доступный gateway |
+
+Если задача — гарантировать, что устройство **никогда не покажет ISP/VPS exit вместо Cloudflare**, не используйте Default policy с несколькими разрешёнными подключениями: создайте отдельную policy и оставьте там только WARP connection.
+
+И наоборот, если важнее непрерывный Internet, осознанно добавьте backup и примите, что при аварии WARP внешний IP/граница доверия изменятся.
+
+Для VPN connection в policy также должна быть включена опция Keenetic **«Использовать для выхода в Интернет»**; иначе интерфейс не является обычным Internet gateway для этого policy.
+
+Официальное описание: [Keenetic — Connection policies](https://support.keenetic.com/carrier/kn-1721/en/17892-connection-policies.html).
+
+Это ещё одна причина не путать два уровня:
+
+~~~text
+WireGuard peer connect via ProxyN
+    = как WARP добирается до Cloudflare
+
+Connection Policy: only WARP / WARP+backup
+    = куда пойдёт клиентский Internet и что будет при отказе
+~~~
+
 ---
 
 ## Mihomo как переключатель географии наружного транспорта
@@ -323,12 +354,13 @@ WARP → ProxyN → Mihomo → WARP → ...
 2. В MetaCubeXD выбрать конкретный Mihomo node и проверить, что он входит в набор с подтверждённым UDP.
 3. В WireGuard/WARP peer выбрать `Подключаться через → mihomo t2sN`.
 4. Убедиться, что WireGuard peer зелёный, handshake обновляется, RX/TX растут.
-5. Назначить WARP interface нужной Connection Policy/клиенту/сегменту.
-6. Проверить внешний IP: он должен принадлежать Cloudflare, а не VPS, если full-tunnel WARP действительно является финальным выходом.
-7. На клиенте через этот policy path открыть `https://www.cloudflare.com/cdn-cgi/trace` и проверить `warp=on`. Cloudflare официально использует этот способ проверки WARP data path.
-8. Дополнительно открыть `https://1.1.1.1/help`: страница показывает состояние Cloudflare/1.1.1.1 и обслуживающий Cloudflare data center. Поле/data-center — диагностическая подсказка, а не гарантия страны egress.
-9. Переключить Mihomo node и повторить handshake, `warp=on` и public-IP проверку.
-10. Если есть «часть сайтов висит» — сначала проверить MTU; 1200 уже является рабочей контрольной точкой для этой вложенной схемы.
+5. Назначить WARP interface нужной Connection Policy/клиенту/сегменту и проверить, что список разрешённых connections соответствует вашей модели отказа: только WARP для fail-closed или явно выбранные backup connections для fail-open.
+6. Проверить, что WARP connection разрешено «Использовать для выхода в Интернет».
+7. Проверить внешний IP: он должен принадлежать Cloudflare, а не VPS, если full-tunnel WARP действительно является финальным выходом.
+8. На клиенте через этот policy path открыть `https://www.cloudflare.com/cdn-cgi/trace` и проверить `warp=on`. Cloudflare официально использует этот способ проверки WARP data path.
+9. Дополнительно открыть `https://1.1.1.1/help`: страница показывает состояние Cloudflare/1.1.1.1 и обслуживающий Cloudflare data center. Поле/data-center — диагностическая подсказка, а не гарантия страны egress.
+10. Переключить Mihomo node и повторить handshake, `warp=on` и public-IP проверку.
+11. Если есть «часть сайтов висит» — сначала проверить MTU; 1200 уже является рабочей контрольной точкой для этой вложенной схемы.
 
 Источники проверки: [Cloudflare WARP Linux client — `cdn-cgi/trace`](https://developers.cloudflare.com/warp-client/get-started/linux/) и [Cloudflare 1.1.1.1 — Verify connection](https://developers.cloudflare.com/1.1.1.1/check/).
 
