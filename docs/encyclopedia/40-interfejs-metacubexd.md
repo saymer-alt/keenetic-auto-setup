@@ -382,6 +382,9 @@ Dimensions → размер карточек
 - [11-metacubex-eto.md](11-metacubex-eto.md) — что панель делает и чем она не является.
 - [12-pervyj-vhod-v-ui.md](12-pervyj-vhod-v-ui.md) — включение controller и первый вход.
 - [13-127-0-0-1-i-ip-routera.md](13-127-0-0-1-i-ip-routera.md) — адрес API и `127.0.0.1`.
+- [41-controller-api-security.md](41-controller-api-security.md) — bind, `secret`, CORS и безопасный удалённый доступ.
+- [42-proxy-providers.md](42-proxy-providers.md) — providers и их health-check.
+- [44-logs.md](44-logs.md) — логи и диагностика.
 - [29-proxy-groups.md](29-proxy-groups.md) — чем отличаются `select`, `url-test`,
   `fallback` и другие группы.
 - [30-rules.md](30-rules.md) — как rules отправляют трафик в группы.

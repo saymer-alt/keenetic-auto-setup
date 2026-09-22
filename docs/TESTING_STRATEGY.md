@@ -19,8 +19,8 @@ For normal development, test in this order:
 
 1. **Real installation states and real bug reports.** Reproduce the smallest relevant state instead of inventing a broad failure matrix.
 2. **Cross-component contracts.** Check boundaries that can drift independently: KeeneticOS component/capability → installer, `entware-go` package → bootstrap config, ProxyN → `127.0.0.1:7890`, watchdog → canonical runtime layout.
-3. **Committed contract/regression checks.** Run `sh tests/contracts.sh` and extend it only when a real bug can be represented cheaply. Temporary adversarial harnesses used during development are not a permanent KeeneticOS emulator.
-   Minimal GitHub Actions CI runs the committed contract/regression checks plus shell syntax,
+3. **Committed contract/regression checks.** Run `sh tests/contracts.sh` and extend it only when a real bug can be represented cheaply. High-consequence maintenance ordering is additionally pinned by `python3 tests/transaction-invariants.py`: it checks the real updater/watchdog-updater/migrator source for stage → backup/validation → controlled stop → atomic commit → rollback/preservation invariants without pretending to emulate KeeneticOS. Temporary adversarial harnesses used during development are not a permanent KeeneticOS emulator.
+   Minimal GitHub Actions CI runs these committed contract/regression checks plus shell syntax,
    repository-local Markdown-link validation and whitespace checks automatically on pushes/pull
    requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
 4. **Static/syntax review.** Run `sh -n` for changed shell scripts and review BusyBox/POSIX compatibility.

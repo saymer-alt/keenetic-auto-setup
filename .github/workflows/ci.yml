@@ -39,6 +39,9 @@ jobs:
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
+      - name: Transaction invariants
+        run: python3 tests/transaction-invariants.py
+
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 

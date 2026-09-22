@@ -35,7 +35,7 @@ rules:
 
 | Семейство | Примеры типов | Что сверяет |
 | --- | --- | --- |
-| Домен | `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `GEOSITE` | домен соединения; `GEOSITE` — категории из гео-баз (о гео-данных — позже) |
+| Домен | `DOMAIN`, `DOMAIN-SUFFIX`, `DOMAIN-KEYWORD`, `DOMAIN-REGEX`, `GEOSITE` | домен соединения; `GEOSITE` — категории из GEO-данных ([43-geodata.md](43-geodata.md)) |
 | IP назначения | `IP-CIDR`, `IP-CIDR6`, `GEOIP`, `IP-ASN` | адрес/подсеть/страну/автономную систему |
 | IP источника | `SRC-IP-CIDR`, `SRC-GEOIP`, `SRC-IP-ASN` | адрес/страну/автономную систему клиента-источника |
 | Порты | `DST-PORT`, `SRC-PORT` | порт назначения/источника |
