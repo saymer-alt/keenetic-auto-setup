@@ -62,7 +62,9 @@ Live tests must remain conservative:
 
 ## Current hardware evidence
 
-The support matrix distinguishes **code/package support** from fresh hardware acceptance:
+The support matrix distinguishes **code/package support** from fresh hardware acceptance.
+
+Current release model set confirmed by the operator: **KN-1010, KN-1012, KN-3811, KN-3812, KN-1812**. The table below only assigns architectures where that mapping is explicitly recorded by project evidence; it does not guess the architecture of the remaining models.
 
 | Architecture | Current evidence | Status |
 |---|---|---|
@@ -71,8 +73,7 @@ The support matrix distinguishes **code/package support** from fresh hardware ac
 | `armv7` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 | big-endian `mips` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 
-Earlier field use on KN-1810, KN-3811 and KN-1913 remains valid historical evidence, but
-is not presented as a substitute for current per-architecture acceptance.
+Earlier field use on KN-1810 and KN-1913 remains valid historical evidence. KN-3811 is now also part of the current release model set above. Historical model coverage is not presented as a substitute for current per-architecture acceptance.
 
 Do not buy/find hardware or create synthetic emulation merely to make every matrix cell
 green. When an `armv7` or big-endian `mips` router naturally becomes available, run

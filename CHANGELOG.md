@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Reclassified `tun.stack: mips` on Keenetic from an unverified experiment to a supported optional migration path backed by the existing migrator and live MT7621 lifecycle testing, while avoiding a universal performance claim or automatic/default migration.
 - Roadmap now records the deliberate decision not to add heavier watchdog probes, configurable VoIP complexity, a second monitoring stack, or a project-specific GUI without a reproducible field need.
 - Closed remaining documentation debt that did not require live router work: removed the secure-DNS prerequisite contradiction in RU/EN component matrices, refreshed the hardware acceptance scope, documented intentionally untested destructive power-loss faults as residual risk instead of a hidden test obligation, and added a dedicated sniffer encyclopedia article linked from DNS/rules docs.
+- Corrected the current release hardware evidence to the operator-confirmed model set: KN-1010, KN-1012, KN-3811, KN-3812 and KN-1812; kept architecture claims separate from model names unless explicitly evidenced.
 
 ---
 
@@ -29,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Corrected the Keenetic DoT/DoH CLI syntax in RU/EN HOWTO and documented the official `on <interface>` / `domain <domain>` capabilities used by the experiment.
 
 ### Tested
+- Release acceptance was confirmed on **KN-1010, KN-1012, KN-3811, KN-3812 and KN-1812**. Detailed per-device evidence is recorded where available; model inclusion here does not imply an architecture unless explicitly stated elsewhere.
 - Live acceptance passed on Keenetic Giga KN-1012 / KeeneticOS 5.1.5 / aarch64 with external EXT4 `/opt`: `show version` exposed `proxy`, `dns-filter`, `opkg-kmod-netfilter`, `dns-tls`, `dns-https`, `ext` and `ext-utils`; Doctor reported `35 OK / 0 WARN / 0 FAIL`; repeat `install.sh disk` completed successfully and skipped an unnecessary Mihomo restart because binary/config were unchanged.
 
 ---
