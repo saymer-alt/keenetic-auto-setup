@@ -116,6 +116,21 @@ Cloudflare: [WARP modes](https://developers.cloudflare.com/warp-client/warp-mode
 
 После смены Mihomo node проверяйте новый WireGuard handshake, счётчики RX/TX и внешний IP. Если старый UDP state не переехал сразу, проще переподнять WARP connection, чем угадывать.
 
+### Для WARP лучше отдельная группа Mihomo
+
+Если в подписке десятки или сотни серверов, не каждый из них обязательно одинаково пригоден как **транспорт для WireGuard UDP**.
+
+Обычный `url-test` / latency test Mihomo проверяет HTTP-доступность/задержку и сам по себе **не доказывает**, что через выбранный node нормально проходит SOCKS5 UDP и WARP handshake.
+
+Для этой топологии разумнее иметь отдельную группу, например `WARP-TRANSPORT`:
+
+- включать туда только узлы, на которых UDP реально проверен;
+- не смешивать их с TCP-only/сомнительными nodes;
+- после автоматического переключения смотреть не только HTTP latency, но и свежесть WireGuard handshake;
+- если нужна максимальная предсказуемость, использовать ручной `select` или небольшой проверенный набор, а не всю подписку из сотни узлов.
+
+Так failure domain становится понятнее: «Mihomo node жив по HTTP» и «этот node годится для WARP UDP» — разные утверждения.
+
 ---
 
 ## Кто что видит
@@ -180,21 +195,76 @@ Mihomo tun.mtu = 1200
 
 Но MSS adjustment **не чинит UDP/QUIC и не заменяет правильный WireGuard MTU**. Сам WireGuard handshake и WARP transport остаются UDP.
 
+### Persistent keepalive
+
+На скриншоте peer использует проверку активности / keepalive `15` секунд. Для вложенной цепочки через NAT + SOCKS5 UDP это может быть полезно: периодический пакет поддерживает UDP/NAT state и быстрее показывает, что path умер.
+
+Но это не универсальная обязательная цифра проекта. Чем меньше интервал, тем больше фонового трафика и wakeups. Если chain стабилен без частого keepalive, нет смысла уменьшать интервал только ради «надёжности».
+
 ---
 
-## Endpoint `engage.cloudflareclient.com:2408`
+## Endpoint'ы Cloudflare: что можно встретить и что не надо путать
 
-В рабочей операторской конфигурации использовался endpoint вида:
+В рабочей операторской конфигурации использовался:
 
 ~~~text
 engage.cloudflareclient.com:2408
 ~~~
 
-Cloudflare и сейчас документирует `engage.cloudflareclient.com` среди WARP connectivity endpoints, а UDP/2408 входит в набор WARP ingress ports: [Cloudflare One Client with firewall](https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/deployment/firewall/).
+Это остаётся полезным **проверенным примером**, но проект не считает его вечной константой. Для ручного WireGuard/WARP connection на Keenetic приоритет такой:
 
-Но проект **не закрепляет этот hostname/port как вечную константу**. Используйте endpoint из актуальной WARP/WireGuard-конфигурации: Cloudflare может менять preferred protocol, addresses и ingress behavior.
+1. endpoint из актуальной сгенерированной WARP/WireGuard-конфигурации;
+2. уже проверенный у вас FQDN/port;
+3. только затем — ручные эксперименты с адресами/портами из официальных диапазонов.
 
-Если endpoint задан FQDN, DNS должен работать **до** поднятия этого WARP connection. Не создавайте bootstrap loop, где имя WARP endpoint можно разрешить только через сам ещё не поднятый WARP.
+Не выбирайте случайный IP из Cloudflare CIDR только потому, что он «похож на WARP»: разные продукты и tunnel protocols используют разные pools.
+
+### Актуальные официальные диапазоны Cloudflare
+
+Cloudflare сейчас публикует такую карту WARP ingress для **Cloudflare One Client / Zero Trust**:
+
+| Назначение | IPv4 | IPv6 | Основной порт | Fallback |
+|---|---|---|---|---|
+| WireGuard ingress | `162.159.193.0/24` | `2606:4700:100::/48` | UDP `2408` | UDP `500`, `1701`, `4500` |
+| MASQUE ingress | `162.159.197.0/24` | `2606:4700:102::/48` | UDP `443` | UDP `500`, `1701`, `4500`, `4443`, `8443`, `8095`; TCP `443` как отдельный fallback |
+
+Там же Cloudflare отдельно указывает `162.159.192.0/24` как IPv4-range **consumer WARP (1.1.1.1 with WARP)**.
+
+Источник: [Cloudflare One Client with firewall](https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/deployment/firewall/).
+
+### Почему эту таблицу нельзя копировать вслепую в Keenetic
+
+Наша ручная схема — это не официальный Cloudflare One Client daemon. У штатного клиента есть собственная логика выбора ingress, fallback ports и override endpoint'ов. У обычного WireGuard peer в Keenetic такой логики нет: он подключается к тому endpoint, который записан в конфигурации.
+
+Поэтому:
+
+- не подменяйте consumer WARP endpoint адресом Zero Trust WireGuard pool без причины;
+- не переносите MASQUE pool в WireGuard connection — это другой tunnel protocol;
+- fallback-порты из Cloudflare One Client docs не являются автоматическими fallback'ами вашего Keenetic peer;
+- если хотите сменить port/address вручную, делайте это как отдельный тест и проверяйте handshake.
+
+### `engage.cloudflareclient.com`: важная оговорка
+
+Cloudflare и сейчас документирует `engage.cloudflareclient.com`, но в актуальной Cloudflare One Client документации он фигурирует в **outside-tunnel connectivity checks**. Штатный Cloudflare client может сам направить такой запрос в WARP ingress range, независимо от обычного DNS-ответа.
+
+Ручной Keenetic WireGuard peer этой client-side логики не имеет. Для него FQDN разрешается обычным способом, и именно полученный адрес становится endpoint'ом.
+
+Поэтому наш статус такой:
+
+> `engage.cloudflareclient.com:2408` — подтверждённый рабочий endpoint в операторской конфигурации, но не универсальная гарантия Cloudflare для любой ручной WireGuard-конфигурации.
+
+Если endpoint задан FQDN, DNS должен работать **до** поднятия WARP connection. Не создавайте bootstrap loop, где имя WARP endpoint разрешается только через сам ещё не поднятый WARP.
+
+### Полезные адреса для диагностики — не peer endpoint'ы
+
+В актуальной Cloudflare One Client документации также перечислены:
+
+- `162.159.197.3` / `2606:4700:102::3` — outside-tunnel connectivity check;
+- `162.159.197.4` / `2606:4700:102::4` и `connectivity.cloudflareclient.com` — inside-tunnel connectivity check;
+- `162.159.137.105` и `162.159.138.105` — IPv4 orchestration API endpoints Cloudflare One Client;
+- `api.devices.cloudflare.com` — SNI/API hostname у новых Cloudflare One Client.
+
+Это **не адреса WireGuard peer для нашей ручной consumer WARP-схемы**. Они полезны как карта экосистемы Cloudflare и для диагностики firewall, но не должны попадать в поле «Адрес и порт пира» просто потому, что принадлежат WARP/Cloudflare One.
 
 ---
 
@@ -250,15 +320,37 @@ WARP → ProxyN → Mihomo → WARP → ...
 Минимальный acceptance:
 
 1. Убедиться, что проектный ProxyN активен и указывает на `127.0.0.1:7890`.
-2. В MetaCubeXD выбрать конкретный Mihomo node и проверить, что он поддерживает UDP.
+2. В MetaCubeXD выбрать конкретный Mihomo node и проверить, что он входит в набор с подтверждённым UDP.
 3. В WireGuard/WARP peer выбрать `Подключаться через → mihomo t2sN`.
 4. Убедиться, что WireGuard peer зелёный, handshake обновляется, RX/TX растут.
 5. Назначить WARP interface нужной Connection Policy/клиенту/сегменту.
 6. Проверить внешний IP: он должен принадлежать Cloudflare, а не VPS, если full-tunnel WARP действительно является финальным выходом.
-7. Переключить Mihomo node и повторить handshake/IP-проверку.
-8. Если есть «часть сайтов висит» — сначала проверить MTU; 1200 уже является рабочей контрольной точкой для этой вложенной схемы.
+7. На клиенте через этот policy path открыть `https://www.cloudflare.com/cdn-cgi/trace` и проверить `warp=on`. Cloudflare официально использует этот способ проверки WARP data path.
+8. Дополнительно открыть `https://1.1.1.1/help`: страница показывает состояние Cloudflare/1.1.1.1 и обслуживающий Cloudflare data center. Поле/data-center — диагностическая подсказка, а не гарантия страны egress.
+9. Переключить Mihomo node и повторить handshake, `warp=on` и public-IP проверку.
+10. Если есть «часть сайтов висит» — сначала проверить MTU; 1200 уже является рабочей контрольной точкой для этой вложенной схемы.
 
-Не используйте один только public-IP check как доказательство здоровья всех слоёв: отдельно смотрите WARP peer counters и выбранный Mihomo node.
+Источники проверки: [Cloudflare WARP Linux client — `cdn-cgi/trace`](https://developers.cloudflare.com/warp-client/get-started/linux/) и [Cloudflare 1.1.1.1 — Verify connection](https://developers.cloudflare.com/1.1.1.1/check/).
+
+Не используйте один только public-IP check как доказательство здоровья всех слоёв: отдельно смотрите WARP peer counters, свежесть handshake и выбранный Mihomo node.
+
+### Full-tunnel и IPv6
+
+Для полного IPv4-туннеля у peer обычно есть `AllowedIPs 0.0.0.0/0`. Строка `::/0` означает аналогичное покрытие IPv6, но **сама по себе не включает IPv6 во всём проекте**.
+
+Базовая конфигурация `keenetic-auto-setup` намеренно держит IPv6 выключенным. Поэтому не считайте наличие `::/0` в WARP peer доказательством, что клиентский IPv6 реально идёт через эту цепочку. Если когда-нибудь включите IPv6, отдельно проверяйте:
+
+- IPv6 адресацию клиентов;
+- DNS AAAA;
+- policy routing;
+- отсутствие direct IPv6 path мимо WARP/Mihomo;
+- внешний IPv6 адрес.
+
+Полувключённый IPv6 опаснее, чем явно выключенный: часть трафика может пойти по другому пути и создать ложное ощущение «иногда VPN обходится».
+
+### Что не публиковать из WireGuard-конфига
+
+Публичный ключ peer и endpoint обычно не являются секретами уровня private key, но **PrivateKey WireGuard, registration/license/token WARP и любые credentials нельзя коммитить в репозиторий или вставлять в публичные issue/logs**.
 
 ---
 
