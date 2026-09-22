@@ -8,15 +8,14 @@
 `install.sh` поддерживает aarch64 / armv7 / mipsel / mips и два режима хранения:
 
 - `ram` — проект включает `S00ubifs` для tmpfs runtime-каталогов;
-- `disk` — внешний persistent `/opt`, `S00ubifs` не ставится.
+- `disk` — persistent `/opt`, `S00ubifs` не ставится. Для внешнего `/opt` поддерживается только EXT4.
 
 Перед installer-managed загрузками и изменениями выполняются два read-only gate:
 
-1. resource-profile (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`);
-2. обязательные компоненты KeeneticOS: `proxy`, `dns-filter`,
-   `opkg-kmod-netfilter`.
+1. resource/storage profile (`/proc/meminfo`, `/proc/swaps`, `/proc/mounts`): класс и фактическая ФС `/opt` определяются отдельно; внешний `/opt` на non-EXT4 отклоняется;
+2. обязательные компоненты KeeneticOS: всегда `proxy`, `dns-filter`, `opkg-kmod-netfilter`, а при внешнем `/opt` дополнительно `ext` и `ext-utils`.
 
-Подробные требования: [COMPONENTS_RU.md](COMPONENTS_RU.md).
+Подробные требования: [COMPONENTS_RU.md](COMPONENTS_RU.md). Installer не форматирует, не конвертирует и не исправляет файловую систему; `ext-utils` остаётся штатным инструментарием KeeneticOS для проверки/исправления EXT4.
 
 ## Архитектура Entware
 
