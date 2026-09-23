@@ -131,7 +131,15 @@ grep -q 'Next: %s' "$ROOT/mihomo-doctor.sh" || fail "doctor findings block must 
 grep -q 'No FAIL/WARN findings. No action is required' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain a clean result"
 grep -q 'Enable one backend for the project profile: KeeneticOS zRAM OR external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the <=512 MB backend choice"
 grep -q 'Run update-watchdog.sh, then run Doctor again' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain watchdog repair findings"
-pass "doctor summarizes WARN/FAIL findings with human-readable next steps"
+grep -Fq '*"DNS transit interception not found"*)' "$ROOT/mihomo-doctor.sh" || fail "doctor must keep a dedicated DNS-interception action"
+_dns_action_line=$(grep -nF '*"DNS transit interception not found"*)' "$ROOT/mihomo-doctor.sh" | head -1 | cut -d: -f1)
+_mt_action_line=$(grep -nF '*"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*"Functional DNS query via "*)' "$ROOT/mihomo-doctor.sh" | head -1 | cut -d: -f1)
+[ -n "$_dns_action_line" ] && [ -n "$_mt_action_line" ] && [ "$_dns_action_line" -lt "$_mt_action_line" ] || fail "DNS-interception finding must resolve before the generic MagiTrickle action"
+grep -Fq '/proc/PID/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output must use markdown-safe /proc/PID/exe wording"
+! grep -Fq '/proc/<pid>/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output/comments must avoid markdown-eaten <pid> placeholder"
+grep -Fq 'FAIL findings (%d):' "$ROOT/mihomo-doctor.sh" || fail "doctor summary must not call every FAIL a current blocking outage"
+grep -Fq 'Legacy-profile note: a missing required KeeneticOS component is a supported-profile compliance failure.' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain legacy component-contract FAIL semantics"
+pass "doctor summarizes WARN/FAIL findings with precise legacy-safe next steps"
 
 
 
