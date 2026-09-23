@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `mihomo-doctor.sh` v1.2.3 improves legacy-install interpretation without weakening any contract or exit code: DNS-interception warnings now get the correct `dns-proxy intercept enable` action before the generic MagiTrickle matcher, `/proc/PID/exe` survives Markdown/chat pastes, and the final findings block distinguishes Doctor FAIL findings from proof of a current runtime outage when a legacy router only violates today's component profile.
+
 ### Testing
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 

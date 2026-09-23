@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.2 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.3 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -175,6 +175,9 @@ finding_action() {
         *"Mihomo service is stopped"*)
             printf '%s' "If this was intentional, no action is needed; otherwise start/repair the Mihomo service and re-check."
             ;;
+        *"DNS transit interception not found"*)
+            printf '%s' "Enable Keenetic DNS transit interception (dns-proxy intercept enable); install.sh configures it."
+            ;;
         *"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*"Functional DNS query via "*)
             printf '%s' "If MagiTrickle is intended on this router, repair/restart its package/service or DNS remap and run Doctor again."
             ;;
@@ -189,9 +192,6 @@ finding_action() {
             ;;
         *"bypass_wa policy not found"*)
             printf '%s' "Run install.sh or create the intended bypass_wa failover policy if this project routing path is required."
-            ;;
-        *"DNS transit interception not found"*)
-            printf '%s' "Enable Keenetic DNS transit interception (dns-proxy intercept enable); install.sh configures it."
             ;;
         *"Executable legacy watchdog backup remains inside cron.5mins"*|*"Legacy watchdog layout"*|*"Canonical watchdog present but the cron wrapper is missing"*|*"Watchdog not scheduled"*|*"Watchdog not installed"*|*"Unknown file at "*"cron.5mins"*)
             printf '%s' "Run update-watchdog.sh, then run Doctor again."
@@ -246,8 +246,13 @@ print_human_result() {
     fi
 
     if [ "$N_FAIL" -gt 0 ]; then
-        printf '\nBlocking problems (%d):\n' "$N_FAIL"
+        printf '\nFAIL findings (%d):\n' "$N_FAIL"
         print_finding_group FAIL "$FAIL_MESSAGES"
+        case "$FAIL_MESSAGES" in
+            *"Required KeeneticOS component missing:"*|*"Required secure-DNS KeeneticOS component missing:"*|*"Required external-storage KeeneticOS component missing:"*)
+                info "Legacy-profile note: a missing required KeeneticOS component is a supported-profile compliance failure. On an already-running legacy installation, that finding alone does not prove the current proxy runtime is down; interpret it together with the service, port, ProxyN and watchdog sections."
+                ;;
+        esac
     fi
     if [ "$N_WARN" -gt 0 ]; then
         printf '\nWarnings (%d):\n' "$N_WARN"
@@ -256,9 +261,9 @@ print_human_result() {
 
     echo
     if [ "$N_FAIL" -gt 0 ]; then
-        printf 'Result: %d blocking problem(s) and %d warning(s) need attention.\n' "$N_FAIL" "$N_WARN"
+        printf 'Result: %d FAIL finding(s) and %d warning(s) need attention.\n' "$N_FAIL" "$N_WARN"
     else
-        printf 'Result: no blocking problems; %d warning(s) should be reviewed.\n' "$N_WARN"
+        printf 'Result: no FAIL findings; %d warning(s) should be reviewed.\n' "$N_WARN"
     fi
 }
 
@@ -998,7 +1003,7 @@ hdr "3. Mihomo binary"
 # =========================================================
 
 # Runtime resolution (mirrors update-mihomo.sh / migrate-mihomo-mips.sh):
-# the running daemon's /proc/<pid>/exe is authoritative when it names a
+# the running daemon's /proc/PID/exe is authoritative when it names a
 # canonical path; otherwise /opt/sbin/mihomo (the Entware init PATH
 # order), then /opt/bin/mihomo. Nested copies such as meta-backup/mihomo
 # are never selected as the diagnostic subject; they are only reported
@@ -1022,12 +1027,12 @@ if command -v pidof >/dev/null 2>&1; then
 fi
 if [ -n "$RUNTIME_EXE" ]; then
     BIN="$RUNTIME_EXE"
-    info "Runtime binary resolved from the running daemon (/proc/<pid>/exe): $BIN"
+    info "Runtime binary resolved from the running daemon (/proc/PID/exe): $BIN"
 else
     if [ -n "$_RUNTIME_SEEN" ]; then
         info "Running daemon executes: $_RUNTIME_SEEN (non-canonical path - reported, never selected as the runtime)"
     elif [ "$_READLINK_FAILED" = "1" ]; then
-        info "Could not inspect /proc/<pid>/exe - falling back to the deterministic path order"
+        info "Could not inspect /proc/PID/exe - falling back to the deterministic path order"
     fi
     if [ -f "$OPT_ROOT/sbin/mihomo" ]; then
         BIN="$OPT_ROOT/sbin/mihomo"
