@@ -246,11 +246,31 @@ else
     [ -r /dev/tty ] ||
         error "Interactive terminal not available. Save YAML to a file and run: sh config-import.sh /path/to/config.yaml"
     echo
-    echo "Paste the COMPLETE Mihomo YAML below."
+    echo "Open the generator if needed:"
+    echo "  https://saymer-alt.github.io/link-generators/"
+    echo
+    echo "Paste the COMPLETE Mihomo YAML starting with its first line."
     echo "When the paste is finished, press Ctrl+D once."
+    echo "To skip import, type only: s"
     echo "Nothing will be changed until the candidate passes validation."
     echo
-    cat < /dev/tty > "$STAGE_CONFIG"
+    printf "YAML (or s to skip): " > /dev/tty
+
+    if ! IFS= read -r _ci_first_line < /dev/tty; then
+        echo
+        log "No configuration entered; import skipped."
+        exit 0
+    fi
+
+    case "$_ci_first_line" in
+        s|S|skip|SKIP)
+            log "Config import skipped."
+            exit 0
+            ;;
+    esac
+
+    printf '%s\n' "$_ci_first_line" > "$STAGE_CONFIG"
+    cat < /dev/tty >> "$STAGE_CONFIG"
     echo
     log "Configuration received."
 fi
