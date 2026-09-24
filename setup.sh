@@ -4,7 +4,8 @@ set -e
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
-INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
+INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"
+CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
 
 log() { echo "[setup] $1"; }
@@ -12,7 +13,7 @@ warn() { echo "[WARN] $1"; }
 err() { echo "[ERROR] $1" >&2; exit 1; }
 
 cleanup() {
-    rm -f "$INSTALL_STAGE"
+    rm -f "$INSTALL_STAGE" "$CONFIG_IMPORT_STAGE"
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -114,11 +115,38 @@ echo "The storage mode was selected automatically; all safety checks were perfor
 echo
 echo "Next step: create your Mihomo configuration:"
 echo "  https://saymer-alt.github.io/link-generators/"
-echo
-echo "Copy the complete YAML, then run the safe importer:"
-echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
-echo
-echo "Paste the YAML and press Ctrl+D. The importer validates, backs up, installs and rolls back automatically on failure."
+
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    echo
+    echo "Open the generator, build your config, and copy the complete YAML."
+    printf "When it is copied, press Enter to start safe import (or type s to skip): " > /dev/tty
+    if IFS= read -r _setup_import_answer < /dev/tty; then
+        case "$_setup_import_answer" in
+            s|S|skip|SKIP)
+                log "Config import skipped."
+                echo "Run it later with:"
+                echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
+                ;;
+            *)
+                log "Downloading safe config importer..."
+                retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE" || \
+                    err "Could not download config-import.sh after 3 attempts"
+                sh -n "$CONFIG_IMPORT_STAGE" || err "Downloaded config-import.sh failed shell syntax validation"
+                log "Starting safe config importer..."
+                sh "$CONFIG_IMPORT_STAGE"
+                ;;
+        esac
+    else
+        warn "Could not read from terminal; config import skipped."
+        echo "Run it later with:"
+        echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
+    fi
+else
+    warn "Interactive terminal not available; config import was not started."
+    echo "Run it later with:"
+    echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
+fi
+
 echo
 echo "Optional full diagnostic:"
 echo "  curl -fSsL ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"
