@@ -302,7 +302,7 @@ grep -Fq 'cat < /dev/tty > "$STAGE_CONFIG"' "$ROOT/config-import.sh" || fail "pi
 grep -Fq "mixed-port:[[:space:]]*7890" "$ROOT/config-import.sh" || fail "config importer must enforce project port 7890 before downtime"
 grep -Fq '"$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t' "$ROOT/config-import.sh" || fail "candidate config must be tested before commit"
 grep -Fq 'mv -f "$STAGE_CONFIG" "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config commit must be a same-filesystem atomic rename"
-grep -Fq '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer must retain rollback logic"
+grep -q '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer must retain rollback logic"
 grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/config-import.sh" || fail "failed runtime start must roll back config"
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
 grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
