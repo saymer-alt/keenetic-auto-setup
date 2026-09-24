@@ -22,6 +22,7 @@ The product is the root-level scripts (there are no libraries):
 |---------------------------|------|
 | setup.sh                  | simple front-end: classifies `/opt` as internal/external, selects the normal `ram`/`disk` profile, then delegates all mutations and safety gates to `install.sh` |
 | install.sh                | unified installer (architecture auto-detection: aarch64/armv7/mipsel/mips, including MT7621 — live test passed; modes `ram`\|`disk`, ram = tmpfs) |
+| config-import.sh          | safe config transaction: TTY/file candidate → contract check → one-Mihomo validation → persistent previous-config backup → atomic config commit → runtime verification/rollback |
 | update-mihomo.sh          | updates the Mihomo binary from the entware-go package for all architectures: config test, automatic rollback, one-instance |
 | update-watchdog.sh        | updates/migrates the canonical watchdog using validation + same-filesystem staging + atomic rename |
 | mihomo-watchdog.sh        | cron every 5 min: WAN → port 7890 → socks5h tunnel → restart |
@@ -40,6 +41,7 @@ The most sensitive parts — change only for an explicit task and with full unde
   "no WAN → do not restart" rule (docs/04 explicitly asks not to touch them);
 - idempotency of 020-bypass-wa.sh (the hook runs on every firewall rebuild);
 - rollback chain in update-mihomo.sh and RAM gates;
+- config-import.sh transaction: never validate by launching a second Mihomo beside the daemon; keep the maintenance marker, previous-config backup, same-filesystem atomic commit, runtime verification and rollback ordering intact;
 - `dns-proxy intercept enable` (transit DNS interception) in both installers:
   installer-managed persistent config; before applying — grep against `show running-config`,
   `system configuration save` only when there is an actual change; this is not protection from DoH/DoT;
