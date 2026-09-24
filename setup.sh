@@ -113,34 +113,15 @@ echo
 echo "=== Installation completed ==="
 echo "The storage mode was selected automatically; all safety checks were performed by install.sh."
 echo
-echo "Next step: create your Mihomo configuration:"
-echo "  https://saymer-alt.github.io/link-generators/"
+echo "Next step: Mihomo configuration"
 
 if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    echo
-    echo "Open the generator, build your config, and copy the complete YAML."
-    printf "When it is copied, press Enter to start safe import (or type s to skip): " > /dev/tty
-    if IFS= read -r _setup_import_answer < /dev/tty; then
-        case "$_setup_import_answer" in
-            s|S|skip|SKIP)
-                log "Config import skipped."
-                echo "Run it later with:"
-                echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
-                ;;
-            *)
-                log "Downloading safe config importer..."
-                retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE" || \
-                    err "Could not download config-import.sh after 3 attempts"
-                sh -n "$CONFIG_IMPORT_STAGE" || err "Downloaded config-import.sh failed shell syntax validation"
-                log "Starting safe config importer..."
-                sh "$CONFIG_IMPORT_STAGE"
-                ;;
-        esac
-    else
-        warn "Could not read from terminal; config import skipped."
-        echo "Run it later with:"
-        echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
-    fi
+    log "Downloading safe config importer..."
+    retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE" || \
+        err "Could not download config-import.sh after 3 attempts"
+    sh -n "$CONFIG_IMPORT_STAGE" || err "Downloaded config-import.sh failed shell syntax validation"
+    log "Starting safe config importer..."
+    sh "$CONFIG_IMPORT_STAGE"
 else
     warn "Interactive terminal not available; config import was not started."
     echo "Run it later with:"
