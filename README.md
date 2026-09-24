@@ -18,52 +18,41 @@
 
 ## 1. Установка
 
-### 🚀 Простой вариант — рекомендуется большинству пользователей
-
-Не нужно выбирать `ram` или `disk` вручную. `setup.sh` определит, где расположен `/opt`, выберет штатный профиль и передаст работу основному `install.sh`. Все проверки EXT4, KeeneticOS-компонентов, RAM/swap и остальные safety-gates остаются в каноническом installer.
+Для обычной установки нужен один запуск. `setup.sh` сам определит профиль хранения (`ram`/`disk`), передаст все проверки каноническому installer и после успешной установки **сразу запустит безопасный импорт конфигурации Mihomo**.
 
 ```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
-Если `/opt` нельзя безопасно классифицировать, мастер остановится и предложит использовать расширенный путь вместо угадывания.
+Во время установки мастер проверяет storage, RAM/swap и обязательные компоненты KeeneticOS. Если состояние нельзя определить безопасно, установка останавливается вместо угадывания.
 
-### Расширенная установка
-
-Встроенная память роутера:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
-```
-
-Внешний USB/NVMe с Entware на EXT4:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
-```
-
-Перед внешней установкой `/opt` должен быть на EXT4, а в KeeneticOS должны быть установлены компоненты **Файловая система Ext** (`ext`) и **Утилиты EXT4** (`ext-utils`). NTFS/exFAT и другие ФС не входят в поддерживаемый внешний профиль проекта.
-
-Подробности → [установка](docs/03-install.md)
+Расширенные/ручные варианты установки, явный выбор `ram|disk`, offline/SCP-сценарий и storage override вынесены в [подробную документацию по установке](docs/03-install.md).
 
 ## 2. Конфигурация Mihomo
 
-Откройте генератор → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
+После завершения установки `setup.sh` сам откроет этап **Mihomo Config Import** и покажет ссылку на [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/).
 
-Скопируйте **весь** полученный YAML, затем на роутере запустите безопасный импорт:
+1. Создайте конфигурацию в генераторе.
+2. Скопируйте **весь YAML**, начиная с первой строки `mixed-port: 7890`.
+3. Вернитесь в SSH и вставьте YAML целиком.
+4. Нажмите **Ctrl+D один раз** — это завершает ввод и запускает проверку/установку конфига.
 
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
-```
+Importer проверяет конфигурацию настоящим `mihomo -t`, соблюдает one-Mihomo invariant, сохраняет предыдущий `config.yaml` как backup, устанавливает новый файл атомарно и автоматически откатывается, если Mihomo не запускается или порт 7890 не поднимается.
 
-Вставьте YAML в терминал и нажмите **Ctrl+D**. Importer проверит обязательный `mixed-port: 7890`, остановит Mihomo только на время one-instance validation, выполнит `mihomo -t`, сохранит предыдущий конфиг как `config.yaml.bak`, атомарно установит новый и автоматически откатится, если Mihomo не запустится или порт 7890 не поднимется.
-
-Ручной вариант через `nano /opt/etc/mihomo/config.yaml` остаётся для advanced-сценариев.
+Если конфиг пока не нужен, на приглашении importer можно ввести `s` и выполнить импорт позже.
 
 Подробности → [безопасный импорт config.yaml](docs/13-config-import.md) · [что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [исходники генератора](https://github.com/saymer-alt/link-generators)
 
 ## 3. Проверка и запуск
+
+Быстро открыть текущий конфиг для ручной правки:
+
+```bash
+nano /opt/etc/mihomo/config.yaml
+```
+
+После ручной правки перезапустите Mihomo и проверьте статус.
 
 Doctor:
 
@@ -71,7 +60,7 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
-Перезапуск:
+Перезапуск после ручной правки:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
@@ -138,7 +127,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Документация |
 | --- | --- |
-| [`setup.sh`](setup.sh) | Простой мастер: автоопределение профиля → `install.sh` |
+| [`setup.sh`](setup.sh) | Рекомендуемый мастер: автоопределение профиля → установка → безопасный Config Import |
 | [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
 | [`config-import.sh`](config-import.sh) | [Безопасный импорт config.yaml](docs/13-config-import.md) |
 | [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [MIPS TUN migration](docs/12-updates.md#mips-tun-migration) |

@@ -4,7 +4,8 @@ set -e
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
-INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
+INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"
+CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
 
 log() { echo "[setup] $1"; }
@@ -12,7 +13,7 @@ warn() { echo "[WARN] $1"; }
 err() { echo "[ERROR] $1" >&2; exit 1; }
 
 cleanup() {
-    rm -f "$INSTALL_STAGE"
+    rm -f "$INSTALL_STAGE" "$CONFIG_IMPORT_STAGE"
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -112,13 +113,21 @@ echo
 echo "=== Installation completed ==="
 echo "The storage mode was selected automatically; all safety checks were performed by install.sh."
 echo
-echo "Next step: create your Mihomo configuration:"
-echo "  https://saymer-alt.github.io/link-generators/"
-echo
-echo "Copy the complete YAML, then run the safe importer:"
-echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
-echo
-echo "Paste the YAML and press Ctrl+D. The importer validates, backs up, installs and rolls back automatically on failure."
+echo "Next step: Mihomo configuration"
+
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    log "Downloading safe config importer..."
+    retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE" || \
+        err "Could not download config-import.sh after 3 attempts"
+    sh -n "$CONFIG_IMPORT_STAGE" || err "Downloaded config-import.sh failed shell syntax validation"
+    log "Starting safe config importer..."
+    sh "$CONFIG_IMPORT_STAGE"
+else
+    warn "Interactive terminal not available; config import was not started."
+    echo "Run it later with:"
+    echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
+fi
+
 echo
 echo "Optional full diagnostic:"
 echo "  curl -fSsL ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"
