@@ -29,41 +29,34 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
 
-### Advanced installation
-
-Router internal storage:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
-```
-
-External USB/NVMe with Entware on EXT4:
-
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
-```
-
-For external installation, `/opt` must actually use EXT4 and KeeneticOS must provide **Ext filesystem** (`ext`) and **EXT4 filesystem utilities** (`ext-utils`). NTFS/exFAT and other filesystems are outside the supported external-storage profile.
+Advanced/manual installation, explicit `ram|disk` selection, offline/SCP delivery, and storage overrides are documented separately.
 
 Details → [installation](../03-install.md)
 
 ## 2. Mihomo configuration
 
-Open the generator → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
+After installation, `setup.sh` automatically continues into **Mihomo Config Import** and shows the [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/).
 
-Copy the **entire** generated YAML, then run the safe importer on the router:
+1. Build the configuration in the generator.
+2. Copy the **entire YAML**, starting with `mixed-port: 7890`.
+3. Return to SSH and paste the YAML in one piece.
+4. Press **Ctrl+D once** to finish input and start validation/install.
 
-```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
-```
+The importer runs real `mihomo -t` validation, preserves the one-Mihomo invariant, saves the previous config as `config.yaml.bak`, commits atomically, and rolls back automatically if Mihomo fails to start or port 7890 does not become ready.
 
-Paste the YAML into the terminal and press **Ctrl+D**. The importer checks the required `mixed-port: 7890`, stops Mihomo only for one-instance validation, runs `mihomo -t`, keeps the previous config as `config.yaml.bak`, installs the candidate atomically, and rolls back automatically if Mihomo fails to start or port 7890 does not become ready.
-
-Manual editing with `nano /opt/etc/mihomo/config.yaml` remains available for advanced workflows.
+If you do not want to import a config yet, type `s` at the importer prompt and run it later.
 
 Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
 
 ## 3. Check and start
+
+Quick manual edit of the current config:
+
+```bash
+nano /opt/etc/mihomo/config.yaml
+```
+
+After a manual edit, restart Mihomo and check its status.
 
 Doctor:
 
@@ -71,7 +64,7 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
-Restart:
+Restart after a manual edit:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
@@ -138,7 +131,7 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | Simple auto-profile wrapper → `install.sh` |
+| [`setup.sh`](../../setup.sh) | Recommended wizard: auto-profile → install → safe Config Import |
 | [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Safe config import](CONFIG_IMPORT.md) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
