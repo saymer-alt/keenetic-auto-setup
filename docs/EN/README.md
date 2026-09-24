@@ -46,6 +46,14 @@ The importer runs real `mihomo -t` validation, preserves the one-Mihomo invarian
 
 If you do not want to import a config yet, type `s` at the importer prompt and run it later.
 
+After Mihomo starts successfully, open MetaCubeXD in a browser at:
+
+```text
+http://192.168.1.1:9090/ui/
+```
+
+For the first open, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` with that address.
+
 Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
 
 ## 3. Check and start
