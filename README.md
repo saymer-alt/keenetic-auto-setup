@@ -46,13 +46,21 @@ Importer проверяет конфигурацию настоящим `mihomo 
 
 ## 3. Проверка и запуск
 
+Быстро открыть текущий конфиг для ручной правки:
+
+```bash
+nano /opt/etc/mihomo/config.yaml
+```
+
+После ручной правки перезапустите Mihomo и проверьте статус.
+
 Doctor:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
-Перезапуск:
+Перезапуск после ручной правки:
 
 ```bash
 /opt/etc/init.d/S99mihomo restart
