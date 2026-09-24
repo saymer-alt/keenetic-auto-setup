@@ -295,4 +295,18 @@ grep -q 'KEENETIC_AUTO_SETUP_REF="$PROJECT_REF" sh "$INSTALL_STAGE" "$MODE"' "$R
 grep -q 'stable/setup.sh | sh' "$ROOT/README.md" || fail "README must expose the simple setup wrapper as the happy path"
 pass "simple setup wrapper auto-selects storage profile and delegates all mutations"
 
+# Config import is a transactional config replacement, not a direct overwrite.
+grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/config-import.sh" || fail "config importer must coordinate planned downtime with watchdog"
+grep -Fq 'BACKUP_PATH="$CONFIG_DIR/config.yaml.bak"' "$ROOT/config-import.sh" || fail "config importer must retain the previous config backup"
+grep -Fq 'cat < /dev/tty > "$STAGE_CONFIG"' "$ROOT/config-import.sh" || fail "piped interactive import must read YAML from /dev/tty"
+grep -Fq "mixed-port:[[:space:]]*7890" "$ROOT/config-import.sh" || fail "config importer must enforce project port 7890 before downtime"
+grep -Fq '"$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t' "$ROOT/config-import.sh" || fail "candidate config must be tested before commit"
+grep -Fq 'mv -f "$STAGE_CONFIG" "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config commit must be a same-filesystem atomic rename"
+grep -Fq '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer must retain rollback logic"
+grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/config-import.sh" || fail "failed runtime start must roll back config"
+grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
+grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
+! grep -Fq 'cat > "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config importer must never stream input directly into canonical config"
+pass "config importer validates, atomically commits and rolls back under one-Mihomo safety"
+
 echo "[OK] Contract smoke tests passed"
