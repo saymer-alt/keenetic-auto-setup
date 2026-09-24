@@ -34,6 +34,7 @@ MARKER_OWNED=0
 SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
+CONFIG_COMMIT_STARTED=0
 
 log() { echo "[config] $1"; }
 warn() { echo "[WARN] $1"; }
@@ -190,6 +191,7 @@ rollback_config() {
         error "$_ci_reason — cannot restore config.yaml atomically. Backup remains at $BACKUP_PATH"
 
     CONFIG_REPLACED=0
+    CONFIG_COMMIT_STARTED=0
     log "Previous config restored."
 
     if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
@@ -204,7 +206,7 @@ rollback_config() {
 signal_handler() {
     trap '' INT TERM HUP
     warn "Import interrupted ($1)."
-    if [ "$CONFIG_REPLACED" -eq 1 ]; then
+    if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then
         rollback_config "Import interrupted"
     fi
     if [ "$SERVICE_STOPPED_BY_US" -eq 1 ]; then
@@ -324,6 +326,7 @@ fi
 
 log "Installing config atomically..."
 chmod 600 "$STAGE_CONFIG" 2>/dev/null || true
+CONFIG_COMMIT_STARTED=1
 if ! mv -f "$STAGE_CONFIG" "$CONFIG_PATH"; then
     restore_old_service || true
     error "Atomic config replacement failed. Existing config remains recoverable at $BACKUP_PATH"
@@ -359,6 +362,7 @@ else
 fi
 
 CONFIG_REPLACED=0
+CONFIG_COMMIT_STARTED=0
 SERVICE_STOPPED_BY_US=0
 
 echo
