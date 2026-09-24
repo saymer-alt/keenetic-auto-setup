@@ -20,6 +20,7 @@ The product is the root-level scripts (there are no libraries):
 
 | Script                    | Role |
 |---------------------------|------|
+| setup.sh                  | simple front-end: classifies `/opt` as internal/external, selects the normal `ram`/`disk` profile, then delegates all mutations and safety gates to `install.sh` |
 | install.sh                | unified installer (architecture auto-detection: aarch64/armv7/mipsel/mips, including MT7621 — live test passed; modes `ram`\|`disk`, ram = tmpfs) |
 | update-mihomo.sh          | updates the Mihomo binary from the entware-go package for all architectures: config test, automatic rollback, one-instance |
 | update-watchdog.sh        | updates/migrates the canonical watchdog using validation + same-filesystem staging + atomic rename |

@@ -284,4 +284,17 @@ for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
     grep -Fq 'ext-utils' "$ROOT/$_f" || fail "$_f must document the external ext-utils prerequisite"
 done
 pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
+# Simple front-end must remain a thin selector/delegator, not a second installer.
+grep -q '^PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
+ "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
+grep -q '^PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
+ "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
+grep -q 'MODE=ram' "$ROOT/setup.sh" || fail "simple setup wrapper must select ram for internal /opt"
+grep -q 'MODE=disk' "$ROOT/setup.sh" || fail "simple setup wrapper must select disk for external /opt"
+grep -q 'KEENETIC_AUTO_SETUP_REF="$PROJECT_REF" sh "$INSTALL_STAGE" "$MODE"' "$ROOT/setup.sh" || fail "simple setup wrapper must delegate to canonical install.sh"
+! grep -q 'dns-proxy intercept enable' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate persistent router configuration"
+! grep -q 'ip policy bypass_wa' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate policy mutations"
+grep -q 'stable/setup.sh | sh' "$ROOT/README.md" || fail "README must expose the simple setup wrapper as the happy path"
+pass "simple setup wrapper auto-selects storage profile and delegates all mutations"
+
 echo "[OK] Contract smoke tests passed"
