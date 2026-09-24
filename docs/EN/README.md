@@ -18,21 +18,32 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 
 ## 1. Installation
 
-### Router internal storage — proven option
+### 🚀 Simple path — recommended for most users
+
+You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
 
 ```bash
 opkg update && opkg install curl && \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+```
+
+If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
+
+### Advanced installation
+
+Router internal storage:
+
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
-### External storage — USB HDD / NVMe (EXT4)
-
-Before running the installer, verify that `/opt` is actually on EXT4 and that KeeneticOS has **Ext filesystem** (`ext`) and **EXT4 filesystem utilities** (`ext-utils`) installed. NTFS/exFAT and other filesystems are outside the project's supported external-storage profile.
+External USB/NVMe with Entware on EXT4:
 
 ```bash
-opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
 ```
+
+For external installation, `/opt` must actually use EXT4 and KeeneticOS must provide **Ext filesystem** (`ext`) and **EXT4 filesystem utilities** (`ext-utils`). NTFS/exFAT and other filesystems are outside the supported external-storage profile.
 
 Details → [installation](../03-install.md)
 
@@ -121,6 +132,7 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Documentation |
 | --- | --- |
+| [`setup.sh`](../../setup.sh) | Simple auto-profile wrapper → `install.sh` |
 | [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |

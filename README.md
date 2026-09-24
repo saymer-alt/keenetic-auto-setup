@@ -18,21 +18,32 @@
 
 ## 1. Установка
 
-### Встроенная память роутера — проверенный вариант
+### 🚀 Простой вариант — рекомендуется большинству пользователей
+
+Не нужно выбирать `ram` или `disk` вручную. `setup.sh` определит, где расположен `/opt`, выберет штатный профиль и передаст работу основному `install.sh`. Все проверки EXT4, KeeneticOS-компонентов, RAM/swap и остальные safety-gates остаются в каноническом installer.
 
 ```bash
 opkg update && opkg install curl && \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+```
+
+Если `/opt` нельзя безопасно классифицировать, мастер остановится и предложит использовать расширенный путь вместо угадывания.
+
+### Расширенная установка
+
+Встроенная память роутера:
+
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
 ```
 
-### Внешний носитель — USB HDD / NVMe (EXT4)
-
-Перед запуском убедитесь, что `/opt` действительно расположен на EXT4 и в KeeneticOS установлены компоненты **Файловая система Ext** (`ext`) и **Утилиты EXT4** (`ext-utils`). NTFS/exFAT и другие ФС не входят в поддерживаемый внешний профиль проекта.
+Внешний USB/NVMe с Entware на EXT4:
 
 ```bash
-opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh -s -- disk
 ```
+
+Перед внешней установкой `/opt` должен быть на EXT4, а в KeeneticOS должны быть установлены компоненты **Файловая система Ext** (`ext`) и **Утилиты EXT4** (`ext-utils`). NTFS/exFAT и другие ФС не входят в поддерживаемый внешний профиль проекта.
 
 Подробности → [установка](docs/03-install.md)
 
@@ -121,6 +132,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Документация |
 | --- | --- |
+| [`setup.sh`](setup.sh) | Простой мастер: автоопределение профиля → `install.sh` |
 | [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
 | [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [MIPS TUN migration](docs/12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |

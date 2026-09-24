@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added `setup.sh`, a deliberately thin simple-install front-end that detects whether `/opt` is on internal or external persistent storage, chooses the normal `ram`/`disk` profile automatically, validates the downloaded canonical installer, and delegates all router mutations and safety gates to `install.sh`. README now presents this as the default happy path while keeping manual mode selection as an advanced path.
+
 ### Changed
 - `mihomo-doctor.sh` v1.2.3 improves legacy-install interpretation without weakening any contract or exit code: DNS-interception warnings now get the correct `dns-proxy intercept enable` action before the generic MagiTrickle matcher, `/proc/PID/exe` survives Markdown/chat pastes, and the final findings block distinguishes Doctor FAIL findings from proof of a current runtime outage when a legacy router only violates today's component profile.
 
