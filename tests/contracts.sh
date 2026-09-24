@@ -306,6 +306,10 @@ grep -Fq '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer 
 grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/config-import.sh" || fail "failed runtime start must roll back config"
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
 grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
+grep -Fq 'CONFIG_COMMIT_STARTED=1' "$ROOT/config-import.sh" || fail "config importer must mark the commit phase before atomic replacement"
+grep -Fq 'if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then' "$ROOT/config-import.sh" || fail "signals during the commit window must roll back"
+grep -Fq 'CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate with active config import"
+grep -Fq 'if config_import_active; then' "$ROOT/update-mihomo.sh" || fail "updater must refuse active config import before acquiring update lock"
 ! grep -Fq 'cat > "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config importer must never stream input directly into canonical config"
 pass "config importer validates, atomically commits and rolls back under one-Mihomo safety"
 
