@@ -285,10 +285,8 @@ for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
 done
 pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
 # Simple front-end must remain a thin selector/delegator, not a second installer.
-grep -q '^PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
- "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
-grep -q '^PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
- "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
+grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
+grep -Fq 'PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"' "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
 grep -q 'MODE=ram' "$ROOT/setup.sh" || fail "simple setup wrapper must select ram for internal /opt"
 grep -q 'MODE=disk' "$ROOT/setup.sh" || fail "simple setup wrapper must select disk for external /opt"
 grep -q 'KEENETIC_AUTO_SETUP_REF="$PROJECT_REF" sh "$INSTALL_STAGE" "$MODE"' "$ROOT/setup.sh" || fail "simple setup wrapper must delegate to canonical install.sh"
