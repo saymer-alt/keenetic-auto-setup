@@ -115,12 +115,10 @@ echo
 echo "Next step: create your Mihomo configuration:"
 echo "  https://saymer-alt.github.io/link-generators/"
 echo
-echo "Then edit:"
-echo "  nano /opt/etc/mihomo/config.yaml"
+echo "Copy the complete YAML, then run the safe importer:"
+echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
 echo
-echo "After saving the config:"
-echo "  /opt/etc/init.d/S99mihomo restart"
-echo "  /opt/etc/init.d/S99mihomo status"
+echo "Paste the YAML and press Ctrl+D. The importer validates, backs up, installs and rolls back automatically on failure."
 echo
 echo "Optional full diagnostic:"
 echo "  curl -fSsL ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"

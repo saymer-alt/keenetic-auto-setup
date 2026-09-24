@@ -49,13 +49,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 ## 2. Конфигурация Mihomo
 
-Открыть генератор → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
+Откройте генератор → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
+
+Скопируйте **весь** полученный YAML, затем на роутере запустите безопасный импорт:
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
 ```
 
-Подробности → [что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [исходники генератора](https://github.com/saymer-alt/link-generators)
+Вставьте YAML в терминал и нажмите **Ctrl+D**. Importer проверит обязательный `mixed-port: 7890`, остановит Mihomo только на время one-instance validation, выполнит `mihomo -t`, сохранит предыдущий конфиг как `config.yaml.bak`, атомарно установит новый и автоматически откатится, если Mihomo не запустится или порт 7890 не поднимется.
+
+Ручной вариант через `nano /opt/etc/mihomo/config.yaml` остаётся для advanced-сценариев.
+
+Подробности → [безопасный импорт config.yaml](docs/13-config-import.md) · [что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [исходники генератора](https://github.com/saymer-alt/link-generators)
 
 ## 3. Проверка и запуск
 
@@ -134,6 +140,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 | --- | --- |
 | [`setup.sh`](setup.sh) | Простой мастер: автоопределение профиля → `install.sh` |
 | [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
+| [`config-import.sh`](config-import.sh) | [Безопасный импорт config.yaml](docs/13-config-import.md) |
 | [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [MIPS TUN migration](docs/12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Архитектура](ARCHITECTURE.md) |

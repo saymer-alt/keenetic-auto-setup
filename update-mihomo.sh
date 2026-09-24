@@ -487,6 +487,22 @@ acquire_lock() {
   error "Another Mihomo update is already running. Aborting."
 }
 
+# A config import also needs exclusive access to the Mihomo service lifecycle.
+# If it already owns its lock and the recorded pid is still alive, do not start
+# a binary update. The reciprocal check in config-import.sh covers the opposite
+# race (updater starts first).
+CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"
+config_import_active() {
+  [ -d "$CONFIG_IMPORT_LOCK" ] || return 1
+  _ci_pid=$(cat "$CONFIG_IMPORT_LOCK/pid" 2>/dev/null || true)
+  case "$_ci_pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ -d "/proc/$_ci_pid" ]
+}
+
+if config_import_active; then
+  error "A Mihomo config import is already running (pid $_ci_pid). Finish it before updating the binary."
+fi
+
 acquire_lock
 
 # Maintenance coordination: while this transaction runs, the watchdog

@@ -51,11 +51,17 @@ Details → [installation](../03-install.md)
 
 Open the generator → [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/)
 
+Copy the **entire** generated YAML, then run the safe importer on the router:
+
 ```bash
-nano /opt/etc/mihomo/config.yaml
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
 ```
 
-Details → [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
+Paste the YAML into the terminal and press **Ctrl+D**. The importer checks the required `mixed-port: 7890`, stops Mihomo only for one-instance validation, runs `mihomo -t`, keeps the previous config as `config.yaml.bak`, installs the candidate atomically, and rolls back automatically if Mihomo fails to start or port 7890 does not become ready.
+
+Manual editing with `nano /opt/etc/mihomo/config.yaml` remains available for advanced workflows.
+
+Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
 
 ## 3. Check and start
 
@@ -134,6 +140,7 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 | --- | --- |
 | [`setup.sh`](../../setup.sh) | Simple auto-profile wrapper → `install.sh` |
 | [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
+| [`config-import.sh`](../../config-import.sh) | [Safe config import](CONFIG_IMPORT.md) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Architecture](../../ARCHITECTURE.md) |
