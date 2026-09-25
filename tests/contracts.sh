@@ -215,6 +215,16 @@ grep -q 'permit order is user-defined' "$ROOT/mihomo-doctor.sh" || fail "Doctor 
 ! grep -q 'bypass_wa policy has other interface permits but not the project proxy' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not require the project ProxyN in a nonempty user-owned bypass policy"
 pass "Doctor accepts nonempty user-owned bypass_wa policy"
 
+grep -Fq 'iptables -t mangle -S _CUST_BYPASS_WA_' "$ROOT/mihomo-doctor.sh" || fail "Doctor must inspect the live bypass chain, not only policy/chain existence"
+grep -Fq 'iptables -t mangle -S PREROUTING' "$ROOT/mihomo-doctor.sh" || fail "Doctor must verify the bypass PREROUTING attachment"
+grep -Fq 'multiport-MARK' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require the bypass multiport MARK rule"
+grep -Fq 'multiport-CONNMARK' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require the bypass multiport CONNMARK rule"
+grep -Fq 'multiport-RETURN' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require the bypass multiport RETURN rule"
+grep -Fq 'bypass_wa Netfilter rules incomplete' "$ROOT/mihomo-doctor.sh" || fail "Doctor must FAIL an empty/incomplete bypass chain"
+grep -Fq 'xt_multiport' "$ROOT/docs/COMPONENTS_RU.md" || fail "component docs must preserve the proven xt_multiport dependency"
+grep -Fq 'НЕ ТРЕБУЕТСЯ текущему bypass' "$ROOT/docs/COMPONENTS_RU.md" || fail "component docs must preserve the proven Xtables-addons result"
+pass "Doctor and docs preserve the KN-1010 bypass_wa runtime contract"
+
 sh -n "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must remain valid POSIX shell syntax"
 grep -qi 'read-only' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must document its read-only API contract"
 grep -Eq 'the only (HTTP )?request ever made is GET /proxies' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must keep GET /proxies as its only request"
