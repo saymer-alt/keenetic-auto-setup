@@ -11,7 +11,7 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 - Keenetic with Entware / OPKG
 - Shell access
 - Internet access
-- KeeneticOS: **Proxy client** (`proxy`) and at least one secure-DNS component — `dns-tls` **or** `dns-https`
+- KeeneticOS: **Proxy client** (`proxy`), **Cloud-based content filtering and ad blocking** (`dns-filter`), **Kernel modules for Netfilter** (`opkg-kmod-netfilter`), and at least one secure-DNS component — `dns-tls` **or** `dns-https`
 - If `/opt` is on external USB/NVMe storage: **EXT4 only**; KeeneticOS components `ext` and `ext-utils` are required
 - For the normal internal-`/opt` profile the project uses **S00ubifs**: `/opt/tmp`, `/opt/var/log`, and `/opt/var/run` are moved to `tmpfs` (RAM), reducing continuous writes to internal flash while configs and packages stay persistent
 
