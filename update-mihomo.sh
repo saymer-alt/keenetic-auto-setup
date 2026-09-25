@@ -21,6 +21,13 @@
 #     (and remains exactly as it was after rollback). opkg itself is used only for
 #     architecture information and, if missing, for the updater's own tool
 #     dependencies (curl, jq, gzip).
+#   - The updater owns a separate persistent binary-state record at
+#     /opt/etc/keenetic-auto-setup-mihomo.state. It describes the canonical
+#     binary actually committed by this updater (runtime version, source asset,
+#     package release and size) without pretending that the whole Entware
+#     package was installed. The state file is backed up before replacement,
+#     committed atomically while the service is stopped, and restored together
+#     with the old binary on rollback.
 #   - Transactional replacement: the candidate is staged ON the destination
 #     filesystem (/opt/<dir>/.mihomo.new.$$) and committed with a single
 #     same-filesystem atomic rename - the canonical binary never passes
