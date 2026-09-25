@@ -34,6 +34,7 @@ All notable changes to this project will be documented in this file.
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 
 ### Documentation
+- Clarified that MetaCubeXD/port 9090 is only expected after importing a full generated config with `external-controller`; skipping Config Import intentionally leaves the minimal 7890-only bootstrap while MagiTrickle 8080 remains available.
 - README now calls out S00ubifs as part of the normal internal-storage profile: volatile tmp/log/run paths are moved to RAM-backed tmpfs to reduce continuous writes to internal flash, while persistent configs/packages remain on storage.
 - Added dedicated user guides for `setup.sh` and `mihomo-route-check.sh` in RU/EN, including storage/profile behavior, safe config handoff, route-check interpretation, read-only guarantees and limitations.
 - README now exposes both operator web entry points (MetaCubeXD on `:9090/ui/` and MagiTrickle on `:8080/`), makes user-config preservation/rollback more visible, and separates manual iptables/ProxyN/routing/DNS/storage overrides into an explicit advanced/risk-zone section.
