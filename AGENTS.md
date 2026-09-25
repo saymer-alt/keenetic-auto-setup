@@ -135,6 +135,7 @@ Risk-zone specifics:
 
 - Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
   bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.
+- Repository search/index results are discovery aids, not proof of current branch state. Before asserting current content, editing, or comparing evidence, fetch the exact file/blob from the intended branch/ref and verify its SHA; search indexing may lag behind recent commits.
 - Do not rewrite working architecture. Changes should be minimal diffs in the existing
   style: POSIX sh, log/warn/err functions, retry 3×, `command -v` checks.
 - Do not shorten "redundant" fallback chains (jq → grep → repeated request → HTML →
