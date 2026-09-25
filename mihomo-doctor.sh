@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.4 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.5 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -123,6 +123,18 @@ finding_action() {
             ;;
         *"Unsupported external /opt filesystem:"*)
             printf '%s' "Migrate/reformat the external Entware storage to EXT4, verify that Keenetic mounts it and Entware starts from it, then run Doctor again. This project never formats or converts storage."
+            ;;
+        *"Supported-profile component missing: dns-filter; runtime DNS interception is currently active"*)
+            printf '%s' "No immediate runtime repair is required: DNS interception is live. This legacy installation does not match the supported component profile; install dns-filter before reprovisioning or rebuilding the component set, then re-check."
+            ;;
+        *"Supported-profile component missing: opkg-kmod-netfilter; runtime bypass_wa Netfilter capability is currently verified"*)
+            printf '%s' "No immediate runtime repair is required: the bypass rules are live. This legacy installation does not match the supported component profile; install opkg-kmod-netfilter before reprovisioning or rebuilding the component set, then re-check."
+            ;;
+        *"Supported-profile component missing and runtime DNS interception is not active: dns-filter"*)
+            printf '%s' "Install dns-filter, enable dns-proxy intercept, and run Doctor again; both supported-profile evidence and the required runtime DNS-interception capability are absent."
+            ;;
+        *"Supported-profile component missing:"*"unverified"*)
+            printf '%s' "The component profile is incomplete and Doctor could not prove the corresponding runtime capability. Restore the named component or re-run when the runtime state can be validated."
             ;;
         *"Required secure-DNS KeeneticOS component missing:"*)
             printf '%s' "Install at least one KeeneticOS secure-DNS component: DNS-over-TLS proxy (dns-tls) or DNS-over-HTTPS proxy (dns-https), then run Doctor again. Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client."
@@ -256,7 +268,7 @@ print_human_result() {
         print_finding_group FAIL "$FAIL_MESSAGES"
         case "$FAIL_MESSAGES" in
             *"Required KeeneticOS component missing:"*|*"Required secure-DNS KeeneticOS component missing:"*|*"Required external-storage KeeneticOS component missing:"*)
-                info "Legacy-profile note: a missing required KeeneticOS component is a supported-profile compliance failure. On an already-running legacy installation, that finding alone does not prove the current proxy runtime is down; interpret it together with the service, port, ProxyN and watchdog sections."
+                info "Legacy-profile note: direct component FAILs are reserved for prerequisites whose current runtime capability is not separately proven by Doctor. dns-filter/opkg-kmod-netfilter are capability-correlated later in the report."
                 ;;
         esac
     fi
@@ -606,6 +618,14 @@ if [ "$MIHOMO_PROCS" -gt 1 ]; then
     warn "Multiple mihomo processes observed ($MIHOMO_PROCS PIDs:$MIHOMO_PIDS) - the invariant is exactly one; no Mihomo executable is run while any of them lives"
 fi
 
+# Component IDs are install-profile evidence. For two legacy-sensitive
+# capabilities (DNS interception and bypass_wa Netfilter rules), Doctor defers
+# missing-component severity until the live runtime capability is checked.
+DOC_DNS_FILTER_COMPONENT=unknown
+DOC_NETFILTER_COMPONENT=unknown
+DNS_INTERCEPT_RUNTIME=unknown
+BYPASS_NETFILTER_RUNTIME=unknown
+
 # =========================================================
 hdr "1. System"
 # =========================================================
@@ -648,13 +668,31 @@ if command -v ndmc >/dev/null 2>&1; then
             _dch_id="$1"
             printf '%s\n' "$SV_OUT" | grep -Eq "(^|[,:[:space:]])${_dch_id}([,[:space:]]|$)"
         }
-        for _drc_id in proxy dns-filter opkg-kmod-netfilter; do
-            if _doctor_component_has "$_drc_id"; then
-                ok "Required KeeneticOS component present: $_drc_id"
-            else
-                fail "Required KeeneticOS component missing: $_drc_id"
-            fi
-        done
+        # Proxy remains a direct hard prerequisite. dns-filter and
+        # opkg-kmod-netfilter can be absent from show version on an already
+        # running legacy installation while the corresponding capability is
+        # still live, so their final severity is decided in section 7.
+        if _doctor_component_has proxy; then
+            ok "Required KeeneticOS component present: proxy"
+        else
+            fail "Required KeeneticOS component missing: proxy"
+        fi
+
+        if _doctor_component_has dns-filter; then
+            DOC_DNS_FILTER_COMPONENT=present
+            ok "Required KeeneticOS component present: dns-filter"
+        else
+            DOC_DNS_FILTER_COMPONENT=missing
+            info "Supported-profile component not reported by show version: dns-filter; current severity will be decided from live DNS-interception capability"
+        fi
+
+        if _doctor_component_has opkg-kmod-netfilter; then
+            DOC_NETFILTER_COMPONENT=present
+            ok "Required KeeneticOS component present: opkg-kmod-netfilter"
+        else
+            DOC_NETFILTER_COMPONENT=missing
+            info "Supported-profile component not reported by show version: opkg-kmod-netfilter; current severity will be decided from live bypass_wa Netfilter capability"
+        fi
         if _doctor_component_has dns-tls || _doctor_component_has dns-https; then
             _secure_dns_components=""
             _doctor_component_has dns-tls && _secure_dns_components="dns-tls"
@@ -1688,18 +1726,36 @@ else
         esac
 
         if printf '%s\n' "$RC_DUMP" | grep -q "intercept enable"; then
+            DNS_INTERCEPT_RUNTIME=ok
             ok "DNS transit interception enabled (dns-proxy intercept enable)"
         else
-            warn "DNS transit interception not found - transit port-53 DNS bypasses Keenetic's resolver (install.sh enables it; MagiTrickle coverage may suffer)"
+            DNS_INTERCEPT_RUNTIME=missing
+            if [ "$DOC_DNS_FILTER_COMPONENT" != "missing" ]; then
+                warn "DNS transit interception not found - transit port-53 DNS bypasses Keenetic's resolver (install.sh enables it; MagiTrickle coverage may suffer)"
+            fi
         fi
     fi
 fi
+
+case "$DOC_DNS_FILTER_COMPONENT:$DNS_INTERCEPT_RUNTIME" in
+    missing:ok)
+        warn "Supported-profile component missing: dns-filter; runtime DNS interception is currently active on this legacy installation"
+        ;;
+    missing:missing)
+        fail "Supported-profile component missing and runtime DNS interception is not active: dns-filter"
+        ;;
+    missing:unknown)
+        warn "Supported-profile component missing: dns-filter; runtime DNS-interception capability is unverified because running-config could not be validated"
+        ;;
+esac
 
 # Runtime proof for the project VoIP bypass path. A policy/chain name alone is
 # not sufficient: field A/B/C testing on KN-1010 / KeeneticOS 5.1.6 showed
 # that removing opkg-kmod-netfilter after reboot leaves PREROUTING attached to
 # an empty _CUST_BYPASS_WA_ chain because xt_multiport is unavailable.
 _BYPASS_HOOK="$OPT_ROOT/etc/ndm/netfilter.d/020-bypass_wa.sh"
+_bypass_component_hint=""
+[ "$DOC_NETFILTER_COMPONENT" = "missing" ] && _bypass_component_hint="; show version does not report opkg-kmod-netfilter"
 if [ ! -f "$_BYPASS_HOOK" ]; then
     fail "bypass_wa hook missing ($_BYPASS_HOOK)"
 elif [ ! -x "$_BYPASS_HOOK" ]; then
@@ -1709,7 +1765,8 @@ else
 fi
 
 if ! command -v iptables >/dev/null 2>&1; then
-    fail "bypass_wa Netfilter verification unavailable: iptables not found"
+    BYPASS_NETFILTER_RUNTIME=failed
+    fail "bypass_wa Netfilter verification unavailable: iptables not found$_bypass_component_hint"
 else
     _bypass_ports="1400,3478,3482"
     _bypass_pre=$(iptables -t mangle -S PREROUTING 2>/dev/null)
@@ -1718,7 +1775,8 @@ else
     _bypass_chain_rc=$?
 
     if [ "$_bypass_chain_rc" -ne 0 ]; then
-        fail "bypass_wa Netfilter chain missing: _CUST_BYPASS_WA_"
+        BYPASS_NETFILTER_RUNTIME=failed
+        fail "bypass_wa Netfilter chain missing: _CUST_BYPASS_WA_$_bypass_component_hint"
     else
         _bypass_missing=""
         if [ "$_bypass_pre_rc" -ne 0 ] || ! printf '%s\n' "$_bypass_pre" | grep -Fq -- "-j _CUST_BYPASS_WA_"; then
@@ -1735,12 +1793,23 @@ else
         fi
 
         if [ -z "$_bypass_missing" ]; then
+            BYPASS_NETFILTER_RUNTIME=ok
             ok "bypass_wa Netfilter rules present (PREROUTING + UDP multiport MARK/CONNMARK/RETURN)"
         else
-            fail "bypass_wa Netfilter rules incomplete: missing$_bypass_missing"
+            BYPASS_NETFILTER_RUNTIME=failed
+            fail "bypass_wa Netfilter rules incomplete: missing$_bypass_missing$_bypass_component_hint"
         fi
     fi
 fi
+
+case "$DOC_NETFILTER_COMPONENT:$BYPASS_NETFILTER_RUNTIME" in
+    missing:ok)
+        warn "Supported-profile component missing: opkg-kmod-netfilter; runtime bypass_wa Netfilter capability is currently verified on this legacy installation"
+        ;;
+    missing:unknown)
+        warn "Supported-profile component missing: opkg-kmod-netfilter; runtime bypass_wa Netfilter capability is unverified"
+        ;;
+esac
 
 # =========================================================
 hdr "8. Watchdog"

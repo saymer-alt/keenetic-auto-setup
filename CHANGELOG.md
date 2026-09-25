@@ -7,9 +7,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- `mihomo-doctor.sh` v1.2.4 now verifies the live `bypass_wa` Netfilter path instead of accepting policy/chain existence alone: the project hook must exist and be executable, PREROUTING must jump to `_CUST_BYPASS_WA_`, and the chain must contain the expected UDP multiport `MARK`, `CONNMARK` and `RETURN` rules. An empty chain is a FAIL with an `opkg-kmod-netfilter` recovery action.
+- `mihomo-doctor.sh` v1.2.5 now separates supported component-profile compliance from proven legacy runtime capability, and still verifies the live `bypass_wa` Netfilter path instead of accepting policy/chain existence alone: the project hook must exist and be executable, PREROUTING must jump to `_CUST_BYPASS_WA_`, and the chain must contain the expected UDP multiport `MARK`, `CONNMARK` and `RETURN` rules. An empty chain is a FAIL with an `opkg-kmod-netfilter` recovery action.
 
 ### Testing
+- KN-3811 / KeeneticOS 5.1.5 exposed a legacy-positive counterexample: `show version` did not report `dns-filter` or `opkg-kmod-netfilter`, while `dns-proxy intercept enable` was active and the full `_CUST_BYPASS_WA_` multiport MARK/CONNMARK/RETURN ruleset was live. Doctor now reports these as profile-drift WARNs instead of component-only FAILs; installer hard gates remain unchanged.
 - Preserved a live A/B/C field test on KN-1010 / KeeneticOS 5.1.6: with `opkg-kmod-netfilter`, `xt_multiport` and bypass rules were present and real matching traffic reached all three rules (30 packets / 4212 bytes); after removing Netfilter modules and rebooting, Entware iptables plus the bypass policy/chain remained but `xt_multiport` disappeared and the chain was empty; restoring only `opkg-kmod-netfilter` while keeping Xtables-addons disabled restored `xt_multiport` and the rules.
 
 ### Documentation
