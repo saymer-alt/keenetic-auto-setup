@@ -16,8 +16,9 @@
 #     of the new /opt/bin/mihomo binary: the updater extracts
 #     ./opt/bin/mihomo from it and then performs the usual transactional
 #     binary replacement. `opkg install` is never invoked for Mihomo, so the
-#     opkg package database is never touched and can never disagree with the
-#     binary this updater restores on rollback. opkg itself is used only for
+#     opkg package database is never touched. It may therefore remain stale
+#     relative to the runtime binary after a successful binary-only update
+#     (and remains exactly as it was after rollback). opkg itself is used only for
 #     architecture information and, if missing, for the updater's own tool
 #     dependencies (curl, jq, gzip).
 #   - Transactional replacement: the candidate is staged ON the destination
