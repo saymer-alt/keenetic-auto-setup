@@ -225,6 +225,18 @@ grep -Fq 'xt_multiport' "$ROOT/docs/COMPONENTS_RU.md" || fail "component docs mu
 grep -Fq 'НЕ ТРЕБУЕТСЯ текущему bypass' "$ROOT/docs/COMPONENTS_RU.md" || fail "component docs must preserve the proven Xtables-addons result"
 pass "Doctor and docs preserve the KN-1010 bypass_wa runtime contract"
 
+grep -Fq 'DOC_DNS_FILTER_COMPONENT=missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must track dns-filter component drift separately from runtime capability"
+grep -Fq 'DNS_INTERCEPT_RUNTIME=ok' "$ROOT/mihomo-doctor.sh" || fail "Doctor must record live DNS interception capability"
+grep -Fq 'Supported-profile component missing: dns-filter; runtime DNS interception is currently active on this legacy installation' "$ROOT/mihomo-doctor.sh" || fail "Doctor must WARN, not FAIL, when legacy dns-filter ID is absent but DNS interception is live"
+grep -Fq 'Supported-profile component missing and runtime DNS interception is not active: dns-filter' "$ROOT/mihomo-doctor.sh" || fail "Doctor must FAIL when dns-filter profile evidence and runtime interception are both absent"
+grep -Fq 'DOC_NETFILTER_COMPONENT=missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must track opkg-kmod-netfilter component drift separately from runtime capability"
+grep -Fq 'BYPASS_NETFILTER_RUNTIME=ok' "$ROOT/mihomo-doctor.sh" || fail "Doctor must record live bypass Netfilter capability"
+grep -Fq 'Supported-profile component missing: opkg-kmod-netfilter; runtime bypass_wa Netfilter capability is currently verified on this legacy installation' "$ROOT/mihomo-doctor.sh" || fail "Doctor must WARN, not FAIL, when legacy Netfilter component ID is absent but bypass rules are live"
+! grep -Fq 'for _drc_id in proxy dns-filter opkg-kmod-netfilter' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not collapse proxy/dns-filter/netfilter into one immediate component-ID severity loop"
+grep -Fq 'DNS_FILTER_COMPONENT_ID=dns-filter' "$ROOT/install.sh" || fail "installer must keep dns-filter as a hard preflight component"
+grep -Fq 'NETFILTER_COMPONENT_ID=opkg-kmod-netfilter' "$ROOT/install.sh" || fail "installer must keep opkg-kmod-netfilter as a hard preflight component"
+pass "Doctor separates legacy profile drift from proven runtime capability without weakening installer gates"
+
 sh -n "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must remain valid POSIX shell syntax"
 grep -qi 'read-only' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must document its read-only API contract"
 grep -Eq 'the only (HTTP )?request ever made is GET /proxies' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must keep GET /proxies as its only request"
