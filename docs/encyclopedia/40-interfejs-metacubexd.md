@@ -400,6 +400,7 @@ Dimensions → размер карточек
 - [логика выбора, фиксации и Auto Close Connections](https://github.com/MetaCubeX/metacubexd/blob/8bbc8f58fef71148a94fb5c0ff808f79b057337d/packages/ui/stores/proxies.ts);
 - [главная навигация и переключатель режима](https://github.com/MetaCubeX/metacubexd/blob/8bbc8f58fef71148a94fb5c0ff808f79b057337d/packages/ui/components/Sidebar.vue);
 - [Core/XD Config и Smart Recommendation](https://github.com/MetaCubeX/metacubexd/blob/8bbc8f58fef71148a94fb5c0ff808f79b057337d/packages/ui/pages/config.vue);
+- [официальный Mihomo Controller API: `POST /upgrade` для обновления ядра](https://wiki.metacubex.one/ru/api/#upgrade);
 - [русские подписи интерфейса](https://github.com/MetaCubeX/metacubexd/blob/8bbc8f58fef71148a94fb5c0ff808f79b057337d/packages/ui/i18n/locales/ru.json).
 
 ---
