@@ -102,6 +102,36 @@ Keenetic:
 
 ---
 
+## Обязательный Netfilter-компонент и `xt_multiport`
+
+Штатный путь `020-bypass_wa.sh` требует KeeneticOS-компонент
+**«Модули ядра подсистемы Netfilter»** (`opkg-kmod-netfilter`).
+Для одного правила на набор UDP-портов скрипт использует match
+`xt_multiport`, а затем цели `MARK`, `CONNMARK` и `RETURN`.
+
+Отдельный компонент **Xtables-addons для Netfilter** проекту для этого пути
+**не нужен**: `xt_multiport` был изолирован полевым A/B/C-тестом именно за
+`opkg-kmod-netfilter`.
+
+Важно: наличие самой policy `bypass_wa`, перехода из `PREROUTING` и даже
+пустой цепочки `_CUST_BYPASS_WA_` ещё **не доказывает**, что bypass работает.
+Рабочий runtime должен содержать внутри цепочки три правила для
+`1400,3478,3482/udp`: `MARK`, `CONNMARK --save-mark` и `RETURN`.
+
+### Полевой A/B/C-тест — KN-1010, KeeneticOS 5.1.6 stable, 25.09.2026
+
+| Состояние | Наблюдение |
+| --- | --- |
+| A: `opkg-kmod-netfilter` установлен | `xt_multiport` загружен; `_CUST_BYPASS_WA_` содержит MARK/CONNMARK/RETURN; реальный трафик дал 30 пакетов / 4212 байт на всех трёх правилах |
+| B: Netfilter modules и Xtables-addons удалены, затем reboot | Entware `iptables` и policy `bypass_wa` остались; `PREROUTING -> _CUST_BYPASS_WA_` остался; `xt_multiport` исчез; сама `_CUST_BYPASS_WA_` стала пустой |
+| C: возвращён только `opkg-kmod-netfilter`, Xtables-addons оставлен выключенным, затем reboot | `xt_multiport` и все три правила MARK/CONNMARK/RETURN восстановились автоматически без повторного `install.sh` |
+
+Вывод: `opkg-kmod-netfilter` — доказанный hard prerequisite текущего
+VoIP-bypass пути, а Xtables-addons — нет. Doctor проверяет не только component
+ID, но и фактическое содержимое runtime ruleset.
+
+---
+
 ## Главный принцип: ИДЕМПОТЕНТНОСТЬ
 
 Скрипт должен:
@@ -123,9 +153,13 @@ Keenetic:
 👉 Не лезем в IPv6 и другие таблицы
 
 2. Загружает модуль
-insmod xt_multiport.ko 2>/dev/null
+```bash
+modprobe xt_multiport 2>/dev/null || \
+insmod /lib/modules/$(uname -r)/xt_multiport.ko 2>/dev/null
+```
 
-👉 Для работы с несколькими портами
+👉 `xt_multiport` предоставляет обязательный для этого пути компонент
+`opkg-kmod-netfilter`; Xtables-addons не требуется.
 
 3. Создаёт цепочку (без дубликатов)
 iptables -w -t mangle -N _CUST_BYPASS_WA_ 2>/dev/null
