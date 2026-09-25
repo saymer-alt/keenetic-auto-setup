@@ -155,14 +155,14 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | Recommended wizard: auto-profile → install → safe Config Import |
+| [`setup.sh`](../../setup.sh) | [Recommended wizard: auto-profile → install → safe Config Import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Safe config import](CONFIG_IMPORT.md) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Architecture](../../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](../11-proxy-selection-watch.md) |
-| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | Focused read-only domain/IP path diagnostic |
+| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Focused read-only domain/IP path diagnostic](ROUTE_CHECK.md) |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Mihomo update](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Watchdog update](UPDATES.md#watchdog-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Watchdog](../04-watchdog.md) |
