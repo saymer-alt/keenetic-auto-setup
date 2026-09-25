@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 
 ### Documentation
+- README now calls out S00ubifs as part of the normal internal-storage profile: volatile tmp/log/run paths are moved to RAM-backed tmpfs to reduce continuous writes to internal flash, while persistent configs/packages remain on storage.
 - Added dedicated user guides for `setup.sh` and `mihomo-route-check.sh` in RU/EN, including storage/profile behavior, safe config handoff, route-check interpretation, read-only guarantees and limitations.
 - README now exposes both operator web entry points (MetaCubeXD on `:9090/ui/` and MagiTrickle on `:8080/`), makes user-config preservation/rollback more visible, and separates manual iptables/ProxyN/routing/DNS/storage overrides into an explicit advanced/risk-zone section.
 - Roadmap records focused route/domain diagnostics as a separate read-only helper rather than expanding Doctor into a heavy tracer.
