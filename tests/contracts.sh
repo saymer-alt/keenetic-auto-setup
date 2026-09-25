@@ -425,7 +425,7 @@ grep -Fq 'Same version ($CURRENT_VER) and --force given: replacing the binary an
 grep -Fq 'stale metadata - expected after binary-only updates' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain stale opkg metadata as expected binary-only update state"
 pass "binary-only Mihomo update and stale-opkg semantics remain pinned"
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/update-mihomo.sh" || fail "updater must persist project-owned Mihomo binary state"
-grep -Fq 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$"' "$ROOT/update-mihomo.sh" || fail "updater must back up binary state before replacement"
+grep -Fq 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"' "$ROOT/update-mihomo.sh" || fail "updater must back up binary state before replacement"
 grep -Fq 'STATE_COMMITTED=1' "$ROOT/update-mihomo.sh" || fail "updater must track committed binary state for rollback"
 grep -Fq 'restore_binary_state()' "$ROOT/update-mihomo.sh" || fail "updater rollback must restore project binary state"
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must read project-owned Mihomo binary state"
