@@ -102,6 +102,36 @@ Keenetic:
 
 ---
 
+## Обязательный Netfilter-компонент и `xt_multiport`
+
+Штатный путь `020-bypass_wa.sh` требует KeeneticOS-компонент
+**«Модули ядра подсистемы Netfilter»** (`opkg-kmod-netfilter`).
+Для одного правила на набор UDP-портов скрипт использует match
+`xt_multiport`, а затем цели `MARK`, `CONNMARK` и `RETURN`.
+
+Отдельный компонент **Xtables-addons для Netfilter** проекту для этого пути
+**не нужен**: `xt_multiport` был изолирован полевым A/B/C-тестом именно за
+`opkg-kmod-netfilter`.
+
+Важно: наличие самой policy `bypass_wa`, перехода из `PREROUTING` и даже
+пустой цепочки `_CUST_BYPASS_WA_` ещё **не доказывает**, что bypass работает.
+Рабочий runtime должен содержать внутри цепочки три правила для
+`1400,3478,3482/udp`: `MARK`, `CONNMARK --save-mark` и `RETURN`.
+
+### Полевой A/B/C-тест — KN-1010, KeeneticOS 5.1.6 stable, 25.09.2026
+
+| Состояние | Наблюдение |
+| --- | --- |
+| A: `opkg-kmod-netfilter` установлен | `xt_multiport` загружен; `_CUST_BYPASS_WA_` содержит MARK/CONNMARK/RETURN; реальный трафик дал 30 пакетов / 4212 байт на всех трёх правилах |
+| B: Netfilter modules и Xtables-addons удалены, затем reboot | Entware `iptables` и policy `bypass_wa` остались; `PREROUTING -> _CUST_BYPASS_WA_` остался; `xt_multiport` исчез; сама `_CUST_BYPASS_WA_` стала пустой |
+| C: возвращён только `opkg-kmod-netfilter`, Xtables-addons оставлен выключенным, затем reboot | `xt_multiport` и все три правила MARK/CONNMARK/RETURN восстановились автоматически без повторного `install.sh` |
+
+Вывод: `opkg-kmod-netfilter` — доказанный hard prerequisite текущего
+VoIP-bypass пути, а Xtables-addons — нет. Doctor проверяет не только component
+ID, но и фактическое содержимое runtime ruleset.
+
+---
+
 ## Главный принцип: ИДЕМПОТЕНТНОСТЬ
 
 Скрипт должен:
@@ -114,118 +144,102 @@ Keenetic:
 
 ## Что делает скрипт
 
-### 1. Проверяет контекст
+### 1. Ограничивает контекст
 
-```bash
-[ "$type" = "ip6tables" ] && exit
-[ "$table" != "mangle" ] && exit
+```sh
+[ "$type" = "ip6tables" ] && exit 0
+[ "$table" != "mangle" ] && exit 0
+```
 
-👉 Не лезем в IPv6 и другие таблицы
+Hook не изменяет IPv6 и не работает вне таблицы `mangle`.
 
-2. Загружает модуль
-insmod xt_multiport.ko 2>/dev/null
+### 2. Загружает `xt_multiport`
 
-👉 Для работы с несколькими портами
+```sh
+modprobe xt_multiport 2>/dev/null || \
+insmod /lib/modules/$(uname -r)/xt_multiport.ko 2>/dev/null
+```
 
-3. Создаёт цепочку (без дубликатов)
-iptables -w -t mangle -N _CUST_BYPASS_WA_ 2>/dev/null
-iptables -w -t mangle -F _CUST_BYPASS_WA_
+`xt_multiport` для этого пути предоставляет обязательный компонент
+`opkg-kmod-netfilter`. Отдельный Xtables-addons текущему hook не требуется.
 
-👉 Если уже есть — просто очищаем
+### 3. Создаёт и очищает свою цепочку
 
-4. Подключает цепочку
-iptables -w -t mangle -C PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_ 2>/dev/null \
-  || iptables -w -t mangle -A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_
+```sh
+iptables -w -t mangle -N _CUST_BYPASS_WA_ 2>/dev/null || \
+iptables -w -t mangle -F _CUST_BYPASS_WA_ || true
+```
 
-👉 Не добавляем дубликаты
+Повторный вызов не должен плодить дубликаты.
 
-5. Маркирует VoIP трафик
+### 4. Подключает цепочку к PREROUTING
+
+```sh
+iptables -w -t mangle -C PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_ >/dev/null 2>&1 || \
+iptables -w -t mangle -A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_ || true
+```
+
+В цепочку попадают только ещё не помеченные пакеты.
+
+### 5. Маркирует целевые UDP-порты
+
+Текущий набор:
+
+```sh
 ports="1400,3478,3482"
+```
 
-iptables -w -t mangle -A _CUST_BYPASS_WA_ \
-  -p udp -m multiport --dports $ports \
-  -j MARK --set-mark 0x$mark_id
-6. Сохраняет метку
-iptables -w -t mangle -A _CUST_BYPASS_WA_ -j CONNMARK --save-mark
+Для него hook создаёт три правила: `MARK`, `CONNMARK --save-mark` и
+`RETURN`. Метка берётся из policy `bypass_wa`, поэтому трафик получает
+маршрут этой политики.
 
-👉 Ответный трафик идёт тем же маршрутом
+Эти порты — узкий исторически используемый VoIP/STUN-набор проекта, а не
+гарантированный полный список портов Telegram/WhatsApp/WebRTC. Конкретный
+звонок может использовать другой UDP-порт и работать по другому маршруту;
+поэтому «звонок работает» не равно «сработал `bypass_wa`».
 
-Почему именно эти порты
-Порт	Назначение
-1400	Telegram (legacy voice)
-3478	STUN (WebRTC, WhatsApp)
-3482	WhatsApp voice
-Важно
+### 6. Как проверять здоровье
 
-Это не "порты WhatsApp", а:
-👉 инфраструктура WebRTC/VoIP
+Не проверяйте только имя цепочки:
 
-Проверка
-Есть ли цепочка
-iptables -t mangle -L | grep _CUST_BYPASS_WA_
-Растут ли счётчики
-iptables -t mangle -L _CUST_BYPASS_WA_ -v -n
+```sh
+iptables -t mangle -S _CUST_BYPASS_WA_
+```
 
-👉 Во время звонка должны увеличиваться
+Здоровый вывод содержит три UDP multiport-правила для
+`1400,3478,3482`: `MARK`, `CONNMARK`, `RETURN`.
 
-Есть ли политика
-ndmc -c "show ip policy bypass_wa"
-Типичные проблемы
-VoIP не работает
+Счётчики:
 
-Причины:
+```sh
+iptables -t mangle -L _CUST_BYPASS_WA_ -v -n -x --line-numbers
+```
 
-у политики нет permits — нет выхода (в штатной установке permit добавляет
-install.sh; пустая политика означает, что привязка не выполнилась или снята вручную)
-проектный Proxy-интерфейс не найден (сработала защита чужого Proxy0 — привязка
-пропущена, см. вывод установки)
-Mihomo не запущен — цели 127.0.0.1:7890 нет
-скрипт не применился
+Они растут только когда трафик действительно совпал с этими портами.
+Полевой B-тест показал важную ловушку: без `opkg-kmod-netfilter` цепочка
+и переход из PREROUTING могут сохраниться, но сама цепочка будет пустой.
 
-Проверка:
+Есть ли policy/выход:
 
-в самопроверке установки: [WARN] bypass_wa policy has no interface permit
-маршрут через проектный Proxy: ndmc -c "show ip policy bypass_wa"
+```sh
+curl -kfsS http://localhost:79/rci/show/ip/policy | \
+jq '.[] | select(.description == "bypass_wa")'
+```
 
-Решение:
+### 7. Типичные проблемы
 
-повторный запуск install.sh (привязка идемпотентна)
+- policy есть, но нет permit → у policy нет выхода;
+- проектный ProxyN отсутствует/не работает → целевой путь недоступен;
+- `_CUST_BYPASS_WA_` отсутствует → hook не применился;
+- `_CUST_BYPASS_WA_` существует, но пустая → проверьте
+  `opkg-kmod-netfilter` и `xt_multiport`, затем пересоберите firewall/reboot;
+- правила есть, counters не растут → текущий трафик не совпал с
+  `1400,3478,3482/udp`; это не доказательство поломки Netfilter;
+- дубликаты правил → признак старого/изменённого hook; текущая версия использует
+  `-C` и `-F` для идемпотентности.
 
-или
-
-/etc/init.d/netfilter restart
-
-или
-
-reboot
-Цепочка есть, но трафик не идёт
-
-Проверить:
-
-iptables -t mangle -L _CUST_BYPASS_WA_ -v -n
-
-👉 если счётчики 0 — трафик не попадает
-
-Дубликаты правил
-
-👉 Признак старого/кривого скрипта
-
-Решение:
-
-использовать текущую версию (с -C и -F)
-Почему это "прошло через боль"
-run-parts ненадёжен → используем netfilter.d
-iptables может дублировать правила → проверки через -C
-firewall пересобирается → скрипт должен быть повторяемым
-разные прошивки Keenetic → минимальная зависимость от окружения
-Можно ли расширить
-
-Да:
-
-ports="1400,3478,3482,10000:20000"
-
-Но:
-👉 увеличивается риск обхода прокси для лишнего трафика
+Для повторного применения hook допустим штатный rebuild firewall или reboot.
+Doctor выполняет эти проверки read-only и ничего не перестраивает.
 
 Итог
 

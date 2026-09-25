@@ -790,7 +790,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | Watchdog running? | `cat /opt/var/log/mihomo_watchdog.log` | recent `[OK] All good` |
 | Cron entry present? | `grep mihomo_watchdog /opt/etc/crontab` | exactly one line |
 | Cron daemon? | `ps | grep cron` | cron process present |
-| VoIP hook applied? | `iptables -t mangle -L \| grep _CUST_BYPASS_WA_` | chain exists; counters grow during a call |
+| VoIP hook applied? | `iptables -t mangle -S _CUST_BYPASS_WA_` | UDP multiport `MARK`, `CONNMARK`, `RETURN` rules are present; an empty chain is not healthy |
 | tmpfs mounted? (ram mode) | `mount \| grep tmpfs` | `/opt/tmp`, `/opt/var/log`, `/opt/var/run` |
 | Which WAN interfaces can Mihomo bind? | `sh mihomo-interface-check.sh` | ready `interface-name:` block |
 | DNS transit interception on? | `ndmc -c "show running-config" \| grep intercept` | `intercept enable` in the `dns-proxy` block |
@@ -864,7 +864,7 @@ Not an error — the 300 s anti-loop protection doing its job.
 This can be a path-MTU symptom after extra encapsulation. Do not treat 1200–1300 as a universal default: lower MTU only on the problematic chain and retest. For the documented nested `Keenetic WireGuard/WARP → ProxyN → Mihomo → VPS → Cloudflare` topology, MTU **1200** is a verified working anchor; 1200–1300 is a practical troubleshooting range. Do not confuse the Keenetic WireGuard MTU with Mihomo `tun.mtu`: when WARP enters Mihomo through SOCKS5 `:7890`, `mitun0` may not participate at all. See [the nested-chain article](encyclopedia/34-vlozhennye-tunneli-warp.md) (RU).
 
 **VoIP still broken**
-Check the hook: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — counters must grow during a call, and the `bypass_wa` policy must point to a working VPN interface. Rebuild firewall or reboot to re-trigger the netfilter hook.
+First check the ruleset: `iptables -t mangle -S _CUST_BYPASS_WA_` must contain the UDP multiport `MARK`/`CONNMARK`/`RETURN` rules. An empty chain is not healthy; KN-1010 field testing reproduced that state after removing `opkg-kmod-netfilter`. Then inspect `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n -x --line-numbers`: counters grow only for traffic that actually uses ports 1400/3478/3482, so a successful call on other ports does not prove the bypass path. The separate Xtables-addons package is not required by the current hook.
 
 **Router became unstable after install**
 Often a 128 MB-class device. This is a best-effort profile: tmpfs can push such systems over the edge. Prefer `disk`, watch available RAM, and move to stronger hardware if instability persists.

@@ -798,7 +798,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 | Watchdog работает? | `cat /opt/var/log/mihomo_watchdog.log` | свежее `[OK] All good` |
 | Запись в cron есть? | `grep mihomo_watchdog /opt/etc/crontab` | ровно одна строка |
 | Демон cron? | `ps \| grep cron` | процесс cron на месте |
-| Хук VoIP применён? | `iptables -t mangle -L \| grep _CUST_BYPASS_WA_` | цепочка есть; счётчики растут во время звонка |
+| Хук VoIP применён? | `iptables -t mangle -S _CUST_BYPASS_WA_` | есть UDP multiport-правила `MARK`, `CONNMARK`, `RETURN`; одной пустой цепочки недостаточно |
 | tmpfs смонтирован? (ram) | `mount \| grep tmpfs` | `/opt/tmp`, `/opt/var/log`, `/opt/var/run` |
 | Какие WAN-интерфейсы доступны Mihomo? | `sh mihomo-interface-check.sh` | готовый блок `interface-name:` |
 | Перехват транзитного DNS включён? | `ndmc -c "show running-config" \| grep intercept` | `intercept enable` в блоке `dns-proxy` |
@@ -873,7 +873,7 @@ run-parts-строки для `cron.5mins` (раздел 7.3). Проверьт�
 Это может быть симптом path MTU после дополнительной инкапсуляции. Не ставьте 1200–1300 как универсальный default: уменьшайте MTU только для проблемной цепочки и перепроверяйте трафик. Для нашей вложенной схемы `Keenetic WireGuard/WARP → ProxyN → Mihomo → VPS → Cloudflare` MTU **1200** является проверенной рабочей точкой; 1200–1300 — практический диапазон диагностики. Не путайте этот MTU интерфейса WireGuard с `tun.mtu` Mihomo: если WARP входит в Mihomo через SOCKS5 `:7890`, `mitun0` может вообще не участвовать. См. [статью о вложенной цепочке](encyclopedia/34-vlozhennye-tunneli-warp.md).
 
 **VoIP всё равно не работает**
-Проверьте хук: `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n` — счётчики должны расти во время звонка, а политика `bypass_wa` должна указывать на рабочий VPN-интерфейс. Пересоберите firewall или перезагрузитесь, чтобы хук применился заново.
+Сначала проверьте ruleset: `iptables -t mangle -S _CUST_BYPASS_WA_` должен содержать UDP multiport `MARK`/`CONNMARK`/`RETURN`. Пустая цепочка не считается здоровой и на KN-1010 была воспроизведена после удаления `opkg-kmod-netfilter`. Затем смотрите счётчики `iptables -t mangle -L _CUST_BYPASS_WA_ -v -n -x --line-numbers`: они растут только для трафика на 1400/3478/3482, поэтому успешный звонок на других портах не является доказательством bypass. Xtables-addons текущему hook не нужен.
 
 **Роутер стал нестабильным после установки**
 Часто это устройство на 128 МБ. Такой профиль best-effort: tmpfs может довести систему до предела. Предпочтителен `disk`, нужно следить за свободной RAM; при сохраняющейся нестабильности лучше железо помощнее.

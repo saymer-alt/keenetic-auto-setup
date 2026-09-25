@@ -6,7 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Changed
+- `mihomo-doctor.sh` v1.2.4 now verifies the live `bypass_wa` Netfilter path instead of accepting policy/chain existence alone: the project hook must exist and be executable, PREROUTING must jump to `_CUST_BYPASS_WA_`, and the chain must contain the expected UDP multiport `MARK`, `CONNMARK` and `RETURN` rules. An empty chain is a FAIL with an `opkg-kmod-netfilter` recovery action.
+
+### Testing
+- Preserved a live A/B/C field test on KN-1010 / KeeneticOS 5.1.6: with `opkg-kmod-netfilter`, `xt_multiport` and bypass rules were present and real matching traffic reached all three rules (30 packets / 4212 bytes); after removing Netfilter modules and rebooting, Entware iptables plus the bypass policy/chain remained but `xt_multiport` disappeared and the chain was empty; restoring only `opkg-kmod-netfilter` while keeping Xtables-addons disabled restored `xt_multiport` and the rules.
+
+### Documentation
+- Bypass/component/HOWTO/troubleshooting docs now explain the proven `opkg-kmod-netfilter -> xt_multiport -> multiport bypass rules` dependency, explicitly record that Xtables-addons is not required, and warn that a successful call or an existing `_CUST_BYPASS_WA_` chain alone does not prove that the bypass path carried the traffic.
 
 ---
 

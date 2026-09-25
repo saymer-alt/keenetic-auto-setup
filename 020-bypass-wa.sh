@@ -15,7 +15,9 @@ ports="1400,3478,3482"
 # Custom chain name
 chain="_CUST_BYPASS_WA_"
 
-# Load multiport module if not already loaded
+# Load multiport module if not already loaded.
+# KeeneticOS component opkg-kmod-netfilter provides xt_multiport for this path;
+# the separate Xtables-addons component is not required by this script.
 if ! lsmod | grep -q '^xt_multiport'; then
     modprobe xt_multiport 2>/dev/null || \
     insmod /lib/modules/$(uname -r)/xt_multiport.ko 2>/dev/null
