@@ -42,13 +42,14 @@ Importer проверяет конфигурацию настоящим `mihomo 
 
 Если конфиг пока не нужен, на приглашении importer можно ввести `s` и выполнить импорт позже.
 
-После успешного запуска открыть MetaCubeXD в браузере можно по адресу:
+После успешного запуска доступны два основных веб-интерфейса:
 
 ```text
-http://192.168.1.1:9090/ui/
+MetaCubeXD:   http://192.168.1.1:9090/ui/
+MagiTrickle:  http://192.168.1.1:8080/
 ```
 
-Для первого входа используйте именно базовый путь `/ui/`, без `#/overview` и других hash-маршрутов. Если у роутера другой LAN-IP, замените `192.168.1.1` на его фактический адрес.
+Для первого входа в MetaCubeXD используйте именно базовый путь `/ui/`, без `#/overview` и других hash-маршрутов. Если у роутера другой LAN-IP, замените `192.168.1.1` на его фактический адрес в обеих ссылках.
 
 Подробности → [безопасный импорт config.yaml](docs/13-config-import.md) · [что такое Mihomo](docs/encyclopedia/10-mihomo-eto.md) · [исходники генератора](https://github.com/saymer-alt/link-generators)
 
@@ -68,6 +69,15 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
+Точечная read-only проверка одного домена/IP через цепочку ProxyN → Mihomo:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-route-check.sh -o /tmp/mihomo-route-check.sh && \
+sh /tmp/mihomo-route-check.sh example.com
+```
+
+Helper показывает DNS, проектный ProxyN, порт 7890, текущий выбор Mihomo и делает SOCKS5h-пробу к указанной цели. Он не меняет маршрутизацию и отдельно предупреждает, что успешная SOCKS-проба не доказывает выбор политики конкретным LAN-клиентом.
+
 Перезапуск после ручной правки:
 
 ```bash
@@ -83,6 +93,8 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Подробности → [диагностика и troubleshooting](docs/08-troubleshooting.md)
 
 ## 4. Обновление
+
+Обновление Mihomo не перезаписывает пользовательский `/opt/etc/mihomo/config.yaml`. Безопасный Config Import перед заменой конфига сохраняет `config.yaml.bak` и автоматически откатывается при неуспешной проверке/запуске.
 
 Mihomo:
 
@@ -106,6 +118,10 @@ opkg update && opkg install magitrickle
 Подробности → [обновление, откат и обслуживание](docs/12-updates.md)
 
 ## 5. Дополнительные команды
+
+### Advanced / risk zone
+
+Обычная эксплуатация не требует ручного изменения `iptables`, ProxyN, policy routing, DNS или storage override. Эти действия считаются advanced/risk-zone операциями: ошибка может затронуть весь LAN или закрыть доступ к роутеру. Для диагностики сначала используйте Doctor и read-only helpers; ручные изменения делайте только когда понятна конкретная зависимость и есть путь отката.
 
 MIPS TUN migration:
 
@@ -142,6 +158,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Архитектура](ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](docs/11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](mihomo-route-check.sh) | Точечная read-only диагностика домена/IP через ProxyN → Mihomo |
 | [`update-mihomo.sh`](update-mihomo.sh) | [Обновление Mihomo](docs/12-updates.md#обновление-mihomo) |
 | [`update-watchdog.sh`](update-watchdog.sh) | [Обновление watchdog](docs/12-updates.md#обновление-watchdog) |
 | [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
