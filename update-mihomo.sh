@@ -100,6 +100,10 @@ STAGE_BIN=""
 MIHOMO_STAGE_MARGIN_KB=4096
 RECOVERY_FAILED=0
 MAINT_MARKER="/tmp/mihomo.maintenance"
+BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
+TMP_STATE_BACKUP=""
+STATE_HAD_OLD=0
+STATE_COMMITTED=0
 
 # Parse arguments
 for arg in "$@"; do
@@ -186,10 +190,37 @@ extract_new_binary_from_ipk() {
   return 0
 }
 
-# Rollback helper: restores the pre-update binary and attempts to start the
-# service if this updater is responsible for it being down. The opkg package
-# database is not involved at all: this updater only ever replaces the
-# /opt/bin/mihomo file, so the restored system is exactly the pre-update one.
+# Restore project-owned binary metadata as part of rollback. This state is
+# intentionally separate from opkg: the updater replaces only the canonical
+# Mihomo binary, not the whole package payload.
+restore_binary_state() {
+  [ "$STATE_COMMITTED" -eq 1 ] || return 0
+  _state_dir=${BINARY_STATE%/*}
+  _rollback_stage="$_state_dir/.keenetic-auto-setup-mihomo.state.rollback.$"
+
+  if [ "$STATE_HAD_OLD" -eq 1 ]; then
+    if [ ! -s "$TMP_STATE_BACKUP" ]; then
+      warn "Binary-state rollback backup is missing; runtime binary will still be restored, but project metadata may be stale: $BINARY_STATE"
+      return 1
+    fi
+    if ! cp -f "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
+      rm -f "$_rollback_stage" 2>/dev/null || true
+      warn "Could not restore previous project binary state at $BINARY_STATE"
+      return 1
+    fi
+  else
+    rm -f "$BINARY_STATE" 2>/dev/null || {
+      warn "Could not remove newly-created project binary state during rollback: $BINARY_STATE"
+      return 1
+    }
+  fi
+  STATE_COMMITTED=0
+  return 0
+}
+
+# Rollback helper: restores the pre-update binary AND the project-owned
+# binary-state metadata, then attempts to start the previous service state.
+# opkg package metadata is intentionally not modified by this binary updater.
 rollback_and_exit() {
   log "Rolling back to previous version..."
 
@@ -212,6 +243,10 @@ rollback_and_exit() {
     error "$1 — UPDATE FAILED AND RECOVERY FAILED: backup restored but chmod failed on $MIHOMO_PATH. Fix permissions manually: chmod +x $MIHOMO_PATH"
   fi
   log "Previous binary restored."
+
+  if ! restore_binary_state; then
+    warn "Previous binary is restored, but project binary-state metadata could not be fully restored."
+  fi
 
   if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
@@ -309,6 +344,9 @@ cleanup_tmp() {
     rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
   fi
   rm -f "$TMP_DIR"/mihomo-update.ipk 2>/dev/null || true
+  rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
+  rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.new.* 2>/dev/null || true
+  rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.rollback.* 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 }
 
@@ -1017,6 +1055,18 @@ if [ "$BACKUP_BYTES" != "$TARGET_BYTES" ]; then
   error "Backup verification failed (size $BACKUP_BYTES != $TARGET_BYTES) - nothing was modified, service untouched"
 fi
 
+# Snapshot project-owned binary metadata for rollback. Absence is a valid
+# legacy/out-of-band state and is restored as absence.
+TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$"
+if [ -f "$BINARY_STATE" ]; then
+  if ! cp -f "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
+    error "Failed to back up project binary-state metadata - nothing was modified, service untouched"
+  fi
+  STATE_HAD_OLD=1
+else
+  STATE_HAD_OLD=0
+fi
+
 # -----------------------------
 # 12. Stop the old Mihomo BEFORE the first execution of the new binary.
 #
@@ -1158,6 +1208,33 @@ if [ -d "/opt/etc/mihomo" ]; then
   fi
   log "Config test passed on the installed binary."
 fi
+
+# Commit project-owned binary metadata while the service is still stopped.
+# This file describes the canonical binary only; it does NOT pretend that the
+# whole Entware package was installed through opkg.
+STATE_DIR=${BINARY_STATE%/*}
+STATE_STAGE="$STATE_DIR/.keenetic-auto-setup-mihomo.state.new.$"
+OPKG_META=$(opkg list-installed 2>/dev/null | awk '$1 == "mihomo" { if ($2 == "-" && $3 != "") print $3; else print $2; exit }')
+if ! cat > "$STATE_STAGE" <<EOF
+state_format=1
+runtime_version=$AVAILABLE_VER
+source=entware-go-binary-updater
+asset=$ASSET_NAME
+package_release=$PACKAGE_RELEASE
+binary_size_bytes=$NEW_SIZE_BYTES
+opkg_metadata_at_update=${OPKG_META:-none}
+updated_by=update-mihomo.sh
+EOF
+then
+  rm -f "$STATE_STAGE" 2>/dev/null || true
+  rollback_and_exit "Could not stage project binary-state metadata"
+fi
+if ! mv -f "$STATE_STAGE" "$BINARY_STATE"; then
+  rm -f "$STATE_STAGE" 2>/dev/null || true
+  rollback_and_exit "Could not commit project binary-state metadata"
+fi
+STATE_COMMITTED=1
+log "Project binary state updated: $BINARY_STATE"
 
 # -----------------------------
 # 17. Start service and verify process
