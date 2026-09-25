@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.5 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.6 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -662,12 +662,48 @@ if command -v ndmc >/dev/null 2>&1; then
     if [ -n "$_OS_HWID" ]; then info "Hardware ID: $_OS_HWID"; else info "Hardware ID: not reported by ndmc"; fi
 
     # Mirror the installer's named KeeneticOS component contract read-only.
+    # Keenetic wraps long component IDs in show version output (for example
+    # "dns-" + "filter" and "opkg-kmod-" + "netfilter" on the next line).
+    # Normalize only the components field before matching; otherwise a
+    # line-oriented grep creates false missing-component findings.
+    _doctor_component_list_from_show_version() {
+        printf '%s\n' "$SV_OUT" | awk '
+            /^[[:space:]]*components:[[:space:]]*/ {
+                in_components=1
+                line=$0
+                sub(/^[[:space:]]*components:[[:space:]]*/, "", line)
+                gsub(/[[:space:]]/, "", line)
+                printf "%s", line
+                next
+            }
+            in_components {
+                line=$0
+                sub(/^[[:space:]]*/, "", line)
+                if (line ~ /^[[:alnum:]_-]+(,[[:alnum:]_-]+)*,?$/) {
+                    gsub(/[[:space:]]/, "", line)
+                    printf "%s", line
+                    next
+                }
+                exit
+            }
+            END {
+                if (in_components) printf "\n"
+            }
+        '
+    }
+
     # Missing evidence is UNKNOWN, not proof that every component is absent.
     if [ -n "$SV_OUT" ]; then
+        DOC_COMPONENT_LIST=$(_doctor_component_list_from_show_version)
         _doctor_component_has() {
             _dch_id="$1"
-            printf '%s\n' "$SV_OUT" | grep -Eq "(^|[,:[:space:]])${_dch_id}([,[:space:]]|$)"
+            [ -n "$DOC_COMPONENT_LIST" ] || return 1
+            printf '%s\n' "$DOC_COMPONENT_LIST" | grep -Eq "(^|,)${_dch_id}(,|$)"
         }
+
+        if [ -z "$DOC_COMPONENT_LIST" ]; then
+            info "Required KeeneticOS component state: UNKNOWN / UNVERIFIED because the components field could not be parsed from show version"
+        else
         # Proxy remains a direct hard prerequisite. dns-filter and
         # opkg-kmod-netfilter can be absent from show version on an already
         # running legacy installation while the corresponding capability is
@@ -706,6 +742,7 @@ if command -v ndmc >/dev/null 2>&1; then
             ok "Secure-DNS KeeneticOS component prerequisite satisfied: $_secure_dns_components"
         else
             fail "Required secure-DNS KeeneticOS component missing: install at least one of dns-tls (DNS-over-TLS proxy) or dns-https (DNS-over-HTTPS proxy)"
+        fi
         fi
     else
         info "Required KeeneticOS component state: UNKNOWN / UNVERIFIED because show version is unavailable"
