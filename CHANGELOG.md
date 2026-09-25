@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added `mihomo-route-check.sh`, a focused read-only diagnostic for one domain/IP: it reports target DNS resolution, project ProxyN evidence, local port 7890, current Controller proxy selection, and a SOCKS5h request to the target while explicitly avoiding claims about a specific LAN client's policy classification.
 - Added `setup.sh`, a deliberately thin simple-install front-end that detects whether `/opt` is on internal or external persistent storage, chooses the normal `ram`/`disk` profile automatically, validates the downloaded canonical installer, and delegates all router mutations and safety gates to `install.sh`. README now presents this as the default happy path while keeping manual mode selection as an advanced path.
 - Added `config-import.sh` for the second half of the simple-install flow: interactive YAML paste works through `curl | sh` by reading `/dev/tty`; the candidate must preserve the project `mixed-port: 7890` contract, is validated under the one-Mihomo rule, backed up as `config.yaml.bak`, committed with a same-filesystem atomic rename, and automatically rolled back if validation/startup/port verification fails. `update-mihomo.sh` now refuses to overlap an active config import.
 
@@ -19,6 +20,8 @@ All notable changes to this project will be documented in this file.
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 
 ### Documentation
+- README now exposes both operator web entry points (MetaCubeXD on `:9090/ui/` and MagiTrickle on `:8080/`), makes user-config preservation/rollback more visible, and separates manual iptables/ProxyN/routing/DNS/storage overrides into an explicit advanced/risk-zone section.
+- Roadmap records focused route/domain diagnostics as a separate read-only helper rather than expanding Doctor into a heavy tracer.
 - Added the first Part III encyclopedia article: a source-verified guide to the MetaCubeXD 1.273.1 web interface, including the proxy-group Target/Recommended/Unfix/latency-test buttons, display modes, sorting, card density, batch tests, provider controls, Smart Recommendation/Auto Switch, `rule/global/direct`, Core vs XD settings, and the distinction between view-only and state-changing actions.
 - Expanded Part III with dedicated Russian guides for Controller/API security and remote access, proxy-providers, GEOIP/GEOSITE data, and Mihomo logging; linked older Part II placeholders to the completed articles.
 - Reclassified `tun.stack: mips` on Keenetic from an unverified experiment to a supported optional migration path backed by the existing migrator and live MT7621 lifecycle testing, while avoiding a universal performance claim or automatic/default migration.
