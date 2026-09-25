@@ -53,7 +53,7 @@ def test_updater() -> None:
     require(text, 'Mihomo is running again (watchdog restart?) - stopping before the commit', label)
     require(text, 'MAINT_MARKER="/tmp/mihomo.maintenance"', label)
     require(text, 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"', label)
-    require(text, 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$"', label)
+    require(text, 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"', label)
     require(text, 'restore_binary_state()', label)
     ordered(
         text, label,
