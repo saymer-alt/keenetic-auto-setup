@@ -46,13 +46,14 @@ The importer runs real `mihomo -t` validation, preserves the one-Mihomo invarian
 
 If you do not want to import a config yet, type `s` at the importer prompt and run it later.
 
-After Mihomo starts successfully, open MetaCubeXD in a browser at:
+After Mihomo starts successfully, the two main web interfaces are:
 
 ```text
-http://192.168.1.1:9090/ui/
+MetaCubeXD:   http://192.168.1.1:9090/ui/
+MagiTrickle:  http://192.168.1.1:8080/
 ```
 
-For the first open, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` with that address.
+For the first MetaCubeXD open, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` in both links.
 
 Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
 
@@ -72,6 +73,15 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
+Focused read-only check for one domain/IP through ProxyN → Mihomo:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-route-check.sh -o /tmp/mihomo-route-check.sh && \
+sh /tmp/mihomo-route-check.sh example.com
+```
+
+The helper shows DNS, project ProxyN evidence, port 7890, the current Mihomo selection and a SOCKS5h probe. It does not change routing and does not claim that a successful SOCKS probe proves a specific LAN client's Keenetic/MagiTrickle policy.
+
 Restart after a manual edit:
 
 ```bash
@@ -87,6 +97,8 @@ Status:
 Details → [diagnostics and troubleshooting](../08-troubleshooting.md)
 
 ## 4. Updates
+
+Updating Mihomo does not overwrite the user `/opt/etc/mihomo/config.yaml`. Safe Config Import keeps `config.yaml.bak` and automatically rolls back if validation or startup fails.
 
 Mihomo:
 
