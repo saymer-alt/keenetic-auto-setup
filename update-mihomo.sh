@@ -1229,11 +1229,11 @@ then
   rm -f "$STATE_STAGE" 2>/dev/null || true
   rollback_and_exit "Could not stage project binary-state metadata"
 fi
+STATE_COMMITTED=1
 if ! mv -f "$STATE_STAGE" "$BINARY_STATE"; then
   rm -f "$STATE_STAGE" 2>/dev/null || true
   rollback_and_exit "Could not commit project binary-state metadata"
 fi
-STATE_COMMITTED=1
 log "Project binary state updated: $BINARY_STATE"
 
 # -----------------------------
