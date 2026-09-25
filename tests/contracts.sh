@@ -237,6 +237,65 @@ grep -Fq 'DNS_FILTER_COMPONENT_ID=dns-filter' "$ROOT/install.sh" || fail "instal
 grep -Fq 'NETFILTER_COMPONENT_ID=opkg-kmod-netfilter' "$ROOT/install.sh" || fail "installer must keep opkg-kmod-netfilter as a hard preflight component"
 pass "Doctor separates legacy profile drift from proven runtime capability without weakening installer gates"
 
+
+# Keenetic ndmc may wrap component IDs inside a token at terminal width.
+# KN-3811 / KeeneticOS 5.1.5 and 5.1.6 reproduced dns- + filter and
+# opkg-kmod- + netfilter on consecutive physical lines.
+WRAPPED_COMPONENT_FIXTURE='          release: 5.01.C.6.0-1
+           components: base,cloudcontrol,corewireless,dhcpd,dns-
+                       filter,dns-https,dns-tls,ext,openvpn,opkg,opkg-kmod-
+                       netfilter,opkg-kmod-netfilter-addons,opkg-kmod-tc,
+                       proxy,ssh,wireguard
+             ndw4:
+              version: 5.1.C.6.0'
+
+_install_component_parser=$(sed -n '/^component_list_from_show_version() {$/,/^}$/p' "$ROOT/install.sh")
+_install_component_has=$(sed -n '/^component_list_has() {$/,/^}$/p' "$ROOT/install.sh")
+[ -n "$_install_component_parser" ] && [ -n "$_install_component_has" ] ||
+    fail "installer component parser functions must remain extractable for regression testing"
+(
+    eval "$_install_component_parser"
+    eval "$_install_component_has"
+    KEENETIC_VERSION_DUMP=$WRAPPED_COMPONENT_FIXTURE
+    KEENETIC_COMPONENT_LIST=$(component_list_from_show_version)
+    component_list_has dns-filter || exit 11
+    component_list_has opkg-kmod-netfilter || exit 12
+    component_list_has dns-tls || exit 13
+    component_list_has proxy || exit 14
+    component_list_has definitely-not-installed && exit 15
+) || fail "installer must reconstruct wrapped show version component IDs before exact matching"
+
+_doctor_component_parser=$(sed -n '/^    _doctor_component_list_from_show_version() {$/,/^    }$/p' "$ROOT/mihomo-doctor.sh" | sed 's/^    //')
+_doctor_component_has=$(sed -n '/^        _doctor_component_has() {$/,/^        }$/p' "$ROOT/mihomo-doctor.sh" | sed 's/^        //')
+[ -n "$_doctor_component_parser" ] && [ -n "$_doctor_component_has" ] ||
+    fail "Doctor component parser functions must remain extractable for regression testing"
+(
+    eval "$_doctor_component_parser"
+    eval "$_doctor_component_has"
+    SV_OUT=$WRAPPED_COMPONENT_FIXTURE
+    DOC_COMPONENT_LIST=$(_doctor_component_list_from_show_version)
+    _doctor_component_has dns-filter || exit 21
+    _doctor_component_has opkg-kmod-netfilter || exit 22
+    _doctor_component_has dns-https || exit 23
+    _doctor_component_has proxy || exit 24
+    _doctor_component_has definitely-not-installed && exit 25
+) || fail "Doctor must reconstruct wrapped show version component IDs before exact matching"
+
+ADDONS_ONLY_COMPONENT_FIXTURE='           components: base,dns-filter,dns-tls,opkg,opkg-kmod-
+                       netfilter-addons,proxy
+             ndw4:
+              version: 5.1.C.6.0'
+(
+    eval "$_install_component_parser"
+    eval "$_install_component_has"
+    KEENETIC_VERSION_DUMP=$ADDONS_ONLY_COMPONENT_FIXTURE
+    KEENETIC_COMPONENT_LIST=$(component_list_from_show_version)
+    component_list_has opkg-kmod-netfilter && exit 31
+    component_list_has opkg-kmod-netfilter-addons || exit 32
+) || fail "component matching must stay exact: netfilter-addons must not satisfy opkg-kmod-netfilter"
+
+pass "Doctor and installer parse wrapped Keenetic show version component IDs exactly"
+
 sh -n "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must remain valid POSIX shell syntax"
 grep -qi 'read-only' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must document its read-only API contract"
 grep -Eq 'the only (HTTP )?request ever made is GET /proxies' "$ROOT/mihomo-proxy-selection-watch.sh" || fail "proxy-selection-watch must keep GET /proxies as its only request"
