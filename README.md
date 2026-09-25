@@ -154,19 +154,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Назначение / документация |
 | --- | --- |
-| [`setup.sh`](setup.sh) | [Быстрая установка и первичная настройка](docs/14-setup.md) |
-| [`install.sh`](install.sh) | [Расширенная установка с ручным выбором профиля](docs/03-install.md) |
-| [`config-import.sh`](config-import.sh) | [Безопасная замена конфигурации Mihomo](docs/13-config-import.md) |
-| [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [Перевод TUN на стек MIPS](docs/12-updates.md#mips-tun-migration) |
-| [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Полная проверка состояния системы](docs/08-troubleshooting.md) |
-| [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Проверка интерфейсов для `interface-name`](ARCHITECTURE.md) |
-| [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Проверка текущего выбора прокси](docs/11-proxy-selection-watch.md) |
-| [`mihomo-route-check.sh`](mihomo-route-check.sh) | [Проверка маршрута до конкретного домена/IP](docs/15-route-check.md) |
-| [`update-mihomo.sh`](update-mihomo.sh) | [Безопасное обновление Mihomo с откатом](docs/12-updates.md#обновление-mihomo) |
-| [`update-watchdog.sh`](update-watchdog.sh) | [Безопасное обновление watchdog](docs/12-updates.md#обновление-watchdog) |
-| [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Автоконтроль и восстановление Mihomo](docs/04-watchdog.md) |
-| [`020-bypass-wa.sh`](020-bypass-wa.sh) | [Обход Mihomo для VoIP/звонков](docs/05-bypass-wa.md) |
-| [`S00ubifs`](S00ubifs) | [Снижение записи во внутреннюю флешку](docs/06-s00ubifs.md) |
+| [`setup.sh`](setup.sh) | [Рекомендуемая установка проекта](docs/14-setup.md) |
+| [`install.sh`](install.sh) | [Основной установщик с ручным выбором профиля](docs/03-install.md) |
+| [`config-import.sh`](config-import.sh) | [Импорт и безопасная замена `config.yaml`](docs/13-config-import.md) |
+| [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [Перевод TUN-конфига с gVisor на MIPS](docs/12-updates.md#mips-tun-migration) |
+| [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Доктор: полная диагностика проекта](docs/08-troubleshooting.md) |
+| [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Показать Linux-имена WAN/VPN-интерфейсов для `interface-name`](ARCHITECTURE.md) |
+| [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Показать, какой сервер Mihomo выбран сейчас](docs/11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](mihomo-route-check.sh) | [Проверить доступность конкретного сайта через Mihomo](docs/15-route-check.md) |
+| [`update-mihomo.sh`](update-mihomo.sh) | [Обновить ядро Mihomo с проверкой и откатом](docs/12-updates.md#обновление-mihomo) |
+| [`update-watchdog.sh`](update-watchdog.sh) | [Обновить механизм watchdog](docs/12-updates.md#обновление-watchdog) |
+| [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Проверять Mihomo и перезапускать его при подтверждённом сбое](docs/04-watchdog.md) |
+| [`020-bypass-wa.sh`](020-bypass-wa.sh) | [Перехватывать VoIP-трафик и передавать его в отдельную политику `bypass_wa`](docs/05-bypass-wa.md) |
+| [`S00ubifs`](S00ubifs) | [Перенести временные каталоги Entware в RAM и снизить запись во флешку](docs/06-s00ubifs.md) |
 
 ## 7. Справочник
 
