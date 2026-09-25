@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.6 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.7 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -1242,7 +1242,7 @@ if [ -n "$BIN" ]; then
                 *) _opkg_base=${_opkg_mihomo%-"${_opkg_mihomo#*-}"} ;;
             esac
             if [ -n "$BIN_VER" ] && [ "$_opkg_base" != "$BIN_VER" ]; then
-                info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected under the binary-update model; the binary version above is the runtime truth)"
+                info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected after binary-only updates, including update-mihomo.sh or Mihomo/Web-UI self-upgrade; runtime version above is the truth)"
             else
                 info "opkg database: mihomo $_opkg_mihomo"
             fi
