@@ -30,6 +30,7 @@ The product is the root-level scripts (there are no libraries):
 | S00ubifs                  | tmpfs on /opt/tmp, /opt/var/log, /opt/var/run (profiles by RAM) |
 | mihomo-interface-check.sh | optional manual helper: Linux interface names for proxy-outbound `interface-name`; does not route `mitun0` |
 | mihomo-proxy-selection-watch.sh     | read-only diagnostics of the current Mihomo proxy-group selection (GET /proxies only) |
+| mihomo-route-check.sh                | focused read-only diagnostic for one domain/IP: DNS, project ProxyN evidence, local 7890, current Controller selection and SOCKS5h target probe; never claims client-policy classification |
 
 Traffic flows (docs/01):
 - normal: LAN → Proxy0 → Mihomo → VPN → Internet;
