@@ -159,11 +159,24 @@ restore_old_service() {
     if [ "$SERVICE_WAS_RUNNING" -ne 1 ]; then
         return 0
     fi
-    if mihomo_running; then
+
+    if ! mihomo_running; then
+        log "Restoring previous Mihomo service state..."
+        start_mihomo_confirmed || return 1
+    fi
+
+    if wait_for_contract_port; then
+        log "Previous Mihomo service restored; port 7890 is listening."
         return 0
     fi
-    log "Restoring previous Mihomo service state..."
-    start_mihomo_confirmed
+
+    _ci_restore_port_rc=$?
+    if [ "$_ci_restore_port_rc" -eq 2 ]; then
+        warn "Previous Mihomo process was restored, but neither netstat nor ss is available to verify port 7890."
+        return 0
+    fi
+
+    return 1
 }
 
 rollback_config() {
