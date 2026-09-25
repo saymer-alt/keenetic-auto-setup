@@ -139,7 +139,7 @@ fi
 
 section "Current Mihomo selection"
 if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    set -- 
+    set --
     if [ -n "$SECRET" ]; then
         set -- "$@" -H "Authorization: Bearer $SECRET"
     fi
