@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+---
+
+## [1.5.0] - 2026-09-25
+
 ### Added
 - Added `mihomo-route-check.sh`, a focused read-only diagnostic for one domain/IP: it reports target DNS resolution, project ProxyN evidence, local port 7890, current Controller proxy selection, and a SOCKS5h request to the target while explicitly avoiding claims about a specific LAN client's policy classification.
 - Added `setup.sh`, a deliberately thin simple-install front-end that detects whether `/opt` is on internal or external persistent storage, chooses the normal `ram`/`disk` profile automatically, validates the downloaded canonical installer, and delegates all router mutations and safety gates to `install.sh`. README now presents this as the default happy path while keeping manual mode selection as an advanced path.
@@ -39,6 +45,14 @@ All notable changes to this project will be documented in this file.
 - Added an explicit fail-closed vs fail-open section for Keenetic Connection Policies: `connect via ProxyN` controls the WireGuard peer's underlying path, while the policy's checked/priority connections independently decide whether clients lose connectivity or fall back to another gateway when WARP fails. The article now also documents the policy-scoped DNS caveat from Keenetic's manual and replaces the weak 4.1 source link/country-selector wording with directly supporting official references.
 - Added a dedicated WARPSCOUT encyclopedia guide based on upstream `README_RU.md`/sources: `NODE` vs `SEEN AS`, endpoint+port colo steering, `-sweep-ports`, why scans should follow the same VPS egress path as the nested WARP chain, and the distinction between ordinary colo selection and WARP-in-WARP. The nested-WARP article now documents the separate consumer MASQUE H3/QUIC and H2/TCP pools used by current WARPSCOUT and makes clear that MASQUE endpoints are not native Keenetic WireGuard peers.
 - Preserved project field evidence from June-August 2026 in the WARPSCOUT guide: historical H3/H2 endpoint behavior, provider/path-dependent Cloudflare nodes, a real `colo=FRA` + `loc=CH` trace, and a counterexample where endpoint churn still stayed on DME. Added the proven `Fastest_MASQUE` H3/H2 Mihomo pattern, clarified that `usque` is optional in a Mihomo-native stack, and documented the key distinction between true WARP-in-WARP (separate outer/inner WARP keys) and a non-WARP outer `dialer-proxy` transport.
+
+### Tested
+- Live release acceptance passed on Keenetic Giga **KN-1010**, KeeneticOS **5.1.6 stable**, mipsel, with external EXT4 `/opt` and 468 MB external storage-backed swap.
+- Fresh guided installation completed successfully; `setup.sh` auto-selected `disk`, installed Mihomo 1.19.31-2 and MagiTrickle 0.8.2-1, created/validated the project Proxy0 path, DNS interception, bypass hook and watchdog.
+- Full Config Import passed with real `mihomo -t` validation, previous-config backup, atomic replacement, service restart and ports 7890/9090 ready.
+- Repeat `setup.sh` was idempotent: the existing Mihomo binary/config were preserved and the running daemon PID stayed unchanged.
+- Deliberately invalid YAML was rejected before commit; the canonical config hash stayed unchanged and the previous Mihomo service was restored with port 7890 ready before control returned.
+- Reboot acceptance passed: config hash persisted; Mihomo, MagiTrickle, swap, `_CUST_BYPASS_WA_`, Proxy0/DNS interception and ports 3553/7890/8080/9090 recovered; Doctor finished with **35 OK / 0 WARN / 0 FAIL**.
 
 ---
 
