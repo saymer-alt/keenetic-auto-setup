@@ -33,12 +33,16 @@ Details: [safe config import](CONFIG_IMPORT.md).
 
 ## Web interfaces
 
+MagiTrickle is available after installation. MetaCubeXD becomes available after importing a full generated `config.yaml` that configures `external-controller`.
+
 ```text
 MetaCubeXD:   http://192.168.1.1:9090/ui/
 MagiTrickle:  http://192.168.1.1:8080/
 ```
 
-Replace the address when your Keenetic uses another LAN IP. For the first MetaCubeXD open, use the base `/ui/` path.
+If Config Import is skipped with `s`, the minimal bootstrap keeps only `mixed-port: 7890`, so port 9090 is not expected.
+
+Replace the address when your Keenetic uses another LAN IP. For the first MetaCubeXD open after full config import, use the base `/ui/` path.
 
 ## Re-running
 
