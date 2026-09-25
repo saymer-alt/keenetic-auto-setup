@@ -12,7 +12,21 @@ All notable changes to this project will be documented in this file.
 - Added `config-import.sh` for the second half of the simple-install flow: interactive YAML paste works through `curl | sh` by reading `/dev/tty`; the candidate must preserve the project `mixed-port: 7890` contract, is validated under the one-Mihomo rule, backed up as `config.yaml.bak`, committed with a same-filesystem atomic rename, and automatically rolled back if validation/startup/port verification fails. `update-mihomo.sh` now refuses to overlap an active config import.
 
 ### Changed
-- `setup.sh` now hands off directly to `config-import.sh` after installation; interactive YAML import no longer uses a separate confirmation prompt that could consume the first pasted line. The importer itself owns skip/input handling, and setup staging files use unique `$` suffixes again.
+- Fixed `setup.sh` staging paths that had regressed from shell-PID `$` suffixes to a literal single `# Changelog
+
+All notable changes to this project will be documented in this file.
+
+---
+
+## [Unreleased]
+
+### Added
+- Added `mihomo-route-check.sh`, a focused read-only diagnostic for one domain/IP: it reports target DNS resolution, project ProxyN evidence, local port 7890, current Controller proxy selection, and a SOCKS5h request to the target while explicitly avoiding claims about a specific LAN client's policy classification.
+- Added `setup.sh`, a deliberately thin simple-install front-end that detects whether `/opt` is on internal or external persistent storage, chooses the normal `ram`/`disk` profile automatically, validates the downloaded canonical installer, and delegates all router mutations and safety gates to `install.sh`. README now presents this as the default happy path while keeping manual mode selection as an advanced path.
+- Added `config-import.sh` for the second half of the simple-install flow: interactive YAML paste works through `curl | sh` by reading `/dev/tty`; the candidate must preserve the project `mixed-port: 7890` contract, is validated under the one-Mihomo rule, backed up as `config.yaml.bak`, committed with a same-filesystem atomic rename, and automatically rolled back if validation/startup/port verification fails. `update-mihomo.sh` now refuses to overlap an active config import.
+
+; installer/importer temporary files are process-unique again, with a permanent contract test preventing recurrence.
+- `setup.sh` now hands off directly to `config-import.sh` after installation; interactive YAML import no longer uses a separate confirmation prompt that could consume the first pasted line. The importer itself owns skip/input handling, and setup staging files use shell-PID (`$`) suffixes again.
 - README now presents one production installation path (`setup.sh` → generator → safe Config Import); manual/advanced installation variants remain in `docs/03-install.md`, while `nano /opt/etc/mihomo/config.yaml` stays visible as a quick operational editing command.
 - `mihomo-doctor.sh` v1.2.3 improves legacy-install interpretation without weakening any contract or exit code: DNS-interception warnings now get the correct `dns-proxy intercept enable` action before the generic MagiTrickle matcher, `/proc/PID/exe` survives Markdown/chat pastes, and the final findings block distinguishes Doctor FAIL findings from proof of a current runtime outage when a legacy router only violates today's component profile.
 
