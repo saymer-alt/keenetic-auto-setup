@@ -9,7 +9,8 @@
 
 1. **Сначала read-only**: `mihomo-doctor.sh` — он не меняет ничего и выдаёт
    сводное состояние стека (Mihomo, порт 7890, ProxyN/bypass_wa, watchdog,
-   RAM, пакет).
+   RAM, пакет). Если проблема относится к одному конкретному домену/IP, после
+   Doctor используйте [`mihomo-route-check.sh`](15-route-check.md).
 2. **Потом supported-пути**: `update-mihomo.sh` / `update-watchdog.sh` /
    повторный `install.sh` — штатные инструменты, которые сами обеспечивают
    атомарность и откат.
