@@ -84,6 +84,36 @@ Live tests must remain conservative:
 - use a short planned outage when executable Mihomo validation is required rather than running a second Mihomo beside the daemon;
 - never publish private addresses, credentials, configuration secrets, or raw diagnostics from a user's router as test fixtures.
 
+## MCP cross-validation as an independent live oracle
+
+When Keenetic MCP access is available, use it as a **second read-only observation path** for Doctor acceptance. It is not a Doctor runtime dependency and must never become required for normal users; it is a fleet/test oracle that helps catch parser or interpretation drift.
+
+| Fact | MCP source | Doctor source | Interpretation |
+|---|---|---|---|
+| exact model / firmware | device metadata / live router | `show version` | should agree exactly |
+| installed KeeneticOS component IDs | `list_installed_components` (normalized from `show version`) | Doctor's independent `show version` parser | excellent parser cross-check, especially wrapped IDs |
+| nominal physical RAM | `show system memtotal` | `/proc/meminfo MemTotal` | values can differ because Linux excludes reserved memory; Doctor's Linux value remains authoritative for project resource gates |
+| total active swap | `show system swaptotal/swapfree` | `/proc/swaps` + `/proc/meminfo` | totals should approximately agree |
+| swap backend type | not exposed by current MCP tools | `/proc/swaps` plus mount topology | Doctor is authoritative for zRAM vs storage-backed classification |
+| DNS transit interception | redacted live running-config | live `show running-config` | should agree |
+| ProxyN live state | live interface state | `show interface ProxyN` / project markers | should agree |
+| physical USB media | `show usb` | indirect via `/proc/mounts`/storage checks | MCP enriches physical-device context; Doctor remains authoritative for actual `/opt` filesystem/class |
+| live Netfilter rules / xt_multiport | component presence only | `lsmod` + `iptables` runtime rules | Doctor is stronger; a component ID alone is not runtime proof |
+| Mihomo runtime binary/version/opkg metadata | not exposed by current Keenetic MCP tools | `/proc/PID/exe`, Controller `/version`, Entware `opkg list-installed` | Doctor is authoritative |
+
+### 2026-09-25 MCP ↔ Doctor comparison
+
+| Profile | MCP nominal RAM | MCP swap total | MCP DNS intercept | MCP required components | Doctor evidence |
+|---|---:|---:|---|---|---|
+| dača NC-1012 external EXT4 | 512 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | post-maintenance **37 OK / 0 WARN / 0 FAIL**; external storage-backed swap |
+| home NC-1812 external EXT4 | 1024 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | **36 OK / 0 WARN / 0 FAIL**; raw per-line resource numbers were not retained in the summary |
+| work KN-1012 SE external EXT4 | 512 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | Linux RAM ~486 MB, external storage-backed swap ~1022 MB, **38 OK / 0 WARN / 0 FAIL** |
+| dača KN-1012 GSM internal UBIFS | 512 MiB | 524,284 KB (~512 MiB) | enabled | required set present; `ext`/`ext-utils` absent as expected for internal `/opt` | Linux RAM ~486 MB, zRAM ~511 MB, **33 OK / 0 WARN / 0 FAIL** |
+| KN-3811 "126 security" internal storage | 512 MiB | 524,284 KB (~512 MiB) | enabled | required component IDs present; `ext-utils` absent and not required for internal `/opt` | earlier old-parser run falsely reported component FAILs; Linux runtime showed zRAM ~511 MB and healthy Netfilter rules |
+
+Current MCP and Doctor observations agree on the facts they both expose. The major historical disagreement on KN-3811 was the already-fixed Doctor line-oriented `show version` parser, not a real router-state mismatch. A fresh current Doctor run on KN-3811 remains a useful live closure check after the parser fix, but the MCP component list already independently confirms that the required IDs are present.
+
+MCP must not be used to weaken Doctor checks. In particular, `show system swaptotal` does not tell whether swap is zRAM or storage-backed, and an installed `opkg-kmod-netfilter` ID does not prove that `xt_multiport` and the project MARK/CONNMARK/RETURN rules are actually loaded.
 ## Current hardware evidence
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
