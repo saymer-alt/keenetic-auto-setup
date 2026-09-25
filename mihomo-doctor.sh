@@ -148,9 +148,6 @@ finding_action() {
         *"Very low available memory"*)
             printf '%s' "Reduce memory pressure and verify an appropriate swap/zRAM fallback before heavy install/update operations."
             ;;
-        *"Mihomo update staging headroom is insufficient on "*)
-            printf '%s' "Free space on the reported /opt filesystem before updating Mihomo. Doctor uses the current binary size plus the same 4 MB staging margin as update-mihomo.sh; the updater re-checks the actual candidate before modifying anything."
-            ;;
         *"Entware root "*|*"opkg not found"*)
             printf '%s' "Install or repair Entware first, then run Doctor again."
             ;;
