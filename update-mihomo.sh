@@ -203,7 +203,7 @@ extract_new_binary_from_ipk() {
 restore_binary_state() {
   [ "$STATE_COMMITTED" -eq 1 ] || return 0
   _state_dir=${BINARY_STATE%/*}
-  _rollback_stage="$_state_dir/.keenetic-auto-setup-mihomo.state.rollback.$"
+  _rollback_stage="$_state_dir/.keenetic-auto-setup-mihomo.state.rollback.$$"
 
   if [ "$STATE_HAD_OLD" -eq 1 ]; then
     if [ ! -s "$TMP_STATE_BACKUP" ]; then
@@ -1067,7 +1067,7 @@ fi
 
 # Snapshot project-owned binary metadata for rollback. Absence is a valid
 # legacy/out-of-band state and is restored as absence.
-TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$"
+TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"
 if [ -f "$BINARY_STATE" ]; then
   if ! cp -f "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
     error "Failed to back up project binary-state metadata - nothing was modified, service untouched"
@@ -1223,7 +1223,7 @@ fi
 # This file describes the canonical binary only; it does NOT pretend that the
 # whole Entware package was installed through opkg.
 STATE_DIR=${BINARY_STATE%/*}
-STATE_STAGE="$STATE_DIR/.keenetic-auto-setup-mihomo.state.new.$"
+STATE_STAGE="$STATE_DIR/.keenetic-auto-setup-mihomo.state.new.$$"
 OPKG_META=$(opkg list-installed 2>/dev/null | awk '$1 == "mihomo" { if ($2 == "-" && $3 != "") print $3; else print $2; exit }')
 if ! cat > "$STATE_STAGE" <<EOF
 state_format=1
