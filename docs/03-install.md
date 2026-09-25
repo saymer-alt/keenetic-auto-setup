@@ -428,7 +428,7 @@ Mihomo outage.
 
 * `Port 7890 still not listening after 5s startup wait` — после bounded startup wait
   контрактный listener не появился; проверьте запуск Mihomo, `config.yaml` и логи
-* `Mihomo update staging headroom is insufficient on /opt` — свободного места уже недостаточно даже для staging по оценке `текущий бинарник Mihomo + 4 МБ safety margin`; `update-mihomo.sh` перед реальным обновлением повторно считает место по фактическому candidate
+* `Mihomo update staging estimate on /opt` — Doctor показывает только ориентир `текущий бинарник Mihomo + 4 МБ safety margin`. Это **не PASS/FAIL обновления**: реальный candidate может существенно отличаться по размеру. Авторитетную проверку делает только `update-mihomo.sh` после скачивания и извлечения конкретного пакета, до остановки или замены рабочего Mihomo
 * `bypass_wa policy has no interface permit` — у политики нет выхода
 * `config.yaml not found (bootstrap missing)` — не создался bootstrap
 
