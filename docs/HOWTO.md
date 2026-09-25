@@ -707,7 +707,7 @@ Notes:
 
 - The `/tmp` backup is removed after success — there is **no permanent backup on `/opt`**. For a manual downgrade, download the specific release binary yourself (see section 10).
 - The updater resolves the binary deterministically: the running daemon's `/proc/<pid>/exe` when it points at `/opt/sbin/mihomo` or `/opt/bin/mihomo`, else `/opt/sbin/mihomo`, else `/opt/bin/mihomo` — mirroring the Entware init script's PATH order. Extra copies (e.g. `meta-backup/mihomo`) are never selected.
-- Prefer updating through this script over hand-editing: the old manual "replace the binary" procedure has been removed; update-mihomo.sh is the single supported update path (backup in /tmp, validation before anything is touched, automatic rollback).
+- Prefer updating through this script over hand-editing: the old manual "replace the binary" procedure has been removed; `update-mihomo.sh` is the single **project-supported** update path (backup in `/tmp`, validation before anything is touched, automatic rollback). Mihomo itself also exposes a Controller `POST /upgrade` core self-update API, which dashboards such as MetaCubeXD can invoke. That Web-UI/self-upgrade path is intentionally treated as **out-of-band** here: it does not use this project's `entware-go` package/staging/rollback flow and may install a different upstream binary form/size. Operator field evidence: it has worked on VPS hosts and on two external-EXT4 routers; a 2026-09-25 NC-1012 self-upgrade produced a ~54.6 MB upstream-form 1.19.31 binary, while the project's UPX-packed `entware-go` path produced ~13 MB on the internal-UBIFS KN-1012 GSM.
 
 ### 8.1 Migrating the TUN stack to mips
 
