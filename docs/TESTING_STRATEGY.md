@@ -88,11 +88,11 @@ Live tests must remain conservative:
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
 
-Current release devices with direct retained live evidence: **KN-1010, KN-1012, KN-3811, KN-3812 and the operator's home Netcraze Ultra NC-1812**. NC-1812 and Keenetic Titan KN-1812 are different market models built on the same MT7988D-class hardware platform; evidence from one must not be relabelled as a physical test of the other. Record the exact model/hw_id reported by the tested router.
+Current release devices with direct retained live evidence: **KN-1010, KN-1012, KN-3811, KN-3812, Netcraze Giga NC-1012 and the operator's home Netcraze Ultra NC-1812**. NC-1812 and Keenetic Titan KN-1812 are different market models built on the same MT7988D-class hardware platform; evidence from one must not be relabelled as a physical test of the other. Record the exact model/hw_id reported by the tested router.
 
 | Architecture | Current evidence | Status |
 |---|---|---|
-| `aarch64` | KN-1012 / MT7981B Cortex-A53, KN-3811 / MT7981B Cortex-A53, KN-3812 / MT7981B Cortex-A53, NC-1812 / MT7988D-class; all four are current-release live-tested devices | current live evidence |
+| `aarch64` | KN-1012 / MT7981B Cortex-A53, KN-3811 / MT7981B Cortex-A53, KN-3812 / MT7981B Cortex-A53, Netcraze Giga NC-1012 / aarch64, NC-1812 / MT7988D-class; all five are current-release live-tested devices | current live evidence |
 | `mipsel` | KN-1010 / MT7621AT MIPS 1004KEc; Keenetic's OPKG guide specifies the `mipsel` archive; live acceptance includes universal installer lifecycle and MIPS-stack migration findings | current live evidence |
 | `armv7` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 | big-endian `mips` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
@@ -111,6 +111,10 @@ Earlier field use on KN-1810 and KN-1913 remains valid historical evidence. Hist
 Do not buy/find hardware or create synthetic emulation merely to make every matrix cell
 green. When an `armv7` or big-endian `mips` router naturally becomes available, run
 the same conservative install → Doctor → update/reboot acceptance and record the result.
+
+### 2026-09-25 NC-1012 live parser acceptance
+
+Netcraze Giga **NC-1012 / KeeneticOS 5.1.6 stable / aarch64** provided a fresh real-output parser check. Its `show version` physically split `dns-filter` as `dns-` / `filter` and also split the related `opkg-kmod-netfilter-addons` token across lines. The current Doctor reconstructed the logical `components:` field correctly and reported `proxy`, `dns-filter`, `opkg-kmod-netfilter`, `dns-tls`, `dns-https`, `ext` and `ext-utils` as present. The router used external EXT4 `/opt`, external storage-backed swap, and live `xt_multiport` plus the expected bypass MARK/CONNMARK/RETURN rules. Doctor finished with **35 OK / 1 WARN / 0 FAIL**; the only warning was the pre-migration legacy watchdog layout.
 
 ## Next focused acceptance
 
