@@ -52,6 +52,17 @@ def test_updater() -> None:
     require(text, 'update failed, previous version restored', label)
     require(text, 'Mihomo is running again (watchdog restart?) - stopping before the commit', label)
     require(text, 'MAINT_MARKER="/tmp/mihomo.maintenance"', label)
+    require(text, 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"', label)
+    require(text, 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$"', label)
+    require(text, 'restore_binary_state()', label)
+    ordered(
+        text, label,
+        'if ! mv -f "$STAGE_BIN" "$MIHOMO_PATH"; then',
+        'STATE_COMMITTED=1',
+        'if ! mv -f "$STATE_STAGE" "$BINARY_STATE"; then',
+        '# 17. Start service and verify process',
+    )
+    require(text, 'if ! restore_binary_state; then', label)
     forbid(text, 'rm -f "$MIHOMO_PATH"', label)
     if text.count("rollback_and_exit ") < 4:
         fail(f"{label}: too few post-commit rollback call sites")
