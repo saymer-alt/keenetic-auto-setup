@@ -7,10 +7,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- `mihomo-doctor.sh` v1.2.5 now separates supported component-profile compliance from proven legacy runtime capability, and still verifies the live `bypass_wa` Netfilter path instead of accepting policy/chain existence alone: the project hook must exist and be executable, PREROUTING must jump to `_CUST_BYPASS_WA_`, and the chain must contain the expected UDP multiport `MARK`, `CONNMARK` and `RETURN` rules. An empty chain is a FAIL with an `opkg-kmod-netfilter` recovery action.
+- `mihomo-doctor.sh` v1.2.6 and `install.sh` now normalize the wrapped `components:` field from Keenetic `show version` before exact component-ID matching. This prevents false missing-component findings when output width splits a token such as `dns-` + `filter` or `opkg-kmod-` + `netfilter`. Doctor keeps the v1.2.5 profile-vs-runtime correlation as a defensive fallback for genuine legacy drift, and still verifies the live `bypass_wa` Netfilter path.
 
 ### Testing
-- KN-3811 / KeeneticOS 5.1.5 exposed a legacy-positive counterexample: `show version` did not report `dns-filter` or `opkg-kmod-netfilter`, while `dns-proxy intercept enable` was active and the full `_CUST_BYPASS_WA_` multiport MARK/CONNMARK/RETURN ruleset was live. Doctor now reports these as profile-drift WARNs instead of component-only FAILs; installer hard gates remain unchanged.
+- Corrected the KN-3811 interpretation with before/after firmware evidence: on both KeeneticOS 5.1.5 and 5.1.6 the components were actually present, but `show version` wrapped `dns-filter` and `opkg-kmod-netfilter` across physical lines. The old line-oriented parser caused false profile-drift warnings and could also have caused a false installer preflight failure. Regression fixtures now reproduce the wrapped output and require exact matching so `opkg-kmod-netfilter-addons` cannot satisfy `opkg-kmod-netfilter`.
 - Preserved a live A/B/C field test on KN-1010 / KeeneticOS 5.1.6: with `opkg-kmod-netfilter`, `xt_multiport` and bypass rules were present and real matching traffic reached all three rules (30 packets / 4212 bytes); after removing Netfilter modules and rebooting, Entware iptables plus the bypass policy/chain remained but `xt_multiport` disappeared and the chain was empty; restoring only `opkg-kmod-netfilter` while keeping Xtables-addons disabled restored `xt_multiport` and the rules.
 
 ### Documentation
