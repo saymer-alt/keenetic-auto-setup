@@ -4,8 +4,8 @@ set -e
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
-INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"
-CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"
+INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
+CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
 
 log() { echo "[setup] $1"; }
