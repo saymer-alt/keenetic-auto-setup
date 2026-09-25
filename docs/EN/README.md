@@ -156,21 +156,21 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 ## 6. Project scripts
 
-| Script | Documentation |
+| Script | Purpose / documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | [Recommended wizard: auto-profile → install → safe Config Import](SETUP.md) |
-| [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
-| [`config-import.sh`](../../config-import.sh) | [Safe config import](CONFIG_IMPORT.md) |
-| [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
-| [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |
-| [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Architecture](../../ARCHITECTURE.md) |
-| [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](../11-proxy-selection-watch.md) |
-| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Focused read-only domain/IP path diagnostic](ROUTE_CHECK.md) |
-| [`update-mihomo.sh`](../../update-mihomo.sh) | [Mihomo update](UPDATES.md#mihomo-update) |
-| [`update-watchdog.sh`](../../update-watchdog.sh) | [Watchdog update](UPDATES.md#watchdog-update) |
-| [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Watchdog](../04-watchdog.md) |
-| [`020-bypass-wa.sh`](../../020-bypass-wa.sh) | [bypass_wa](../05-bypass-wa.md) |
-| [`S00ubifs`](../../S00ubifs) | [S00ubifs](../06-s00ubifs.md) |
+| [`setup.sh`](../../setup.sh) | [Quick installation and initial setup](SETUP.md) |
+| [`install.sh`](../../install.sh) | [Advanced installation with explicit profile selection](../03-install.md) |
+| [`config-import.sh`](../../config-import.sh) | [Safe Mihomo configuration replacement](CONFIG_IMPORT.md) |
+| [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [Move TUN to the MIPS stack](UPDATES.md#mips-tun-migration) |
+| [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Full system health check](../08-troubleshooting.md) |
+| [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Check interfaces for `interface-name`](../../ARCHITECTURE.md) |
+| [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Inspect the current proxy selection](../11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Check the path to a specific domain/IP](ROUTE_CHECK.md) |
+| [`update-mihomo.sh`](../../update-mihomo.sh) | [Safe Mihomo update with rollback](UPDATES.md#mihomo-update) |
+| [`update-watchdog.sh`](../../update-watchdog.sh) | [Safe watchdog update](UPDATES.md#watchdog-update) |
+| [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Automatic Mihomo health monitoring and recovery](../04-watchdog.md) |
+| [`020-bypass-wa.sh`](../../020-bypass-wa.sh) | [Bypass Mihomo for VoIP/calls](../05-bypass-wa.md) |
+| [`S00ubifs`](../../S00ubifs) | [Reduce writes to internal flash](../06-s00ubifs.md) |
 
 ## 7. Reference
 
