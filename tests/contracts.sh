@@ -262,7 +262,9 @@ _install_component_has=$(sed -n '/^component_list_has() {$/,/^}$/p' "$ROOT/insta
     component_list_has opkg-kmod-netfilter || exit 12
     component_list_has dns-tls || exit 13
     component_list_has proxy || exit 14
-    component_list_has definitely-not-installed && exit 15
+    if component_list_has definitely-not-installed; then
+        exit 15
+    fi
 ) || fail "installer must reconstruct wrapped show version component IDs before exact matching"
 
 _doctor_component_parser=$(sed -n '/^    _doctor_component_list_from_show_version() {$/,/^    }$/p' "$ROOT/mihomo-doctor.sh" | sed 's/^    //')
@@ -278,7 +280,9 @@ _doctor_component_has=$(sed -n '/^        _doctor_component_has() {$/,/^        
     _doctor_component_has opkg-kmod-netfilter || exit 22
     _doctor_component_has dns-https || exit 23
     _doctor_component_has proxy || exit 24
-    _doctor_component_has definitely-not-installed && exit 25
+    if _doctor_component_has definitely-not-installed; then
+        exit 25
+    fi
 ) || fail "Doctor must reconstruct wrapped show version component IDs before exact matching"
 
 ADDONS_ONLY_COMPONENT_FIXTURE='           components: base,dns-filter,dns-tls,opkg,opkg-kmod-
