@@ -151,14 +151,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Документация |
 | --- | --- |
-| [`setup.sh`](setup.sh) | Рекомендуемый мастер: автоопределение профиля → установка → безопасный Config Import |
+| [`setup.sh`](setup.sh) | [Рекомендуемый мастер: автоопределение профиля → установка → безопасный Config Import](docs/14-setup.md) |
 | [`install.sh`](install.sh) | [Установка](docs/03-install.md) |
 | [`config-import.sh`](config-import.sh) | [Безопасный импорт config.yaml](docs/13-config-import.md) |
 | [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [MIPS TUN migration](docs/12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Диагностика](docs/08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Архитектура](ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](docs/11-proxy-selection-watch.md) |
-| [`mihomo-route-check.sh`](mihomo-route-check.sh) | Точечная read-only диагностика домена/IP через ProxyN → Mihomo |
+| [`mihomo-route-check.sh`](mihomo-route-check.sh) | [Точечная read-only диагностика домена/IP через ProxyN → Mihomo](docs/15-route-check.md) |
 | [`update-mihomo.sh`](update-mihomo.sh) | [Обновление Mihomo](docs/12-updates.md#обновление-mihomo) |
 | [`update-watchdog.sh`](update-watchdog.sh) | [Обновление watchdog](docs/12-updates.md#обновление-watchdog) |
 | [`mihomo-watchdog.sh`](mihomo-watchdog.sh) | [Watchdog](docs/04-watchdog.md) |
