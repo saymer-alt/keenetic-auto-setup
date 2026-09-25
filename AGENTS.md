@@ -56,7 +56,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 
 ## 3. Target platforms
 
-- KeeneticOS + Entware (/opt). Current release acceptance covers **KN-1010 (MT7621AT / mipsel)** plus **KN-1012, KN-3811, KN-3812 and KN-1812 (AArch64 / ARM64)**. This mapping is backed by Keenetic's own Command Reference / OPKG-Entware documentation: KN-1010 uses the mipsel archive; KN-1012/3811/3812 use MT7981B AArch64, and KN-1812 uses MT7988D AArch64. Earlier field use also includes other Keenetic models; hardware tests complement, not replace, CI.
+- KeeneticOS + Entware (/opt). Direct retained release acceptance covers **KN-1010 (MT7621AT / mipsel)** plus **KN-1012, KN-3811, KN-3812 and the operator's home Netcraze Ultra NC-1812 (AArch64 / ARM64)**. NC-1812 and Keenetic Titan KN-1812 are different market models built on the same MT7988D-class hardware platform; never relabel evidence from one model as a physical test of the other. Preserve the exact `model` / `hw_id` reported by the tested router. Official references still establish the architecture family: KN-1010 uses the mipsel archive; KN-1012/3811/3812 use MT7981B AArch64; NC-1812/KN-1812 are MT7988D-class AArch64. Earlier field use also includes other Keenetic models; hardware tests complement, not replace, CI.
 - Architectures: aarch64, armv7, mipsel, mips — one install.sh for all, including
   MT7621 (live test passed); there is no separate installer anymore.
   ipk suffixes:
@@ -201,6 +201,22 @@ The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer r
 
 Repository CI now provides shell syntax, contract/regression smoke tests, repository-local Markdown-link checks and whitespace checks, but it does not make a change automatically safe — do not invent results.
 The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
+
+### Parsing external command output
+
+Treat every parsed Keenetic/Entware command as an **external input protocol**. A visually convenient CLI sample is not automatically a stable machine format.
+
+- Prefer structured RCI/JSON when the same fact is available there and using it does not create a worse dependency.
+- Human-readable/display output may wrap logical values across physical lines. The proven example is `ndmc -c "show version"`: its `components:` value can split one component ID inside the token.
+- Configuration streams such as `show running-config` are different: physical lines are commands/block structure. **Never apply global newline removal or generic line joining to running-config.**
+- Normalize only a field whose continuation grammar is understood. Stop at the next field/block boundary; do not concatenate the whole command output.
+- After normalization, match IDs/tokens exactly. Prefix/substrings are unsafe: `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`.
+- If output is empty, truncated or cannot be positively identified, classify it as UNKNOWN/UNVERIFIED rather than silently turning it into NOT_FOUND.
+- Read back critical persistent mutations from a fresh observation. A command returning success is not proof that KeeneticOS accepted/applied it.
+- When several scripts independently interpret the same producer output, a regression must exercise every parser implementation so they cannot drift silently.
+- Every real formatting/integration failure should leave the smallest permanent regression using a sanitized fixture that preserves the **shape** of the real output. Do not publish private router configuration or secrets.
+- Synthetic tests prove only modeled shapes. A green CI run is not evidence that every firmware/model prints the same human-readable representation.
+
 What is always available:
 - `sh -n <script>` for every changed .sh (mandatory);
 - review for busybox/POSIX compatibility (no bashisms or GNU-only options);
@@ -214,7 +230,10 @@ a live run.
 
 ## 10. Historical context (why it is this way)
 
-- 2026-09-25 KN-3811 before/after 5.1.5 -> 5.1.6 showed that `ndmc -c "show version"` may hard-wrap long component IDs inside a token (`dns-` / `filter`, `opkg-kmod-` / `netfilter`). Never test required component IDs line-by-line against the raw dump. Normalize only the `components:` continuation block first, then exact-match comma-delimited IDs. This applies to both Doctor and installer; `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`.
+- 2026-09-19 the operator's **NC-1812 / KeeneticOS 5.1.5** already showed the same `show version` presentation class: a component ID could be split across adjacent physical lines (for example `ike-` / `client`). That observation was treated as harmless display wrapping and no parser regression was created. This was an early warning we failed to promote into a general rule.
+- 2026-09-25 KN-3811 before/after 5.1.5 -> 5.1.6 made the consequence explicit: `ndmc -c "show version"` hard-wrapped required IDs (`dns-` / `filter`, `opkg-kmod-` / `netfilter`), so line-oriented matching produced false missing-component evidence. Never test required component IDs line-by-line against the raw dump. Normalize only the understood `components:` continuation field, then exact-match comma-delimited IDs. This applies to both Doctor and installer; `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`. The permanent regression now splits every required component ID at every possible internal position.
+- Do **not** generalize the `show version` fix into a universal "join wrapped lines" helper. `show running-config` uses line boundaries as configuration semantics; joining those lines can merge unrelated commands/blocks and create false ownership/state conclusions. Parser behavior must be defined per producer/output type, not by appearance alone.
+- Evidence naming is part of correctness: NC-1812 and KN-1812 are different market models on the same hardware platform. A successful run on NC-1812 is valuable MT7988D/AArch64 evidence, but it must stay recorded as NC-1812 unless KN-1812 itself was actually tested.
 - 2026-09-25 field A/B/C on KN-1010 / KeeneticOS 5.1.6 proved why
   `opkg-kmod-netfilter` is a hard project prerequisite: with the component present,
   `xt_multiport` and the UDP multiport MARK/CONNMARK/RETURN rules exist; after removing
