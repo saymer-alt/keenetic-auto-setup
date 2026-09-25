@@ -285,6 +285,49 @@ _doctor_component_has=$(sed -n '/^        _doctor_component_has() {$/,/^        
     fi
 ) || fail "Doctor must reconstruct wrapped show version component IDs before exact matching"
 
+# The field failure was caused by formatting, not by those two specific IDs.
+# Exercise every required KeeneticOS component at every possible internal wrap
+# position so a future line-oriented parser regression cannot stay green merely
+# because it still handles the two KN-3811 split points we happened to observe.
+_component_wrap_fixture() {
+    _cwf_id="$1"
+    _cwf_cut="$2"
+    _cwf_left=$(printf '%s\n' "$_cwf_id" | awk -v n="$_cwf_cut" '{ print substr($0, 1, n) }')
+    _cwf_right=$(printf '%s\n' "$_cwf_id" | awk -v n="$((_cwf_cut + 1))" '{ print substr($0, n) }')
+    printf '%s\n' \
+        '          release: 5.01.C.6.0-1' \
+        "           components: base,$_cwf_left" \
+        "                       $_cwf_right,tail-marker" \
+        '             ndw4:' \
+        '              version: 5.1.C.6.0'
+}
+
+for _component_id in proxy dns-filter opkg-kmod-netfilter dns-tls dns-https ext ext-utils; do
+    _component_len=${#_component_id}
+    _component_cut=1
+    while [ "$_component_cut" -lt "$_component_len" ]; do
+        _component_fixture=$(_component_wrap_fixture "$_component_id" "$_component_cut")
+
+        (
+            eval "$_install_component_parser"
+            eval "$_install_component_has"
+            KEENETIC_VERSION_DUMP=$_component_fixture
+            KEENETIC_COMPONENT_LIST=$(component_list_from_show_version)
+            component_list_has "$_component_id"
+        ) || fail "installer component parser lost $_component_id when wrapped after character $_component_cut"
+
+        (
+            eval "$_doctor_component_parser"
+            eval "$_doctor_component_has"
+            SV_OUT=$_component_fixture
+            DOC_COMPONENT_LIST=$(_doctor_component_list_from_show_version)
+            _doctor_component_has "$_component_id"
+        ) || fail "Doctor component parser lost $_component_id when wrapped after character $_component_cut"
+
+        _component_cut=$((_component_cut + 1))
+    done
+done
+
 ADDONS_ONLY_COMPONENT_FIXTURE='           components: base,dns-filter,dns-tls,opkg,opkg-kmod-
                        netfilter-addons,proxy
              ndw4:
