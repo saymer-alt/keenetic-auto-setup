@@ -28,6 +28,30 @@ For normal development, test in this order:
 
 A green synthetic harness does not prove a clean installation on every Keenetic configuration. Conversely, a real device failure should not trigger a full-system Keenetic emulator when a narrow contract test can preserve the lesson.
 
+## External command output is an input protocol
+
+Text printed by KeeneticOS/Entware commands is external input, not a shell-native data structure. Parser assumptions must be based on the producer's real record grammar, not on one visually convenient sample.
+
+Three output classes are intentionally treated differently:
+
+- **Structured output** (for example RCI/JSON): parse structurally when available and practical.
+- **Configuration command streams** such as `show running-config`: physical lines are commands/block structure. Do not globally concatenate or unwrap them.
+- **Human-readable/display output** such as `show version`: one logical field may be wrapped across physical lines for presentation. Line-by-line token matching is unsafe when the field grammar allows continuation.
+
+The wrapped-component incident established a concrete rule. On 2026-09-19 the operator's Netcraze Ultra **NC-1812 / KeeneticOS 5.1.5** already showed a component ID split inside the token (for example `ike-` / `client`). No regression was created then. On 2026-09-25 KN-3811 / 5.1.5 and 5.1.6 reproduced the same formatting class with required IDs (`dns-` / `filter`, `opkg-kmod-` / `netfilter`), and the old line-oriented matcher produced false missing-component evidence.
+
+Permanent rules from that failure:
+
+1. Normalize only the logical field whose continuation grammar is understood; never strip arbitrary newlines from an entire command dump.
+2. Stop normalization at the next known field/block boundary.
+3. Match identifiers exactly after normalization; related names such as `opkg-kmod-netfilter-addons` must not satisfy `opkg-kmod-netfilter`.
+4. Treat unreadable/truncated/unconvincing observations as UNKNOWN/UNVERIFIED, not as proof of absence.
+5. Read back critical persistent mutations from a fresh observation; command success alone is not proof that KeeneticOS applied the state.
+6. When Installer and Doctor implement the same interpretation independently, regressions must execute both implementations.
+7. Preserve real producer **shape** in small sanitized fixtures. Never publish private addresses, credentials, secrets or full private router configuration as fixtures.
+8. For finite required IDs, generic formatting coverage is preferable to memorizing only previously observed split points. The component regression now tests every required component ID at every possible internal wrap position.
+9. Green CI means all modeled shapes and known invariants passed; it does not mean every firmware/model presentation format has been proven.
+
 ## High-consequence invariants
 
 Deeper adversarial testing is justified for changes to atomic update/replacement and rollback, locking and stale-lock takeover, one-Mihomo execution discipline, service-state restoration, watchdog recovery decisions, and destructive or persistent router mutations.
@@ -64,11 +88,11 @@ Live tests must remain conservative:
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
 
-Current release model set confirmed by the operator: **KN-1010, KN-1012, KN-3811, KN-3812, KN-1812**. Architecture mapping below is taken from Keenetic's official Command Reference and OPKG/Entware guidance, not inferred from model naming.
+Current release devices with direct retained live evidence: **KN-1010, KN-1012, KN-3811, KN-3812 and the operator's home Netcraze Ultra NC-1812**. NC-1812 and Keenetic Titan KN-1812 are different market models built on the same MT7988D-class hardware platform; evidence from one must not be relabelled as a physical test of the other. Record the exact model/hw_id reported by the tested router.
 
 | Architecture | Current evidence | Status |
 |---|---|---|
-| `aarch64` | KN-1012 / MT7981B Cortex-A53, KN-3811 / MT7981B Cortex-A53, KN-3812 / MT7981B Cortex-A53, KN-1812 / MT7988D Cortex-A73; all four are current-release live-tested models | current live evidence |
+| `aarch64` | KN-1012 / MT7981B Cortex-A53, KN-3811 / MT7981B Cortex-A53, KN-3812 / MT7981B Cortex-A53, NC-1812 / MT7988D-class; all four are current-release live-tested devices | current live evidence |
 | `mipsel` | KN-1010 / MT7621AT MIPS 1004KEc; Keenetic's OPKG guide specifies the `mipsel` archive; live acceptance includes universal installer lifecycle and MIPS-stack migration findings | current live evidence |
 | `armv7` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
 | big-endian `mips` | installer/updater package path is implemented and CI-covered structurally | supported path; no equally fresh live acceptance recorded |
@@ -79,13 +103,26 @@ Official Keenetic references used for the mapping:
 - KN-1012 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1012.pdf> · <https://destek.keenetic.com.tr/hero/kn-1012/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
 - KN-3811 Command Reference: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.2/ru/cli_manual_kn-3811_ru.pdf>
 - KN-3812 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/5.0/en/cli_manual_kn-3812.pdf> · <https://support.keenetic.ru/eaeu/hopper-se/kn-3812/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
-- KN-1812 Command Reference / OPKG: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1812.pdf> · <https://support.keenetic.com/eu/titan/kn-1812/en/20980-installing-the-entware-repository-on-a-usb-drive.html>
+- NC-1812 live-device reference: <https://netcraze.ru/ru/netcraze-ultra> — the tested device is recorded from its own CLI as NC-1812.
+- KN-1812 architecture/reference sibling: <https://storage.googleapis.com/docs.help.keenetic.com/cli/4.3/en/cli_manual_kn-1812.pdf> · <https://support.keenetic.com/eu/titan/kn-1812/en/20980-installing-the-entware-repository-on-a-usb-drive.html> — useful for the shared MT7988D-class platform, but not counted as a separate physical run.
 
 Earlier field use on KN-1810 and KN-1913 remains valid historical evidence. Historical model coverage is not presented as a substitute for the current per-architecture acceptance above.
 
 Do not buy/find hardware or create synthetic emulation merely to make every matrix cell
 green. When an `armv7` or big-endian `mips` router naturally becomes available, run
 the same conservative install → Doctor → update/reboot acceptance and record the result.
+
+## Next focused acceptance
+
+The next useful work is evidence collection and integration acceptance, not a larger synthetic KeeneticOS emulator.
+
+1. **NC-1812 first, read-only.** Capture `ndmc -c "show version"` and run the current Doctor. Verify that every visibly present required component survives parser normalization despite any physical wrapping, and that Doctor produces no false component-missing result. This device has priority because its 2026-09-19 output was the earliest retained warning that IDs can wrap inside a token.
+2. **KN-1012 and KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. The purpose is to preserve producer shape, not merely an `OK` count.
+3. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware.
+4. **Per-device evidence record.** Store exact model/hw_id, firmware title/release, architecture, `/opt` class/filesystem, sanitized raw `components:` shape, normalized required-component result, Doctor summary, and whether any reboot-dependent capability was actually checked.
+5. **Mutation tests only when justified.** Repeat-install/update/reboot tests belong on a non-critical acceptance device or a planned maintenance window. Do not toggle/remove components on a production router just to make the matrix look fuller.
+6. **Do not fabricate running-config wrap tests.** `show running-config` line boundaries are semantic. Add a fixture only when a real variant is observed, preserving the actual block shape and testing the real parser.
+7. **Every new live failure becomes a lesson.** Record the observation, classify which boundary assumption failed, and add the smallest permanent regression if the failure can influence behavior.
 
 ## Deliberately untested destructive faults
 
