@@ -1151,9 +1151,9 @@ if [ -n "$BIN" ]; then
             *)
                 _stage_need_kb=$((BIN_SIZE_KB + MIHOMO_STAGE_MARGIN_KB))
                 if [ "$_stage_avail_kb" -lt "$_stage_need_kb" ]; then
-                    warn "Mihomo update staging headroom is insufficient on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available, current-binary estimate needs ~$((_stage_need_kb/1024)) MB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+                    info "Mihomo update staging estimate on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available; current binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin would suggest ~$((_stage_need_kb/1024)) MB, but this is NOT an update gate because the extracted candidate can differ substantially in size. update-mihomo.sh measures the actual candidate before stopping or replacing Mihomo."
                 else
-                    ok "Mihomo update staging headroom on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available; current-binary estimate needs ~$((_stage_need_kb/1024)) MB (${BIN_SIZE_KB} KB binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin)"
+                    info "Mihomo update staging estimate on $OPT_ROOT: $((_stage_avail_kb/1024)) MB available; current binary + ${MIHOMO_STAGE_MARGIN_KB} KB margin suggests ~$((_stage_need_kb/1024)) MB. This is only an estimate; update-mihomo.sh measures the actual extracted candidate and is the authoritative free-space gate."
                 fi
                 ;;
         esac
