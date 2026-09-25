@@ -317,6 +317,8 @@ grep -Fq 'mv -f "$STAGE_CONFIG" "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail
 grep -q '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer must retain rollback logic"
 grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/config-import.sh" || fail "failed runtime start must roll back config"
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
+grep -Fq 'Previous Mihomo service restored; port 7890 is listening.' "$ROOT/config-import.sh" || fail "pre-commit failure recovery must wait for old service port 7890 readiness"
+grep -Fq 'start_mihomo_confirmed || return 1' "$ROOT/config-import.sh" || fail "old service restoration must fail if the process cannot be restarted"
 grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
 grep -Fq 'CONFIG_COMMIT_STARTED=1' "$ROOT/config-import.sh" || fail "config importer must mark the commit phase before atomic replacement"
 grep -Fq 'if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then' "$ROOT/config-import.sh" || fail "signals during the commit window must roll back"
