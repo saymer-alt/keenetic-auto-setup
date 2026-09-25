@@ -69,8 +69,10 @@ done
 ! grep -q '32768' "$ROOT/install.sh" || fail "installer must not use the old fixed 32 MB free-space threshold"
 ! grep -q '32768' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not use the old fixed 32 MB free-space threshold"
 grep -q 'Mihomo update staging headroom' "$ROOT/install.sh" || fail "installer must report staging-aware free-space headroom"
-grep -q 'Mihomo update staging headroom' "$ROOT/mihomo-doctor.sh" || fail "Doctor must report staging-aware free-space headroom"
-pass "Mihomo free-space checks use staging-aware headroom instead of a fixed 32 MB threshold"
+grep -q 'Mihomo update staging estimate' "$ROOT/mihomo-doctor.sh" || fail "Doctor must report its current-binary staging estimate"
+grep -q 'authoritative free-space gate' "$ROOT/mihomo-doctor.sh" || fail "Doctor must defer the authoritative staging decision to update-mihomo.sh"
+! grep -q 'warn "Mihomo update staging' "$ROOT/mihomo-doctor.sh" || fail "Doctor staging estimate must not be a WARN because candidate size is unknown"
+pass "Mihomo free-space checks distinguish Doctor estimate from updater candidate gate"
 
 grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL oversized external swap"
 grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
