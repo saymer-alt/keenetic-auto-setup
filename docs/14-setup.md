@@ -96,7 +96,7 @@ MagiTrickle:  http://192.168.1.1:8080/
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
-Для проверки конкретного домена/IP используйте [mihomo-route-check.sh](14-route-check.md).
+Для проверки конкретного домена/IP используйте [mihomo-route-check.sh](15-route-check.md).
 
 ## Безопасность
 
