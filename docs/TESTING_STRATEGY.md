@@ -125,10 +125,19 @@ A second dača **Keenetic Giga KN-1012 / KeeneticOS 5.1.6 stable / aarch64** pro
 The next useful work is evidence collection and integration acceptance, not a larger synthetic KeeneticOS emulator.
 
 1. **NC-1812 first, read-only.** Capture `ndmc -c "show version"` and run the current Doctor. Verify that every visibly present required component survives parser normalization despite any physical wrapping, and that Doctor produces no false component-missing result. This device has priority because its 2026-09-19 output was the earliest retained warning that IDs can wrap inside a token.
-2. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. KN-1012 shape/resource acceptance is now covered by both the external-EXT4 and internal-UBIFS dača devices.
+2. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. The dača 1012-class evidence now covers two distinct devices and must keep their identities separate: Netcraze Giga **NC-1012** with external EXT4 `/opt`, and Keenetic Giga **KN-1012** GSM with internal UBIFS `/opt`.
 3. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware.
 4. **Per-device evidence record.** Store exact model/hw_id, firmware title/release, architecture, `/opt` class/filesystem, sanitized raw `components:` shape, normalized required-component result, Doctor summary, and whether any reboot-dependent capability was actually checked.
 5. **Mutation tests only when justified.** Repeat-install/update/reboot tests belong on a non-critical acceptance device or a planned maintenance window. Do not toggle/remove components on a production router just to make the matrix look fuller.
+
+### Remaining dača 1012 follow-ups after 2026-09-25
+
+The two dača routers are healthy and accepted for the checks already performed, but the field campaign is not literally exhaustive.
+
+- **Persistence/reboot:** one final controlled reboot on each router can verify recovery of Mihomo, Proxy0, DNS interception, bypass rules, watchdog, MagiTrickle and the intended swap backend after the latest maintenance.
+- **NC-1012 Mihomo file provenance:** the external-EXT4 NC-1012 currently shows a canonical `/opt/sbin/mihomo` around **54.6 MB**, while the internal-UBIFS KN-1012 shows about **13 MB** with the same runtime version 1.19.31. Both are running correctly; treat this as a read-only packaging/provenance question, not evidence of corruption. If investigated, record hashes/file metadata/package source before changing anything.
+- WARPSCOUT transport/colo experiments belong to `saymer-alt/link-generators`; they are not part of the core installer/Doctor acceptance contract here.
+
 6. **Do not fabricate running-config wrap tests.** `show running-config` line boundaries are semantic. Add a fixture only when a real variant is observed, preserving the actual block shape and testing the real parser.
 7. **Every new live failure becomes a lesson.** Record the observation, classify which boundary assumption failed, and add the smallest permanent regression if the failure can influence behavior.
 
