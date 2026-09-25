@@ -345,7 +345,8 @@ cleanup_tmp() {
   # path - the error message points at it, so it must survive.
   if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
     rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
-    fi
+    rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
+  fi
   rm -f "$LOCK_LEGACY" 2>/dev/null || true
   rm -rf "$LOCK_DIR" 2>/dev/null || true
   rm -f "$MAINT_MARKER" 2>/dev/null || true
@@ -354,7 +355,6 @@ cleanup_tmp() {
     rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
   fi
   rm -f "$TMP_DIR"/mihomo-update.ipk 2>/dev/null || true
-  rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.new.* 2>/dev/null || true
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.rollback.* 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
