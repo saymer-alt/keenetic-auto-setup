@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.3 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.4 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -186,6 +186,12 @@ finding_action() {
             ;;
         *"Cannot read/validate running-config"*)
             printf '%s' "Retry when Keenetic ndmc is responsive; Doctor deliberately makes no proxy-state assumption while running-config is unreadable."
+            ;;
+        *"bypass_wa hook missing"*|*"bypass_wa hook is not executable"*)
+            printf '%s' "Restore the project 020-bypass_wa.sh hook with install.sh, then rebuild firewall or reboot and run Doctor again."
+            ;;
+        *"bypass_wa Netfilter verification unavailable"*|*"bypass_wa Netfilter chain missing"*|*"bypass_wa Netfilter rules incomplete"*)
+            printf '%s' "Ensure KeeneticOS opkg-kmod-netfilter is installed, then rebuild firewall or reboot. Doctor expects PREROUTING -> _CUST_BYPASS_WA_ plus UDP multiport MARK/CONNMARK/RETURN rules."
             ;;
         *"bypass_wa policy exists but has no interface permit"*)
             printf '%s' "Add the intended interface permit to bypass_wa if failover is used; otherwise the policy has no exit route."
@@ -1685,6 +1691,53 @@ else
             ok "DNS transit interception enabled (dns-proxy intercept enable)"
         else
             warn "DNS transit interception not found - transit port-53 DNS bypasses Keenetic's resolver (install.sh enables it; MagiTrickle coverage may suffer)"
+        fi
+    fi
+fi
+
+# Runtime proof for the project VoIP bypass path. A policy/chain name alone is
+# not sufficient: field A/B/C testing on KN-1010 / KeeneticOS 5.1.6 showed
+# that removing opkg-kmod-netfilter after reboot leaves PREROUTING attached to
+# an empty _CUST_BYPASS_WA_ chain because xt_multiport is unavailable.
+_BYPASS_HOOK="$OPT_ROOT/etc/ndm/netfilter.d/020-bypass_wa.sh"
+if [ ! -f "$_BYPASS_HOOK" ]; then
+    fail "bypass_wa hook missing ($_BYPASS_HOOK)"
+elif [ ! -x "$_BYPASS_HOOK" ]; then
+    fail "bypass_wa hook is not executable ($_BYPASS_HOOK)"
+else
+    ok "bypass_wa hook present and executable"
+fi
+
+if ! command -v iptables >/dev/null 2>&1; then
+    fail "bypass_wa Netfilter verification unavailable: iptables not found"
+else
+    _bypass_ports="1400,3478,3482"
+    _bypass_pre=$(iptables -t mangle -S PREROUTING 2>/dev/null)
+    _bypass_pre_rc=$?
+    _bypass_chain=$(iptables -t mangle -S _CUST_BYPASS_WA_ 2>/dev/null)
+    _bypass_chain_rc=$?
+
+    if [ "$_bypass_chain_rc" -ne 0 ]; then
+        fail "bypass_wa Netfilter chain missing: _CUST_BYPASS_WA_"
+    else
+        _bypass_missing=""
+        if [ "$_bypass_pre_rc" -ne 0 ] || ! printf '%s\n' "$_bypass_pre" | grep -Fq -- "-j _CUST_BYPASS_WA_"; then
+            _bypass_missing="$_bypass_missing PREROUTING-link"
+        fi
+        if ! printf '%s\n' "$_bypass_chain" | grep -F -- "-p udp -m multiport --dports $_bypass_ports -j MARK " >/dev/null 2>&1; then
+            _bypass_missing="$_bypass_missing multiport-MARK"
+        fi
+        if ! printf '%s\n' "$_bypass_chain" | grep -F -- "-p udp -m multiport --dports $_bypass_ports -j CONNMARK " >/dev/null 2>&1; then
+            _bypass_missing="$_bypass_missing multiport-CONNMARK"
+        fi
+        if ! printf '%s\n' "$_bypass_chain" | grep -Fq -- "-p udp -m multiport --dports $_bypass_ports -j RETURN"; then
+            _bypass_missing="$_bypass_missing multiport-RETURN"
+        fi
+
+        if [ -z "$_bypass_missing" ]; then
+            ok "bypass_wa Netfilter rules present (PREROUTING + UDP multiport MARK/CONNMARK/RETURN)"
+        else
+            fail "bypass_wa Netfilter rules incomplete: missing$_bypass_missing"
         fi
     fi
 fi
