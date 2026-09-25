@@ -112,6 +112,69 @@ Do not buy/find hardware or create synthetic emulation merely to make every matr
 green. When an `armv7` or big-endian `mips` router naturally becomes available, run
 the same conservative install → Doctor → update/reboot acceptance and record the result.
 
+### 2026-09-25 NC-1812 home / external-HDD live acceptance
+
+The operator's home **Netcraze Ultra NC-1812 / KeeneticOS 5.1.6 / aarch64** is now a
+completed live acceptance point rather than a pending re-check. The retained Doctor run finished
+with **36 OK / 0 WARN / 0 FAIL**: required components were present, external EXT4 `/opt`
+was accepted, runtime Mihomo/watchdog were healthy, and DNS interception, the project ProxyN
+path and live `bypass_wa` checks passed.
+
+Same-evening MCP inventory preserves the operating context without publishing private
+configuration: the router is a live mesh controller, its primary/default Internet path is
+**2KOM** over a 1 Gbit/s Ethernet WAN, `Proxy0` is up through that WAN, and OPKG is bound
+to an external USB storage volume. MCP identifies the attached media as a **Seagate Slim**
+USB 3.0 disk; the operator identifies it as a repurposed **2.5-inch 500 GB laptop HDD**.
+An MCN Telecom L860-GL-16 LTE interface is also present as a non-default secondary path.
+
+This router is also one of the operator-confirmed devices where MetaCubeXD/Mihomo
+Web-UI core self-upgrade is used successfully on external EXT4 storage. The exact binary
+size from the 2026-09-25 Doctor transcript was not retained in the current evidence summary,
+so do not invent one; the important retained facts are the healthy **36/0/0** acceptance,
+external-HDD profile and the operator-confirmed out-of-band core-update path.
+
+### 2026-09-25 KN-1012 SE / external-flash live acceptance
+
+The work **Keenetic Giga KN-1012 "SE" / KeeneticOS 5.1.5 / aarch64** supplies a second,
+independent external-EXT4 512 MB-class profile. Same-evening MCP inventory identifies a
+**Silicon Power 16 GB** USB flash device used for OPKG/Entware, a live mesh-controller role,
+a 100 Mbit/s primary Ethernet WAN (`Sots_Cisco_eth`), and a healthy project `Proxy0`
+bound through that WAN.
+
+The retained live Doctor run finished with **38 OK / 0 WARN / 0 FAIL**. It recorded
+external EXT4 `/opt`, about **486 MB RAM**, about **1022 MB** active storage-backed swap,
+Mihomo runtime **1.19.31**, MagiTrickle **0.8.1-1**, and `tun.stack: mips` on `mitun0`.
+
+This device provides especially useful update-path evidence: Doctor resolved the running
+Mihomo binary at **55,937 KB** and runtime **1.19.31**, while the opkg database still carried
+stale Mihomo metadata **1.19.28-1**. The operator confirms that this router, like the external
+NC-1012 and home NC-1812, updates Mihomo core through the MetaCubeXD/Web-UI self-upgrade
+path. The runtime/package-version mismatch plus the ~55 MB binary is therefore expected
+out-of-band state, not package corruption.
+
+### 2026-09-25 KN-3811 "126 security" wrapped-components acceptance
+
+The work **Keenetic Hopper KN-3811 "126 security"** is the contrasting internal-storage
+profile. Before the firmware update, on **KeeneticOS 5.1.5**, real `show version` output
+physically wrapped required IDs such as `dns-` / `filter` and
+`opkg-kmod-` / `netfilter`. The old line-oriented Doctor parser therefore reported
+a misleading **30 OK / 2 WARN / 2 FAIL**, even though the components were actually present.
+
+Runtime evidence at the same time showed Mihomo **1.19.31** with a roughly **13,000 KB**
+binary, internal UBIFS `/opt` with about **62 MB free**, native zRAM about **511 MB**,
+`tun.stack: mips`, loaded `xt_multiport`, and real
+`_CUST_BYPASS_WA_` UDP multiport MARK/CONNMARK/RETURN rules. Watchdog history showed
+four recorded restarts in total, two within the prior 24 hours; that history was evidence
+to inspect, not proof of a current Mihomo outage.
+
+After the router moved to **KeeneticOS 5.1.6**, the required components and runtime path
+remained healthy and the same wrapped presentation class remained observable. Same-evening
+MCP now confirms 5.1.6, **no USB storage**, `opkg disk storage:/` (internal storage),
+a 1 Gbit/s Ethernet WAN (`Sotsenergo 126 Eth`), and a live project `Proxy0`.
+This device is the real-hardware reason the project now normalizes only the understood
+`components:` field before exact matching; it remains a regression anchor for both
+wrapped component IDs and live Netfilter bypass rules.
+
 ### 2026-09-25 NC-1012 live parser acceptance
 
 Netcraze Giga **NC-1012 / KeeneticOS 5.1.6 stable / aarch64** provided a fresh real-output parser check. This is the dača wired router: live MCP inventory shows its Internet path as **Mynetcity PPPoE** over a 1 Gbit/s Ethernet link (PPPoE MTU 1492), while Entware lives on the operator-confirmed **USB/NVMe 32 GB** external storage mounted as EXT4 `/opt`. The router is also serving as a live mesh controller, so the acceptance was performed on a real production-role device rather than an isolated lab unit. Its `show version` physically split `dns-filter` as `dns-` / `filter` and also split the related `opkg-kmod-netfilter-addons` token across lines. The current Doctor reconstructed the logical `components:` field correctly and reported `proxy`, `dns-filter`, `opkg-kmod-netfilter`, `dns-tls`, `dns-https`, `ext` and `ext-utils` as present. The router used external EXT4 `/opt`, external storage-backed swap, and live `xt_multiport` plus the expected bypass MARK/CONNMARK/RETURN rules. The initial Doctor run finished with **35 OK / 1 WARN / 0 FAIL**; the only warning was the pre-migration legacy watchdog layout. The same router then completed watchdog migration to the canonical layout, moved Mihomo from runtime **1.19.30** to **1.19.31**, migrated `tun.stack` from **gvisor** to **mips** with controlled stop / `mihomo -t` validation / restart, and passed a post-maintenance Doctor run with **37 OK / 0 WARN / 0 FAIL** while retaining the live bypass rules and working Proxy0/DNS-interception path.
@@ -124,9 +187,9 @@ A second dača **Keenetic Giga KN-1012 / KeeneticOS 5.1.6 stable / aarch64** pro
 
 The next useful work is evidence collection and integration acceptance, not a larger synthetic KeeneticOS emulator.
 
-1. **NC-1812 first, read-only.** Capture `ndmc -c "show version"` and run the current Doctor. Verify that every visibly present required component survives parser normalization despite any physical wrapping, and that Doctor produces no false component-missing result. This device has priority because its 2026-09-19 output was the earliest retained warning that IDs can wrap inside a token.
-2. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. The dača 1012-class evidence now covers two distinct devices and must keep their identities separate: Netcraze Giga **NC-1012** with external EXT4 `/opt`, and Keenetic Giga **KN-1012** GSM with internal UBIFS `/opt`.
-3. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware.
+1. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. NC-1812 has now completed its 2026-09-25 read-only Doctor re-check with **36 OK / 0 WARN / 0 FAIL**.
+2. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware; its current 5.1.6/internal-storage shape is now preserved as live evidence.
+3. **Keep KN-1012 profiles distinct.** The accepted family now includes at least three materially different 1012-class operating profiles: dača NC-1012 external EXT4/NVMe, work KN-1012 SE external EXT4/USB flash, and dača KN-1012 GSM internal UBIFS/zRAM.
 4. **Per-device evidence record.** Store exact model/hw_id, firmware title/release, architecture, `/opt` class/filesystem, sanitized raw `components:` shape, normalized required-component result, Doctor summary, and whether any reboot-dependent capability was actually checked.
 5. **Mutation tests only when justified.** Repeat-install/update/reboot tests belong on a non-critical acceptance device or a planned maintenance window. Do not toggle/remove components on a production router just to make the matrix look fuller.
 
@@ -135,7 +198,7 @@ The next useful work is evidence collection and integration acceptance, not a la
 The two dača routers are healthy and accepted for the checks already performed, but the field campaign is not literally exhaustive.
 
 - **Persistence/reboot:** one final controlled reboot on each router can verify recovery of Mihomo, Proxy0, DNS interception, bypass rules, watchdog, MagiTrickle and the intended swap backend after the latest maintenance.
-- **Two Mihomo update paths explain the binary-size difference.** The external-EXT4 NC-1012 currently shows a canonical `/opt/sbin/mihomo` around **54.6 MB** because that router's core was updated from the Web UI/version control path, which invokes Mihomo's own core-upgrade mechanism and installs the upstream release form. The internal-UBIFS KN-1012 GSM was updated with this project's `update-mihomo.sh`, which consumes the `saymer-alt/entware-go` package; that build recipe explicitly packs Mihomo with `upx -9 --lzma`, producing the much smaller ~**13 MB** canonical binary. Both run runtime version 1.19.31 correctly. Do not treat the size difference as corruption. Operator field history also reports the Web-UI core update path working on VPS hosts and on the two routers with external EXT4 storage; whether free-space availability itself controls UI eligibility was not isolated and should not be stated as a proven rule.
+- **Two Mihomo update paths explain the binary-size difference.** The external-EXT4 NC-1012 currently shows a canonical `/opt/sbin/mihomo` around **54.6 MB** because that router's core was updated from the Web UI/version control path, which invokes Mihomo's own core-upgrade mechanism and installs the upstream release form. The internal-UBIFS KN-1012 GSM was updated with this project's `update-mihomo.sh`, which consumes the `saymer-alt/entware-go` package; that build recipe explicitly packs Mihomo with `upx -9 --lzma`, producing the much smaller ~**13 MB** canonical binary. Both run runtime version 1.19.31 correctly. Do not treat the size difference as corruption. Operator field history now confirms the Web-UI core update path on VPS hosts and on **three** external-EXT4 routers: dača NC-1012, home NC-1812, and work KN-1012 SE. The SE Doctor evidence is especially strong because runtime 1.19.31 / 55,937 KB coexisted with stale opkg metadata 1.19.28-1. Whether free-space availability itself controls UI eligibility was not isolated and should not be stated as a proven rule.
 - WARPSCOUT transport/colo experiments belong to `saymer-alt/link-generators`; they are not part of the core installer/Doctor acceptance contract here.
 
 6. **Do not fabricate running-config wrap tests.** `show running-config` line boundaries are semantic. Add a fixture only when a real variant is observed, preserving the actual block shape and testing the real parser.
