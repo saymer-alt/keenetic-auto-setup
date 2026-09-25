@@ -343,7 +343,16 @@ ADDONS_ONLY_COMPONENT_FIXTURE='           components: base,dns-filter,dns-tls,op
     KEENETIC_COMPONENT_LIST=$(component_list_from_show_version)
     component_list_has opkg-kmod-netfilter && exit 31
     component_list_has opkg-kmod-netfilter-addons || exit 32
-) || fail "component matching must stay exact: netfilter-addons must not satisfy opkg-kmod-netfilter"
+) || fail "installer component matching must stay exact: netfilter-addons must not satisfy opkg-kmod-netfilter"
+
+(
+    eval "$_doctor_component_parser"
+    eval "$_doctor_component_has"
+    SV_OUT=$ADDONS_ONLY_COMPONENT_FIXTURE
+    DOC_COMPONENT_LIST=$(_doctor_component_list_from_show_version)
+    _doctor_component_has opkg-kmod-netfilter && exit 33
+    _doctor_component_has opkg-kmod-netfilter-addons || exit 34
+) || fail "Doctor component matching must stay exact: netfilter-addons must not satisfy opkg-kmod-netfilter"
 
 pass "Doctor and installer parse wrapped Keenetic show version component IDs exactly"
 
