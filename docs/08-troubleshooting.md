@@ -329,39 +329,35 @@ running-config).
 
 #### Проверка
 
-```bash
-iptables -t mangle -L | grep _CUST_BYPASS_WA_
-```
-
----
-
-#### Решение
+Не ограничивайтесь наличием имени цепочки: после удаления
+`opkg-kmod-netfilter` полевой тест KN-1010 показал, что
+`_CUST_BYPASS_WA_` может существовать и быть подключена к PREROUTING, но
+оставаться пустой.
 
 ```bash
-/etc/init.d/netfilter restart
+iptables -t mangle -S _CUST_BYPASS_WA_
 ```
 
-или reboot
+Здоровый ruleset содержит UDP `multiport --dports 1400,3478,3482` и три
+действия: `MARK`, `CONNMARK --save-mark`, `RETURN`.
+
+Если цепочка пустая, проверьте KeeneticOS-компонент
+`opkg-kmod-netfilter` (**Модули ядра подсистемы Netfilter**). Отдельный
+Xtables-addons для текущего bypass не требуется. После установки компонента
+пересоберите firewall или перезагрузите роутер.
 
 ---
 
-### ❌ правила есть, но не работают
-
----
-
-#### Проверка
+#### Счётчики
 
 ```bash
-iptables -t mangle -L _CUST_BYPASS_WA_ -v -n
+iptables -t mangle -L _CUST_BYPASS_WA_ -v -n -x --line-numbers
 ```
 
-👉 счётчики должны расти
-
----
-
-#### Если нет
-
-👉 трафик не попадает
+Счётчики растут только если трафик реально попал в порты
+`1400,3478,3482/udp`. Сам факт успешного звонка не доказывает, что звонок
+прошёл через `bypass_wa`: конкретный сеанс может использовать другие порты
+или другой маршрут.
 
 ---
 

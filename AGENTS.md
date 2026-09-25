@@ -214,6 +214,15 @@ a live run.
 
 ## 10. Historical context (why it is this way)
 
+- 2026-09-25 field A/B/C on KN-1010 / KeeneticOS 5.1.6 proved why
+  `opkg-kmod-netfilter` is a hard project prerequisite: with the component present,
+  `xt_multiport` and the UDP multiport MARK/CONNMARK/RETURN rules exist; after removing
+  Netfilter modules and rebooting, Entware iptables and the bypass policy/chain survived
+  but `xt_multiport` disappeared and `_CUST_BYPASS_WA_` was empty; restoring only
+  `opkg-kmod-netfilter` (Xtables-addons still disabled) restored the module and rules.
+  Do not replace this with a chain-exists-only check; runtime health requires the actual
+  ruleset.
+
 - deploy.sh (the first installer: jsdelivr CDN, sw.ext.io mirror, interactive nano)
   was removed on 2026-09-17 by operator decision; history remains in Git. install.sh
   was created, removed, and recreated.
