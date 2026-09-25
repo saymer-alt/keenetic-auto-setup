@@ -127,7 +127,7 @@ to an external USB storage volume. MCP identifies the attached media as a **Seag
 USB 3.0 disk; the operator identifies it as a repurposed **2.5-inch 500 GB laptop HDD**.
 An MCN Telecom L860-GL-16 LTE interface is also present as a non-default secondary path.
 
-This router is also one of the operator-confirmed devices where MetaCubeXD/Mihomo
+Current MCP component inventory also confirms `proxy`, `dns-filter`, `opkg-kmod-netfilter`, both secure-DNS components, and the external-storage pair `ext` + `ext-utils` as installed. This router is also one of the operator-confirmed devices where MetaCubeXD/Mihomo
 Web-UI core self-upgrade is used successfully on external EXT4 storage. The exact binary
 size from the 2026-09-25 Doctor transcript was not retained in the current evidence summary,
 so do not invent one; the important retained facts are the healthy **36/0/0** acceptance,
@@ -144,6 +144,8 @@ bound through that WAN.
 The retained live Doctor run finished with **38 OK / 0 WARN / 0 FAIL**. It recorded
 external EXT4 `/opt`, about **486 MB RAM**, about **1022 MB** active storage-backed swap,
 Mihomo runtime **1.19.31**, MagiTrickle **0.8.1-1**, and `tun.stack: mips` on `mitun0`.
+
+Current MCP component inventory independently confirms the required runtime IDs (`proxy`, `dns-filter`, `opkg-kmod-netfilter`, DoT/DoH) plus `ext` and `ext-utils` for the external EXT4 profile.
 
 This device provides especially useful update-path evidence: Doctor resolved the running
 Mihomo binary at **55,937 KB** and runtime **1.19.31**, while the opkg database still carried
@@ -171,7 +173,7 @@ After the router moved to **KeeneticOS 5.1.6**, the required components and runt
 remained healthy and the same wrapped presentation class remained observable. Same-evening
 MCP now confirms 5.1.6, **no USB storage**, `opkg disk storage:/` (internal storage),
 a 1 Gbit/s Ethernet WAN (`Sotsenergo 126 Eth`), and a live project `Proxy0`.
-This device is the real-hardware reason the project now normalizes only the understood
+Current MCP component inventory confirms `proxy`, `dns-filter`, `opkg-kmod-netfilter`, `dns-tls` and `dns-https` as installed on the 5.1.6 router. `ext` is present, while `ext-utils` is not in the slim installed list; because this profile uses internal `storage:/`, the project does not require the external-storage `ext` + `ext-utils` pair here. This device is the real-hardware reason the project now normalizes only the understood
 `components:` field before exact matching; it remains a regression anchor for both
 wrapped component IDs and live Netfilter bypass rules.
 
