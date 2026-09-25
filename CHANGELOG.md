@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 
 ### Documentation
+- Added dedicated user guides for `setup.sh` and `mihomo-route-check.sh` in RU/EN, including storage/profile behavior, safe config handoff, route-check interpretation, read-only guarantees and limitations.
 - README now exposes both operator web entry points (MetaCubeXD on `:9090/ui/` and MagiTrickle on `:8080/`), makes user-config preservation/rollback more visible, and separates manual iptables/ProxyN/routing/DNS/storage overrides into an explicit advanced/risk-zone section.
 - Roadmap records focused route/domain diagnostics as a separate read-only helper rather than expanding Doctor into a heavy tracer.
 - Added the first Part III encyclopedia article: a source-verified guide to the MetaCubeXD 1.273.1 web interface, including the proxy-group Target/Recommended/Unfix/latency-test buttons, display modes, sorting, card density, batch tests, provider controls, Smart Recommendation/Auto Switch, `rule/global/direct`, Core vs XD settings, and the distinction between view-only and state-changing actions.
