@@ -158,19 +158,19 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Purpose / documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | [Quick installation and initial setup](SETUP.md) |
-| [`install.sh`](../../install.sh) | [Advanced installation with explicit profile selection](../03-install.md) |
-| [`config-import.sh`](../../config-import.sh) | [Safe Mihomo configuration replacement](CONFIG_IMPORT.md) |
-| [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [Move TUN to the MIPS stack](UPDATES.md#mips-tun-migration) |
-| [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Full system health check](../08-troubleshooting.md) |
-| [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Check interfaces for `interface-name`](../../ARCHITECTURE.md) |
-| [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Inspect the current proxy selection](../11-proxy-selection-watch.md) |
-| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Check the path to a specific domain/IP](ROUTE_CHECK.md) |
-| [`update-mihomo.sh`](../../update-mihomo.sh) | [Safe Mihomo update with rollback](UPDATES.md#mihomo-update) |
-| [`update-watchdog.sh`](../../update-watchdog.sh) | [Safe watchdog update](UPDATES.md#watchdog-update) |
-| [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Automatic Mihomo health monitoring and recovery](../04-watchdog.md) |
-| [`020-bypass-wa.sh`](../../020-bypass-wa.sh) | [Bypass Mihomo for VoIP/calls](../05-bypass-wa.md) |
-| [`S00ubifs`](../../S00ubifs) | [Reduce writes to internal flash](../06-s00ubifs.md) |
+| [`setup.sh`](../../setup.sh) | [Recommended project installation](SETUP.md) |
+| [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
+| [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
+| [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [Migrate the TUN config from gVisor to MIPS](UPDATES.md#mips-tun-migration) |
+| [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Doctor: full project diagnostics](../08-troubleshooting.md) |
+| [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Show Linux WAN/VPN interface names for `interface-name`](../../ARCHITECTURE.md) |
+| [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Show which Mihomo server is selected now](../11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Check whether a specific site is reachable through Mihomo](ROUTE_CHECK.md) |
+| [`update-mihomo.sh`](../../update-mihomo.sh) | [Update the Mihomo core with validation and rollback](UPDATES.md#mihomo-update) |
+| [`update-watchdog.sh`](../../update-watchdog.sh) | [Update the watchdog mechanism](UPDATES.md#watchdog-update) |
+| [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Check Mihomo and restart it only on a confirmed failure](../04-watchdog.md) |
+| [`020-bypass-wa.sh`](../../020-bypass-wa.sh) | [Intercept VoIP traffic and send it to the separate `bypass_wa` policy](../05-bypass-wa.md) |
+| [`S00ubifs`](../../S00ubifs) | [Move Entware runtime directories to RAM and reduce flash writes](../06-s00ubifs.md) |
 
 ## 7. Reference
 
