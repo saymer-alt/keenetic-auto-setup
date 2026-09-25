@@ -6,12 +6,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+---
+
+## [1.5.0] - 2026-09-25
+
 ### Added
+- Added `mihomo-route-check.sh`, a focused read-only diagnostic for one domain/IP: it reports target DNS resolution, project ProxyN evidence, local port 7890, current Controller proxy selection, and a SOCKS5h request to the target while explicitly avoiding claims about a specific LAN client's policy classification.
 - Added `setup.sh`, a deliberately thin simple-install front-end that detects whether `/opt` is on internal or external persistent storage, chooses the normal `ram`/`disk` profile automatically, validates the downloaded canonical installer, and delegates all router mutations and safety gates to `install.sh`. README now presents this as the default happy path while keeping manual mode selection as an advanced path.
 - Added `config-import.sh` for the second half of the simple-install flow: interactive YAML paste works through `curl | sh` by reading `/dev/tty`; the candidate must preserve the project `mixed-port: 7890` contract, is validated under the one-Mihomo rule, backed up as `config.yaml.bak`, committed with a same-filesystem atomic rename, and automatically rolled back if validation/startup/port verification fails. `update-mihomo.sh` now refuses to overlap an active config import.
 
 ### Changed
-- `setup.sh` now hands off directly to `config-import.sh` after installation; interactive YAML import no longer uses a separate confirmation prompt that could consume the first pasted line. The importer itself owns skip/input handling, and setup staging files use unique `$` suffixes again.
+- Config Import recovery after a failed pre-commit config validation now waits for the restored Mihomo service to make project port 7890 ready before returning the rejection to the user; this avoids reporting completion while the old daemon is still starting.
+- Fixed `setup.sh` staging paths that had regressed from shell-PID `$$` suffixes to a literal single `$`; installer/importer temporary files are process-unique again, with a permanent contract test preventing recurrence.
+- `setup.sh` now hands off directly to `config-import.sh` after installation; interactive YAML import no longer uses a separate confirmation prompt that could consume the first pasted line. The importer itself owns skip/input handling, and setup staging files use shell-PID (`$$`) suffixes again.
 - README now presents one production installation path (`setup.sh` → generator → safe Config Import); manual/advanced installation variants remain in `docs/03-install.md`, while `nano /opt/etc/mihomo/config.yaml` stays visible as a quick operational editing command.
 - `mihomo-doctor.sh` v1.2.3 improves legacy-install interpretation without weakening any contract or exit code: DNS-interception warnings now get the correct `dns-proxy intercept enable` action before the generic MagiTrickle matcher, `/proc/PID/exe` survives Markdown/chat pastes, and the final findings block distinguishes Doctor FAIL findings from proof of a current runtime outage when a legacy router only violates today's component profile.
 
@@ -19,6 +28,11 @@ All notable changes to this project will be documented in this file.
 - Added `tests/transaction-invariants.py` and a dedicated CI step for high-consequence maintenance contracts without building a KeeneticOS emulator: Mihomo updater transaction ordering/rollback, watchdog updater atomic replacement plus preservation of unknown files, and MIPS migrator read-only-check/backup/validation/rollback ordering.
 
 ### Documentation
+- Clarified that MetaCubeXD/port 9090 is only expected after importing a full generated config with `external-controller`; skipping Config Import intentionally leaves the minimal 7890-only bootstrap while MagiTrickle 8080 remains available.
+- README now calls out S00ubifs as part of the normal internal-storage profile: volatile tmp/log/run paths are moved to RAM-backed tmpfs to reduce continuous writes to internal flash, while persistent configs/packages remain on storage.
+- Added dedicated user guides for `setup.sh` and `mihomo-route-check.sh` in RU/EN, including storage/profile behavior, safe config handoff, route-check interpretation, read-only guarantees and limitations.
+- README now exposes both operator web entry points (MetaCubeXD on `:9090/ui/` and MagiTrickle on `:8080/`), makes user-config preservation/rollback more visible, and separates manual iptables/ProxyN/routing/DNS/storage overrides into an explicit advanced/risk-zone section.
+- Roadmap records focused route/domain diagnostics as a separate read-only helper rather than expanding Doctor into a heavy tracer.
 - Added the first Part III encyclopedia article: a source-verified guide to the MetaCubeXD 1.273.1 web interface, including the proxy-group Target/Recommended/Unfix/latency-test buttons, display modes, sorting, card density, batch tests, provider controls, Smart Recommendation/Auto Switch, `rule/global/direct`, Core vs XD settings, and the distinction between view-only and state-changing actions.
 - Expanded Part III with dedicated Russian guides for Controller/API security and remote access, proxy-providers, GEOIP/GEOSITE data, and Mihomo logging; linked older Part II placeholders to the completed articles.
 - Reclassified `tun.stack: mips` on Keenetic from an unverified experiment to a supported optional migration path backed by the existing migrator and live MT7621 lifecycle testing, while avoiding a universal performance claim or automatic/default migration.
@@ -31,6 +45,14 @@ All notable changes to this project will be documented in this file.
 - Added an explicit fail-closed vs fail-open section for Keenetic Connection Policies: `connect via ProxyN` controls the WireGuard peer's underlying path, while the policy's checked/priority connections independently decide whether clients lose connectivity or fall back to another gateway when WARP fails. The article now also documents the policy-scoped DNS caveat from Keenetic's manual and replaces the weak 4.1 source link/country-selector wording with directly supporting official references.
 - Added a dedicated WARPSCOUT encyclopedia guide based on upstream `README_RU.md`/sources: `NODE` vs `SEEN AS`, endpoint+port colo steering, `-sweep-ports`, why scans should follow the same VPS egress path as the nested WARP chain, and the distinction between ordinary colo selection and WARP-in-WARP. The nested-WARP article now documents the separate consumer MASQUE H3/QUIC and H2/TCP pools used by current WARPSCOUT and makes clear that MASQUE endpoints are not native Keenetic WireGuard peers.
 - Preserved project field evidence from June-August 2026 in the WARPSCOUT guide: historical H3/H2 endpoint behavior, provider/path-dependent Cloudflare nodes, a real `colo=FRA` + `loc=CH` trace, and a counterexample where endpoint churn still stayed on DME. Added the proven `Fastest_MASQUE` H3/H2 Mihomo pattern, clarified that `usque` is optional in a Mihomo-native stack, and documented the key distinction between true WARP-in-WARP (separate outer/inner WARP keys) and a non-WARP outer `dialer-proxy` transport.
+
+### Tested
+- Live release acceptance passed on Keenetic Giga **KN-1010**, KeeneticOS **5.1.6 stable**, mipsel, with external EXT4 `/opt` and 468 MB external storage-backed swap.
+- Fresh guided installation completed successfully; `setup.sh` auto-selected `disk`, installed Mihomo 1.19.31-2 and MagiTrickle 0.8.2-1, created/validated the project Proxy0 path, DNS interception, bypass hook and watchdog.
+- Full Config Import passed with real `mihomo -t` validation, previous-config backup, atomic replacement, service restart and ports 7890/9090 ready.
+- Repeat `setup.sh` was idempotent: the existing Mihomo binary/config were preserved and the running daemon PID stayed unchanged.
+- Deliberately invalid YAML was rejected before commit; the canonical config hash stayed unchanged and the previous Mihomo service was restored with port 7890 ready before control returned.
+- Reboot acceptance passed: config hash persisted; Mihomo, MagiTrickle, swap, `_CUST_BYPASS_WA_`, Proxy0/DNS interception and ports 3553/7890/8080/9090 recovered; Doctor finished with **35 OK / 0 WARN / 0 FAIL**.
 
 ---
 

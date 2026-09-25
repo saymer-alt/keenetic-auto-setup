@@ -286,8 +286,8 @@ done
 pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
 # Simple front-end must remain a thin selector/delegator, not a second installer.
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
-grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"' "$ROOT/setup.sh" || fail "simple setup installer staging path must be process-unique"
-grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"' "$ROOT/setup.sh" || fail "simple setup importer staging path must be process-unique"
+grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"' "$ROOT/setup.sh" || fail "simple setup installer staging path must use the shell PID ($$) and remain process-unique"
+grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"' "$ROOT/setup.sh" || fail "simple setup importer staging path must use the shell PID ($$) and remain process-unique"
 grep -Fq 'PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"' "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
 grep -q 'MODE=ram' "$ROOT/setup.sh" || fail "simple setup wrapper must select ram for internal /opt"
 grep -q 'MODE=disk' "$ROOT/setup.sh" || fail "simple setup wrapper must select disk for external /opt"
@@ -300,7 +300,9 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 grep -q 'stable/setup.sh | sh' "$ROOT/README.md" || fail "README must expose the simple setup wrapper as the happy path"
 grep -Fq 'nano /opt/etc/mihomo/config.yaml' "$ROOT/README.md" || fail "README must keep the quick manual config edit command visible"
 ! grep -Fq 'stable/install.sh | sh -s -- disk' "$ROOT/README.md" || fail "README must keep advanced manual install commands in detailed documentation"
-pass "simple setup wrapper auto-selects storage profile and delegates all mutations"
+! grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"' "$ROOT/setup.sh" || fail "simple setup staging path must not regress to a literal single-dollar suffix"
+! grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"' "$ROOT/setup.sh" || fail "simple setup importer path must not regress to a literal single-dollar suffix"
+pass "simple setup wrapper auto-selects storage profile, uses PID-unique staging and delegates all mutations"
 
 # Config import is a transactional config replacement, not a direct overwrite.
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/config-import.sh" || fail "config importer must coordinate planned downtime with watchdog"
@@ -315,6 +317,8 @@ grep -Fq 'mv -f "$STAGE_CONFIG" "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail
 grep -q '^rollback_config()' "$ROOT/config-import.sh" || fail "config importer must retain rollback logic"
 grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/config-import.sh" || fail "failed runtime start must roll back config"
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
+grep -Fq 'Previous Mihomo service restored; port 7890 is listening.' "$ROOT/config-import.sh" || fail "pre-commit failure recovery must wait for old service port 7890 readiness"
+grep -Fq 'start_mihomo_confirmed || return 1' "$ROOT/config-import.sh" || fail "old service restoration must fail if the process cannot be restarted"
 grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
 grep -Fq 'CONFIG_COMMIT_STARTED=1' "$ROOT/config-import.sh" || fail "config importer must mark the commit phase before atomic replacement"
 grep -Fq 'if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then' "$ROOT/config-import.sh" || fail "signals during the commit window must roll back"

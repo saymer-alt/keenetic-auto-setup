@@ -28,7 +28,7 @@ The updater:
 - stages the candidate on the destination filesystem and commits with atomic rename;
 - restores the previous binary on failed post-commit verification;
 - preserves the previous service state;
-- never overwrites the user `config.yaml`;
+- never overwrites the user `config.yaml`; the updater replaces the Mihomo binary, not the user's configuration;
 - never auto-downgrades.
 
 After an update:
@@ -36,6 +36,8 @@ After an update:
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
+
+When replacing `config.yaml` itself, use `config-import.sh`: it keeps the previous config as `config.yaml.bak`, validates the candidate and rolls back if startup or the contract-port check fails.
 
 ## MagiTrickle update
 

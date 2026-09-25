@@ -102,11 +102,12 @@ Doctor + watchdog + MetaCubeXD закрывают локальную экспл�
 ### 6. Улучшение диагностики
 
 - [x] единая read-only команда диагностики — `mihomo-doctor.sh`
+- [x] точечная read-only диагностика домена/IP — `mihomo-route-check.sh`: DNS → проектный ProxyN → локальный 7890 → текущий выбор Mihomo → SOCKS5h-проба к цели; без изменения policy/routing и без ложного утверждения, что такая проба доказывает политику конкретного LAN-клиента
 - [x] вывод состояния системы, Mihomo, ProxyN, DNS, MagiTrickle, watchdog, истории и маршрутизации
 - [x] финальный self-check в `install.sh`
 - [x] маленький постоянный contract smoke test — `tests/contracts.sh`
 - [x] отдельные CI-регрессии для высокорисковых транзакций — `tests/transaction-invariants.py` (updater rollback/order, watchdog atomic update/preservation, MIPS migrator)
-**Правило развития Doctor:** расширять только по новым воспроизводимым полевым кейсам; не превращать его в repair tool.
+**Правило развития Doctor:** расширять только по новым воспроизводимым полевым кейсам; не превращать его в repair tool. Узкие проверки конкретной цели предпочтительно выносить в отдельные read-only helpers, чтобы Doctor не превращался в тяжёлый трассировщик.
 
 ---
 

@@ -13,8 +13,9 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 - Internet access
 - KeeneticOS: **Proxy client** (`proxy`) and at least one secure-DNS component — `dns-tls` **or** `dns-https`
 - If `/opt` is on external USB/NVMe storage: **EXT4 only**; KeeneticOS components `ext` and `ext-utils` are required
+- For the normal internal-`/opt` profile the project uses **S00ubifs**: `/opt/tmp`, `/opt/var/log`, and `/opt/var/run` are moved to `tmpfs` (RAM), reducing continuous writes to internal flash while configs and packages stay persistent
 
-Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md)
+Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md) · [S00ubifs flash-write reduction and RAM mode](../06-s00ubifs.md)
 
 ## 1. Installation
 
@@ -46,13 +47,16 @@ The importer runs real `mihomo -t` validation, preserves the one-Mihomo invarian
 
 If you do not want to import a config yet, type `s` at the importer prompt and run it later.
 
-After Mihomo starts successfully, open MetaCubeXD in a browser at:
+After importing a full generated `config.yaml`, the two main web interfaces are:
 
 ```text
-http://192.168.1.1:9090/ui/
+MetaCubeXD:   http://192.168.1.1:9090/ui/
+MagiTrickle:  http://192.168.1.1:8080/
 ```
 
-For the first open, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` with that address.
+If Config Import is skipped with `s`, the minimal bootstrap config keeps only the required `mixed-port: 7890`; `external-controller`/MetaCubeXD is not configured yet, so port 9090 is **not expected** to listen. MagiTrickle on 8080 remains available independently.
+
+For the first MetaCubeXD open after importing the full config, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` in both links.
 
 Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
 
@@ -72,6 +76,15 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
+Focused read-only check for one domain/IP through ProxyN → Mihomo:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-route-check.sh -o /tmp/mihomo-route-check.sh && \
+sh /tmp/mihomo-route-check.sh example.com
+```
+
+The helper shows DNS, project ProxyN evidence, port 7890, the current Mihomo selection and a SOCKS5h probe. It does not change routing and does not claim that a successful SOCKS probe proves a specific LAN client's Keenetic/MagiTrickle policy.
+
 Restart after a manual edit:
 
 ```bash
@@ -87,6 +100,8 @@ Status:
 Details → [diagnostics and troubleshooting](../08-troubleshooting.md)
 
 ## 4. Updates
+
+Updating Mihomo does not overwrite the user `/opt/etc/mihomo/config.yaml`. Safe Config Import keeps `config.yaml.bak` and automatically rolls back if validation or startup fails.
 
 Mihomo:
 
@@ -110,6 +125,10 @@ opkg update && opkg install magitrickle
 Details → [updates, rollback and maintenance](UPDATES.md)
 
 ## 5. Additional commands
+
+### Advanced / risk zone
+
+Normal operation does not require manual edits to `iptables`, ProxyN, policy routing, DNS, or storage overrides. Treat these as advanced/risk-zone operations: a mistake can affect the whole LAN or lock you out of the router. Start with Doctor and read-only helpers and make manual changes only with a concrete dependency and rollback path.
 
 MIPS TUN migration:
 
@@ -139,13 +158,14 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | Recommended wizard: auto-profile → install → safe Config Import |
+| [`setup.sh`](../../setup.sh) | [Recommended wizard: auto-profile → install → safe Config Import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Installation](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Safe config import](CONFIG_IMPORT.md) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [MIPS TUN migration](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Architecture](../../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](../11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Focused read-only domain/IP path diagnostic](ROUTE_CHECK.md) |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Mihomo update](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Watchdog update](UPDATES.md#watchdog-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Watchdog](../04-watchdog.md) |
