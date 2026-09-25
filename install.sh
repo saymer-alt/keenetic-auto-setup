@@ -397,9 +397,40 @@ DNS_HTTPS_COMPONENT_ID=dns-https
 EXT_COMPONENT_ID=ext
 EXT_UTILS_COMPONENT_ID=ext-utils
 
+component_list_from_show_version() {
+    # ndmc wraps long component IDs at the terminal width. The wrap may split
+    # an ID after '-' (for example dns- / filter or opkg-kmod- / netfilter),
+    # so parse only the components field and concatenate its continuation
+    # lines before matching exact comma-delimited IDs.
+    printf '%s\n' "$KEENETIC_VERSION_DUMP" | awk '
+        /^[[:space:]]*components:[[:space:]]*/ {
+            in_components=1
+            line=$0
+            sub(/^[[:space:]]*components:[[:space:]]*/, "", line)
+            gsub(/[[:space:]]/, "", line)
+            printf "%s", line
+            next
+        }
+        in_components {
+            line=$0
+            sub(/^[[:space:]]*/, "", line)
+            if (line ~ /^[[:alnum:]_-]+(,[[:alnum:]_-]+)*,?$/) {
+                gsub(/[[:space:]]/, "", line)
+                printf "%s", line
+                next
+            }
+            exit
+        }
+        END {
+            if (in_components) printf "\n"
+        }
+    '
+}
+
 component_list_has() {
     _clh_id="$1"
-    printf '%s\n' "$KEENETIC_VERSION_DUMP" | grep -Eq "(^|[,:[:space:]])${_clh_id}([,[:space:]]|$)"
+    [ -n "$KEENETIC_COMPONENT_LIST" ] || return 1
+    printf '%s\n' "$KEENETIC_COMPONENT_LIST" | grep -Eq "(^|,)${_clh_id}(,|$)"
 }
 
 required_components_preflight_error() {
@@ -427,6 +458,10 @@ require_project_keeneticos_components() {
     KEENETIC_VERSION_DUMP=$(ndmc -c "show version" 2>/dev/null || true)
     [ -n "$KEENETIC_VERSION_DUMP" ] ||
         required_components_preflight_error "Cannot read 'show version'; required component state is UNKNOWN."
+
+    KEENETIC_COMPONENT_LIST=$(component_list_from_show_version)
+    [ -n "$KEENETIC_COMPONENT_LIST" ] ||
+        required_components_preflight_error "Cannot parse the components field from 'show version'; required component state is UNKNOWN."
 
     _rc_missing_count=0
     _rc_missing_lines=""

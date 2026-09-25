@@ -214,6 +214,7 @@ a live run.
 
 ## 10. Historical context (why it is this way)
 
+- 2026-09-25 KN-3811 before/after 5.1.5 -> 5.1.6 showed that `ndmc -c "show version"` may hard-wrap long component IDs inside a token (`dns-` / `filter`, `opkg-kmod-` / `netfilter`). Never test required component IDs line-by-line against the raw dump. Normalize only the `components:` continuation block first, then exact-match comma-delimited IDs. This applies to both Doctor and installer; `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`.
 - 2026-09-25 field A/B/C on KN-1010 / KeeneticOS 5.1.6 proved why
   `opkg-kmod-netfilter` is a hard project prerequisite: with the component present,
   `xt_multiport` and the UDP multiport MARK/CONNMARK/RETURN rules exist; after removing
