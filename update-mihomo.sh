@@ -207,16 +207,19 @@ restore_binary_state() {
 
   if [ "$STATE_HAD_OLD" -eq 1 ]; then
     if [ ! -s "$TMP_STATE_BACKUP" ]; then
+      RECOVERY_FAILED=1
       warn "Binary-state rollback backup is missing; runtime binary will still be restored, but project metadata may be stale: $BINARY_STATE"
       return 1
     fi
     if ! cp -f "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
       rm -f "$_rollback_stage" 2>/dev/null || true
-      warn "Could not restore previous project binary state at $BINARY_STATE"
+      RECOVERY_FAILED=1
+      warn "Could not restore previous project binary state at $BINARY_STATE (backup kept at $TMP_STATE_BACKUP)"
       return 1
     fi
   else
     rm -f "$BINARY_STATE" 2>/dev/null || {
+      RECOVERY_FAILED=1
       warn "Could not remove newly-created project binary state during rollback: $BINARY_STATE"
       return 1
     }
@@ -342,7 +345,7 @@ cleanup_tmp() {
   # path - the error message points at it, so it must survive.
   if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
     rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
-  fi
+    fi
   rm -f "$LOCK_LEGACY" 2>/dev/null || true
   rm -rf "$LOCK_DIR" 2>/dev/null || true
   rm -f "$MAINT_MARKER" 2>/dev/null || true
