@@ -123,6 +123,10 @@ Details → [updates, rollback and maintenance](UPDATES.md)
 
 ## 5. Additional commands
 
+### Advanced / risk zone
+
+Normal operation does not require manual edits to `iptables`, ProxyN, policy routing, DNS, or storage overrides. Treat these as advanced/risk-zone operations: a mistake can affect the whole LAN or lock you out of the router. Start with Doctor and read-only helpers and make manual changes only with a concrete dependency and rollback path.
+
 MIPS TUN migration:
 
 ```bash
@@ -158,6 +162,7 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Diagnostics](../08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Architecture](../../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Proxy Selection Watch](../11-proxy-selection-watch.md) |
+| [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | Focused read-only domain/IP path diagnostic |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Mihomo update](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Watchdog update](UPDATES.md#watchdog-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Watchdog](../04-watchdog.md) |
