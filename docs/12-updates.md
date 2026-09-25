@@ -30,7 +30,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - при неудаче восстанавливает предыдущий бинарник;
 - возвращает сервис в исходное состояние: работал до обновления → запускается снова,
   был остановлен оператором → остаётся остановленным;
-- не перезаписывает пользовательский `config.yaml`;
+- не перезаписывает пользовательский `config.yaml`; updater меняет бинарник Mihomo, а не пользовательскую конфигурацию;
 - не делает автоматический downgrade.
 
 После обновления:
@@ -38,6 +38,8 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
+
+Если требуется заменить сам `config.yaml`, используйте `config-import.sh`: он сохраняет предыдущий конфиг как `config.yaml.bak`, валидирует candidate и откатывает замену при неуспешном запуске/проверке порта.
 
 Подробная модель rollback и one-Mihomo invariant описана в
 [HOWTO → Обновление Mihomo](HOWTO_RU.md#8-обновление-mihomo).
