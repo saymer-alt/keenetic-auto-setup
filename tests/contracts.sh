@@ -238,9 +238,11 @@ grep -Fq 'NETFILTER_COMPONENT_ID=opkg-kmod-netfilter' "$ROOT/install.sh" || fail
 pass "Doctor separates legacy profile drift from proven runtime capability without weakening installer gates"
 
 
-# Keenetic ndmc may wrap component IDs inside a token at terminal width.
-# KN-3811 / KeeneticOS 5.1.5 and 5.1.6 reproduced dns- + filter and
-# opkg-kmod- + netfilter on consecutive physical lines.
+# Keenetic/Netcraze ndmc may wrap component IDs inside a token at terminal width.
+# NC-1812 / KeeneticOS 5.1.5 had already shown this formatting class with
+# a non-required component (ike- + client). KN-3811 / 5.1.5 and 5.1.6 later
+# reproduced dns- + filter and opkg-kmod- + netfilter with a real false-missing
+# consequence under line-oriented parsing.
 WRAPPED_COMPONENT_FIXTURE='          release: 5.01.C.6.0-1
            components: base,cloudcontrol,corewireless,dhcpd,dns-
                        filter,dns-https,dns-tls,ext,openvpn,opkg,opkg-kmod-
@@ -286,9 +288,11 @@ _doctor_component_has=$(sed -n '/^        _doctor_component_has() {$/,/^        
 ) || fail "Doctor must reconstruct wrapped show version component IDs before exact matching"
 
 # The field failure was caused by formatting, not by those two specific IDs.
-# Exercise every required KeeneticOS component at every possible internal wrap
-# position so a future line-oriented parser regression cannot stay green merely
-# because it still handles the two KN-3811 split points we happened to observe.
+# Exercise every required KeeneticOS component plus the historical NC-1812
+# non-required sentinel (ike-client) at every possible internal wrap position.
+# This proves the parser is generic across the field grammar rather than being
+# accidentally tailored only to today's prerequisite list or the two KN-3811
+# split points we happened to observe.
 _component_wrap_fixture() {
     _cwf_id="$1"
     _cwf_cut="$2"
@@ -302,7 +306,7 @@ _component_wrap_fixture() {
         '              version: 5.1.C.6.0'
 }
 
-for _component_id in proxy dns-filter opkg-kmod-netfilter dns-tls dns-https ext ext-utils; do
+for _component_id in proxy dns-filter opkg-kmod-netfilter dns-tls dns-https ext ext-utils ike-client; do
     _component_len=${#_component_id}
     _component_cut=1
     while [ "$_component_cut" -lt "$_component_len" ]; do
