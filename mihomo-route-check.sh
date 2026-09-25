@@ -65,7 +65,10 @@ case "$TARGET" in
         ;;
     *)
         HOST="$TARGET"
-        PROBE_URL="https://$TARGET/"
+        case "$TARGET" in
+            *[!0-9.]* ) PROBE_URL="https://$TARGET/" ;;
+            * )          PROBE_URL="http://$TARGET/" ;;
+        esac
         ;;
 esac
 
@@ -169,13 +172,13 @@ elif [ "$PORT_OK" -eq 0 ]; then
 else
     # -I is intentionally non-mutating for ordinary HTTP servers. Some servers reject
     # HEAD, so retry with a tiny GET that discards the body before declaring failure.
-    CODE=$(curl -k -sS -o /dev/null -I --max-time "$CURL_TIMEOUT"         --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT" -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
+    CODE=$(curl -sS -o /dev/null -I --max-time "$CURL_TIMEOUT"         --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT" -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
     case "$CODE" in
         2??|3??|4??|5??)
             say "[OK] SOCKS5h request reached the target path (HTTP $CODE)"
             ;;
         *)
-            CODE=$(curl -k -sS -o /dev/null --max-time "$CURL_TIMEOUT"                 --range 0-0 --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT"                 -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
+            CODE=$(curl -sS -o /dev/null --max-time "$CURL_TIMEOUT"                 --range 0-0 --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT"                 -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
             case "$CODE" in
                 2??|3??|4??|5??) say "[OK] SOCKS5h request reached the target path (HTTP $CODE)" ;;
                 *) say "[WARN] SOCKS5h request did not produce an HTTP response" ;;
