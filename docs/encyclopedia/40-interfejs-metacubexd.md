@@ -301,6 +301,33 @@ runtime-настройку ядра. `debug` полезен для диагно�
   параметры, которые panel отправляет в Mihomo через API.
 - Actions: reload config, restart core, flush fake-ip, flush DNS cache, update GEO
   databases и другие реальные действия над ядром.
+- **Upgrade Core** — отдельная сильная операция. MetaCubeXD вызывает Mihomo Controller
+  core-upgrade API (`POST /upgrade`), после чего само ядро получает/заменяет core и
+  перезапускается. Это не то же самое, что проектный `update-mihomo.sh`.
+
+### Обновление ядра через версию / Upgrade Core
+
+На практике у оператора обновление core из MetaCubeXD срабатывает при действии по
+версии ядра/подтверждении upgrade; оно проверено на VPS и на двух Keenetic/Netcraze
+роутерах с внешним EXT4 `/opt`.
+
+Для `keenetic-auto-setup` этот способ считается **внешним (out-of-band)**:
+он идёт через собственный updater Mihomo и не использует наш
+`saymer-alt/entware-go` package pipeline, same-filesystem staging, `/tmp` rollback
+и остальные гарантии `update-mihomo.sh`.
+
+Это объясняет реальный размерный контраст 2026-09-25:
+
+- проводной Netcraze Giga NC-1012 после Web-UI/self-upgrade: Mihomo 1.19.31,
+  около **54.6 MB**;
+- GSM Keenetic Giga KN-1012 после проектного `update-mihomo.sh`: Mihomo 1.19.31,
+  около **13 MB**, потому что текущая `entware-go` сборка дополнительно пакуется
+  через UPX (`-9 --lzma`).
+
+Оба бинарника могут быть корректными одной версии; размер сам по себе не означает
+повреждение. Наблюдение, что UI-upgrade используется именно на устройствах с
+большим внешним EXT4, пока не доказывает, что свободное место является формальным
+условием доступности `POST /upgrade`.
 
 Для нашего проекта каноническим файлом остаётся
 `/opt/etc/mihomo/config.yaml`. Runtime-изменение через API и редактирование файла на
