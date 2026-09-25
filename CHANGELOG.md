@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Added `config-import.sh` for the second half of the simple-install flow: interactive YAML paste works through `curl | sh` by reading `/dev/tty`; the candidate must preserve the project `mixed-port: 7890` contract, is validated under the one-Mihomo rule, backed up as `config.yaml.bak`, committed with a same-filesystem atomic rename, and automatically rolled back if validation/startup/port verification fails. `update-mihomo.sh` now refuses to overlap an active config import.
 
 ### Changed
+- Config Import recovery after a failed pre-commit config validation now waits for the restored Mihomo service to make project port 7890 ready before returning the rejection to the user; this avoids reporting completion while the old daemon is still starting.
 - Fixed `setup.sh` staging paths that had regressed from shell-PID `$` suffixes to a literal single `# Changelog
 
 All notable changes to this project will be documented in this file.
