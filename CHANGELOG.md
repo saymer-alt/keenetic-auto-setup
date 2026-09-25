@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+---
+
+## [1.6.0] - 2026-09-25
+
 ### Changed
 - `update-mihomo.sh` now persists `/opt/etc/keenetic-auto-setup-mihomo.state` as transactional project-owned metadata for the canonical Mihomo binary (runtime version, source asset, package release and size). The state file is backed up before replacement, committed atomically while Mihomo is stopped, and restored together with the previous binary on rollback. Entware opkg metadata is intentionally left untouched because the binary updater does not install the whole package payload; manually rewriting only the opkg `Version:` field would misrepresent package state.
 - Doctor no longer treats `current Mihomo binary size + 4 MB` as an authoritative update-space verdict. Live KN-1012 evidence showed a 1.19.31 candidate needing only ~17 MB of same-filesystem staging while the current 1.19.30 binary was ~45 MB, so the old heuristic could emit a false WARN. Doctor now reports this as INFO-only estimate; `update-mihomo.sh` remains the only authoritative free-space gate because it measures the actual extracted candidate before stopping or replacing Mihomo.
