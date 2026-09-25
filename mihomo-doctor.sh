@@ -37,6 +37,7 @@ MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
 CONFIG="$CONFIG_DIR/config.yaml"
+BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
 INIT_EXPECTED="$OPT_ROOT/etc/init.d/S99mihomo"
 WATCHDOG_BIN="$OPT_ROOT/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog"
@@ -1247,8 +1248,33 @@ if [ -n "$BIN" ]; then
                 info "opkg database: mihomo $_opkg_mihomo"
             fi
         else
-            info "opkg database has no mihomo entry (expected: the updater replaces the binary without touching opkg)"
+            info "opkg database has no mihomo entry (expected: binary-only updates do not require an opkg record)"
         fi
+    fi
+
+    # Project-owned metadata for binaries installed by update-mihomo.sh.
+    # This is deliberately separate from opkg package state. If MetaCubeXD or
+    # Mihomo self-upgrade later replaces the core, runtime may legitimately
+    # move ahead of this file; that mismatch is useful evidence, not a FAIL.
+    if [ -f "$BINARY_STATE" ]; then
+        _state_fmt=$(awk -F= '$1 == "state_format" {print $2; exit}' "$BINARY_STATE" 2>/dev/null)
+        _state_ver=$(awk -F= '$1 == "runtime_version" {print $2; exit}' "$BINARY_STATE" 2>/dev/null)
+        _state_src=$(awk -F= '$1 == "source" {print $2; exit}' "$BINARY_STATE" 2>/dev/null)
+        _state_asset=$(awk -F= '$1 == "asset" {print $2; exit}' "$BINARY_STATE" 2>/dev/null)
+        _state_size=$(awk -F= '$1 == "binary_size_bytes" {print $2; exit}' "$BINARY_STATE" 2>/dev/null)
+        if [ "$_state_fmt" != "1" ] || [ -z "$_state_ver" ]; then
+            info "Project binary state present but unrecognized/incomplete: $BINARY_STATE"
+        elif [ -n "$BIN_VER" ] && [ "$_state_ver" = "$BIN_VER" ]; then
+            ok "Project binary state matches runtime $_state_ver (source: ${_state_src:-unknown})"
+        elif [ -n "$BIN_VER" ]; then
+            info "Project binary state records $_state_ver, runtime is $BIN_VER — core changed outside update-mihomo.sh or metadata is stale (expected after Web-UI/Mihomo self-upgrade)"
+        else
+            info "Project binary state records $_state_ver (runtime version unavailable for comparison)"
+        fi
+        [ -n "$_state_asset" ] && info "Project binary asset: $_state_asset"
+        [ -n "$_state_size" ] && info "Project binary state size: $_state_size bytes"
+    else
+        info "Project binary state not present (normal for legacy/package-managed/Web-UI-only installs until update-mihomo.sh writes it)"
     fi
 fi
 
