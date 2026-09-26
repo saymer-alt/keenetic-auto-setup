@@ -220,6 +220,49 @@ Before the test, the running core was the operator-confirmed Web-UI/self-upgrade
 After the transaction, the canonical runtime remained **1.19.31** but the binary was the project packaged/UPX form at about **12.7 MB / 13,311,564 bytes**. The state file recorded `runtime_version=1.19.31`, `source=entware-go-binary-updater`, asset `mihomo_1.19.31-2_aarch64-3.10.ipk`, package release `2`, and the pre-existing opkg metadata `1.19.27-1`. The Entware opkg database intentionally remained unchanged.
 
 Doctor v1.2.8 then resolved runtime **1.19.31** through the Controller, reported the stale opkg version as expected INFO, verified that project binary state matched runtime, and completed with **37 OK / 0 WARN / 0 FAIL**. Proxy0, DNS interception, live `bypass_wa` Netfilter rules, watchdog, MagiTrickle, `tun.stack: mips`, external storage-backed swap and configured ports remained healthy. This closes the real-hardware release gate for the new binary-state provenance path; a later reboot remains useful persistence evidence but is not required to prove the update transaction itself.
+### 2026-09-26 external NC-1812 legacy/internal-UBIFS Doctor re-check
+
+A separate, **user-owned Netcraze Ultra NC-1812** (not the operator's home NC-1812)
+provides a valuable legacy-profile validation point. It remains on **KeeneticOS 5.1.5 /
+5.01.C.5.0-0 / aarch64**, uses **internal UBIFS `/opt`** (about 98 MB total, about
+40 MB free), has about **991 MB Linux-visible RAM**, and has no swap; swap remains optional
+for this above-512 MB memory class.
+
+An earlier Doctor run on this same router reported **25 OK / 3 WARN / 2 FAIL**. The two
+FAIL findings were false missing-component results for `dns-filter` and
+`opkg-kmod-netfilter`, caused by the old line-oriented interpretation of wrapped
+`show version` output. The current stable Doctor **v1.2.9** now reconstructs the logical
+component field correctly, reports both required components present, verifies the executable
+`bypass_wa` hook plus live PREROUTING/UDP multiport MARK/CONNMARK/RETURN rules, and finishes
+with **29 OK / 2 WARN / 0 FAIL / 53 INFO**. This is external field validation that the
+wrapped-component fix removed a real false-FAIL class rather than merely fitting the
+operator's own routers.
+
+The same rerun also validates the revised update-space model. The router currently runs
+Mihomo **1.19.29** from a roughly **43,201 KB** upstream-form binary with about **40 MB**
+free on `/opt`; opkg metadata still says **1.19.27-1**, no project binary-state file exists,
+and `entware-go:latest` offers **1.19.31-2**. The old Doctor converted
+`current binary + 4096 KB` into a WARN because that estimate was about 46 MB. The current
+Doctor correctly reports the number as **INFO only**: current-binary size does not determine
+candidate size. On another live aarch64 NC-1012, the same project package generation produced
+a **13,311,564-byte (~12.7 MB)** packaged binary and the updater measured about **17,096 KB**
+of same-filesystem staging need. That evidence explains why the old 46 MB heuristic was
+misleading, but it is **not** a promise that this external router has already passed an
+update: `update-mihomo.sh` must still extract and measure the actual candidate on the target
+before it is authoritative.
+
+The remaining two WARN findings are genuine configuration/maintenance debt rather than
+parser artifacts: Keenetic DNS transit interception is not enabled, and the router still uses
+the legacy watchdog layout. The legacy watchdog is nevertheless functioning: the retained
+history contained **40 healthy heartbeats**, **no restart/problem interventions**, and
+**220 full-WAN-outage runs** where the watchdog deliberately did not restart Mihomo. Proxy0,
+MagiTrickle 0.8.2-1, port 7890, Controller proxy selection and the live bypass path were
+healthy in the same read-only run.
+
+Because this router is not operator-owned, update, watchdog migration, DNS-interception
+changes or any other mutation require the owner's explicit permission. The read-only Doctor
+result alone is sufficient to preserve the parser/staging lessons above.
+
 ### 2026-09-25 KN-1012 GSM-role / internal-UBIFS live acceptance
 
 A second dača **Keenetic Giga KN-1012 / KeeneticOS 5.1.6 stable / aarch64** provided a distinct storage/resource and GSM-role profile: internal UBIFS `/opt`, native zRAM-only swap, and USB/LTE modem components (`usblte`, `usbmodem`, `usbnet`, `usbqmi`). Live MCP inventory from the same evening shows two active cellular uplinks: primary/default `UsbLte0` is **MCN Telecom / T2** on a **Fibocom FM350-GL** with APN `modem.tele2.ru`; `UsbLte1` is **Megafon** on an **L860-GL-16** with APN `router.megafon.ru`, connected as the secondary path. The running configuration also carries a multipathing policy containing both LTE interfaces. A post-test radio snapshot showed the main FM350-GL in 4G+ with B3+B3+B7 aggregation (roughly RSRP -95 / RSRQ -8 / RSSI -70 dBm) while the secondary L860-GL-16 was on B3 with a weaker RSRP around -113 dBm. These radio values are dynamic context, not exact per-scan fixtures. Its real `show version` again physically split `dns-filter` as `dns-` / `filter` and also split the unrelated `virtual-ip-server` token as `virtual-` / `ip-server`. Doctor reconstructed the required component set correctly and verified live `xt_multiport` plus the expected bypass rules. Initial Doctor result was **30 OK / 3 WARN / 0 FAIL**: a conservative current-binary staging estimate, DNS transit interception absent, and legacy watchdog layout. Investigation found a stale non-runtime `/opt/sbin/meta-backup/mihomo` copy; removing it increased free space from ~38 MB to ~56 MB. After enabling DNS interception and migrating the watchdog, `update-mihomo.sh` extracted the actual 1.19.31 candidate and measured only **17096 KB** of required same-filesystem staging, so the update completed successfully without violating one-Mihomo/rollback rules. The router then migrated `tun.stack` from **gvisor** to **mips**, installed WARPSCOUT 0.16.0 on the same internal UBIFS, retained ~60 MB free space, and passed the current Doctor with **33 OK / 0 WARN / 0 FAIL**. This field result is the reason Doctor staging output is now INFO-only estimate; only `update-mihomo.sh` can authoritatively gate space because it measures the extracted candidate.
