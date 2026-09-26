@@ -6,7 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Changed
+- Installer ProxyN discovery is now backward-compatible with older project installs. A bridge with SOCKS5 protocol, `socks5-udp`, and upstream `127.0.0.1:7890` is accepted as legacy-compatible even when its description is an older value such as `mihomo` or platform/default naming. The installer prefers a canonical `mihomo t2sN` interface when present, otherwise reuses the legacy bridge exactly as found; it does not rename it and does not create a duplicate Proxy solely because the label changed across installer generations.
+- `mihomo-doctor.sh` v1.2.9 mirrors the same functional ProxyN contract. Legacy naming is reported as INFO rather than WARN/FAIL; missing SOCKS5 UDP or a different upstream still prevents an interface from being classified as the Mihomo bridge.
+
+### Testing
+- Added a focused ProxyN compatibility regression that executes the classifier from both Installer and Doctor against canonical, legacy-name, platform/default-name, missing-UDP and wrong-upstream fixtures.
 
 ---
 
