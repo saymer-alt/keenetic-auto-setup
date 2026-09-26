@@ -813,14 +813,20 @@ ensure_bootstrap_config "/opt/etc/mihomo/config.yaml"
 # PROJECT PROXY INTERFACE
 # ---------------------------
 # The project proxy is a Keenetic Proxy-class interface pointing at Mihomo's
-# local SOCKS5 upstream (127.0.0.1:7890 — fixed project contract). It is
-# identified by BOTH markers in running-config:
+# local SOCKS5 upstream (127.0.0.1:7890 — fixed project contract).
+#
+# Canonical new installs use all of:
 #   description "mihomo t2sN"      (N = interface number; project convention)
+#   proxy protocol socks5
+#   proxy socks5-udp
 #   proxy upstream 127.0.0.1 7890
-# A Proxy interface matching only one marker (or neither) is foreign and is
-# never modified. Preference order: reuse an existing project ProxyN (lowest
-# number first); otherwise create Proxy0 when absent; otherwise — Proxy0 is
-# foreign — create the first free ProxyN and leave Proxy0 exactly as is.
+#
+# Legacy installers used other descriptions (for example "mihomo" or the
+# platform/default ProxyN naming). Backward compatibility is therefore based
+# on the functional bridge signature: SOCKS5 + socks5-udp + 127.0.0.1:7890.
+# A compatible legacy ProxyN is reused exactly as found and is NEVER renamed.
+# Preference order: canonical project ProxyN -> compatible legacy ProxyN ->
+# create Proxy0 when absent -> otherwise create the first free ProxyN.
 # Every Proxy decision reads ONE validated running-config snapshot
 # (load_rc_dump; positive control: a real running-config always contains at
 # least one `interface ` block). A failed or unconvincing ndmc read is
@@ -865,16 +871,48 @@ proxy_state() {
     return 0
 }
 
-proxy_is_project() {
-    # Ownership check against the validated RC_DUMP snapshot: BOTH project
-    # markers must sit in the same interface block.
-    printf '%s\n' "$RC_DUMP" | awk -v iface="$1" -v num="$2" '
-        $0 == "interface " iface {pdesc=0; pup=0; inblk=1; next}
-        inblk && /^!/ {if (pdesc && pup) found=1; inblk=0; next}
+proxy_profile_class() {
+    # Classify one ProxyN block from the validated RC_DUMP snapshot.
+    # Functional compatibility is the safety boundary for old installations:
+    # SOCKS5 protocol + UDP support + the fixed local Mihomo endpoint. The
+    # canonical description is metadata only and is never retrofitted.
+    PROXY_PROFILE=$(printf '%s\n' "$RC_DUMP" | awk -v iface="$1" -v num="$2" '
+        $0 == "interface " iface {pdesc=0; pproto=0; pudp=0; pup=0; inblk=1; next}
+        inblk && /^!/ {
+            if (pproto && pudp && pup) {
+                if (pdesc) profile="canonical"; else profile="legacy"
+            } else {
+                profile="foreign"
+            }
+            inblk=0
+            next
+        }
         inblk && $0 ~ "^ *description \"?mihomo t2s" num "\"? *$" {pdesc=1}
+        inblk && /^ *proxy protocol socks5 *$/ {pproto=1}
+        inblk && /^ *proxy socks5-udp *$/ {pudp=1}
         inblk && /^ *proxy upstream 127\.0\.0\.1 7890 *$/ {pup=1}
-        END {if (inblk && pdesc && pup) found=1; exit !found}
-    '
+        END {
+            if (inblk) {
+                if (pproto && pudp && pup) {
+                    if (pdesc) profile="canonical"; else profile="legacy"
+                } else {
+                    profile="foreign"
+                }
+            }
+            if (profile == "") profile="foreign"
+            print profile
+        }
+    ')
+}
+
+proxy_is_compatible() {
+    proxy_profile_class "$1" "$2"
+    [ "$PROXY_PROFILE" = "canonical" ] || [ "$PROXY_PROFILE" = "legacy" ]
+}
+
+proxy_is_canonical() {
+    proxy_profile_class "$1" "$2"
+    [ "$PROXY_PROFILE" = "canonical" ]
 }
 
 create_project_proxy() {
@@ -916,19 +954,37 @@ select_project_proxy() {
         return 0
     fi
 
-    # 1) Reuse an existing project proxy (lowest number first).
+    # 1) Prefer an existing canonical project proxy. Remember the first
+    # compatible legacy bridge while scanning, but do not let an old label
+    # outrank a canonical interface that may exist at a higher ProxyN.
+    _legacy_proxy=""
     _n=0
     while [ "$_n" -lt "$MAX_PROXY_PROBE" ]; do
         proxy_state "Proxy$_n"
-        if [ "$PROXY_STATE" = "FOUND" ] && proxy_is_project "Proxy$_n" "$_n"; then
-            PROXY_IFACE="Proxy$_n"
-            log "Using existing project proxy ${PROXY_IFACE}"
-            return 0
+        if [ "$PROXY_STATE" = "FOUND" ]; then
+            proxy_profile_class "Proxy$_n" "$_n"
+            case "$PROXY_PROFILE" in
+                canonical)
+                    PROXY_IFACE="Proxy$_n"
+                    log "Using existing canonical project proxy ${PROXY_IFACE}"
+                    return 0
+                    ;;
+                legacy)
+                    [ -n "$_legacy_proxy" ] || _legacy_proxy="Proxy$_n"
+                    ;;
+            esac
         fi
         _n=$((_n+1))
     done
 
-    # 2) No project proxy exists: create Proxy0 when the slot is free.
+    # 2) No canonical proxy exists: reuse the first legacy-compatible bridge.
+    if [ -n "$_legacy_proxy" ]; then
+        PROXY_IFACE="$_legacy_proxy"
+        log "Using legacy-compatible proxy ${PROXY_IFACE}: SOCKS5 UDP -> 127.0.0.1:7890; existing description preserved"
+        return 0
+    fi
+
+    # 3) No compatible proxy exists: create Proxy0 when the slot is free.
     proxy_state "Proxy0"
     if [ "$PROXY_STATE" = "NOT_FOUND" ]; then
         log "Creating project proxy Proxy0..."
@@ -948,7 +1004,7 @@ select_project_proxy() {
         if [ "$PROXY_STATE" != "FOUND" ]; then
             proxy_client_missing "Proxy0"
         fi
-        if ! proxy_is_project "Proxy0" "0"; then
+        if ! proxy_is_canonical "Proxy0" "0"; then
             err "Proxy0 appeared in running-config but the required project profile (mihomo t2s0 / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
         fi
         log "Project proxy Proxy0 created and verified"
@@ -987,7 +1043,7 @@ select_project_proxy() {
     if [ "$PROXY_STATE" != "FOUND" ]; then
         proxy_client_missing "Proxy${_n}"
     fi
-    if ! proxy_is_project "Proxy${_n}" "$_n"; then
+    if ! proxy_is_canonical "Proxy${_n}" "$_n"; then
         err "Proxy${_n} appeared in running-config but the required project profile (mihomo t2s${_n} / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
     fi
     log "Project proxy Proxy${_n} created and verified"
@@ -1024,8 +1080,8 @@ ensure_bypass_policy_exit() {
         warn "${_px} not available, bypass_wa exit binding skipped"
         return 0
     fi
-    if ! proxy_is_project "$_px" "$_num"; then
-        warn "Existing ${_px} does not match the project profile (mihomo t2s${_num} / 127.0.0.1:7890), bypass_wa exit binding skipped"
+    if ! proxy_is_compatible "$_px" "$_num"; then
+        warn "Existing ${_px} is not a compatible Mihomo SOCKS5-UDP bridge to 127.0.0.1:7890, bypass_wa exit binding skipped"
         return 0
     fi
 
@@ -1334,20 +1390,32 @@ else
     check_fail "Mihomo init script /opt/etc/init.d/S99mihomo missing"
 fi
 
-# Project proxy — Proxy0 or a free ProxyN when Proxy0 is foreign; both project
-# markers are verified against a freshly validated running-config snapshot.
-# An ndmc failure here is UNKNOWN: reported as FAIL, never misread as an
-# absent or non-project proxy.
+# Project proxy — canonical or legacy-compatible ProxyN. Compatibility is
+# verified against a freshly validated running-config snapshot by SOCKS5 +
+# socks5-udp + 127.0.0.1:7890. Legacy descriptions are informational only and
+# are never rewritten. An ndmc failure here is UNKNOWN: reported as FAIL.
 if [ -z "$PROXY_IFACE" ]; then
     check_fail "No project proxy (ndmc read failed during selection, or no free ProxyN with foreign Proxy0)"
 elif ! load_rc_dump; then
     check_fail "Proxy state cannot be determined (running-config read failed)"
 else
     proxy_state "$PROXY_IFACE"
-    if [ "$PROXY_STATE" = "FOUND" ] && proxy_is_project "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
-        check_ok "Project proxy ${PROXY_IFACE}: mihomo t2s${PROXY_IFACE#Proxy} -> 127.0.0.1:7890"
+    if [ "$PROXY_STATE" = "FOUND" ]; then
+        proxy_profile_class "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"
+        case "$PROXY_PROFILE" in
+            canonical)
+                check_ok "Project proxy ${PROXY_IFACE}: canonical mihomo t2s${PROXY_IFACE#Proxy}, SOCKS5 UDP -> 127.0.0.1:7890"
+                ;;
+            legacy)
+                check_ok "Project proxy ${PROXY_IFACE}: legacy-compatible SOCKS5 UDP -> 127.0.0.1:7890"
+                check_info "Legacy Proxy description preserved as-is; rename to mihomo t2s${PROXY_IFACE#Proxy} is not required"
+                ;;
+            *)
+                check_fail "Project proxy ${PROXY_IFACE} does not match the compatible SOCKS5-UDP 127.0.0.1:7890 profile"
+                ;;
+        esac
     else
-        check_fail "Project proxy ${PROXY_IFACE} missing or does not match the project profile"
+        check_fail "Project proxy ${PROXY_IFACE} is missing"
     fi
 fi
 
