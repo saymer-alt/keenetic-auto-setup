@@ -46,13 +46,14 @@ The most sensitive parts — change only for an explicit task and with full unde
 - `dns-proxy intercept enable` (transit DNS interception) in both installers:
   installer-managed persistent config; before applying — grep against `show running-config`,
   `system configuration save` only when there is an actual change; this is not protection from DoH/DoT;
-- A project-managed ProxyN is the Keenetic → Mihomo bridge. Its human-readable description is
-  `mihomo t2sN` (N = interface number, Proxy0 → t2s0), synchronized with the t2s numbering
-  in MagiTrickle; the internal Proxy0/Proxy1/… identifier must not be changed.
-  On a clean router, the installer creates Proxy0; if the ID is occupied, Keenetic assigns
-  the next free ProxyN — the label follows the number (in docs, Proxy0 is an example,
-  not the only possible ID).
-  Installers intentionally do not touch an existing Proxy0 (including its description).
+- A project-managed ProxyN is the Keenetic → Mihomo bridge. New canonical interfaces use
+  human-readable description `mihomo t2sN` (N = interface number, Proxy0 → t2s0), synchronized
+  with the t2s numbering in MagiTrickle; the internal Proxy0/Proxy1/… identifier must not be
+  changed. Legacy installers used different descriptions, so backward-compatible ownership is
+  functional: `proxy protocol socks5` + `proxy socks5-udp` + upstream `127.0.0.1 7890`.
+  A legacy-compatible ProxyN is reused exactly as found and its description is INFO-only:
+  never rename it just to normalize naming. Selection order is canonical → legacy-compatible →
+  create a free ProxyN. Foreign Proxy interfaces remain untouched.
 
 ## 3. Target platforms
 
