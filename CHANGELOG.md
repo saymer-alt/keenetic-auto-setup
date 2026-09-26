@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - `mihomo-doctor.sh` v1.2.9 mirrors the same functional ProxyN contract. Legacy naming is reported as INFO rather than WARN/FAIL; missing SOCKS5 UDP or a different upstream still prevents an interface from being classified as the Mihomo bridge.
 
 ### Testing
+- Recorded an external user-owned NC-1812 / KeeneticOS 5.1.5 / internal-UBIFS re-check with current stable Doctor v1.2.9: the same router moved from the old **25 OK / 3 WARN / 2 FAIL** result to **29 OK / 2 WARN / 0 FAIL / 53 INFO**. The former `dns-filter` and `opkg-kmod-netfilter` FAILs are now confirmed as wrapped-`show version` parser artifacts; the live bypass hook and PREROUTING + UDP multiport MARK/CONNMARK/RETURN rules are present. The old ~46 MB current-binary staging WARN is also gone: ~40 MB free on `/opt` is now reported as INFO because only the updater's extracted-candidate measurement is authoritative. Remaining WARNs are genuine DNS-interception and legacy-watchdog configuration debt; no mutations were performed on the user-owned router.
 - Added a focused ProxyN compatibility regression that executes the classifier from both Installer and Doctor against canonical, legacy-name, platform/default-name, missing-UDP and wrong-upstream fixtures.
 
 ---
