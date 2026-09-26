@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.8 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.9 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -292,6 +292,39 @@ is_num() {
 
 first_line() {
     printf '%s\n' "$1" | head -n 1
+}
+
+proxy_profile_class() {
+    # Same compatibility contract as install.sh. Old installers used other
+    # descriptions, so naming alone is never a warning/failure: the functional
+    # bridge is SOCKS5 + socks5-udp + upstream 127.0.0.1:7890.
+    PROXY_PROFILE=$(printf '%s\n' "$RC_DUMP" | awk -v iface="$1" -v num="$2" '
+        $0 == "interface " iface {pdesc=0; pproto=0; pudp=0; pup=0; inblk=1; next}
+        inblk && /^!/ {
+            if (pproto && pudp && pup) {
+                if (pdesc) profile="canonical"; else profile="legacy"
+            } else {
+                profile="foreign"
+            }
+            inblk=0
+            next
+        }
+        inblk && $0 ~ "^ *description \"?mihomo t2s" num "\"? *$" {pdesc=1}
+        inblk && /^ *proxy protocol socks5 *$/ {pproto=1}
+        inblk && /^ *proxy socks5-udp *$/ {pudp=1}
+        inblk && /^ *proxy upstream 127\.0\.0\.1 7890 *$/ {pup=1}
+        END {
+            if (inblk) {
+                if (pproto && pudp && pup) {
+                    if (pdesc) profile="canonical"; else profile="legacy"
+                } else {
+                    profile="foreign"
+                }
+            }
+            if (profile == "") profile="foreign"
+            print profile
+        }
+    ')
 }
 
 # fetch_url URL -> globals FETCH_OUT (body) and FETCH_RC.
@@ -1727,43 +1760,49 @@ else
     if ! printf '%s\n' "$RC_DUMP" | grep -q '^interface '; then
         warn "Cannot read/validate running-config - proxy state UNKNOWN, nothing is assumed (transient ndmc problem?)"
     else
-        proxy_is_project() {
-            printf '%s\n' "$RC_DUMP" | awk -v iface="$1" -v num="$2" '
-                $0 == "interface " iface {pdesc=0; pup=0; inblk=1; next}
-                inblk && /^!/ {if (pdesc && pup) found=1; inblk=0; next}
-                inblk && $0 ~ "^ *description \"?mihomo t2s" num "\"? *$" {pdesc=1}
-                inblk && /^ *proxy upstream 127\.0\.0\.1 7890 *$/ {pup=1}
-                END {if (inblk && pdesc && pup) found=1; exit !found}
-            '
-        }
-
         PROJECT_PROXY=""
+        LEGACY_PROXIES=""
         FOREIGN_PROXIES=""
         _n=0
         while [ "$_n" -lt "$MAX_PROXY_PROBE" ]; do
             if printf '%s\n' "$RC_DUMP" | grep -qx "interface Proxy$_n"; then
-                if proxy_is_project "Proxy$_n" "$_n"; then
-                    if [ -z "$PROJECT_PROXY" ]; then
-                        PROJECT_PROXY="Proxy$_n"
-                        ok "Project proxy Proxy$_n: description \"mihomo t2s$_n\" -> upstream 127.0.0.1:$CONTRACT_PORT"
-                    else
-                        info "Second project proxy Proxy$_n present (install.sh uses the lowest-numbered one)"
-                    fi
-                else
-                    FOREIGN_PROXIES="$FOREIGN_PROXIES Proxy$_n"
-                fi
+                proxy_profile_class "Proxy$_n" "$_n"
+                case "$PROXY_PROFILE" in
+                    canonical)
+                        if [ -z "$PROJECT_PROXY" ]; then
+                            PROJECT_PROXY="Proxy$_n"
+                            ok "Project proxy Proxy$_n: canonical \"mihomo t2s$_n\", SOCKS5 UDP -> 127.0.0.1:$CONTRACT_PORT"
+                        else
+                            info "Second canonical project proxy Proxy$_n present (install.sh prefers the lowest-numbered canonical interface)"
+                        fi
+                        ;;
+                    legacy)
+                        LEGACY_PROXIES="$LEGACY_PROXIES Proxy$_n"
+                        ;;
+                    *)
+                        FOREIGN_PROXIES="$FOREIGN_PROXIES Proxy$_n"
+                        ;;
+                esac
             fi
             _n=$((_n+1))
         done
 
+        if [ -z "$PROJECT_PROXY" ] && [ -n "$LEGACY_PROXIES" ]; then
+            PROJECT_PROXY=$(printf '%s\n' "$LEGACY_PROXIES" | awk '{print $1}')
+            ok "Project proxy ${PROJECT_PROXY}: legacy-compatible SOCKS5 UDP -> 127.0.0.1:$CONTRACT_PORT"
+            info "Legacy Proxy naming detected; existing description is preserved and rename to mihomo t2s${PROJECT_PROXY#Proxy} is not required"
+        elif [ -n "$PROJECT_PROXY" ] && [ -n "$LEGACY_PROXIES" ]; then
+            info "Legacy-compatible Proxy interface(s) also present:$LEGACY_PROXIES - naming difference is informational; install.sh prefers the canonical project proxy"
+        fi
+
         if [ -z "$PROJECT_PROXY" ]; then
             if [ -n "$FOREIGN_PROXIES" ]; then
-                info "No project-managed ProxyN marker found; existing Proxy interface(s):$FOREIGN_PROXIES are left untouched and their upstream is not inferred"
+                info "No compatible Mihomo ProxyN found; existing Proxy interface(s):$FOREIGN_PROXIES are left untouched"
             else
                 fail "No Proxy interfaces found at all - Keenetic has no bridge into Mihomo (install.sh creates Proxy0 / first free ProxyN)"
             fi
         elif [ -n "$FOREIGN_PROXIES" ]; then
-            info "Foreign Proxy interface(s) present:$FOREIGN_PROXIES - not project-managed, reported only"
+            info "Foreign Proxy interface(s) present:$FOREIGN_PROXIES - not used as the Mihomo bridge, reported only"
         fi
 
         # bypass_wa is a user-owned failover policy. Its health contract is
