@@ -486,4 +486,8 @@ grep -Fq 'if config_import_active; then' "$ROOT/update-mihomo.sh" || fail "updat
 ! grep -Fq 'cat > "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config importer must never stream input directly into canonical config"
 pass "config importer validates, atomically commits and rolls back under one-Mihomo safety"
 
+sh "$ROOT/tests/proxy-compat-regression.sh" "$ROOT" ||
+    fail "installer/Doctor must preserve the legacy ProxyN compatibility contract"
+pass "installer and Doctor classify canonical, legacy-compatible and foreign ProxyN shapes consistently"
+
 echo "[OK] Contract smoke tests passed"
