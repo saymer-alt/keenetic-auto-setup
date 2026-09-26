@@ -209,7 +209,7 @@ grep -q 'DNS transit interception (dns-proxy intercept enable) not found' "$ROOT
 grep -q 'did not appear in running-config after enable' "$ROOT/install.sh" || fail "installer must fail early when DNS interception did not persist"
 pass "DNS transit interception is installed, read back and verified"
 
-grep -q 'No project-managed ProxyN marker found; existing Proxy interface(s):' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep unmarked ProxyN informational"
+grep -q 'No compatible Mihomo ProxyN found; existing Proxy interface(s):' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep non-compatible/unmarked ProxyN informational"
 ! grep -q 'foreign Proxy interface(s).*Keenetic has no bridge into Mihomo' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not infer no Mihomo bridge from an unmarked ProxyN"
 pass "Doctor does not misclassify an unmarked ProxyN as no bridge"
 
