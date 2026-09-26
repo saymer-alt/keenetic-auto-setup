@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.9 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.10 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -1830,7 +1830,7 @@ else
         else
             DNS_INTERCEPT_RUNTIME=missing
             if [ "$DOC_DNS_FILTER_COMPONENT" != "missing" ]; then
-                warn "DNS transit interception not found - transit port-53 DNS bypasses Keenetic's resolver (install.sh enables it; MagiTrickle coverage may suffer)"
+                warn "DNS transit interception not found - the supported project DNS-transit contract is not satisfied; classic port-53 handling differs from the installer-managed path (install.sh enables dns-proxy intercept)"
             fi
         fi
     fi
@@ -1928,7 +1928,7 @@ if [ -f "$WATCHDOG_CRON" ]; then
     if grep -q "^exec $WATCHDOG_BIN" "$WATCHDOG_CRON" 2>/dev/null; then
         ok "Cron wrapper points at the canonical watchdog ($WATCHDOG_CRON)"
     elif grep -q "MIHOMO WATCHDOG SCRIPT" "$WATCHDOG_CRON" 2>/dev/null; then
-        warn "Legacy watchdog layout (full script in cron.5mins) - works, but update-watchdog.sh migrates it to the canonical layout"
+        info "Legacy watchdog layout (full script in cron.5mins) is functional; update-watchdog.sh can migrate it to the canonical layout, but layout alone is not a health warning"
     else
         warn "Unknown file at $WATCHDOG_CRON - not a project wrapper"
     fi

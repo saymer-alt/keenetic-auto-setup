@@ -115,6 +115,12 @@ grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
 pass "doctor detects the historical duplicate-watchdog backup condition"
 
+grep -q 'info "Legacy watchdog layout (full script in cron.5mins) is functional' "$ROOT/mihomo-doctor.sh" || fail "doctor must keep functional legacy watchdog layout informational"
+if grep -q 'warn "Legacy watchdog layout (full script in cron.5mins)' "$ROOT/mihomo-doctor.sh"; then
+    fail "functional legacy watchdog layout must not be warning-level by itself"
+fi
+pass "doctor separates functional legacy watchdog layout from actual watchdog faults"
+
 grep -q '^WATCHDOG_RECENT_WARN_THRESHOLD=2$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep one recovered watchdog intervention per 24h informational"
 grep -Fq 'Watchdog interventions in the last 24h: 1 isolated restart, followed by a healthy check - informational only' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain a single recovered recent restart as INFO"
 grep -Fq 'elif [ "$WD_RECENT" -ge "$WATCHDOG_RECENT_WARN_THRESHOLD" ]; then' "$ROOT/mihomo-doctor.sh" || fail "Doctor must warn only when the recent intervention count reaches the repeated-event threshold"
@@ -134,6 +140,7 @@ grep -q 'No FAIL/WARN findings. No action is required' "$ROOT/mihomo-doctor.sh" 
 grep -q 'Enable one backend for the project profile: KeeneticOS zRAM OR external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain the <=512 MB backend choice"
 grep -q 'Run update-watchdog.sh, then run Doctor again' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain watchdog repair findings"
 grep -Fq '*"DNS transit interception not found"*)' "$ROOT/mihomo-doctor.sh" || fail "doctor must keep a dedicated DNS-interception action"
+grep -q 'supported project DNS-transit contract is not satisfied' "$ROOT/mihomo-doctor.sh" || fail "doctor DNS warning must describe project-contract drift without speculating about MagiTrickle health"
 _dns_action_line=$(grep -nF '*"DNS transit interception not found"*)' "$ROOT/mihomo-doctor.sh" | head -1 | cut -d: -f1)
 _mt_action_line=$(grep -nF '*"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*"Functional DNS query via "*)' "$ROOT/mihomo-doctor.sh" | head -1 | cut -d: -f1)
 [ -n "$_dns_action_line" ] && [ -n "$_mt_action_line" ] && [ "$_dns_action_line" -lt "$_mt_action_line" ] || fail "DNS-interception finding must resolve before the generic MagiTrickle action"
