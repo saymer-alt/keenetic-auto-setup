@@ -182,7 +182,7 @@ expect_accept     "128 MB profile accepts the exact 384 MB external-swap floor a
 
 expect_accept     "zRAM plus external swap continues but emits the coexistence warning"     "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-zram-plus-disk"     "zRAM and external storage-backed swap are active together"
 
-expect_reject     "512 MB profile rejects a new install with no zRAM/external swap backend"     "$TMP/mem-512" "$TMP/mounts-internal" "$TMP/swaps-none"     "supported project profile REQUIRES active KeeneticOS zRAM OR verified external storage-backed SWAP"
+expect_reject     "512 MB profile rejects a new install with no zRAM/external swap backend"     "$TMP/mem-512" "$TMP/mounts-internal" "$TMP/swaps-none"     "Bare 512 MB RAM is NOT a supported project baseline"
 expect_accept     "512 MB profile accepts active zRAM"     "$TMP/mem-512" "$TMP/mounts-internal" "$TMP/swaps-512-zram"     "512 MB-class with active zRAM - supported project profile"
 expect_accept     "512 MB profile accepts verified external storage-backed swap"     "$TMP/mem-512" "$TMP/mounts-external" "$TMP/swaps-512-external"     "512 MB-class with external storage-backed swap"
 
