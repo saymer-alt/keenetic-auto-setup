@@ -15,7 +15,7 @@
 - Если `/opt` на внешнем USB/NVMe: **только EXT4**; компоненты KeeneticOS `ext` и `ext-utils` обязательны
 - Для штатного профиля с внутренним `/opt` проект использует **S00ubifs**: временные каталоги `/opt/tmp`, `/opt/var/log` и `/opt/var/run` переносятся в `tmpfs` (RAM), что уменьшает постоянные записи во внутреннюю флешку; конфиги и пакеты остаются на постоянном хранилище
 
-Полные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md) · [S00ubifs: защита флешки и RAM-режим](docs/06-s00ubifs.md)
+Если Entware ещё не установлен и `/opt` планируется на USB/SSD → [подготовка внешнего EXT4-накопителя и установка Entware](docs/16-entware-external-storage.md).\n\nПолные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md) · [S00ubifs: защита флешки и RAM-режим](docs/06-s00ubifs.md)
 
 ## 1. Установка
 
