@@ -269,9 +269,16 @@ signal_handler() {
     warn "Received $1 - aborting migration."
     if [ "$REPLACEMENT_DONE" -eq 1 ]; then
         warn "Config was already replaced; rolling back the current transaction."
-        rollback_config || warn "Automatic config rollback failed; persistent backup remains at $PERSIST_BACKUP"
+        if rollback_config; then
+            if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
+                "$INIT_SCRIPT" restart >/dev/null 2>&1 || true
+            fi
+        else
+            warn "Automatic config rollback failed; persistent backup remains at $PERSIST_BACKUP"
+        fi
+    else
+        restore_service_if_needed || warn "Could not confirm Mihomo service restoration."
     fi
-    restore_service_if_needed || warn "Could not confirm Mihomo service restoration."
     cleanup
     exit 1
 }
