@@ -100,6 +100,33 @@ https://bin.entware.net/aarch64-k3.10/installer/aarch64-installer.tar.gz
 других совместимых моделях той же архитектуры. Аналогично существуют другие
 архитектурные ветки Entware, например MIPSEL/MIPS и ARM-варианты.
 
+Официальные статьи Keenetic/Netcraze подтверждают именно архитектурный принцип:
+в них прямо сказано, что имя installer-архива зависит от платформы/CPU
+(`mipsel`, `mips`, `aarch`), а конкретная модель лишь сопоставляется с одной
+из этих групп.
+
+Примеры из официальной документации:
+
+- Giga NC-1012 → **aarch64** → `aarch64-installer.tar.gz`
+  https://support.netcraze.ru/giga/nc-1012/ru/20980-installing-the-entware-repository-on-a-usb-drive.html
+- Ultra NC-1812 → **aarch64** → `aarch64-installer.tar.gz`
+  https://support.netcraze.ru/ultra/nc-1812/ru/20980-installing-the-entware-repository-on-a-usb-drive.html
+- Viva NC-1913 → **mipsel** → `mipsel-installer.tar.gz`
+  https://support.netcraze.ru/viva/nc-1913/ru/20980-installing-the-entware-repository-on-a-usb-drive.html
+
+То есть схема такая:
+
+```text
+модель роутера
+    ↓
+архитектура / тип CPU
+    ↓
+один из нескольких installer-архивов Entware
+```
+
+Не нужно искать «файл именно для модели». Нужно определить архитектурную группу
+модели и взять installer этой группы.
+
 После скачивания архив **не распаковывайте**. Он должен лежать как один файл в
 каталоге `install`:
 
