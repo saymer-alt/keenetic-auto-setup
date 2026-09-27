@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Updated the primary RU/EN fresh-install paths to use the validated multi-transport bootstrap instead of relying on a bare `curl .../setup.sh | sh`.
 - Clarified the MIPS migrator scope in RU/EN maintenance guides: it migrates an existing TUN `stack: gvisor` → `stack: mips`; it does not add a missing `tun:` block or create `mitun0` from scratch.
 - Documented the new legacy no-TUN bootstrap path in RU/EN README, HOWTO and maintenance guides, including read-only `--check`, version-based `mips`/`gvisor` selection, rollback behavior and the `mitun0` verification contract.
+- Aligned the linked RU quick-start with the current recommended `setup.sh` flow (validated multi-transport bootstrap + automatic Config Import) and changed minimal HOWTO/quick-start examples to `log-level: warning` so documentation no longer recommends the high-volume `info` logging mode.
 - Added the quiet-retry presentation rule to the same AGENTS/RU/EN output contract as the green/cyan/yellow/red status palette.
 
 ### Testing

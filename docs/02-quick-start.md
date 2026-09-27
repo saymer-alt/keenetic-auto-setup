@@ -21,38 +21,54 @@
 
 ## 🚀 Установка
 
-### Основной путь — универсальный `install.sh`
+### Основной путь — `setup.sh`
 
-Автоопределение архитектуры: aarch64 / armv7 / mipsel / mips (включая MT7621).
+`setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. Первый bootstrap тоже использует fallback raw/curl → raw/wget → GitHub Contents API и валидирует shell-кандидат перед запуском.
 
-```bash
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
----
+Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 
-### MT7621 / mipsel
-
-Та же команда `install.sh` — отдельного установщика больше нет.
+Расширенный ручной путь с явным `ram|disk`, offline/SCP и storage override — в [подробной установке](03-install.md).
 
 ---
 
 ## 🧩 После установки (обязательно)
 
-### 1. Добавить конфиг Mihomo
+### 1. Импортировать конфиг Mihomo
 
-```bash
-nano /opt/etc/mihomo/config.yaml
-```
+После установки `setup.sh` сразу переходит в безопасный **Mihomo Config Import**. Создайте полный YAML в [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/), вставьте его в SSH и нажмите **Ctrl+D один раз**. Importer проверяет конфиг реальным `mihomo -t`, соблюдает one-Mihomo invariant, делает backup/atomic commit и откатывается, если сервис или порт 7890 не поднимаются.
 
-Минимальный пример:
+Если на этом этапе вы выбрали skip, импорт можно запустить позже через `config-import.sh`. Ручное редактирование `nano /opt/etc/mihomo/config.yaml` остаётся advanced-путём.
+
+Минимальный учебный пример, если нужно понять структуру:
 
 ```yaml
 mixed-port: 7890
 allow-lan: true
 mode: rule
-log-level: info
+log-level: warning
 
 proxies:
   - name: "server"

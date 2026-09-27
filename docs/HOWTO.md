@@ -410,7 +410,7 @@ A minimal working example:
 mixed-port: 7890
 allow-lan: true
 mode: rule
-log-level: info
+log-level: warning
 
 proxies:
   - name: "server"
