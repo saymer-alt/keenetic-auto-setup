@@ -25,27 +25,9 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 
 You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
 
-```sh
-SCRIPT=setup.sh
-TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
-RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
-API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
-
+```bash
 opkg update && opkg install curl && \
-rm -f "$TMP" && \
-( curl -fSsL "$RAW" -o "$TMP" || \
-  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
-  { rm -f "$TMP"; curl -fSsL \
-      -H "Accept: application/vnd.github.raw+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      "$API" -o "$TMP"; } ) && \
-[ -s "$TMP" ] && \
-[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
-sh -n "$TMP" && \
-sh "$TMP"
-RC=$?
-rm -f "$TMP"
-[ "$RC" -eq 0 ]
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
 If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
