@@ -101,6 +101,15 @@ if grep -q 'log "\[WAN\] Connectivity OK via' "$ROOT/mihomo-watchdog.sh"; then
 fi
 pass "watchdog throttles routine healthy noise but logs problems, recovery and WAN-path changes immediately"
 
+grep -Fq "PROXY_RETRY_DELAY=3" "$ROOT/mihomo-watchdog.sh" || fail "watchdog tunnel retry delay must stay bounded at 3 seconds"
+grep -Fq "proxy_tunnel_ok() {" "$ROOT/mihomo-watchdog.sh" || fail "watchdog must keep the reusable SOCKS5h tunnel probe"
+_retry_checks=$(grep -Fc "if ! proxy_tunnel_ok; then" "$ROOT/mihomo-watchdog.sh")
+[ "$_retry_checks" -eq 2 ] || fail "watchdog must require two consecutive tunnel probe failures before restart"
+grep -Fq "sleep \"\$PROXY_RETRY_DELAY\"" "$ROOT/mihomo-watchdog.sh" || fail "watchdog must pause briefly before the confirming tunnel probe"
+grep -Fq "Proxy tunnel first probe failed; retry succeeded - no restart" "$ROOT/mihomo-watchdog.sh" || fail "watchdog must record transient tunnel recovery without restart"
+grep -Fq "can_restart \"Proxy tunnel check failed\"" "$ROOT/mihomo-watchdog.sh" || fail "confirmed tunnel failure must keep the established restart reason"
+pass "watchdog confirms a tunnel failure once before restarting Mihomo"
+
 grep -q 'CHECK_CAN_EXEC=0' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check must default to no Mihomo execution"
 grep -q 'executable version/support probes skipped (one-Mihomo invariant)' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check must skip binary probes while daemon runs"
 grep -Fq 'if [ "$CHECK_CAN_EXEC" -eq 1 ]; then' "$ROOT/migrate-mihomo-mips.sh" || fail "migrator --check binary probes must be guarded"

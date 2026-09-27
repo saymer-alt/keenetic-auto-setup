@@ -18,7 +18,7 @@
 # - Normal Internet targets checked first
 # - Whitelist fallback for restricted/mobile networks
 # - Mihomo port availability check
-# - End-to-end SOCKS5h tunnel check
+# - End-to-end SOCKS5h tunnel check with one confirming retry before restart
 # - Restart rate limiting (cooldown to prevent loops)
 # - Stale-safe mkdir lock: atomic takeover, race-free, recovers after SIGKILL
 # - Hard --max-time on every probe so a stalled target cannot wedge the run
@@ -54,6 +54,10 @@ WAN_WHITELIST_TARGETS="http://gosuslugi.ru http://ya.ru http://mail.ru http://vk
 
 # Mihomo mixed proxy port (HTTP + SOCKS5)
 PROXY="127.0.0.1:7890"
+
+# A single tunnel probe can fail transiently (endpoint jitter, TLS/DNS timing,
+# outbound failover). Require one confirming retry before restarting Mihomo.
+PROXY_RETRY_DELAY=3
 
 # Minimum seconds between restarts to prevent storm during upstream outage
 MIN_RESTART_INTERVAL=300
@@ -443,11 +447,26 @@ fi
 #
 # Tests against a reliable external HTTPS endpoint
 # independently from the direct WAN targets.
+#
+# One failed probe is not enough to restart Mihomo: transient
+# endpoint/TLS/DNS/failover timing can produce a false negative.
+# Confirm once after a short delay. A real persistent failure
+# still restarts Mihomo within the same watchdog run.
 # =========================================================
 
-if ! curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1; then
-    can_restart "Proxy tunnel check failed"
-    exit 0
+proxy_tunnel_ok() {
+    curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1
+}
+
+if ! proxy_tunnel_ok; then
+    sleep "$PROXY_RETRY_DELAY"
+
+    if ! proxy_tunnel_ok; then
+        can_restart "Proxy tunnel check failed"
+        exit 0
+    fi
+
+    log "[INFO] Proxy tunnel first probe failed; retry succeeded - no restart"
 fi
 
 
