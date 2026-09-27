@@ -16,10 +16,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 1. Verify OPKG and curl.
 2. Classify the actual `/opt` mount.
 3. Select `ram` for internal Keenetic storage or `disk` for external persistent storage.
-4. Download and syntax-check `install.sh`.
-5. Run the canonical installer.
-6. Download and start `config-import.sh` when an interactive TTY is available.
-7. Print the Doctor command.
+4. Download `install.sh` from the same project ref using a bounded delivery chain: raw GitHub via `curl` → raw GitHub via `wget` → GitHub Contents API.
+5. Require every downloaded script candidate to be non-empty, start with `#!/bin/sh`, and pass `sh -n`.
+6. Run the canonical installer.
+7. Download and start `config-import.sh` through the same resilient chain when an interactive TTY is available.
+8. Print the Doctor command.
+
+The initial `curl .../setup.sh | sh` command is still the bootstrap entry point and must successfully fetch `setup.sh` itself. The fallback chain becomes available **after `setup.sh` has started**, for its child project files.
 
 The wrapper never bypasses installer contracts for components, RAM/swap, EXT4, ProxyN, DNS interception, or other safety checks.
 
