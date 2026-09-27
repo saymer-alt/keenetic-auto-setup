@@ -89,6 +89,33 @@ This is not a KN-1012-only file: the same AArch64 installer is used by other
 compatible models of the same architecture. Other Entware architecture trees
 cover MIPSEL/MIPS and ARM variants.
 
+Official Keenetic/Netcraze articles confirm this architecture-based model: they
+state that the installer archive name depends on the platform/CPU
+(`mipsel`, `mips`, `aarch`), while each router model is simply mapped to one of
+those architecture groups.
+
+Examples from the official documentation:
+
+- Giga NC-1012 → **aarch64** → `aarch64-installer.tar.gz`
+  https://support.netcraze.ru/giga/nc-1012/en/20980-installing-the-entware-repository-on-a-usb-drive.html
+- Ultra NC-1812 → **aarch64** → `aarch64-installer.tar.gz`
+  https://support.netcraze.ru/ultra/nc-1812/en/20980-installing-the-entware-repository-on-a-usb-drive.html
+- Viva NC-1913 → **mipsel** → `mipsel-installer.tar.gz`
+  https://support.netcraze.ru/viva/nc-1913/en/20980-installing-the-entware-repository-on-a-usb-drive.html
+
+In other words:
+
+```text
+router model
+    ↓
+architecture / CPU type
+    ↓
+one of a small number of Entware installer archives
+```
+
+Do not search for a unique file for every router model. Determine the model's
+architecture group and use that group's installer.
+
 Do **not** unpack the downloaded archive. Keep it as one file under `install`:
 
 ```text
