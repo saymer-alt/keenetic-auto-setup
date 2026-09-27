@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.12 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.13 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,7 +33,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.12"
+DOCTOR_VERSION="1.2.13"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -71,6 +71,35 @@ N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
 WARN_MESSAGES=""
 FAIL_MESSAGES=""
 
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
+
 append_finding() {
     _af_kind=$1
     _af_msg=$2
@@ -94,10 +123,10 @@ $_af_msg"
     esac
 }
 
-ok()   { printf '[OK]   %s\n' "$1"; N_OK=$((N_OK+1)); }
-warn() { printf '[WARN] %s\n' "$1"; N_WARN=$((N_WARN+1)); append_finding WARN "$1"; }
-fail() { printf '[FAIL] %s\n' "$1"; N_FAIL=$((N_FAIL+1)); append_finding FAIL "$1"; }
-info() { printf '[INFO] %s\n' "$1"; N_INFO=$((N_INFO+1)); }
+ok()   { status_out "$COLOR_GREEN" "[OK]   $1"; N_OK=$((N_OK+1)); }
+warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; N_WARN=$((N_WARN+1)); append_finding WARN "$1"; }
+fail() { status_out "$COLOR_RED" "[FAIL] $1"; N_FAIL=$((N_FAIL+1)); append_finding FAIL "$1"; }
+info() { status_out "$COLOR_CYAN" "[INFO] $1"; N_INFO=$((N_INFO+1)); }
 hdr()  { printf '\n===== %s =====\n\n' "$1"; }
 
 finding_action() {
@@ -259,7 +288,7 @@ print_human_result() {
     echo
     echo "=== What needs attention ==="
     if [ "$N_FAIL" -eq 0 ] && [ "$N_WARN" -eq 0 ]; then
-        echo "[OK] No FAIL/WARN findings. No action is required by the current Doctor checks."
+        status_out "$COLOR_GREEN" "[OK] No FAIL/WARN findings. No action is required by the current Doctor checks."
         return 0
     fi
 

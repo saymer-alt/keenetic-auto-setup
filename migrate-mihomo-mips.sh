@@ -59,6 +59,34 @@ LOCK_TOOL_MARKER="migrate-mihomo"
 LOCK_HINT="If no migration is actually running, remove it manually: rm -rf /tmp/mihomo-migrate.lock.d /tmp/mihomo-migrate.lock"
 MAINT_MARKER="/tmp/mihomo.maintenance"
 
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
 # Lock helpers (used by apply mode only; --check is read-only and never
 # locks). Same contract as update-mihomo.sh: the directory IS the lock
 # (atomic mkdir test-and-set), pid/ts inside serve liveness and stale
@@ -176,9 +204,9 @@ MIHOMO_BIN=""
 INIT_SCRIPT=""
 GATE_REASON=""
 
-log()   { echo "[migrate] $1"; }
-warn()  { echo "[WARN] $1"; }
-error() { echo "[ERROR] $1"; exit 1; }
+log()   { status_out "$COLOR_GREEN" "[migrate] $1"; }
+warn()  { status_out "$COLOR_YELLOW" "[WARN] $1"; }
+error() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
 usage() {
   echo "Usage: sh migrate-mihomo-mips.sh [--check]"
@@ -463,7 +491,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 
     if support_gate "$GATE_HOME"; then
       GATE_STATE="supported"
-      echo "[OK] tun.stack: mips is supported by this binary"
+      status_out "$COLOR_GREEN" "[OK] tun.stack: mips is supported by this binary"
     else
       case "$GATE_REASON" in
         unsupported)
@@ -485,7 +513,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     log "TUN stack keys found: gvisor=$_g mips=$_m"
     if [ "$_g" -gt 0 ]; then
       case "$GATE_STATE" in
-        supported)   echo "[OK] migration would rewrite $_g stack line(s) to mips" ;;
+        supported)   status_out "$COLOR_GREEN" "[OK] migration would rewrite $_g stack line(s) to mips" ;;
         unsupported) echo "[SKIP] $_g stack line(s) would become mips, but this binary does not support them — update Mihomo first" ;;
         *)           warn "$_g stack line(s) would become mips, but support is UNVERIFIED — apply mode performs the definitive gate (controlled stop, automatic rollback)" ;;
       esac

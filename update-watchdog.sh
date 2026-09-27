@@ -77,6 +77,35 @@ CRONTAB_FILE="/opt/etc/crontab"
 CRON_DIRECT='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog'
 URL="${WATCHDOG_URL:-$PROJECT_RAW_BASE/mihomo-watchdog.sh}"
 
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
+
 # Known MANAGED legacy watchdog bodies. The pre-canonicalization
 # installers downloaded the watchdog straight into the cron file, so the
 # deployed copies are byte-identical to these historical blobs. Identity
@@ -131,7 +160,7 @@ is_wrapperish() { # our managed wrapper with drift (references the binary)
 
 # --- DEPENDENCIES ---
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-    echo "[ERROR] curl or wget is required but neither is available"
+    status_out "$COLOR_RED" "[ERROR] curl or wget is required but neither is available"
     exit 1
 fi
 
@@ -148,20 +177,20 @@ download_watchdog_candidate() {
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            echo "[WARN] curl download attempt $_dw_try/3 failed"
+            status_out "$COLOR_YELLOW" "[WARN] curl download attempt $_dw_try/3 failed"
             sleep 2
         done
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        echo "[INFO] Trying wget fallback..."
+        status_out "$COLOR_CYAN" "[INFO] Trying wget fallback..."
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
             if wget -qO "$TMP_FILE" "$_dw_url"; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            echo "[WARN] wget download attempt $_dw_try/3 failed"
+            status_out "$COLOR_YELLOW" "[WARN] wget download attempt $_dw_try/3 failed"
             sleep 2
         done
     fi
@@ -170,7 +199,7 @@ download_watchdog_candidate() {
     # A caller-provided WATCHDOG_URL remains authoritative and is never
     # silently replaced with a different payload.
     if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
-        echo "[INFO] Trying GitHub Contents API fallback..."
+        status_out "$COLOR_CYAN" "[INFO] Trying GitHub Contents API fallback..."
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
             if curl -fSsL \
@@ -180,7 +209,7 @@ download_watchdog_candidate() {
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            echo "[WARN] GitHub API download attempt $_dw_try/3 failed"
+            status_out "$COLOR_YELLOW" "[WARN] GitHub API download attempt $_dw_try/3 failed"
             sleep 2
         done
     fi
@@ -190,20 +219,20 @@ download_watchdog_candidate() {
 
 # --- OBJECT SANITY (fail conservatively, never write through anomalies) ---
 if [ -e "$WATCHDOG_BIN" ] && [ ! -f "$WATCHDOG_BIN" ]; then
-    echo "[WARN] $WATCHDOG_BIN exists but is not a regular file - refusing to touch it"
-    echo "[WARN] Remove or fix it manually, then re-run this updater"
+    status_out "$COLOR_YELLOW" "[WARN] $WATCHDOG_BIN exists but is not a regular file - refusing to touch it"
+    status_out "$COLOR_YELLOW" "[WARN] Remove or fix it manually, then re-run this updater"
     exit 0
 fi
 if [ -e "$WATCHDOG_CRON" ] && [ ! -f "$WATCHDOG_CRON" ]; then
-    echo "[WARN] $WATCHDOG_CRON exists but is not a regular file - refusing to touch it"
-    echo "[WARN] Remove or fix it manually, then re-run this updater"
+    status_out "$COLOR_YELLOW" "[WARN] $WATCHDOG_CRON exists but is not a regular file - refusing to touch it"
+    status_out "$COLOR_YELLOW" "[WARN] Remove or fix it manually, then re-run this updater"
     exit 0
 fi
 
 # --- ABSENT ---
 if [ ! -e "$WATCHDOG_BIN" ] && [ ! -f "$WATCHDOG_CRON" ]; then
-    echo "[WARN] Watchdog not installed (no canonical binary and no cron copy), nothing changed"
-    echo "[WARN] Run install.sh first"
+    status_out "$COLOR_YELLOW" "[WARN] Watchdog not installed (no canonical binary and no cron copy), nothing changed"
+    status_out "$COLOR_YELLOW" "[WARN] Run install.sh first"
     exit 0
 fi
 
@@ -217,35 +246,35 @@ if [ -f "$CRON_LEGACY_BAK_OLD" ]; then
     if cp -f "$CRON_LEGACY_BAK_OLD" "$CRON_LEGACY_BAK" 2>/dev/null; then
         chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
         rm -f "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
-        echo "[INFO] Moved legacy watchdog backup out of cron.5mins"
+        status_out "$COLOR_CYAN" "[INFO] Moved legacy watchdog backup out of cron.5mins"
     else
         chmod -x "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
-        echo "[WARN] Could not move old watchdog backup out of cron.5mins; executable bit removed"
+        status_out "$COLOR_YELLOW" "[WARN] Could not move old watchdog backup out of cron.5mins; executable bit removed"
     fi
 fi
 rm -f /tmp/mihomo-watchdog.sh.new.* 2>/dev/null || true
 
 # --- DOWNLOAD + VALIDATE (in RAM, before touching anything on /opt) ---
-echo "[INFO] Downloading watchdog..."
-echo "[INFO] Source: $URL"
+status_out "$COLOR_CYAN" "[INFO] Downloading watchdog..."
+status_out "$COLOR_CYAN" "[INFO] Source: $URL"
 
 if ! download_watchdog_candidate "$URL"; then
-    echo "[ERROR] Download failed through all available transports"
+    status_out "$COLOR_RED" "[ERROR] Download failed through all available transports"
     exit 1
 fi
 
 if [ ! -s "$TMP_FILE" ]; then
-    echo "[ERROR] Downloaded file is empty"
+    status_out "$COLOR_RED" "[ERROR] Downloaded file is empty"
     exit 1
 fi
 
 if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_FILE"; then
-    echo "[ERROR] Sanity check failed: not a valid watchdog script"
+    status_out "$COLOR_RED" "[ERROR] Sanity check failed: not a valid watchdog script"
     exit 1
 fi
 
 if ! sh -n "$TMP_FILE"; then
-    echo "[ERROR] Syntax check failed"
+    status_out "$COLOR_RED" "[ERROR] Syntax check failed"
     exit 1
 fi
 
@@ -253,32 +282,32 @@ fi
 ALREADY_CURRENT=0
 if [ -f "$WATCHDOG_BIN" ] && cmp -s "$TMP_FILE" "$WATCHDOG_BIN" 2>/dev/null; then
     ALREADY_CURRENT=1
-    echo "[INFO] Canonical watchdog is already current - no binary rewrite"
+    status_out "$COLOR_CYAN" "[INFO] Canonical watchdog is already current - no binary rewrite"
 else
     mkdir -p /opt/bin
     # Same-filesystem stage: copy, re-validate on the target filesystem,
     # then commit with one atomic rename (old file intact on any failure).
     if ! cp -f "$TMP_FILE" "$STAGE_FILE"; then
-        echo "[ERROR] Failed to stage the new watchdog at $STAGE_FILE (ENOSPC or I/O error) - installed watchdog untouched"
+        status_out "$COLOR_RED" "[ERROR] Failed to stage the new watchdog at $STAGE_FILE (ENOSPC or I/O error) - installed watchdog untouched"
         exit 1
     fi
     if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$STAGE_FILE" 2>/dev/null; then
-        echo "[ERROR] Staged watchdog failed the sanity check - installed watchdog untouched"
+        status_out "$COLOR_RED" "[ERROR] Staged watchdog failed the sanity check - installed watchdog untouched"
         exit 1
     fi
     if ! sh -n "$STAGE_FILE"; then
-        echo "[ERROR] Staged watchdog failed the syntax check - installed watchdog untouched"
+        status_out "$COLOR_RED" "[ERROR] Staged watchdog failed the syntax check - installed watchdog untouched"
         exit 1
     fi
     chmod +x "$STAGE_FILE" || {
-        echo "[ERROR] Failed to set executable permission on the staged watchdog - installed watchdog untouched"
+        status_out "$COLOR_RED" "[ERROR] Failed to set executable permission on the staged watchdog - installed watchdog untouched"
         exit 1
     }
     if ! mv -f "$STAGE_FILE" "$WATCHDOG_BIN"; then
-        echo "[ERROR] Failed to replace $WATCHDOG_BIN (atomic rename) - old watchdog intact"
+        status_out "$COLOR_RED" "[ERROR] Failed to replace $WATCHDOG_BIN (atomic rename) - old watchdog intact"
         exit 1
     fi
-    echo "[INFO] Watchdog installed: $WATCHDOG_BIN"
+    status_out "$COLOR_CYAN" "[INFO] Watchdog installed: $WATCHDOG_BIN"
 fi
 
 # --- CRON LAYOUT CANONICALIZATION ---
@@ -290,15 +319,15 @@ if is_exact_wrapper || is_wrapperish; then
 elif is_known_legacy "$WATCHDOG_CRON"; then
     CRON_ACTION="migrate"
 elif has_marker "$WATCHDOG_CRON"; then
-    echo "[WARN] $WATCHDOG_CRON is a full watchdog but NOT a known managed version - preserved, nothing migrated"
-    echo "[WARN] If it is a deliberate custom watchdog, keep it; otherwise migrate it manually"
+    status_out "$COLOR_YELLOW" "[WARN] $WATCHDOG_CRON is a full watchdog but NOT a known managed version - preserved, nothing migrated"
+    status_out "$COLOR_YELLOW" "[WARN] If it is a deliberate custom watchdog, keep it; otherwise migrate it manually"
 else
     # missing or foreign content: only ever ADD our wrapper when the slot
     # is empty; a foreign file was already reported above and is kept
     if [ ! -f "$WATCHDOG_CRON" ]; then
         CRON_ACTION="create"
     else
-        echo "[WARN] $WATCHDOG_CRON contains unrecognized content - preserved, nothing changed"
+        status_out "$COLOR_YELLOW" "[WARN] $WATCHDOG_CRON contains unrecognized content - preserved, nothing changed"
     fi
 fi
 
@@ -308,19 +337,19 @@ case "$CRON_ACTION" in
         # (overwritten on every migration, never accumulates).
         if cp -f "$WATCHDOG_CRON" "$CRON_LEGACY_BAK" 2>/dev/null; then
             chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
-            echo "[INFO] Legacy watchdog copy backed up to $CRON_LEGACY_BAK"
+            status_out "$COLOR_CYAN" "[INFO] Legacy watchdog copy backed up to $CRON_LEGACY_BAK"
         else
-            echo "[WARN] Could not back up the legacy watchdog copy (migrating anyway)"
+            status_out "$COLOR_YELLOW" "[WARN] Could not back up the legacy watchdog copy (migrating anyway)"
         fi
-        wrapper_content > "$WATCHDOG_CRON" || { echo "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
+        wrapper_content > "$WATCHDOG_CRON" || { status_out "$COLOR_RED" "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
         chmod +x "$WATCHDOG_CRON" 2>/dev/null || true
-        echo "[INFO] Managed legacy watchdog migrated: cron entry converted to wrapper"
+        status_out "$COLOR_CYAN" "[INFO] Managed legacy watchdog migrated: cron entry converted to wrapper"
         ;;
     create)
         mkdir -p /opt/etc/cron.5mins
-        wrapper_content > "$WATCHDOG_CRON" || { echo "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
+        wrapper_content > "$WATCHDOG_CRON" || { status_out "$COLOR_RED" "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
         chmod +x "$WATCHDOG_CRON" 2>/dev/null || true
-        echo "[INFO] Cron wrapper created: $WATCHDOG_CRON"
+        status_out "$COLOR_CYAN" "[INFO] Cron wrapper created: $WATCHDOG_CRON"
         ;;
 esac
 
@@ -352,41 +381,41 @@ if [ -f "$CRONTAB_FILE" ]; then
         # would execute the watchdog a second time every 5 minutes.
         grep -vFx "$CRON_DIRECT" "$CRONTAB_FILE" > "$CRONTAB_FILE.tmp.$$" 2>/dev/null
         mv -f "$CRONTAB_FILE.tmp.$$" "$CRONTAB_FILE" \
-            && { echo "[INFO] Removed duplicate watchdog cron line (run-parts route already covers cron.5mins)"; _cron_changed=1; }
+            && { status_out "$COLOR_CYAN" "[INFO] Removed duplicate watchdog cron line (run-parts route already covers cron.5mins)"; _cron_changed=1; }
         rm -f "$CRONTAB_FILE.tmp.$$" 2>/dev/null || true
     elif [ "${_direct_exact:-0}" -ge 2 ]; then
         grep -vFx "$CRON_DIRECT" "$CRONTAB_FILE" > "$CRONTAB_FILE.tmp.$$" 2>/dev/null
         echo "$CRON_DIRECT" >> "$CRONTAB_FILE.tmp.$$"
         mv -f "$CRONTAB_FILE.tmp.$$" "$CRONTAB_FILE" \
-            && { echo "[INFO] Collapsed duplicate watchdog cron lines to one"; _cron_changed=1; }
+            && { status_out "$COLOR_CYAN" "[INFO] Collapsed duplicate watchdog cron lines to one"; _cron_changed=1; }
         rm -f "$CRONTAB_FILE.tmp.$$" 2>/dev/null || true
     elif [ "${_direct_exact:-0}" -eq 0 ] && [ "${_direct_var:-0}" -eq 0 ] && [ "${_runparts:-0}" -eq 0 ]; then
         echo "$CRON_DIRECT" >> "$CRONTAB_FILE" 2>/dev/null \
-            && { echo "[INFO] Watchdog cron line added to $CRONTAB_FILE"; _cron_changed=1; }
+            && { status_out "$COLOR_CYAN" "[INFO] Watchdog cron line added to $CRONTAB_FILE"; _cron_changed=1; }
     fi
     if [ "${_direct_var:-0}" -gt 0 ]; then
-        echo "[WARN] $CRONTAB_FILE has non-standard watchdog cron lines - preserved (possible duplicates, check manually)"
+        status_out "$COLOR_YELLOW" "[WARN] $CRONTAB_FILE has non-standard watchdog cron lines - preserved (possible duplicates, check manually)"
     fi
     if [ "$_cron_changed" -eq 1 ] && [ -x /opt/etc/init.d/S10cron ]; then
-        /opt/etc/init.d/S10cron restart >/dev/null 2>&1 || echo "[WARN] Cron restart failed - schedule changes apply at next cron reload"
+        /opt/etc/init.d/S10cron restart >/dev/null 2>&1 || status_out "$COLOR_YELLOW" "[WARN] Cron restart failed - schedule changes apply at next cron reload"
     fi
 else
-    echo "[WARN] No /opt/etc/crontab - watchdog schedule not verified"
+    status_out "$COLOR_YELLOW" "[WARN] No /opt/etc/crontab - watchdog schedule not verified"
 fi
 
 # --- RESULT ---
 if has_marker "$WATCHDOG_BIN" && is_exact_wrapper; then
     if [ "$ALREADY_CURRENT" -eq 1 ] && [ "$CRON_ACTION" = "ok" ]; then
-        echo "[OK] Watchdog already current (canonical binary + cron wrapper) - no changes made"
+        status_out "$COLOR_GREEN" "[OK] Watchdog already current (canonical binary + cron wrapper) - no changes made"
     else
-        echo "[OK] Watchdog update complete (canonical binary + cron wrapper)"
+        status_out "$COLOR_GREEN" "[OK] Watchdog update complete (canonical binary + cron wrapper)"
     fi
 else
-    echo "[WARN] Layout incomplete after update:"
+    status_out "$COLOR_YELLOW" "[WARN] Layout incomplete after update:"
     has_marker "$WATCHDOG_BIN" || \
-        echo "[WARN] - $WATCHDOG_BIN is not a valid watchdog"
+        status_out "$COLOR_YELLOW" "[WARN] - $WATCHDOG_BIN is not a valid watchdog"
     is_exact_wrapper || is_wrapperish || \
-        echo "[WARN] - $WATCHDOG_CRON is missing or not a wrapper (cron may not run the watchdog)"
-    echo "[WARN] Check $WATCHDOG_BIN and $WATCHDOG_CRON manually"
+        status_out "$COLOR_YELLOW" "[WARN] - $WATCHDOG_CRON is missing or not a wrapper (cron may not run the watchdog)"
+    status_out "$COLOR_YELLOW" "[WARN] Check $WATCHDOG_BIN and $WATCHDOG_CRON manually"
 fi
 exit 0

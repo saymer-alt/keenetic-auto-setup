@@ -27,7 +27,7 @@ if [ -n "${3:-}" ]; then
 fi
 
 if [ "$ALLOW_INTERNAL_DISK" -eq 1 ] && [ "$MODE" != "disk" ]; then
-    echo "[ERROR] --allow-internal-disk is valid only with disk mode." >&2
+    status_err "[ERROR] --allow-internal-disk is valid only with disk mode."
     exit 1
 fi
 
@@ -41,9 +41,37 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
 
-log() { echo "[setup] $1"; }
-warn() { echo "[WARN] $1"; }
-err() { echo "[ERROR] $1"; exit 1; }
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
+log() { status_out "$COLOR_GREEN" "[setup] $1"; }
+warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
+err() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
 retry() {
     for i in 1 2 3; do
@@ -436,18 +464,18 @@ component_list_has() {
 
 required_components_preflight_error() {
     _rc_reason="$1"
-    echo "[ERROR] $_rc_reason" >&2
-    echo "[ERROR] Full required component contract for the current default project profile:" >&2
-    echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
-    echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
-    echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
-    echo "[ERROR]   - At least ONE secure DNS proxy component: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID}) — Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client." >&2
+    status_err "[ERROR] $_rc_reason"
+    status_err "[ERROR] Full required component contract for the current default project profile:"
+    status_err "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo."
+    status_err "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile."
+    status_err "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path."
+    status_err "[ERROR]   - At least ONE secure DNS proxy component: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID}) — Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client."
     if [ "$OPT_CLASS" = "external" ]; then
-        echo "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile." >&2
-        echo "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)." >&2
+        status_err "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile."
+        status_err "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)."
     fi
-    echo "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов." >&2
-    echo "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation." >&2
+    status_err "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов."
+    status_err "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation."
     exit 1
 }
 
@@ -510,8 +538,8 @@ require_project_keeneticos_components() {
     fi
 
     if [ "$_rc_missing_count" -gt 0 ]; then
-        echo "[ERROR] Missing required KeeneticOS component(s):" >&2
-        printf '%s\n' "${_rc_missing_lines#?}" >&2
+        status_err "[ERROR] Missing required KeeneticOS component(s):"
+        printf '%s%s%s\n' "$COLOR_ERR_RED" "${_rc_missing_lines#?}" "$COLOR_ERR_RESET" >&2
         required_components_preflight_error "Install the component(s) listed above before continuing."
     fi
 
@@ -1083,9 +1111,9 @@ proxy_client_missing() {
     # still did not materialize. Fail before dependent mutations and avoid
     # misdiagnosing this as a simple missing-component case.
     _pi="$1"
-    echo "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания." >&2
-    echo "[ERROR] Ранний component preflight видел полный обязательный набор KeeneticOS, поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight." >&2
-    echo "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает." >&2
+    status_err "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания."
+    status_err "[ERROR] Ранний component preflight видел полный обязательный набор KeeneticOS, поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight."
+    status_err "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает."
     exit 1
 }
 
@@ -1475,10 +1503,10 @@ fi
 FAILS=0
 WARNS=0
 
-check_ok()   { echo "[ok] $1"; }
-check_warn() { echo "[WARN] $1"; WARNS=$((WARNS+1)); }
-check_fail() { echo "[FAIL] $1"; FAILS=$((FAILS+1)); }
-check_info() { echo "[info] $1"; }
+check_ok()   { status_out "$COLOR_GREEN" "[ok] $1"; }
+check_warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; WARNS=$((WARNS+1)); }
+check_fail() { status_out "$COLOR_RED" "[FAIL] $1"; FAILS=$((FAILS+1)); }
+check_info() { status_out "$COLOR_CYAN" "[info] $1"; }
 
 # One-Mihomo invariant: executable self-check probes reuse the conservative
 # mihomo_running() guard defined before the Mihomo install section.
@@ -1705,11 +1733,11 @@ fi
 
 # Verdict
 if [ "$FAILS" -gt 0 ]; then
-    echo "[FAIL] $FAILS check(s) failed, $WARNS warning(s) — installation incomplete"
+    status_out "$COLOR_RED" "[FAIL] $FAILS check(s) failed, $WARNS warning(s) — installation incomplete"
     exit 1
 fi
 if [ "$WARNS" -gt 0 ]; then
-    echo "[OK] Done ($WARNS warning(s))"
+    status_out "$COLOR_GREEN" "[OK] Done ($WARNS warning(s))"
 else
-    echo "[OK] Done"
+    status_out "$COLOR_GREEN" "[OK] Done"
 fi

@@ -36,9 +36,37 @@ SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
 CONFIG_COMMIT_STARTED=0
 
-log() { echo "[config] $1"; }
-warn() { echo "[WARN] $1"; }
-error() { echo "[ERROR] $1" >&2; exit 1; }
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
+log() { status_out "$COLOR_GREEN" "[config] $1"; }
+warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
+error() { status_err "[ERROR] $1"; exit 1; }
 
 resolve_mihomo() {
     for _cm_bin in /opt/sbin/mihomo /opt/bin/mihomo; do
@@ -399,10 +427,10 @@ CONFIG_COMMIT_STARTED=0
 SERVICE_STOPPED_BY_US=0
 
 echo
-echo "[OK] Mihomo configuration installed successfully."
-echo "[OK] Previous configuration backup: $BACKUP_PATH"
+status_out "$COLOR_GREEN" "[OK] Mihomo configuration installed successfully."
+status_out "$COLOR_GREEN" "[OK] Previous configuration backup: $BACKUP_PATH"
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
-    echo "[OK] Mihomo is running with the new config."
+    status_out "$COLOR_GREEN" "[OK] Mihomo is running with the new config."
 else
-    echo "[info] Mihomo was stopped before import and was left stopped."
+    status_out "$COLOR_CYAN" "[info] Mihomo was stopped before import and was left stopped."
 fi

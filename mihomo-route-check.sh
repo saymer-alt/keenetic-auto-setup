@@ -20,6 +20,34 @@ SOCKS_PORT="${MIHOMO_SOCKS_PORT:-7890}"
 GROUP="${MIHOMO_PROXY_GROUP:-GLOBAL}"
 CURL_TIMEOUT=8
 
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
 usage() {
     cat <<'USAGE'
 mihomo-route-check.sh v1.0.0
@@ -74,7 +102,7 @@ esac
 
 case "$HOST" in
     ""|*[!A-Za-z0-9._:-]*)
-        say "[ERROR] Unsupported target: $TARGET"
+        status_out "$COLOR_RED" "[ERROR] Unsupported target: $TARGET"
         exit 1
         ;;
 esac
@@ -89,10 +117,10 @@ if command -v nslookup >/dev/null 2>&1; then
     if nslookup "$HOST" 2>&1; then
         :
     else
-        say "[WARN] DNS resolution failed for $HOST"
+        status_out "$COLOR_YELLOW" "[WARN] DNS resolution failed for $HOST"
     fi
 else
-    say "[INFO] nslookup unavailable; DNS resolution check skipped"
+    status_out "$COLOR_CYAN" "[INFO] nslookup unavailable; DNS resolution check skipped"
 fi
 
 section "Keenetic ProxyN"
@@ -103,38 +131,38 @@ if command -v ndmc >/dev/null 2>&1; then
         if [ -n "$PROXY_LINES" ]; then
             printf '%s\n' "$PROXY_LINES"
             if printf '%s\n' "$RUNNING" | grep -q '127\.0\.0\.1.*7890'; then
-                say "[OK] running-config contains a ProxyN path to 127.0.0.1:7890"
+                status_out "$COLOR_GREEN" "[OK] running-config contains a ProxyN path to 127.0.0.1:7890"
             else
-                say "[WARN] no 127.0.0.1:7890 ProxyN upstream found in the filtered running-config evidence"
+                status_out "$COLOR_YELLOW" "[WARN] no 127.0.0.1:7890 ProxyN upstream found in the filtered running-config evidence"
             fi
         else
-            say "[WARN] no ProxyN evidence found in running-config"
+            status_out "$COLOR_YELLOW" "[WARN] no ProxyN evidence found in running-config"
         fi
     else
-        say "[INFO] running-config could not be read"
+        status_out "$COLOR_CYAN" "[INFO] running-config could not be read"
     fi
 else
-    say "[INFO] ndmc unavailable; Keenetic ProxyN check skipped"
+    status_out "$COLOR_CYAN" "[INFO] ndmc unavailable; Keenetic ProxyN check skipped"
 fi
 
 section "Local Mihomo endpoint"
 PORT_OK=0
 if command -v netstat >/dev/null 2>&1; then
     if netstat -tln 2>/dev/null | grep -q "[:.]$SOCKS_PORT[[:space:]]"; then
-        say "[OK] TCP port $SOCKS_PORT is listening"
+        status_out "$COLOR_GREEN" "[OK] TCP port $SOCKS_PORT is listening"
         PORT_OK=1
     else
-        say "[WARN] TCP port $SOCKS_PORT is not listening"
+        status_out "$COLOR_YELLOW" "[WARN] TCP port $SOCKS_PORT is not listening"
     fi
 elif command -v ss >/dev/null 2>&1; then
     if ss -tln 2>/dev/null | grep -q "[:.]$SOCKS_PORT[[:space:]]"; then
-        say "[OK] TCP port $SOCKS_PORT is listening"
+        status_out "$COLOR_GREEN" "[OK] TCP port $SOCKS_PORT is listening"
         PORT_OK=1
     else
-        say "[WARN] TCP port $SOCKS_PORT is not listening"
+        status_out "$COLOR_YELLOW" "[WARN] TCP port $SOCKS_PORT is not listening"
     fi
 else
-    say "[INFO] netstat/ss unavailable; port check skipped"
+    status_out "$COLOR_CYAN" "[INFO] netstat/ss unavailable; port check skipped"
 fi
 
 section "Current Mihomo selection"
@@ -154,34 +182,34 @@ if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
                 say "Group: $GROUP ($TYPE)"
                 [ -n "$NOW" ] && say "Selected: $NOW" || say "Selected: not exposed as a single leaf"
             else
-                say "[WARN] group '$GROUP' not found in Controller response"
+                status_out "$COLOR_YELLOW" "[WARN] group '$GROUP' not found in Controller response"
             fi
             ;;
-        401|403) say "[WARN] Controller requires a secret or the supplied secret was rejected" ;;
-        *) say "[INFO] Controller selection unavailable (HTTP ${CODE:-unknown})" ;;
+        401|403) status_out "$COLOR_YELLOW" "[WARN] Controller requires a secret or the supplied secret was rejected" ;;
+        *) status_out "$COLOR_CYAN" "[INFO] Controller selection unavailable (HTTP ${CODE:-unknown})" ;;
     esac
 else
-    say "[INFO] curl+jq unavailable; Controller selection check skipped"
+    status_out "$COLOR_CYAN" "[INFO] curl+jq unavailable; Controller selection check skipped"
 fi
 
 section "SOCKS5h target probe"
 if ! command -v curl >/dev/null 2>&1; then
-    say "[INFO] curl unavailable; target probe skipped"
+    status_out "$COLOR_CYAN" "[INFO] curl unavailable; target probe skipped"
 elif [ "$PORT_OK" -eq 0 ]; then
-    say "[INFO] target probe skipped because port $SOCKS_PORT was not confirmed listening"
+    status_out "$COLOR_CYAN" "[INFO] target probe skipped because port $SOCKS_PORT was not confirmed listening"
 else
     # -I is intentionally non-mutating for ordinary HTTP servers. Some servers reject
     # HEAD, so retry with a tiny GET that discards the body before declaring failure.
     CODE=$(curl -sS -o /dev/null -I --max-time "$CURL_TIMEOUT"         --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT" -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
     case "$CODE" in
         2??|3??|4??|5??)
-            say "[OK] SOCKS5h request reached the target path (HTTP $CODE)"
+            status_out "$COLOR_GREEN" "[OK] SOCKS5h request reached the target path (HTTP $CODE)"
             ;;
         *)
             CODE=$(curl -sS -o /dev/null --max-time "$CURL_TIMEOUT"                 --range 0-0 --socks5-hostname "$SOCKS_HOST:$SOCKS_PORT"                 -w '%{http_code}' "$PROBE_URL" 2>/dev/null || true)
             case "$CODE" in
-                2??|3??|4??|5??) say "[OK] SOCKS5h request reached the target path (HTTP $CODE)" ;;
-                *) say "[WARN] SOCKS5h request did not produce an HTTP response" ;;
+                2??|3??|4??|5??) status_out "$COLOR_GREEN" "[OK] SOCKS5h request reached the target path (HTTP $CODE)" ;;
+                *) status_out "$COLOR_YELLOW" "[WARN] SOCKS5h request did not produce an HTTP response" ;;
             esac
             ;;
     esac

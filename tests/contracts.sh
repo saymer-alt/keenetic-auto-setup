@@ -11,6 +11,27 @@ grep -q 'Proxy client / Клиент прокси' "$ROOT/docs/COMPONENTS.md" ||
 grep -q '\*\*REQUIRED\*\*' "$ROOT/docs/COMPONENTS.md" || fail "component contract must mark required capabilities"
 pass "component contract records Proxy client prerequisite"
 
+# Terminal output is a semantic contract: colors supplement status prefixes and
+# must disappear in redirects/log captures. Persistent watchdog logs stay plain.
+for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-route-check.sh; do
+    grep -Fq 'NO_COLOR' "$ROOT/$_f" || fail "$_f must honor NO_COLOR"
+    grep -Fq 'COLOR_GREEN' "$ROOT/$_f" || fail "$_f must expose green success/progress output"
+    grep -Fq 'COLOR_CYAN' "$ROOT/$_f" || fail "$_f must expose cyan informational output"
+    grep -Fq 'COLOR_YELLOW' "$ROOT/$_f" || fail "$_f must expose yellow warning output"
+    grep -Fq 'COLOR_RED' "$ROOT/$_f" || fail "$_f must expose red failure output"
+    grep -Fq '[ -t 1 ]' "$ROOT/$_f" || fail "$_f must emit ANSI only to an interactive stdout"
+done
+grep -Fq 'NO_COLOR' "$ROOT/S00ubifs" || fail "S00ubifs must honor NO_COLOR"
+grep -Fq '[ -t 1 ]' "$ROOT/S00ubifs" || fail "S00ubifs colors must be TTY-only"
+if grep -Fq '\033[' "$ROOT/mihomo-watchdog.sh"; then
+    fail "persistent watchdog logs must never contain ANSI color escapes"
+fi
+grep -Fq 'status_out "$COLOR_GREEN" "[OK]   $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor OK must be green"
+grep -Fq 'status_out "$COLOR_CYAN" "[INFO] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor INFO must be cyan"
+grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor WARN must be yellow"
+grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
+pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
+
 PROFILE_CONTRACT=20260921_3
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||

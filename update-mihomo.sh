@@ -112,6 +112,34 @@ TMP_STATE_BACKUP=""
 STATE_HAD_OLD=0
 STATE_COMMITTED=0
 
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
 # Parse arguments
 for arg in "$@"; do
   case "$arg" in
@@ -120,9 +148,9 @@ for arg in "$@"; do
 done
 
 # Logging helpers
-log() { echo "[updater] $1"; }
-warn() { echo "[WARN] $1"; }
-error() { echo "[ERROR] $1"; exit 1; }
+log() { status_out "$COLOR_GREEN" "[updater] $1"; }
+warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
+error() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
 # Retry wrapper: attempts a command up to 3 times with 2s delay
 retry() {
@@ -1339,4 +1367,4 @@ fi
 # Done (temp cleanup runs via the exit trap)
 # -----------------------------
 log "Success! Updated to $AVAILABLE_VER (from $ASSET_NAME)"
-echo "[OK] Mihomo updated successfully"
+status_out "$COLOR_GREEN" "[OK] Mihomo updated successfully"
