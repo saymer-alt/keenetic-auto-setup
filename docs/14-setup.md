@@ -109,3 +109,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 `setup.sh` сам не форматирует накопители, не создаёт swap и не отключает safety-gates.
 
 Не используйте ручные изменения `iptables`, ProxyN, DNS или policy routing как «продолжение setup.sh». Это отдельные advanced/risk-zone операции.
+
+---
+
+`setup.sh` и запущенный им installer используют единый «светофор» статусов. Полный контракт, включая `NO_COLOR` и поведение при редиректе: [18 — цвета и статусы CLI](18-output-colors.md).

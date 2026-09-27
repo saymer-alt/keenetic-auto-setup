@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Standardized interactive terminal status colors across `setup.sh`, `install.sh`, `config-import.sh`, both updaters, the MIPS migrator, Doctor, route-check and `S00ubifs`: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. ANSI is emitted only to a TTY, honors `NO_COLOR`/`TERM=dumb`, and does not contaminate redirected output.
+- Doctor v1.2.13 applies the same palette without changing severity counters or exit codes. Recoverable download retries/fallbacks remain WARN rather than being promoted to red fatal errors.
+- Persistent `mihomo-watchdog.sh` logs intentionally remain plain text with semantic tags only; ANSI escapes are forbidden there.
+
+### Documentation
+- Added the canonical RU/EN terminal-output color contract and linked it from AGENTS, README, HOWTO, installer, troubleshooting, S00ubifs and focused setup/update/import/route-check guides.
+
+### Testing
+- Contract smoke tests now pin the TTY/`NO_COLOR` behavior, the Doctor green/cyan/yellow/red mapping, and the rule that persistent watchdog logs contain no ANSI escape sequences.
+
 ---
 
 ## [1.7.1] - 2026-09-27

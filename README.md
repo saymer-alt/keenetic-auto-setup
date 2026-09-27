@@ -78,6 +78,8 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
+CLI использует единый «светофор»: зелёный — штатный ход/`OK`, голубой (cyan) — `INFO`, жёлтый — `WARN`, красный — `ERROR`/`FAIL`. Цвет — только подсказка: префиксы всегда сохраняются, а при редиректе, `NO_COLOR` или `TERM=dumb` ANSI отключается. Полный контракт: [цвета и статусы CLI](docs/18-output-colors.md).
+
 Точечная read-only проверка одного домена/IP через цепочку ProxyN → Mihomo:
 
 ```bash

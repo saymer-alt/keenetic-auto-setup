@@ -92,6 +92,14 @@ Confirmed by code and docs:
   (update-mihomo.sh); backup + sanity + sh -n + atomic mv (update-watchdog.sh).
 - Simplicity is more important than features (docs/10): do not add a feature that
   complicates the system and raises breakage risk.
+- User-facing terminal status colors are a project contract, not decoration. Follow
+  [docs/18-output-colors.md](docs/18-output-colors.md): normal progress and OK are green,
+  INFO is cyan, WARN is yellow, ERROR/FAIL are red. Textual prefixes remain mandatory;
+  color must never be the only carrier of severity. Emit ANSI only to an interactive TTY,
+  honor `NO_COLOR` and `TERM=dumb`, and keep redirected/captured output plain.
+  Persistent logs (especially `mihomo-watchdog.sh`) must never contain ANSI escapes.
+  Recoverable retries/fallbacks stay WARN even if an underlying command failed; red is
+  reserved for a final fatal operation or a failed diagnostic/check.
 - Do not fight KeeneticOS: integration is through ndmc / RCI (localhost:79) / netfilter.d.
 
 (proposal) expose new configurable parameters as variables at the top of the script —

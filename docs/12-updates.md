@@ -126,3 +126,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Если обновление прошло нештатно, дальше идите в
 [диагностику](08-troubleshooting.md), а не заменяйте бинарники вручную.
+
+---
+
+Формат `[OK]/[INFO]/[WARN]/[ERROR]/[FAIL]` и единая цветовая семантика updater'ов описаны в [18 — цвета и статусы CLI](18-output-colors.md).

@@ -82,6 +82,8 @@ Doctor:
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
 
+The CLI uses one traffic-light palette: green for normal progress/`OK`, cyan for `INFO`, yellow for `WARN`, and red for `ERROR`/`FAIL`. Color is supplemental: prefixes remain present, and ANSI is disabled for redirects, `NO_COLOR`, or `TERM=dumb`. See [terminal output colors](OUTPUT_COLORS.md).
+
 Focused read-only check for one domain/IP through ProxyN → Mihomo:
 
 ```bash
