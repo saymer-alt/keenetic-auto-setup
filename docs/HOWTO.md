@@ -639,7 +639,7 @@ Every 5 minutes (cron), with a 0–24 s random jitter (busybox-safe, `date +%s %
 
 1. **WAN, directly and without Mihomo.** Primary targets: `cp.cloudflare.com`, `www.google.com`. If *all* of them fail, a whitelist fallback runs: `gosuslugi.ru`, `ya.ru`, `mail.ru`, `vk.ru`, `vk.com`. Any single response = WAN is up. No response at all → the watchdog exits **without restarting anything** — a dead WAN does not mean Mihomo is broken.
 2. **Proxy port** — `127.0.0.1:7890` must accept TCP connections. Closed port → Mihomo probably crashed → restart.
-3. **End-to-end tunnel** — a real request through `socks5h://127.0.0.1:7890` (DNS resolved through the tunnel) to google must succeed. Port open but tunnel dead → restart.
+3. **End-to-end tunnel** — a real request through `socks5h://127.0.0.1:7890` (DNS resolved through the tunnel) to google must succeed. A single failure is now only a preliminary signal: the watchdog waits 3 seconds and performs one confirming probe. Retry OK → no restart; two consecutive failures → restart. This avoids false-positive restarts from brief network/TLS/DNS/outbound hiccups without masking a persistent failure.
 
 Restart rate limit: minimum 300 s between restarts, tracked in `/tmp/mihomo_watchdog.restart` with content validation. Overlapping runs are prevented by an atomic mkdir lock dir `/tmp/mihomo_watchdog.lock.d` (with pid/ts ownership and a live-process takeover — a `kill -9`ed holder is taken over on the next run, no reboot needed).
 
@@ -657,7 +657,8 @@ Typical lines and what they mean:
 | `[OK] All good | WAN=whitelist (...)` | everything healthy; WAN confirmed through whitelist fallback |
 | `[WARN] WAN unreachable (primary + whitelist targets failed)` | no internet — watchdog correctly does nothing |
 | `[RESTART] Mihomo port unreachable` | Mihomo crashed / didn't start — restarted |
-| `[RESTART] Proxy tunnel check failed` | port open, tunnel dead — often the VPN server or config |
+| `[INFO] Proxy tunnel first probe failed; retry succeeded - no restart` | first tunnel probe was transiently bad, confirming retry passed; no restart |
+| `[RESTART] Proxy tunnel check failed` | port open, but two consecutive tunnel probes failed — confirmed end-to-end failure |
 | `[RATE-LIMIT] Restart blocked (Ns < 300s)` | anti-loop protection working, not an error |
 
 Checks still run every 5 minutes, but the routine `[OK]` heartbeat is written at most once every 20 minutes. After a WARN/restart/rate-limit the next healthy run is logged immediately. A successful WAN-path transition `primary ↔ whitelist` is also logged immediately, so fallback and failback remain visible without restoring per-run healthy noise. Log rotation is built in: over 500 lines → trimmed to the last 300. Logs live in tmpfs (RAM mode) and are lost on reboot — by design.
