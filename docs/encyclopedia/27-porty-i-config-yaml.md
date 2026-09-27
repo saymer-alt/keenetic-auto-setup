@@ -31,7 +31,7 @@
 | `allow-lan: false` | доступ к портам прокси из LAN | эта статья |
 | `bind-address: 127.0.0.1` | адрес, на котором слушают порты прокси | эта статья |
 | `mode: rule` | режим ядра: решения по правилам | [30-rules.md](30-rules.md) |
-| `log-level: info` | детальность логов | [44-logs.md](44-logs.md) |
+| `log-level: info` | детальность логов в историческом package-placeholder; в текущих проектных примерах рекомендуем `warning` | [44-logs.md](44-logs.md) |
 | `ipv6: true` | принимать ли ядром IPv6 | ARCHITECTURE (позиция проекта по IPv6) |
 | `profile` | кэши: выбранные узлы, fake-ip-пары | [26-dns-i-fake-ip.md](26-dns-i-fake-ip.md) |
 | `unified-delay`, `tcp-concurrent` | оптимизации ядра | по официальной документации |
@@ -150,8 +150,7 @@ mihomo -d /opt/etc/mihomo -t
 - `mode` — значения `rule`/`global`/`direct`, **дефолт `rule`**; у нас `rule`.
 - `ipv6` — по документации дефолт `true`; у нас `true` (позиция проекта по IPv6 —
   [../../ARCHITECTURE.md](../../ARCHITECTURE.md)).
-- `log-level` — значения `silent`/`error`/`warning`/`info`/`debug`; у нас `info`
-  (дефолт на странице документации не указан).
+- `log-level` — значения `silent`/`error`/`warning`/`info`/`debug`; исторический package-placeholder использовал `info`, а текущая проектная рекомендация для обычной эксплуатации — `warning`, чтобы не писать строку на каждое соединение (дефолт на странице документации не указан).
 - `unified-delay`, `tcp-concurrent` — оптимизации ядра; включены в placeholder,
   глубокого разбора в энциклопедии не требуют.
 
