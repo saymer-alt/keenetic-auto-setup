@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+---
+
+## [1.7.0] - 2026-09-27
+
 ### Changed
 - `mihomo-watchdog.sh` now requires one confirming SOCKS5h tunnel failure before restarting Mihomo: after the first 5-second end-to-end probe fails it waits 3 seconds and retries once. A successful retry logs an informational transient-recovery event and does not restart; only two consecutive failures reach the existing restart/cooldown path. This hardens a field-observed false-positive restart without changing WAN handling, port-check behavior, the 300-second restart limiter, lock/jitter, or maintenance coordination.
 - Doctor v1.2.10 refines severity without weakening functional checks. A functional legacy watchdog layout (full script in `cron.5mins`) is now INFO rather than WARN; actual watchdog faults still WARN/FAIL (missing scheduling/wrapper, non-executable canonical script, duplicate executable legacy backup, stale/no health history, repeated/rate-limited interventions). The DNS-transit missing condition remains WARN because `dns-proxy intercept enable` is an installer-managed supported-profile contract, but the message no longer speculates that MagiTrickle itself is unhealthy when Doctor has separately verified MagiTrickle's own DNAT/listener path.
