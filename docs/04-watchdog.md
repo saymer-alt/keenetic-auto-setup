@@ -82,6 +82,7 @@ grep mihomo_watchdog /opt/etc/crontab
 WAN_PRIMARY_TARGETS="http://cp.cloudflare.com http://www.google.com"
 WAN_WHITELIST_TARGETS="http://gosuslugi.ru http://ya.ru http://mail.ru http://vk.ru http://vk.com"
 PROXY="127.0.0.1:7890"
+PROXY_RETRY_DELAY=3
 MIN_RESTART_INTERVAL=300
 LOG_MAX_LINES=500
 LOG_KEEP_LINES=300
@@ -148,12 +149,25 @@ curl -x socks5h://127.0.0.1:7890 -m 5 -s https://www.google.com
 
 * socks5h — DNS тоже через туннель
 * проверяет, что прокси реально пропускает трафик
+* один неуспешный probe **не считается достаточным основанием для рестарта**
 
-Если туннель не работает:
+После первого FAIL watchdog ждёт `PROXY_RETRY_DELAY=3` секунды и повторяет тот же
+сквозной probe один раз:
 
-```bash
-→ рестарт
+```text
+первый FAIL
+    ↓
+пауза 3 с
+    ↓
+повторный probe
+    ├─ OK   → ничего не рестартовать
+    └─ FAIL → рестарт
 ```
+
+Это защищает от подтверждённого в поле false-positive сценария, когда WAN жив,
+Mihomo до этого работал, но один SOCKS5h-запрос не уложился в 5 секунд или попал
+в кратковременный сбой DNS/TLS/outbound failover. Устойчивая неисправность не
+маскируется: второй подряд FAIL приводит к рестарту в том же запуске watchdog.
 
 ---
 
@@ -162,7 +176,7 @@ curl -x socks5h://127.0.0.1:7890 -m 5 -s https://www.google.com
 ```bash
 если:
   WAN подтверждён
-  И (порт недоступен ИЛИ туннель сломан)
+  И (порт недоступен ИЛИ два tunnel-probe подряд не прошли)
   И прошло > 300 сек с прошлого рестарта
 
 → /opt/etc/init.d/S99mihomo restart
@@ -244,6 +258,7 @@ BusyBox:
 [OK] All good | WAN=whitelist (http://ya.ru)
 [WARN] WAN unreachable (primary + whitelist targets failed)
 [RATE-LIMIT] Restart blocked (120s < 300s) | Mihomo port unreachable
+[INFO] Proxy tunnel first probe failed; retry succeeded - no restart
 [RESTART] Proxy tunnel check failed
 [RESTART-OK] process is running after restart
 [RESTART-FAIL] process did not come up within 10s after restart
@@ -318,12 +333,23 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 
 ---
 
+### `[INFO] Proxy tunnel first probe failed; retry succeeded - no restart`
+
+Причина:
+
+* первый сквозной SOCKS5h probe не прошёл;
+* повторный probe через 3 секунды прошёл успешно;
+* Mihomo **не перезапускался** — кратковременный сетевой выброс подтверждён как transient.
+
+---
+
 ### `[RESTART] Proxy tunnel check failed`
 
 Причина:
 
-* порт открыт, но туннель не работает
-* часто проблема на стороне VPN-сервера или в config.yaml
+* порт открыт, но **два сквозных tunnel-probe подряд** не прошли;
+* это уже подтверждённая неисправность end-to-end пути, а не одиночный выброс;
+* часто проблема на стороне выбранного outbound/VPN-сервера или в config.yaml.
 
 ---
 
@@ -407,6 +433,7 @@ https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-w
 WAN_PRIMARY_TARGETS=...
 WAN_WHITELIST_TARGETS=...
 PROXY=127.0.0.1:7890
+PROXY_RETRY_DELAY=3
 MIN_RESTART_INTERVAL=300
 ```
 
