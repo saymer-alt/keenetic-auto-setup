@@ -132,6 +132,47 @@ retry() {
   done
   return 1
 }
+# Network acquisition helpers: curl first, wget fallback. Failed transfers
+# always remove partial destination files before the next transport.
+fetch_text_with_fallback() {
+  _ft_url="$1"
+  _ft_out=""
+  if command -v curl >/dev/null 2>&1; then
+    _ft_out=$(retry curl -fsSL "$_ft_url" 2>/dev/null) || _ft_out=""
+    if [ -n "$_ft_out" ]; then
+      printf "%s" "$_ft_out"
+      return 0
+    fi
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    _ft_out=$(retry wget -qO- -T 20 "$_ft_url" 2>/dev/null) || _ft_out=""
+    if [ -n "$_ft_out" ]; then
+      printf "%s" "$_ft_out"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+download_file_with_fallback() {
+  _df_url="$1"
+  _df_dst="$2"
+  rm -f "$_df_dst" 2>/dev/null || true
+  if command -v curl >/dev/null 2>&1; then
+    if retry curl -fsSL "$_df_url" -o "$_df_dst"; then
+      [ -s "$_df_dst" ] && return 0
+    fi
+    rm -f "$_df_dst" 2>/dev/null || true
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    log "curl download unavailable/failed; trying wget fallback..."
+    if retry wget -qO "$_df_dst" "$_df_url"; then
+      [ -s "$_df_dst" ] && return 0
+    fi
+    rm -f "$_df_dst" 2>/dev/null || true
+  fi
+  return 1
+}
 
 # Numeric dotted-version comparator: prints lt | eq | gt, or "unknown" when
 # either version carries non-numeric components (prerelease/build suffixes).
@@ -747,11 +788,11 @@ log "Package architecture: $IPK_SUFFIX"
 # -----------------------------
 log "Fetching latest package release from saymer-alt/entware-go..."
 
-RELEASE_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/tags/latest" 2>/dev/null) || RELEASE_JSON=""
+RELEASE_JSON=$(fetch_text_with_fallback "https://api.github.com/repos/$REPO/releases/tags/latest") || RELEASE_JSON=""
 
 if [ -z "$RELEASE_JSON" ]; then
   log "tags/latest endpoint failed, trying releases/latest..."
-  RELEASE_JSON=$(retry curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || RELEASE_JSON=""
+  RELEASE_JSON=$(fetch_text_with_fallback "https://api.github.com/repos/$REPO/releases/latest") || RELEASE_JSON=""
 fi
 
 [ -z "$RELEASE_JSON" ] && error "Failed to fetch release information from $REPO"
@@ -953,7 +994,7 @@ rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 
 log "Downloading: $ASSET_NAME"
 
-retry curl -fsSL "$DOWNLOAD_URL" -o "$TMP_IPK" || error "Failed to download $ASSET_NAME — installed Mihomo untouched"
+download_file_with_fallback "$DOWNLOAD_URL" "$TMP_IPK" || error "Failed to download $ASSET_NAME through curl/wget — installed Mihomo untouched"
 
 [ -s "$TMP_IPK" ] || error "Downloaded package is empty — installed Mihomo untouched"
 
