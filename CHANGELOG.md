@@ -6,33 +6,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- Standardized interactive terminal status colors across `setup.sh`, `install.sh`, `config-import.sh`, both updaters, the MIPS migrator, Doctor, route-check and `S00ubifs`: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. ANSI is emitted only to a TTY, honors `NO_COLOR`/`TERM=dumb`, and does not contaminate redirected output.
-- Doctor v1.2.13 applies the same palette without changing severity counters or exit codes. Recoverable download retries/fallbacks remain WARN rather than being promoted to red fatal errors.
-- Persistent `mihomo-watchdog.sh` logs intentionally remain plain text with semantic tags only; ANSI escapes are forbidden there.
-
-### Documentation
-- Added the canonical RU/EN terminal-output color contract and linked it from AGENTS, README, HOWTO, installer, troubleshooting, S00ubifs and focused setup/update/import/route-check guides.
-
-### Testing
-- Contract smoke tests now pin the TTY/`NO_COLOR` behavior, the Doctor green/cyan/yellow/red mapping, and the rule that persistent watchdog logs contain no ANSI escape sequences.
-
 ---
 
 ## [1.7.1] - 2026-09-27
 
 ### Changed
-- Installer project-script delivery is resilient to transient `raw.githubusercontent.com` failures observed during a real fresh install. `S00ubifs`, `020-bypass-wa.sh`, and `mihomo-watchdog.sh` now use a bounded fallback chain: raw GitHub via `curl` → raw GitHub via `wget` → GitHub Contents API raw media. Every candidate must be a non-empty `/bin/sh` script and pass `sh -n`; it is staged beside the destination and committed by same-filesystem rename. Failed `curl`/`wget` transfers explicitly remove partial non-empty candidates before the next transport, so a connection reset cannot suppress the fallback path. Watchdog remains required and the installer still reports failure if every delivery path fails.
-- `setup.sh` now applies the same validated raw/curl → raw/wget → GitHub Contents API fallback model when downloading its child `install.sh` and `config-import.sh`. The initial `curl .../setup.sh | sh` remains the bootstrap boundary: the fallback chain becomes available after `setup.sh` itself has started.
-- Doctor v1.2.11 prints its own diagnostic version at the top of every report (`[INFO] Doctor version: ...`), so pasted support output can be tied to the exact Doctor generation as checks and severities evolve.
+- Hardened project delivery after a real fresh-install failure where `raw.githubusercontent.com` returned `curl: (35) Send failure: Connection reset by peer`. Installer-managed project scripts (`S00ubifs`, `020-bypass-wa.sh`, `mihomo-watchdog.sh`) use bounded raw/curl → raw/wget → GitHub Contents API fallback; failed transports clear partial candidates before the next attempt; shell candidates must be non-empty, start with `#!/bin/sh`, pass `sh -n`, and are staged safely before commit.
+- `setup.sh` uses the same validated fallback chain for `install.sh` and `config-import.sh`, and the documented **first bootstrap itself** now stages `setup.sh` through raw/curl → raw/wget → GitHub Contents API before validating and executing it. This removes the previous single-host/single-transport bootstrap gap.
+- Extended network hardening beyond project helper files: `install.sh` uses curl/wget fallback for entware-go release metadata/assets and stages/validates the MagiTrickle repository helper before execution; `update-mihomo.sh` uses curl/wget fallback for release metadata and package acquisition; `update-watchdog.sh` uses curl/wget plus GitHub Contents API for the normal managed source while preserving an explicit `WATCHDOG_URL` override as authoritative.
+- Doctor is now **v1.2.13**. It prints its own version in every report and distinguishes a raw-host failure from total project-delivery failure by checking both the normal raw path and the GitHub Contents API fallback. Its network fetch helper now falls back to wget after an actual curl failure, not only when curl is absent.
+- Standardized interactive terminal status colors across `setup.sh`, `install.sh`, `config-import.sh`, both updaters, the MIPS migrator, Doctor, route-check and `S00ubifs`: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. ANSI is emitted only to a TTY, honors `NO_COLOR`/`TERM=dumb`, and does not contaminate redirected output. Persistent `mihomo-watchdog.sh` logs intentionally remain plain text.
 
 ### Documentation
 - Added a practical MagiTrickle group-building workflow: collect a service domain list from multiple sources (OpenCCK is documented only as one optional starting point), prefer `mitun0` as the normal Mihomo egress when TUN is enabled, keep `mihomo t2sN` / ProxyN as an alternative SOCKS5 entry, use Namespace for normal domain + subdomain matching, bulk-import text rules, validate the real service, add missing API/CDN/auth domains, and then Export Config.
 - Preserved the operator's real 2026-09-27 MagiTrickle field configuration as a dated sample: 8 groups / 287 rules, primarily through `mitun0`, with RU/EN guidance that clearly separates field evidence from an official/universal service-domain list. The historical `.mtrickle` snapshot remains intact; any future maintained subscription lists should be separate artifacts.
+- Added the canonical RU/EN terminal-output color contract and linked it from AGENTS, README, HOWTO, installer, troubleshooting, S00ubifs and focused setup/update/import/route-check guides.
+- Updated the primary RU/EN fresh-install paths to use the validated multi-transport bootstrap instead of relying on a bare `curl .../setup.sh | sh`.
 
 ### Testing
-- Added permanent contract checks for Doctor self-version reporting and for the installer/setup resilient delivery chain, including raw `curl`, raw `wget`, GitHub Contents API fallback, shell-candidate validation, same-filesystem staging, and clearing partial download files between transports.
-- The downloader hardening was driven by a real user fresh-install failure where `raw.githubusercontent.com` returned `curl: (35) Send failure: Connection reset by peer` after the rest of the stack had installed successfully. CI covers the resulting contracts; reproduction of that exact provider-side reset on hardware remains environment-dependent.
+- Added permanent contract checks for Doctor self-version reporting, resilient installer/setup/updater delivery, partial-download cleanup, shell-candidate validation, same-filesystem staging, custom watchdog-source semantics, and Doctor reporting of fallback-path availability.
+- Contract smoke tests pin the TTY/`NO_COLOR` behavior, the Doctor green/cyan/yellow/red mapping, and the rule that persistent watchdog logs contain no ANSI escape sequences.
+- The exact provider-side connection reset remains environment-dependent: CI validates the fallback/state-machine contracts, while Max's repeated field install is the intended hardware acceptance for this failure class.
 
 ---
 

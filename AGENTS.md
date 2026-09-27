@@ -109,12 +109,24 @@ beyond what is already used (curl, jq, gzip, wget, cron, ca-bundle, nano).
 ## 5. Security: risk zones
 
 Delivery detail: `main` is the development branch and `stable` is the production
-delivery branch. Public one-liners and installer-managed project downloads use
-`raw.githubusercontent.com/.../stable/...` by default; development/testing may override
-the project ref explicitly. Minimal GitHub Actions CI runs shell syntax, committed contract/
-regression smoke tests, local Markdown-link validation and whitespace checks on both branches. Promotion is `main → stable` only
-after green CI and focused acceptance; release tags are placed on the exact production
-commit. Green CI is necessary, but real-hardware acceptance still matters.
+delivery branch. Production project fetches default to `stable`; development/testing may
+override the project ref explicitly. Remote delivery is a reliability contract learned from
+a real `raw.githubusercontent.com` reset during installation:
+- project-managed script acquisition must use bounded fallbacks where applicable:
+  raw GitHub via `curl` → the same raw URL via `wget` → GitHub Contents API raw media;
+- failed file transfers must remove partial/non-empty candidates before the next transport;
+- shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
+  and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
+- the public fresh-install bootstrap must itself be multi-transport and validated before
+  executing `setup.sh`; do not regress the documented happy path to bare `curl | sh`;
+- a caller-provided custom source URL remains authoritative: do not silently replace a failed
+  override with a different project payload.
+External package sources that do not have a project Contents-API equivalent still need the
+strongest available existing fallback (for example curl → wget, GitHub API → HTML/feed).
+Minimal GitHub Actions CI runs shell syntax, committed contract/regression smoke tests,
+local Markdown-link validation and whitespace checks on both branches. Promotion is
+`main → stable` only after green CI and focused acceptance; release tags are placed on the
+exact production commit. Green CI is necessary, but real-hardware acceptance still matters.
 
 Without an explicit task and operator confirmation, do not:
 - change persistent router configuration through ndmc (`system configuration save`,
