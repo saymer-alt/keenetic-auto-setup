@@ -414,7 +414,7 @@ nano /opt/etc/mihomo/config.yaml
 mixed-port: 7890
 allow-lan: true
 mode: rule
-log-level: info
+log-level: warning
 
 proxies:
   - name: "server"
