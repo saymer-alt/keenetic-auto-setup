@@ -65,6 +65,7 @@
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
+PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
@@ -129,10 +130,63 @@ is_wrapperish() { # our managed wrapper with drift (references the binary)
 }
 
 # --- DEPENDENCIES ---
-if ! command -v curl >/dev/null 2>&1; then
-    echo "[ERROR] curl is required but not found"
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    echo "[ERROR] curl or wget is required but neither is available"
     exit 1
 fi
+
+download_watchdog_candidate() {
+    _dw_url="$1"
+    _dw_api="$PROJECT_API_CONTENTS/mihomo-watchdog.sh?ref=$PROJECT_REF"
+
+    rm -f "$TMP_FILE" 2>/dev/null || true
+
+    if command -v curl >/dev/null 2>&1; then
+        for _dw_try in 1 2 3; do
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            if curl -fSsL "$_dw_url" -o "$TMP_FILE"; then
+                return 0
+            fi
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            echo "[WARN] curl download attempt $_dw_try/3 failed"
+            sleep 2
+        done
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        echo "[INFO] Trying wget fallback..."
+        for _dw_try in 1 2 3; do
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            if wget -qO "$TMP_FILE" "$_dw_url"; then
+                return 0
+            fi
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            echo "[WARN] wget download attempt $_dw_try/3 failed"
+            sleep 2
+        done
+    fi
+
+    # The API fallback is valid only for the normal project-managed source.
+    # A caller-provided WATCHDOG_URL remains authoritative and is never
+    # silently replaced with a different payload.
+    if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
+        echo "[INFO] Trying GitHub Contents API fallback..."
+        for _dw_try in 1 2 3; do
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            if curl -fSsL \
+                -H "Accept: application/vnd.github.raw+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$_dw_api" -o "$TMP_FILE"; then
+                return 0
+            fi
+            rm -f "$TMP_FILE" 2>/dev/null || true
+            echo "[WARN] GitHub API download attempt $_dw_try/3 failed"
+            sleep 2
+        done
+    fi
+
+    return 1
+}
 
 # --- OBJECT SANITY (fail conservatively, never write through anomalies) ---
 if [ -e "$WATCHDOG_BIN" ] && [ ! -f "$WATCHDOG_BIN" ]; then
@@ -175,8 +229,8 @@ rm -f /tmp/mihomo-watchdog.sh.new.* 2>/dev/null || true
 echo "[INFO] Downloading watchdog..."
 echo "[INFO] Source: $URL"
 
-if ! curl -fSsL "$URL" -o "$TMP_FILE"; then
-    echo "[ERROR] Download failed"
+if ! download_watchdog_candidate "$URL"; then
+    echo "[ERROR] Download failed through all available transports"
     exit 1
 fi
 
