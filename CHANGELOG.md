@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Resource-profile contract advanced to `20260927_1`: supported **512 MB-class** new installs now require active KeeneticOS zRAM **or** verified external storage-backed swap. Missing both is an installer ERROR and Doctor v1.2.16 FAIL instead of WARN; the 256 MB-class remains warning-only, and `update-mihomo.sh` remains non-blocking for already-installed legacy systems. The rule is based on live MemTotal/backend state rather than model or AP/router role, so there is no access-point exception.
+- The stricter 512 MB gate is backed by a 2026-09-27 live MCP fleet snapshot: the two KN-1012 devices operating only as access points were the low-pressure no-swap outliers, while primary 512 MB-class KN-3811/NC-3812 gateways showed substantially higher non-cache memory use and three live zRAM backends were already carrying data; another primary KN-1012 with external swap had only about 26 MB raw `memfree`. This is project OOM-headroom policy, not a claim that the vendor mandates zRAM on every 512 MB router.
+
+### Testing
+- Added resource-policy regression fixtures proving that a 512 MB new install without either backend is rejected, while zRAM-only and verified external-swap profiles are accepted. Contract tests pin installer ERROR / Doctor FAIL / updater-WARN-only legacy behavior under resource-profile `20260927_1`.
+
 ---
 
 ## [1.7.1] - 2026-09-27
