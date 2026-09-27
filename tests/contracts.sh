@@ -88,7 +88,7 @@ grep -q 'project minimum floor: .*1x detected RAM' "$ROOT/install.sh" || fail "i
 grep -q 'below the preferred project sizing target but meets the minimum floor' "$ROOT/install.sh" || fail "installer must keep the 1x..3x swap range informational"
 grep -q '3x RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must retain the preferred 3x RAM sizing target"
 grep -q '256 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "256 MB missing backend must WARN"
-grep -q 'err "512 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "512 MB missing backend must hard-stop new installs"
+grep -q 'err "512 MB-class device .*Bare 512 MB RAM is NOT a supported project baseline' "$ROOT/install.sh" || fail "512 MB missing backend must hard-stop new installs with explicit unsupported-baseline wording"
 grep -q 'Stopping before package installation or project changes' "$ROOT/install.sh" || fail "oversized external swap must be an early installer error"
 pass "installer enforces resource contract 20260927_1"
 
@@ -126,7 +126,7 @@ pass "Mihomo free-space checks distinguish Doctor estimate from updater candidat
 grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL oversized external swap"
 grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
 grep -q '256 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 256 MB missing backend"
-grep -q 'fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL 512 MB missing backend"
+grep -q 'fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP .*bare 512 MB RAM is not a supported project baseline' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL 512 MB missing backend with explicit unsupported-baseline wording"
 grep -q 'External SWAP is below project minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN below the 1x RAM swap floor"
 grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must report the 1x..3x swap range as INFO"
 pass "doctor mirrors resource contract 20260927_1"

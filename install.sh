@@ -404,7 +404,7 @@ case "$MEM_TOTAL_KB" in
                     log "External SWAP is below the preferred project sizing target but meets the minimum floor: $((SW_EXT_KB / 1024)) MB active, minimum about $((MEM_TOTAL_KB / 1024)) MB (1x RAM), preferred target about $((SWAP_TARGET_KB / 1024)) MB (3x RAM, capped at 2048 MB)."
                 fi
             else
-                err "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. The supported project profile REQUIRES active KeeneticOS zRAM OR verified external storage-backed SWAP on this memory class. Stopping before package installation or project changes to preserve memory-pressure/OOM headroom. Enable one backend and re-run."
+                err "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Bare 512 MB RAM is NOT a supported project baseline: this memory class REQUIRES active KeeneticOS zRAM OR verified external storage-backed SWAP. Stopping before package installation or project changes to preserve memory-pressure/OOM headroom. There is no low-memory/AP-role override; enable one backend and re-run."
             fi
         else
             log "Above-512 MB memory class (${MEM_TOTAL_MB} MB): swap/zRAM is optional"

@@ -1066,7 +1066,7 @@ if is_num "$MEM_TOTAL"; then
                 info "External SWAP is below preferred project sizing target but meets the minimum floor: $((_doc_ext_kb/1024)) MB active, minimum about $((MEM_TOTAL/1024)) MB (1x RAM), preferred target about $((_doc_swap_target_kb/1024)) MB (3x RAM, capped at 2048 MB)"
             fi
         else
-            fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - supported project profile requires one active backend on this memory class to preserve OOM headroom"
+            fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - bare 512 MB RAM is not a supported project baseline; one active backend is mandatory to preserve OOM headroom"
         fi
     else
         info "Above-512 MB memory class: swap/zRAM is optional"
