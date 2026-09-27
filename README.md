@@ -23,9 +23,27 @@
 
 Для обычной установки нужен один запуск. `setup.sh` сам определит профиль хранения (`ram`/`disk`), передаст все проверки каноническому installer и после успешной установки **сразу запустит безопасный импорт конфигурации Mihomo**.
 
-```bash
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
 Во время установки мастер проверяет storage, RAM/swap и обязательные компоненты KeeneticOS. Если состояние нельзя определить безопасно, установка останавливается вместо угадывания.
@@ -77,6 +95,8 @@ Doctor:
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
+
+CLI использует единый «светофор»: зелёный — штатный ход/`OK`, голубой (cyan) — `INFO`, жёлтый — `WARN`, красный — `ERROR`/`FAIL`. Цвет — только подсказка: префиксы всегда сохраняются, а при редиректе, `NO_COLOR` или `TERM=dumb` ANSI отключается. Полный контракт: [цвета и статусы CLI](docs/18-output-colors.md).
 
 Точечная read-only проверка одного домена/IP через цепочку ProxyN → Mihomo:
 

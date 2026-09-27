@@ -60,3 +60,7 @@ sh config-import.sh /tmp/config.yaml
 - не делает URL-import.
 
 Генератор отвечает за создание YAML, \`config-import.sh\` — только за безопасную установку готового конфига.
+
+---
+
+Безопасный importer использует общий CLI-контракт проекта: green = нормальный ход/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. Подробности: [18 — цвета и статусы CLI](18-output-colors.md).

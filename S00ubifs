@@ -25,12 +25,21 @@
 # Colors for terminal output
 #######################################
 
-ansi_std="\033[0m"
-ansi_red="\033[1;31m"
-ansi_green="\033[1;32m"
-ansi_yellow="\033[1;33m"
-ansi_cyan="\033[1;36m"
-ansi_white="\033[1;37m"
+ansi_std=""
+ansi_red=""
+ansi_green=""
+ansi_yellow=""
+ansi_cyan=""
+ansi_white=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ] && [ -t 1 ] 2>/dev/null; then
+    ansi_std="\033[0m"
+    ansi_red="\033[1;31m"
+    ansi_green="\033[1;32m"
+    ansi_yellow="\033[1;33m"
+    ansi_cyan="\033[1;36m"
+    ansi_white="\033[1;37m"
+fi
 
 #######################################
 # Layout / formatting

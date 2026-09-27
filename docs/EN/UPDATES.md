@@ -102,3 +102,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 If maintenance fails, follow [Troubleshooting](../08-troubleshooting.md) instead of
 manually replacing binaries.
+
+---
+
+Updater and migrator status lines use the shared project palette: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. See [terminal output colors](OUTPUT_COLORS.md).

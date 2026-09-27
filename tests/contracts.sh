@@ -11,6 +11,27 @@ grep -q 'Proxy client / Клиент прокси' "$ROOT/docs/COMPONENTS.md" ||
 grep -q '\*\*REQUIRED\*\*' "$ROOT/docs/COMPONENTS.md" || fail "component contract must mark required capabilities"
 pass "component contract records Proxy client prerequisite"
 
+# Terminal output is a semantic contract: colors supplement status prefixes and
+# must disappear in redirects/log captures. Persistent watchdog logs stay plain.
+for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-route-check.sh; do
+    grep -Fq 'NO_COLOR' "$ROOT/$_f" || fail "$_f must honor NO_COLOR"
+    grep -Fq 'COLOR_GREEN' "$ROOT/$_f" || fail "$_f must expose green success/progress output"
+    grep -Fq 'COLOR_CYAN' "$ROOT/$_f" || fail "$_f must expose cyan informational output"
+    grep -Fq 'COLOR_YELLOW' "$ROOT/$_f" || fail "$_f must expose yellow warning output"
+    grep -Fq 'COLOR_RED' "$ROOT/$_f" || fail "$_f must expose red failure output"
+    grep -Fq '[ -t 1 ]' "$ROOT/$_f" || fail "$_f must emit ANSI only to an interactive stdout"
+done
+grep -Fq 'NO_COLOR' "$ROOT/S00ubifs" || fail "S00ubifs must honor NO_COLOR"
+grep -Fq '[ -t 1 ]' "$ROOT/S00ubifs" || fail "S00ubifs colors must be TTY-only"
+if grep -Fq '\033[' "$ROOT/mihomo-watchdog.sh"; then
+    fail "persistent watchdog logs must never contain ANSI color escapes"
+fi
+grep -Fq 'status_out "$COLOR_GREEN" "[OK]   $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor OK must be green"
+grep -Fq 'status_out "$COLOR_CYAN" "[INFO] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor INFO must be cyan"
+grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor WARN must be yellow"
+grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
+pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
+
 PROFILE_CONTRACT=20260921_3
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||
@@ -171,7 +192,9 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
-grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
+grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
+grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
+grep -Fq 'sh "$MAGITRICKLE_REPO_STAGE" >/dev/null' "$ROOT/install.sh" || fail "validated upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
 if grep -q 'pkg_ensure magitrickle || warn' "$ROOT/install.sh"; then
     fail "MagiTrickle install must not pretend pkg_ensure can fall through to warn"
@@ -191,7 +214,7 @@ grep -q '^EXT_COMPONENT_ID=ext$' "$ROOT/install.sh" || fail "installer must use 
 grep -q '^EXT_UTILS_COMPONENT_ID=ext-utils$' "$ROOT/install.sh" || fail "installer must use KeeneticOS EXT4 utilities component id"
 grep -q 'Checking required KeeneticOS components' "$ROOT/install.sh" || fail "installer must run named-component preflight"
 grep -q 'Missing required KeeneticOS component(s):' "$ROOT/install.sh" || fail "installer must label the missing-component list"
-grep -Fq 'printf '\''%s\n'\'' "${_rc_missing_lines#?}" >&2' "$ROOT/install.sh" || fail "missing-component list must not start with a blank line"
+grep -Fq 'printf '\''%s%s%s\n'\'' "$COLOR_ERR_RED" "${_rc_missing_lines#?}" "$COLOR_ERR_RESET" >&2' "$ROOT/install.sh" || fail "missing-component list must not start with a blank line"
 grep -q 'Proxy client / Клиент прокси (${PROXY_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Proxy client clearly"
 grep -q 'Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (${DNS_FILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing dns-filter clearly"
 grep -q 'Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (${NETFILTER_COMPONENT_ID})' "$ROOT/install.sh" || fail "installer must name missing Netfilter clearly"
@@ -433,6 +456,32 @@ grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog
 grep -Fq 'rm -f "$_psd_tmp"' "$ROOT/install.sh" || fail "installer project downloader must clear partial candidates between transports"
 pass "installer project-script downloads use validated curl/wget/API fallbacks and atomic destination commit"
 
+grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
+grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
+grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
+grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
+grep -Fq 'rm -f "$_duf_dst"' "$ROOT/install.sh" || fail "installer generic file downloader must clear partial files between transports"
+pass "installer external package/helper downloads use resilient curl/wget fallbacks"
+
+grep -q '^fetch_text_with_fallback()' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must centralize release-metadata fallback"
+grep -q '^download_file_with_fallback()' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must centralize asset download fallback"
+grep -Fq 'RELEASE_JSON=$(fetch_text_with_fallback "https://api.github.com/repos/$REPO/releases/tags/latest")' "$ROOT/update-mihomo.sh" || fail "Mihomo updater latest-tag metadata must use curl/wget fallback"
+grep -Fq 'download_file_with_fallback "$DOWNLOAD_URL" "$TMP_IPK"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater package download must use curl/wget fallback"
+grep -Fq 'rm -f "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must clear partial package candidates between transports"
+pass "Mihomo updater network acquisition uses curl/wget fallback without weakening transactions"
+
+grep -q '^download_watchdog_candidate()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must centralize resilient candidate download"
+grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain wget fallback"
+grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain GitHub Contents API fallback for managed source"
+grep -Fq 'if [ -z "${WATCHDOG_URL:-}" ]' "$ROOT/update-watchdog.sh" || fail "watchdog updater API fallback must not override a caller-provided WATCHDOG_URL"
+grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must clear partial candidates between transports"
+pass "watchdog updater download path is resilient and preserves source override semantics"
+
+grep -Fq 'curl is tried first; an actual curl failure falls back to wget' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must fall back after a real curl failure"
+grep -Fq 'PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must know the project API delivery fallback"
+grep -Fq 'GitHub Contents API fallback is reachable - hardened project downloads can continue' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish raw-host failure from total project-delivery failure"
+pass "Doctor reports the hardened project delivery paths accurately"
+
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
 grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
@@ -494,7 +543,13 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 ! grep -Fq '_setup_import_answer' "$ROOT/setup.sh" || fail "simple setup must not consume the first YAML line in a separate confirmation prompt"
 ! grep -q 'dns-proxy intercept enable' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate persistent router configuration"
 ! grep -q 'ip policy bypass_wa' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate policy mutations"
-grep -q 'stable/setup.sh | sh' "$ROOT/README.md" || fail "README must expose the simple setup wrapper as the happy path"
+grep -Fq 'SCRIPT=setup.sh' "$ROOT/README.md" || fail "README must expose setup.sh as the normal bootstrap target"
+grep -Fq 'TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"' "$ROOT/README.md" || fail "README setup bootstrap staging must be PID-unique"
+grep -Fq 'wget -qO "$TMP" "$RAW"' "$ROOT/README.md" || fail "README setup bootstrap must retain raw wget fallback"
+grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/README.md" || fail "README setup bootstrap must retain GitHub Contents API fallback"
+grep -Fq 'sh -n "$TMP"' "$ROOT/README.md" || fail "README setup bootstrap must syntax-check the candidate before execution"
+grep -Fq 'raw через `curl`, затем тот же raw через `wget`, затем GitHub Contents API' "$ROOT/docs/14-setup.md" || fail "RU setup guide must document first-bootstrap fallback order"
+grep -Fq 'raw through `curl`, then the same raw URL through `wget`, then the GitHub Contents API' "$ROOT/docs/EN/SETUP.md" || fail "EN setup guide must document first-bootstrap fallback order"
 grep -Fq 'nano /opt/etc/mihomo/config.yaml' "$ROOT/README.md" || fail "README must keep the quick manual config edit command visible"
 ! grep -Fq 'stable/install.sh | sh -s -- disk' "$ROOT/README.md" || fail "README must keep advanced manual install commands in detailed documentation"
 ! grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"' "$ROOT/setup.sh" || fail "simple setup staging path must not regress to a literal single-dollar suffix"

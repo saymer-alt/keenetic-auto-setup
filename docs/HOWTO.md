@@ -365,6 +365,8 @@ The same applies to DNS transit interception: the installer checks the current s
 [OK] Done
 ```
 
+The project-wide CLI palette is: green = normal progress/`OK`, cyan = `INFO`, yellow = `WARN`, red = `ERROR`/`FAIL`. Colors supplement the textual prefixes and are disabled for redirected output, `NO_COLOR`, and `TERM=dumb`; see [terminal output colors](EN/OUTPUT_COLORS.md).
+
 A `WARN ... Port 7890 still not listening after 5s startup wait` means the contract listener never appeared after the bounded startup wait. Check Mihomo startup, `config.yaml`, and logs; the working config must preserve `mixed-port: 7890`.
 
 ---

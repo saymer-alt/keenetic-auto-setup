@@ -27,7 +27,7 @@ if [ -n "${3:-}" ]; then
 fi
 
 if [ "$ALLOW_INTERNAL_DISK" -eq 1 ] && [ "$MODE" != "disk" ]; then
-    echo "[ERROR] --allow-internal-disk is valid only with disk mode." >&2
+    status_err "[ERROR] --allow-internal-disk is valid only with disk mode."
     exit 1
 fi
 
@@ -41,9 +41,37 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
 
-log() { echo "[setup] $1"; }
-warn() { echo "[WARN] $1"; }
-err() { echo "[ERROR] $1"; exit 1; }
+# Terminal status colors are presentation only. Semantic prefixes remain the
+# source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
+# disable ANSI output.
+COLOR_RESET=""
+COLOR_GREEN=""
+COLOR_YELLOW=""
+COLOR_RED=""
+COLOR_CYAN=""
+COLOR_ERR_RESET=""
+COLOR_ERR_RED=""
+
+if [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    if [ -t 1 ] 2>/dev/null; then
+        COLOR_RESET=$(printf '\033[0m')
+        COLOR_GREEN=$(printf '\033[1;32m')
+        COLOR_YELLOW=$(printf '\033[1;33m')
+        COLOR_RED=$(printf '\033[1;31m')
+        COLOR_CYAN=$(printf '\033[1;36m')
+    fi
+    if [ -t 2 ] 2>/dev/null; then
+        COLOR_ERR_RESET=$(printf '\033[0m')
+        COLOR_ERR_RED=$(printf '\033[1;31m')
+    fi
+fi
+
+status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
+status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
+
+log() { status_out "$COLOR_GREEN" "[setup] $1"; }
+warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
+err() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
 retry() {
     for i in 1 2 3; do
@@ -59,7 +87,8 @@ WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 # Cleanup temp files on any exit (the watchdog stage lives on /opt,
 # next to its final destination - a /tmp -> /opt move is not atomic
 # and must never be claimed as such)
-trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE"' EXIT INT TERM HUP
+MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"
+trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE"' EXIT INT TERM HUP
 
 # ---------------------------
 # CHECK BASE
@@ -435,18 +464,18 @@ component_list_has() {
 
 required_components_preflight_error() {
     _rc_reason="$1"
-    echo "[ERROR] $_rc_reason" >&2
-    echo "[ERROR] Full required component contract for the current default project profile:" >&2
-    echo "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo." >&2
-    echo "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile." >&2
-    echo "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path." >&2
-    echo "[ERROR]   - At least ONE secure DNS proxy component: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID}) — Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client." >&2
+    status_err "[ERROR] $_rc_reason"
+    status_err "[ERROR] Full required component contract for the current default project profile:"
+    status_err "[ERROR]   - Proxy client / Клиент прокси (component id: ${PROXY_COMPONENT_ID}) — provides ProxyN -> Mihomo."
+    status_err "[ERROR]   - Cloud-based content filtering and ad blocking / Фильтрация контента и блокировка рекламы при помощи облачных сервисов (component id: ${DNS_FILTER_COMPONENT_ID}) — provides the DNS-filter/interception component family required by the supported dns-proxy intercept profile."
+    status_err "[ERROR]   - Kernel modules for Netfilter / Модули ядра подсистемы Netfilter (component id: ${NETFILTER_COMPONENT_ID}) — required by the project 020-bypass_wa.sh VoIP bypass path."
+    status_err "[ERROR]   - At least ONE secure DNS proxy component: DNS-over-TLS proxy (${DNS_TLS_COMPONENT_ID}) OR DNS-over-HTTPS proxy (${DNS_HTTPS_COMPONENT_ID}) — Keenetic recommends DoT/DoH for reliable Internet access through Proxy Client."
     if [ "$OPT_CLASS" = "external" ]; then
-        echo "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile." >&2
-        echo "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)." >&2
+        status_err "[ERROR]   - Ext filesystem / Файловая система Ext (component id: ${EXT_COMPONENT_ID}) — required for the supported external EXT4 /opt profile."
+        status_err "[ERROR]   - EXT4 filesystem utilities / Утилиты EXT4 (component id: ${EXT_UTILS_COMPONENT_ID}) — required so KeeneticOS can check/repair the external EXT4 filesystem (KeeneticOS 5.1+ storage tools)."
     fi
-    echo "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов." >&2
-    echo "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation." >&2
+    status_err "[ERROR] Enable the missing component(s) manually in KeeneticOS -> General system settings / Общие настройки системы -> KeeneticOS update and components / Обновление и компоненты KeeneticOS -> Change component set / Изменить набор компонентов."
+    status_err "[ERROR] The installer does not install KeeneticOS components. No project components or router settings have been changed; stopping before installer-managed opkg update and project package installation."
     exit 1
 }
 
@@ -509,8 +538,8 @@ require_project_keeneticos_components() {
     fi
 
     if [ "$_rc_missing_count" -gt 0 ]; then
-        echo "[ERROR] Missing required KeeneticOS component(s):" >&2
-        printf '%s\n' "${_rc_missing_lines#?}" >&2
+        status_err "[ERROR] Missing required KeeneticOS component(s):"
+        printf '%s%s%s\n' "$COLOR_ERR_RED" "${_rc_missing_lines#?}" "$COLOR_ERR_RESET" >&2
         required_components_preflight_error "Install the component(s) listed above before continuing."
     fi
 
@@ -662,6 +691,53 @@ project_script_download() {
     return 0
 }
 
+fetch_url_text() {
+    _fut_url="$1"
+    _fut_out=""
+
+    if command -v curl >/dev/null 2>&1; then
+        _fut_out=$(retry curl -fsSL "$_fut_url" 2>/dev/null) || _fut_out=""
+        if [ -n "$_fut_out" ]; then
+            printf '%s' "$_fut_out"
+            return 0
+        fi
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        _fut_out=$(retry wget -qO- -T 20 "$_fut_url" 2>/dev/null) || _fut_out=""
+        if [ -n "$_fut_out" ]; then
+            printf '%s' "$_fut_out"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+download_url_file() {
+    _duf_url="$1"
+    _duf_dst="$2"
+
+    rm -f "$_duf_dst" 2>/dev/null || true
+
+    if command -v curl >/dev/null 2>&1; then
+        if retry curl -fL "$_duf_url" -o "$_duf_dst"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        log "curl download unavailable/failed; trying wget fallback..."
+        if retry wget -qO "$_duf_dst" "$_duf_url"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+    fi
+
+    return 1
+}
+
 # ---------------------------
 # SYSTEM INFO
 # ---------------------------
@@ -778,7 +854,7 @@ else
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+    ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
     DOWNLOAD_URL=""
 
     if [ -n "$ASSETS_JSON" ]; then
@@ -798,7 +874,7 @@ else
 
     if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
         log "API failed, trying direct API grep..."
-        ASSETS_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+        ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
         if [ -n "$ASSETS_JSON" ]; then
             DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
         fi
@@ -807,7 +883,8 @@ else
     if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
         log "Trying HTML scraping..."
         HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
-        REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
+        HTML_BODY=$(fetch_url_text "$HTML_URL") || HTML_BODY=""
+        REL_PATH=$(printf '%s' "$HTML_BODY" | \
             grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | \
             head -n 1 | cut -d'"' -f2)
         if [ -n "$REL_PATH" ]; then
@@ -824,7 +901,7 @@ else
     else
         log "Found: $(basename "$DOWNLOAD_URL")"
         log "Downloading..."
-        if retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk"; then
+        if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then
             log "Installing package..."
             if opkg install "$TMP_DIR/mihomo.ipk"; then
                 MIHOMO_INSTALLED=1
@@ -1034,9 +1111,9 @@ proxy_client_missing() {
     # still did not materialize. Fail before dependent mutations and avoid
     # misdiagnosing this as a simple missing-component case.
     _pi="$1"
-    echo "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания." >&2
-    echo "[ERROR] Ранний component preflight видел полный обязательный набор KeeneticOS, поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight." >&2
-    echo "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает." >&2
+    status_err "[ERROR] Не удалось создать проектный Proxy-интерфейс (${_pi}): он не появился в running-config после попытки создания."
+    status_err "[ERROR] Ранний component preflight видел полный обязательный набор KeeneticOS, поэтому возможность Proxy* не применилась или состояние KeeneticOS изменилось после preflight."
+    status_err "[ERROR] Проверьте, что компонент Proxy client по-прежнему установлен, и повторите запуск. Установщик сам компоненты KeeneticOS не устанавливает."
     exit 1
 }
 
@@ -1235,13 +1312,17 @@ log "Ensuring MagiTrickle package repository..."
 # The upstream helper prints an interactive "do not forget to install magitrickle"
 # reminder. install.sh performs that step itself, so suppress helper stdout to avoid
 # telling users to repeat an action that is already automated. Keep stderr visible.
-if curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh >/dev/null; then
-    :
-elif wget -qO- https://bin.magitrickle.dev/packages/add_repo.sh | sh >/dev/null; then
-    :
-else
+rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
+if ! download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
+    err "Failed to download MagiTrickle repository helper through curl/wget"
+fi
+if ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
+    err "Downloaded MagiTrickle repository helper failed shell syntax validation"
+fi
+if ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
     err "Failed to add MagiTrickle package repository"
 fi
+rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 
 MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
 if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
@@ -1422,10 +1503,10 @@ fi
 FAILS=0
 WARNS=0
 
-check_ok()   { echo "[ok] $1"; }
-check_warn() { echo "[WARN] $1"; WARNS=$((WARNS+1)); }
-check_fail() { echo "[FAIL] $1"; FAILS=$((FAILS+1)); }
-check_info() { echo "[info] $1"; }
+check_ok()   { status_out "$COLOR_GREEN" "[ok] $1"; }
+check_warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; WARNS=$((WARNS+1)); }
+check_fail() { status_out "$COLOR_RED" "[FAIL] $1"; FAILS=$((FAILS+1)); }
+check_info() { status_out "$COLOR_CYAN" "[info] $1"; }
 
 # One-Mihomo invariant: executable self-check probes reuse the conservative
 # mihomo_running() guard defined before the Mihomo install section.
@@ -1652,11 +1733,11 @@ fi
 
 # Verdict
 if [ "$FAILS" -gt 0 ]; then
-    echo "[FAIL] $FAILS check(s) failed, $WARNS warning(s) — installation incomplete"
+    status_out "$COLOR_RED" "[FAIL] $FAILS check(s) failed, $WARNS warning(s) — installation incomplete"
     exit 1
 fi
 if [ "$WARNS" -gt 0 ]; then
-    echo "[OK] Done ($WARNS warning(s))"
+    status_out "$COLOR_GREEN" "[OK] Done ($WARNS warning(s))"
 else
-    echo "[OK] Done"
+    status_out "$COLOR_GREEN" "[OK] Done"
 fi

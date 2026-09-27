@@ -260,9 +260,27 @@ router itself.
 Only after the system log confirms `[5/5] "Entware" installed!`, enter the
 Entware shell and run:
 
-```bash
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
 The project installer then performs its own storage, EXT4, KeeneticOS component,
