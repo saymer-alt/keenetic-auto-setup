@@ -776,6 +776,12 @@ add missing API/CDN/auth domains
 Export Config
 ```
 
+**Practical field sample.** The repository also preserves a real MagiTrickle user
+export with 8 groups / 287 rules that has been used as a working baseline on client
+routers. It is not an official universal list; it is dated field evidence with
+domain, subnet, wildcard and regex rules plus warnings about broad CDN/ASN ranges:
+[practical MagiTrickle field sample](EN/MAGITRICKLE_FIELD_LISTS.md).
+
 ---
 
 ## 7. Watchdog in operation
