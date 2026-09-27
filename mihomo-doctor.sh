@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.10 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.11 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,6 +33,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
+DOCTOR_VERSION="1.2.11"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -629,6 +630,7 @@ if [ $# -gt 0 ]; then
 fi
 
 echo "=== Mihomo Doctor (read-only diagnostic) ==="
+info "Doctor version: $DOCTOR_VERSION"
 info "Nothing is installed, updated, removed, started or stopped; config.yaml and Keenetic settings are not touched."
 info "Observation model: the doctor reads the system over an interval - processes may appear or disappear between individual checks; no atomic snapshot is claimed."
 
