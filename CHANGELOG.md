@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Reduced fallback noise on Keenetic/BusyBox without weakening delivery resilience. Managed `curl`/`wget` retries remain bounded at three attempts but suppress repeated per-attempt stderr/status spam; an exhausted transport is summarized once before the next fallback. This specifically addresses the field output where three `curl: (35) Connection reset` messages were followed by three BusyBox `wget: not an http or ftp url` messages before the GitHub Contents API succeeded.
+- The quiet-retry presentation rule is now part of the same AGENTS/RU/EN output contract as the green/cyan/yellow/red status palette.
+
+### Testing
+- Contract tests pin quiet per-attempt transport behavior for setup, installer, Mihomo updater and watchdog updater while preserving raw curl → raw wget → GitHub Contents API fallback order where applicable.
+
 ---
 
 ## [1.7.1] - 2026-09-27

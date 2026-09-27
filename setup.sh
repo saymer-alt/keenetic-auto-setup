@@ -63,14 +63,13 @@ retry_curl_to_file() {
             if curl -fSsL \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                "$_rc_url" -o "$_rc_dst"; then
+                "$_rc_url" -o "$_rc_dst" 2>/dev/null; then
                 return 0
             fi
-        elif curl -fSsL "$_rc_url" -o "$_rc_dst"; then
+        elif curl -fSsL "$_rc_url" -o "$_rc_dst" 2>/dev/null; then
             return 0
         fi
         rm -f "$_rc_dst" 2>/dev/null || true
-        warn "curl download attempt $_rc_try/3 failed"
         sleep 2
     done
     return 1
@@ -82,11 +81,10 @@ retry_wget_to_file() {
     command -v wget >/dev/null 2>&1 || return 1
     for _rw_try in 1 2 3; do
         rm -f "$_rw_dst" 2>/dev/null || true
-        if wget -qO "$_rw_dst" "$_rw_url"; then
+        if wget -qO "$_rw_dst" "$_rw_url" 2>/dev/null; then
             return 0
         fi
         rm -f "$_rw_dst" 2>/dev/null || true
-        warn "wget download attempt $_rw_try/3 failed"
         sleep 2
     done
     return 1
@@ -100,20 +98,43 @@ download_project_script() {
 
     rm -f "$_dps_dst" 2>/dev/null || true
 
-    if retry_curl_to_file "$_dps_raw" "$_dps_dst" && script_candidate_ok "$_dps_dst"; then
-        return 0
+    if retry_curl_to_file "$_dps_raw" "$_dps_dst"; then
+        if script_candidate_ok "$_dps_dst"; then
+            return 0
+        fi
+        rm -f "$_dps_dst" 2>/dev/null || true
+        if command -v wget >/dev/null 2>&1; then
+            warn "raw/curl returned an invalid script candidate for $_dps_rel; trying wget fallback"
+        else
+            warn "raw/curl returned an invalid script candidate for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
+        fi
+    else
+        rm -f "$_dps_dst" 2>/dev/null || true
+        if command -v wget >/dev/null 2>&1; then
+            warn "raw/curl failed after 3 attempts for $_dps_rel; trying wget fallback"
+        else
+            warn "raw/curl failed after 3 attempts for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
+        fi
     fi
-    rm -f "$_dps_dst" 2>/dev/null || true
 
-    log "Trying wget fallback for $_dps_rel..."
-    if retry_wget_to_file "$_dps_raw" "$_dps_dst" && script_candidate_ok "$_dps_dst"; then
-        return 0
+    if command -v wget >/dev/null 2>&1; then
+        if retry_wget_to_file "$_dps_raw" "$_dps_dst"; then
+            if script_candidate_ok "$_dps_dst"; then
+                return 0
+            fi
+            rm -f "$_dps_dst" 2>/dev/null || true
+            warn "raw/wget returned an invalid script candidate for $_dps_rel; trying GitHub Contents API fallback"
+        else
+            rm -f "$_dps_dst" 2>/dev/null || true
+            warn "raw/wget failed after 3 attempts for $_dps_rel; trying GitHub Contents API fallback"
+        fi
     fi
-    rm -f "$_dps_dst" 2>/dev/null || true
 
-    log "Trying GitHub Contents API fallback for $_dps_rel..."
-    if retry_curl_to_file "$_dps_api" "$_dps_dst" 1 && script_candidate_ok "$_dps_dst"; then
-        return 0
+    if retry_curl_to_file "$_dps_api" "$_dps_dst" 1; then
+        if script_candidate_ok "$_dps_dst"; then
+            return 0
+        fi
+        warn "GitHub Contents API returned an invalid script candidate for $_dps_rel"
     fi
 
     rm -f "$_dps_dst" 2>/dev/null || true

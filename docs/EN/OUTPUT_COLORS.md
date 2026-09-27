@@ -19,7 +19,9 @@ Persistent `mihomo-watchdog.sh` logs are always plain text. Their `[OK]`, `[WARN
 
 `S00ubifs` follows the same contract while preserving its existing white/default neutral labels.
 
-The project controls only its own status lines. Raw output from `curl`, `wget`, `opkg`, init scripts or other external programs may have different presentation and is not recolored.
+Managed download/fallback chains keep their bounded retry count but stay quiet per attempt. Repeated `curl`/`wget` stderr is suppressed inside the retry loop; once one transport is exhausted, the project emits a single `WARN` before moving to the next fallback. If the last allowed path also fails, the calling step emits the final `ERROR`/`FAIL`. This changes presentation only, not retry or fallback behavior.
+
+The project controls only its own status lines. Repeated stderr from external transport commands is intentionally suppressed inside managed retry/download chains. Commands run directly by the user keep their native `curl`, `wget`, `opkg`, init-script or other external-program output; the project does not recolor it.
 
 New user-facing scripts must preserve textual status markers, use this green/cyan/yellow/red severity mapping, keep recoverable fallbacks non-red, honor TTY/`NO_COLOR`/`TERM=dumb`, and keep persistent logs ANSI-free.
 

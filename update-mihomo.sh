@@ -160,20 +160,28 @@ retry() {
   done
   return 1
 }
+
+retry_silent() {
+  for i in 1 2 3; do
+    "$@" 2>/dev/null && return 0
+    sleep 2
+  done
+  return 1
+}
 # Network acquisition helpers: curl first, wget fallback. Failed transfers
 # always remove partial destination files before the next transport.
 fetch_text_with_fallback() {
   _ft_url="$1"
   _ft_out=""
   if command -v curl >/dev/null 2>&1; then
-    _ft_out=$(retry curl -fsSL "$_ft_url" 2>/dev/null) || _ft_out=""
+    _ft_out=$(retry_silent curl -fsSL "$_ft_url") || _ft_out=""
     if [ -n "$_ft_out" ]; then
       printf "%s" "$_ft_out"
       return 0
     fi
   fi
   if command -v wget >/dev/null 2>&1; then
-    _ft_out=$(retry wget -qO- -T 20 "$_ft_url" 2>/dev/null) || _ft_out=""
+    _ft_out=$(retry_silent wget -qO- -T 20 "$_ft_url") || _ft_out=""
     if [ -n "$_ft_out" ]; then
       printf "%s" "$_ft_out"
       return 0
@@ -187,14 +195,14 @@ download_file_with_fallback() {
   _df_dst="$2"
   rm -f "$_df_dst" 2>/dev/null || true
   if command -v curl >/dev/null 2>&1; then
-    if retry curl -fsSL "$_df_url" -o "$_df_dst"; then
+    if retry_silent curl -fsSL "$_df_url" -o "$_df_dst"; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
   fi
   if command -v wget >/dev/null 2>&1; then
-    log "curl download unavailable/failed; trying wget fallback..."
-    if retry wget -qO "$_df_dst" "$_df_url"; then
+    warn "curl download failed after 3 attempts; trying wget fallback"
+    if retry_silent wget -qO "$_df_dst" "$_df_url"; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
