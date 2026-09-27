@@ -23,6 +23,7 @@ The product is the root-level scripts (there are no libraries):
 | setup.sh                  | simple front-end: classifies `/opt` as internal/external, selects the normal `ram`/`disk` profile, then delegates all mutations and safety gates to `install.sh` |
 | install.sh                | unified installer (architecture auto-detection: aarch64/armv7/mipsel/mips, including MT7621 — live test passed; modes `ram`\|`disk`, ram = tmpfs) |
 | config-import.sh          | safe config transaction: TTY/file candidate → contract check → one-Mihomo validation → persistent previous-config backup → atomic config commit → runtime verification/rollback |
+| migrate-mihomo-tun.sh     | transactional legacy-config bootstrap: when top-level `tun:` is absent, add the project `mitun0` TUN profile, choose mips for Mihomo >=1.19.31 or gvisor compatibility fallback, validate/commit/restart with rollback |
 | update-mihomo.sh          | updates the Mihomo binary from the entware-go package for all architectures: config test, automatic rollback, one-instance |
 | update-watchdog.sh        | updates/migrates the canonical watchdog using validation + same-filesystem staging + atomic rename |
 | mihomo-watchdog.sh        | cron every 5 min: WAN → port 7890 → socks5h tunnel → restart |
@@ -43,6 +44,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 - idempotency of 020-bypass-wa.sh (the hook runs on every firewall rebuild);
 - rollback chain in update-mihomo.sh and RAM gates;
 - config-import.sh transaction: never validate by launching a second Mihomo beside the daemon; keep the maintenance marker, previous-config backup, same-filesystem atomic commit, runtime verification and rollback ordering intact;
+- migrate-mihomo-tun.sh transaction: existing `tun:` is immutable/no-op; when TUN is absent preserve one-Mihomo stop/probe discipline, version-based mips>=1.19.31 vs gvisor selection, real `mihomo -t`, per-run rollback + persistent pre-TUN backup, same-filesystem atomic commit, prior service state and post-start `mitun0` verification;
 - `dns-proxy intercept enable` (transit DNS interception) in both installers:
   installer-managed persistent config; before applying — grep against `show running-config`,
   `system configuration save` only when there is an actual change; this is not protection from DoH/DoT;
@@ -303,7 +305,7 @@ a live run.
 - DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
 - Incorrect system time → SSL errors → "opkg update failed"; start diagnosis with `date`.
 - Re-running install.sh does not clean an existing crontab or remove old components.
-- update-mihomo.sh and migrate-mihomo-mips.sh determine the binary deterministically:
+- update-mihomo.sh, migrate-mihomo-mips.sh and migrate-mihomo-tun.sh determine the binary deterministically:
   /proc/<pid>/exe of the running daemon if it points to /opt/sbin/mihomo or
   /opt/bin/mihomo, otherwise /opt/sbin/mihomo, otherwise /opt/bin/mihomo (mirrors the
   init script PATH order; nested copies such as meta-backup are not selected). The updater

@@ -869,7 +869,22 @@ Notes:
 - The updater resolves the binary deterministically: the running daemon's `/proc/<pid>/exe` when it points at `/opt/sbin/mihomo` or `/opt/bin/mihomo`, else `/opt/sbin/mihomo`, else `/opt/bin/mihomo` — mirroring the Entware init script's PATH order. Extra copies (e.g. `meta-backup/mihomo`) are never selected.
 - Prefer updating through this script over hand-editing: the old manual "replace the binary" procedure has been removed; `update-mihomo.sh` is the single **project-supported** update path (backup in `/tmp`, validation before anything is touched, automatic rollback). Mihomo itself also exposes a Controller `POST /upgrade` core self-update API, which dashboards such as MetaCubeXD can invoke. That Web-UI/self-upgrade path is intentionally treated as **out-of-band** here: it does not use this project's `entware-go` package/staging/rollback flow and may install a different upstream binary form/size. Operator field evidence: it has worked on VPS hosts and on three external-EXT4 routers — dača NC-1012, home NC-1812 and work KN-1012 SE. The NC-1012 self-upgrade produced a ~54.6 MB upstream-form 1.19.31 binary; the KN-1012 SE Doctor independently captured a 55,937 KB runtime 1.19.31 binary while opkg metadata still reported 1.19.28-1, which directly illustrates that the Web-UI core can move ahead of package metadata. By contrast, the project's UPX-packed `entware-go` path produced ~13 MB on the internal-UBIFS KN-1012 GSM.
 
-### 8.1 Migrating the TUN stack to mips
+### 8.1 Adding TUN / `mitun0` to a legacy no-TUN config
+
+If an old `config.yaml` has no top-level `tun:`, use the dedicated bootstrap migrator first:
+
+```bash
+# read-only
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+# apply
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+It adds only the standard `tun:` block with `device: mitun0`, `auto-route: false` and `auto-detect-interface: true`, then selects the stack from the safely observed version after a controlled stop: `mips` for Mihomo >= 1.19.31, otherwise `gvisor`. The candidate must pass `mihomo -t`; when the service was running before the operation, restart verification requires the process, port 7890 and real `mitun0`, otherwise rollback is automatic. Existing TUN is never rewritten.
+
+Doctor v1.2.15 prints an INFO hint when the top-level TUN section is absent.
+
+### 8.2 Migrating an existing TUN stack to mips
 
 For configurations with TUN (`mitun0`), a separate script rewrites `stack: gvisor` → `stack: mips` (the Mihomo IP Stack, supported since mihomo 1.19.31):
 

@@ -152,6 +152,17 @@ opkg update && opkg install magitrickle
 
 Обычная эксплуатация не требует ручного изменения `iptables`, ProxyN, policy routing, DNS или storage override. Эти действия считаются advanced/risk-zone операциями: ошибка может затронуть весь LAN или закрыть доступ к роутеру. Для диагностики сначала используйте Doctor и read-only helpers; ручные изменения делайте только когда понятна конкретная зависимость и есть путь отката.
 
+Legacy-конфиг без TUN / `mitun0`:
+
+```bash
+# сначала read-only проверка
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+# затем применение
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+Мигратор добавляет стандартный project TUN с `device: mitun0` и `auto-route: false`. Для Mihomo >= 1.19.31 выбирается `stack: mips`; для более старой/неподтверждённой версии используется совместимый `gvisor`. Существующий `tun:` он не переписывает.
+
 MIPS TUN migration:
 
 ```bash
@@ -183,6 +194,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 | [`setup.sh`](setup.sh) | [Рекомендуемая установка проекта](docs/14-setup.md) |
 | [`install.sh`](install.sh) | [Основной установщик с ручным выбором профиля](docs/03-install.md) |
 | [`config-import.sh`](config-import.sh) | [Импорт и безопасная замена `config.yaml`](docs/13-config-import.md) |
+| [`migrate-mihomo-tun.sh`](migrate-mihomo-tun.sh) | [Добавить TUN/`mitun0` в legacy-конфиг без секции `tun:`](docs/12-updates.md#legacy-config-добавление-tun--mitun0) |
 | [`migrate-mihomo-mips.sh`](migrate-mihomo-mips.sh) | [Перевод TUN-конфига с gVisor на MIPS](docs/12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](mihomo-doctor.sh) | [Доктор: полная диагностика проекта](docs/08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](mihomo-interface-check.sh) | [Показать Linux-имена WAN/VPN-интерфейсов для `interface-name`](ARCHITECTURE.md) |

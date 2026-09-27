@@ -87,6 +87,45 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Подробности → [Watchdog](04-watchdog.md).
 
+## Legacy config: добавление TUN / `mitun0`
+
+Для старых `config.yaml`, в которых **вообще нет top-level секции `tun:`**, используется отдельный `migrate-mihomo-tun.sh`. Он не переписывает proxy/rules/DNS и не заменяет существующий TUN.
+
+Read-only проверка:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+```
+
+Применение:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+Если `tun:` отсутствует, migrator добавляет стандартный router-профиль генератора:
+
+```yaml
+tun:
+  enable: true
+  device: mitun0
+  stack: mips        # Mihomo >= 1.19.31; иначе gvisor
+  auto-route: false
+  auto-detect-interface: true
+```
+
+Политика выбора стека:
+- версия Mihomo **>= 1.19.31** → предпочитается `mips`;
+- версия старее 1.19.31 → добавляется совместимый `gvisor` и выводится подсказка, что MIPS требует обновления;
+- если версия формально подходит, но фактический `mihomo -t` отвергает MIPS, migrator откатывается на `gvisor` и валидирует повторно;
+- если сам бинарник нельзя безопасно проверить с остановленным daemon, config не изменяется.
+
+Транзакция соблюдает one-Mihomo invariant: при работающем daemon выполняется контролируемая остановка, создаются per-run rollback и постоянный `config.yaml.pre-tun`, кандидат проходит `mihomo -t`, затем выполняется same-filesystem atomic replace. После возврата ранее работающего сервиса migrator ждёт процесс, contract-port 7890 и реальное появление `/sys/class/net/mitun0`; при провале автоматически возвращается исходный config. Если сервис был остановлен пользователем, он остаётся остановленным.
+
+Если `tun:` уже существует, этот migrator делает no-op и ничего не нормализует. Для существующего `stack: gvisor` → `stack: mips` используется отдельный `migrate-mihomo-mips.sh`.
+
+Doctor v1.2.15 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
+
 ## MIPS TUN migration
 
 `migrate-mihomo-mips.sh` нужен только для конфигураций Mihomo с TUN, когда требуется
@@ -114,7 +153,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - повторный запуск идемпотентен;
 - WireGuard `ip-stack` не затрагивает.
 
-Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.14 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
+Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.15 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
 
 ## После обслуживания
 

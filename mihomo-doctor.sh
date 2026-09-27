@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.14 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.15 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,7 +33,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.14"
+DOCTOR_VERSION="1.2.15"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -1407,42 +1407,73 @@ else
         esac
     fi
 
-    if grep -Eq "^tun:" "$CONFIG" 2>/dev/null && \
-       awk '/^tun:/{f=1;next} f&&/^[^[:space:]]/{f=0} f&&/enable:/&&/true/{found=1} END{exit !found}' "$CONFIG" 2>/dev/null; then
-        info "TUN enabled in config (mitun0 inbound expected)"
-    fi
-
-    # Optional legacy TUN-stack migration hint. This is deliberately INFO-only:
-    # gVisor is valid, and Doctor never edits config or stops Mihomo. The
-    # migrator performs the definitive feature gate with mihomo -t after its
-    # controlled stop; Doctor only combines static config evidence with the
-    # already-observed runtime/binary version.
+    # Top-level TUN contract and migration guidance. INFO-only: missing TUN is
+    # a legacy/feature state, not a broken Mihomo config. Doctor never mutates
+    # config or stops the daemon; mutators perform the authoritative validation.
     MIPS_MIGRATION_MIN_VERSION="1.19.31"
-    _doctor_gvisor_n=$(grep -cE '^[[:space:]]*stack:[[:space:]]*gvisor([[:space:]].*)?$' "$CONFIG" 2>/dev/null) || true
-    _doctor_mips_n=$(grep -cE '^[[:space:]]*stack:[[:space:]]*mips([[:space:]].*)?$' "$CONFIG" 2>/dev/null) || true
-    is_num "$_doctor_gvisor_n" || _doctor_gvisor_n=0
-    is_num "$_doctor_mips_n" || _doctor_mips_n=0
+    _doctor_tun_present=0
+    _doctor_tun_enabled=0
+    _doctor_tun_stack=""
+    _doctor_tun_device=""
 
-    if [ "$_doctor_gvisor_n" -gt 0 ]; then
+    if grep -Eq "^tun:[[:space:]]*" "$CONFIG" 2>/dev/null; then
+        _doctor_tun_present=1
+        info "Top-level TUN section is present in config"
+        if awk '/^tun:/{f=1;next} f&&/^[^[:space:]#]/{f=0} f&&/^[[:space:]]*enable:[[:space:]]*true([[:space:]#].*)?$/{found=1} END{exit !found}' "$CONFIG" 2>/dev/null; then
+            _doctor_tun_enabled=1
+            info "TUN is enabled in config"
+        else
+            info "TUN section is present, but enable: true was not confirmed"
+        fi
+        _doctor_tun_stack=$(awk '/^tun:/{f=1;next} f&&/^[^[:space:]#]/{f=0} f&&/^[[:space:]]*stack:/{print $2; exit}' "$CONFIG" 2>/dev/null)
+        _doctor_tun_device=$(awk '/^tun:/{f=1;next} f&&/^[^[:space:]#]/{f=0} f&&/^[[:space:]]*device:/{print $2; exit}' "$CONFIG" 2>/dev/null)
+        [ -n "$_doctor_tun_stack" ] && info "Top-level TUN stack: $_doctor_tun_stack"
+        if [ -n "$_doctor_tun_device" ]; then
+            info "Top-level TUN device: $_doctor_tun_device"
+        else
+            info "Top-level TUN device is not explicit; project-standard router configs use mitun0"
+        fi
+
+        if [ "$_doctor_tun_stack" = "gvisor" ]; then
+            if [ -n "$BIN_VER" ]; then
+                _doctor_mips_rel=$(ver_compare "$BIN_VER" "$MIPS_MIGRATION_MIN_VERSION")
+                case "$_doctor_mips_rel" in
+                    eq|gt)
+                        info "Legacy TUN stack detected: stack: gvisor; Mihomo $BIN_VER meets the documented >= $MIPS_MIGRATION_MIN_VERSION prerequisite. Optional stack-only migration to mips is available via migrate-mihomo-mips.sh; the migrator still performs the definitive mihomo -t feature gate, backup, validation and rollback."
+                        info "MIPS migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-mips.sh | sh -s -- --check"
+                        ;;
+                    lt)
+                        info "Legacy TUN stack detected: stack: gvisor, but Mihomo $BIN_VER is older than $MIPS_MIGRATION_MIN_VERSION. Keep gvisor or update Mihomo before considering the optional MIPS-stack migration."
+                        ;;
+                    *)
+                        info "Legacy TUN stack detected: stack: gvisor, but version comparison is inconclusive. Doctor does not claim MIPS readiness; migrate-mihomo-mips.sh performs the definitive support gate."
+                        ;;
+                esac
+            else
+                info "Legacy TUN stack detected: stack: gvisor, but Mihomo version is UNKNOWN / UNVERIFIED. Doctor does not claim MIPS readiness; migrate-mihomo-mips.sh performs the definitive support gate."
+            fi
+        elif [ "$_doctor_tun_stack" = "mips" ]; then
+            info "Top-level TUN already uses stack: mips; no stack migration is needed"
+        fi
+    else
+        info "Top-level TUN section is absent in config; this is a legacy/no-TUN config and mitun0 is not expected from the current YAML"
         if [ -n "$BIN_VER" ]; then
-            _doctor_mips_rel=$(ver_compare "$BIN_VER" "$MIPS_MIGRATION_MIN_VERSION")
-            case "$_doctor_mips_rel" in
+            _doctor_tun_rel=$(ver_compare "$BIN_VER" "$MIPS_MIGRATION_MIN_VERSION")
+            case "$_doctor_tun_rel" in
                 eq|gt)
-                    info "Legacy TUN stack detected: $_doctor_gvisor_n 'stack: gvisor' value(s); Mihomo $BIN_VER meets the documented >= $MIPS_MIGRATION_MIN_VERSION version prerequisite. Optional migration to 'stack: mips' is available via migrate-mihomo-mips.sh; the migrator still performs the definitive mihomo -t feature gate, backup, validation and rollback."
-                    info "Migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-mips.sh | sh -s -- --check"
+                    info "TUN bootstrap migration is available: Mihomo $BIN_VER meets >= $MIPS_MIGRATION_MIN_VERSION, so migrate-mihomo-tun.sh will add the project TUN block with device mitun0 and prefer stack: mips, then validate/restart/verify with rollback protection."
                     ;;
                 lt)
-                    info "Legacy TUN stack detected: $_doctor_gvisor_n 'stack: gvisor' value(s), but Mihomo $BIN_VER is older than $MIPS_MIGRATION_MIN_VERSION. Update Mihomo before considering the optional MIPS-stack migration."
+                    info "TUN bootstrap migration is available: Mihomo $BIN_VER is older than $MIPS_MIGRATION_MIN_VERSION, so migrate-mihomo-tun.sh will add device mitun0 with compatibility stack: gvisor. stack: mips requires Mihomo >= $MIPS_MIGRATION_MIN_VERSION."
                     ;;
                 *)
-                    info "Legacy TUN stack detected: $_doctor_gvisor_n 'stack: gvisor' value(s), but version comparison is inconclusive. Doctor does not claim migration readiness; migrate-mihomo-mips.sh performs the definitive support gate."
+                    info "TUN bootstrap migration is available, but version comparison is inconclusive. migrate-mihomo-tun.sh determines the runtime version after a controlled stop and safely falls back to gvisor unless MIPS eligibility is confirmed."
                     ;;
             esac
         else
-            info "Legacy TUN stack detected: $_doctor_gvisor_n 'stack: gvisor' value(s), but Mihomo version is UNKNOWN / UNVERIFIED. Doctor does not claim migration readiness; migrate-mihomo-mips.sh performs the definitive support gate."
+            info "TUN bootstrap migration is available, but Mihomo version is UNKNOWN / UNVERIFIED. migrate-mihomo-tun.sh determines the version after a controlled stop and selects mips for >= $MIPS_MIGRATION_MIN_VERSION or compatibility gvisor otherwise."
         fi
-    elif [ "$_doctor_mips_n" -gt 0 ]; then
-        info "TUN stack already uses mips ($_doctor_mips_n value(s)); migrate-mihomo-mips.sh has nothing to change."
+        info "TUN migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-tun.sh | sh -s -- --check"
     fi
 
     DL_VAL=$(grep -E "^[[:space:]]+listen:" "$CONFIG" 2>/dev/null | head -n 1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d "\"'")

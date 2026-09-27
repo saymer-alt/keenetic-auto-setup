@@ -13,7 +13,7 @@ pass "component contract records Proxy client prerequisite"
 
 # Terminal output is a semantic contract: colors supplement status prefixes and
 # must disappear in redirects/log captures. Persistent watchdog logs stay plain.
-for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-route-check.sh; do
+for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-mips.sh migrate-mihomo-tun.sh mihomo-doctor.sh mihomo-route-check.sh; do
     grep -Fq 'NO_COLOR' "$ROOT/$_f" || fail "$_f must honor NO_COLOR"
     grep -Fq 'COLOR_GREEN' "$ROOT/$_f" || fail "$_f must expose green success/progress output"
     grep -Fq 'COLOR_CYAN' "$ROOT/$_f" || fail "$_f must expose cyan informational output"
@@ -46,14 +46,29 @@ grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" ||
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
-grep -Fq 'MIPS_MIGRATION_MIN_VERSION="1.19.31"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep the documented minimum version for the optional MIPS-stack hint"
-grep -Fq "Legacy TUN stack detected:" "$ROOT/mihomo-doctor.sh" || fail "Doctor must identify legacy gvisor TUN stack candidates"
-grep -Fq "Optional migration to 'stack: mips' is available via migrate-mihomo-mips.sh" "$ROOT/mihomo-doctor.sh" || fail "Doctor must suggest the supported migrator only when the version prerequisite is met"
-grep -Fq "the migrator still performs the definitive mihomo -t feature gate" "$ROOT/mihomo-doctor.sh" || fail "Doctor migration hint must not claim version-only support"
-grep -Fq 'Migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-mips.sh | sh -s -- --check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must provide a read-only migration preview command"
-grep -Fq 'не создаёт `tun:`/`mitun0` с нуля' "$ROOT/docs/12-updates.md" || fail "RU updates guide must state that the MIPS migrator does not create TUN from scratch"
-grep -Fq 'does **not** add a missing `tun:` block or create `mitun0` from scratch' "$ROOT/docs/EN/UPDATES.md" || fail "EN updates guide must state that the MIPS migrator does not create TUN from scratch"
-pass "Doctor MIPS migration hint stays informational, scoped and feature-gated by the migrator"
+grep -Fq 'MIPS_MIGRATION_MIN_VERSION="1.19.31"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep the documented minimum version for TUN/MIPS migration guidance"
+grep -Fq 'Top-level TUN section is absent in config' "$ROOT/mihomo-doctor.sh" || fail "Doctor must detect legacy configs without a top-level TUN section"
+grep -Fq 'TUN bootstrap migration is available:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain the no-TUN migration path"
+grep -Fq 'migrate-mihomo-tun.sh will add the project TUN block with device mitun0 and prefer stack: mips' "$ROOT/mihomo-doctor.sh" || fail "Doctor must describe the >=1.19.31 TUN bootstrap behavior"
+grep -Fq 'will add device mitun0 with compatibility stack: gvisor' "$ROOT/mihomo-doctor.sh" || fail "Doctor must describe the pre-1.19.31 compatibility behavior"
+grep -Fq 'TUN migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-tun.sh | sh -s -- --check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must provide the read-only TUN bootstrap preview"
+grep -Fq 'Legacy TUN stack detected: stack: gvisor' "$ROOT/mihomo-doctor.sh" || fail "Doctor must identify existing gvisor TUN configs separately"
+grep -Fq 'MIPS migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-mips.sh | sh -s -- --check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must retain the stack-only MIPS migration preview"
+pass "Doctor distinguishes missing-TUN bootstrap migration from existing-TUN stack migration"
+
+grep -Fq 'MIN_MIPS_VERSION="1.19.31"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must pin the documented MIPS minimum"
+grep -Fq 'device: mitun0' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must add the canonical mitun0 device"
+grep -Fq 'auto-route: false' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must preserve the router no-auto-route invariant"
+grep -Fq 'auto-detect-interface: true' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must add auto-detect-interface:true"
+grep -Fq 'SELECTED_STACK="mips"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must choose mips for eligible versions"
+grep -Fq 'SELECTED_STACK="gvisor"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must retain gvisor compatibility fallback"
+grep -Fq 'mihomo -t' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must validate the candidate with Mihomo"
+grep -Fq 'PERSIST_BACKUP="$CONFIG_DIR/config.yaml.pre-tun"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must keep a persistent pre-TUN backup"
+grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must coordinate with the watchdog maintenance marker"
+grep -Fq '[ -d /sys/class/net/mitun0 ]' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must verify mitun0 after restarting a previously running service"
+grep -Fq 'mv -f "$TMP_NEW" "$CONFIG"' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must commit via same-filesystem rename"
+grep -Fq 'Top-level tun: already exists' "$ROOT/migrate-mihomo-tun.sh" || fail "TUN migrator must preserve existing TUN configs"
+pass "legacy TUN bootstrap migrator pins version policy, rollback and runtime verification"
 if grep -q 'raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/' "$ROOT/install.sh"; then
     fail "installer must not fetch project-managed runtime files from main"
 fi
