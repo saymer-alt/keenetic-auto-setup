@@ -53,32 +53,41 @@ KeeneticOS/Netcraze OS then mounts the selected partition as `/opt`, finds the
 installer, and starts Entware installation. No separate CLI installation command
 is required for this path.
 
-## 2.1. How to select the correct installer for your model
+## 2.1. How to select the correct installer: archives are architecture-based, not model-specific
 
-Do not choose an Entware installer by copying another router's guide, screenshot,
-or architecture name alone. Different models can require different platform paths.
+Entware does not publish a unique installer file for every router model. There
+are a small number of installer archives for CPU/platform families. The official
+Keenetic/Netcraze guide explicitly says that the archive name depends on the
+platform/CPU type (for example `mipsel`, `mips`, `aarch`). The same archive can
+therefore be used by multiple router models that share the same architecture.
 
-The safest method is to open the official help directly from your router UI:
+A model-specific help page is mainly a convenient **mapping from router model to
+the correct architecture family**, not evidence that every model has its own
+special archive.
+
+The easiest way to avoid guessing is:
 
 1. open **OPKG package manager**;
 2. click the **?** help icon next to the page title;
 3. under **Related articles**, open the USB Entware installation article;
-4. use the installer archive explicitly listed for your router model.
+4. check which architecture archive is specified for that model;
+5. download the matching installer from the corresponding `bin.entware.net` tree.
 
-For **Keenetic Giga KN-1012**, the official article specifies:
+For example, **Keenetic Giga KN-1012** is AArch64, so the guide points to:
 
 ```text
 aarch64-installer.tar.gz
 ```
 
-Its Entware installer URL is:
+from the architecture tree:
 
 ```text
 https://bin.entware.net/aarch64-k3.10/installer/aarch64-installer.tar.gz
 ```
 
-Do not reuse this URL for another model without checking that model's official
-OPKG/Entware article first.
+This is not a KN-1012-only file: the same AArch64 installer is used by other
+compatible models of the same architecture. Other Entware architecture trees
+cover MIPSEL/MIPS and ARM variants.
 
 Do **not** unpack the downloaded archive. Keep it as one file under `install`:
 
