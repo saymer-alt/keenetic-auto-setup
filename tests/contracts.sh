@@ -171,7 +171,9 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
-grep -q 'sh >/dev/null' "$ROOT/install.sh" || fail "upstream MagiTrickle helper stdout must be suppressed"
+grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
+grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
+grep -Fq 'sh "$MAGITRICKLE_REPO_STAGE" >/dev/null' "$ROOT/install.sh" || fail "validated upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
 if grep -q 'pkg_ensure magitrickle || warn' "$ROOT/install.sh"; then
     fail "MagiTrickle install must not pretend pkg_ensure can fall through to warn"
@@ -432,6 +434,32 @@ grep -Fq 'project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/0
 grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
 grep -Fq 'rm -f "$_psd_tmp"' "$ROOT/install.sh" || fail "installer project downloader must clear partial candidates between transports"
 pass "installer project-script downloads use validated curl/wget/API fallbacks and atomic destination commit"
+
+grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
+grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
+grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
+grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
+grep -Fq 'rm -f "$_duf_dst"' "$ROOT/install.sh" || fail "installer generic file downloader must clear partial files between transports"
+pass "installer external package/helper downloads use resilient curl/wget fallbacks"
+
+grep -q '^fetch_text_with_fallback()' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must centralize release-metadata fallback"
+grep -q '^download_file_with_fallback()' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must centralize asset download fallback"
+grep -Fq 'RELEASE_JSON=$(fetch_text_with_fallback "https://api.github.com/repos/$REPO/releases/tags/latest")' "$ROOT/update-mihomo.sh" || fail "Mihomo updater latest-tag metadata must use curl/wget fallback"
+grep -Fq 'download_file_with_fallback "$DOWNLOAD_URL" "$TMP_IPK"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater package download must use curl/wget fallback"
+grep -Fq 'rm -f "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must clear partial package candidates between transports"
+pass "Mihomo updater network acquisition uses curl/wget fallback without weakening transactions"
+
+grep -q '^download_watchdog_candidate()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must centralize resilient candidate download"
+grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain wget fallback"
+grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain GitHub Contents API fallback for managed source"
+grep -Fq 'if [ -z "${WATCHDOG_URL:-}" ]' "$ROOT/update-watchdog.sh" || fail "watchdog updater API fallback must not override a caller-provided WATCHDOG_URL"
+grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must clear partial candidates between transports"
+pass "watchdog updater download path is resilient and preserves source override semantics"
+
+grep -Fq 'curl is tried first; an actual curl failure falls back to wget' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must fall back after a real curl failure"
+grep -Fq 'PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must know the project API delivery fallback"
+grep -Fq 'GitHub Contents API fallback is reachable - hardened project downloads can continue' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish raw-host failure from total project-delivery failure"
+pass "Doctor reports the hardened project delivery paths accurately"
 
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
