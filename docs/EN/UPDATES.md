@@ -71,6 +71,45 @@ Canonical layout:
 - unknown/user-modified files are preserved and reported;
 - managed duplicate scheduling is normalized without deleting unrelated crontab entries.
 
+## Legacy config: add TUN / `mitun0`
+
+Use `migrate-mihomo-tun.sh` for old `config.yaml` files that have **no top-level `tun:` section at all**. It does not rewrite proxy/rules/DNS content and never normalizes an existing TUN block.
+
+Read-only preview:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+```
+
+Apply:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+When TUN is absent, the migrator appends the generator's normal router profile:
+
+```yaml
+tun:
+  enable: true
+  device: mitun0
+  stack: mips        # Mihomo >= 1.19.31; otherwise gvisor
+  auto-route: false
+  auto-detect-interface: true
+```
+
+Stack policy:
+- Mihomo **>= 1.19.31** → prefer `mips`;
+- older versions → use compatibility `gvisor` and explain that MIPS needs an update;
+- if the version looks eligible but the real `mihomo -t` rejects MIPS, rebuild/validate with `gvisor`;
+- if the stopped binary cannot be safely probed, leave the config untouched.
+
+The transaction preserves the one-Mihomo invariant, keeps both a per-run rollback copy and persistent `config.yaml.pre-tun`, validates before same-filesystem atomic commit, preserves prior service state, and—when the service was running—requires the process, port 7890 and real `/sys/class/net/mitun0` to become ready or rolls back automatically.
+
+If `tun:` already exists, this migrator is a no-op. Use `migrate-mihomo-mips.sh` separately for an existing `stack: gvisor` → `stack: mips` migration.
+
+Doctor v1.2.15 checks for a top-level `tun:` section. If it is absent, Doctor prints an INFO hint for `migrate-mihomo-tun.sh --check` and explains the version-dependent stack choice.
+
 ## MIPS TUN migration
 
 Use `migrate-mihomo-mips.sh` only for Mihomo configs with TUN when migrating
@@ -92,7 +131,7 @@ The script changes only `stack:` values, feature-gates support with `mihomo -t`,
 preserves the one-Mihomo invariant, keeps `config.yaml.pre-mips`, rolls back on
 validation/start/port failure, and is idempotent.
 
-It does **not** add a missing `tun:` block or create `mitun0` from scratch; its current scope is an existing TUN with `stack: gvisor`. Doctor v1.2.14 emits an INFO hint when that legacy stack is present and the observed Mihomo version meets the documented 1.19.31 minimum. That is only a readiness hint; the migrator's own `mihomo -t` probe remains the definitive feature gate.
+It does **not** add a missing `tun:` block or create `mitun0` from scratch; its current scope is an existing TUN with `stack: gvisor`. Doctor v1.2.15 emits an INFO hint when that legacy stack is present and the observed Mihomo version meets the documented 1.19.31 minimum. That is only a readiness hint; the migrator's own `mihomo -t` probe remains the definitive feature gate.
 
 ## After maintenance
 

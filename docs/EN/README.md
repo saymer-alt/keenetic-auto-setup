@@ -156,6 +156,17 @@ Details → [updates, rollback and maintenance](UPDATES.md)
 
 Normal operation does not require manual edits to `iptables`, ProxyN, policy routing, DNS, or storage overrides. Treat these as advanced/risk-zone operations: a mistake can affect the whole LAN or lock you out of the router. Start with Doctor and read-only helpers and make manual changes only with a concrete dependency and rollback path.
 
+Legacy config without TUN / `mitun0`:
+
+```bash
+# read-only preview first
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+# then apply
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+The migrator adds the project-standard TUN with `device: mitun0` and `auto-route: false`. Mihomo >= 1.19.31 gets `stack: mips`; older/unconfirmed versions use compatibility `gvisor`. An existing `tun:` block is never rewritten.
+
 MIPS TUN migration:
 
 ```bash
@@ -187,6 +198,7 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 | [`setup.sh`](../../setup.sh) | [Recommended project installation](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
+| [`migrate-mihomo-tun.sh`](../../migrate-mihomo-tun.sh) | [Add TUN/`mitun0` to a legacy config with no `tun:` block](UPDATES.md#legacy-config-add-tun--mitun0) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [Migrate the TUN config from gVisor to MIPS](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Doctor: full project diagnostics](../08-troubleshooting.md) |
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Show Linux WAN/VPN interface names for `interface-name`](../../ARCHITECTURE.md) |

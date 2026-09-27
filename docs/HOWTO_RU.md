@@ -889,7 +889,22 @@ sh update-mihomo.sh [--force]
 - Updater определяет бинарник детерминированно: `/proc/<pid>/exe` работающего демона, если указывает на `/opt/sbin/mihomo` или `/opt/bin/mihomo`; иначе `/opt/sbin/mihomo`; иначе `/opt/bin/mihomo` — зеркало порядка PATH инит-скрипта Entware. Лишние копии (например `meta-backup/mihomo`) никогда не выбираются.
 - Обновляйтесь этим скриптом, а не вручную: старая процедура ручной замены бинарника удалена; update-mihomo.sh — единственный поддерживаемый путь обновления (backup в /tmp, проверки до любых изменений, автоматический откат).
 
-### 8.1 Миграция TUN stack на mips
+### 8.1 Добавление TUN / `mitun0` в legacy-конфиг без TUN
+
+Если старый `config.yaml` не содержит top-level `tun:`, сначала используйте отдельный bootstrap-migrator:
+
+```bash
+# read-only
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh -s -- --check
+# применить
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-tun.sh | sh
+```
+
+Он добавляет только стандартную секцию `tun:` с `device: mitun0`, `auto-route: false`, `auto-detect-interface: true` и выбирает stack по реально прочитанной версии после безопасной остановки: `mips` для Mihomo >= 1.19.31, иначе `gvisor`. Кандидат обязательно проходит `mihomo -t`; при работающем до операции сервисе после старта проверяются процесс, порт 7890 и реальное появление `mitun0`, иначе выполняется rollback. Existing TUN никогда не переписывается.
+
+Doctor v1.2.15 сам показывает INFO-подсказку, когда top-level TUN отсутствует.
+
+### 8.2 Миграция существующего TUN stack на mips
 
 Для конфигураций с TUN (`mitun0`) отдельный скрипт переписывает `stack: gvisor` → `stack: mips` (Mihomo IP Stack, поддерживается с mihomo 1.19.31):
 
