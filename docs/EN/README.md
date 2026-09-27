@@ -32,6 +32,8 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
 
+> **512 MB-class note:** bare 512 MB physical RAM is no longer a supported project baseline. A new install requires active KeeneticOS zRAM **or** verified external storage-backed swap; with neither present the installer stops with ERROR and Doctor reports FAIL. There is no access-point exception.
+
 Advanced/manual installation, explicit `ram|disk` selection, offline/SCP delivery, and storage overrides are documented separately.
 
 Details → [installation](../03-install.md)

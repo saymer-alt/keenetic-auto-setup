@@ -852,7 +852,7 @@ sh update-mihomo.sh [--force]
 What it does, step by step:
 
 1. Lock file prevents parallel updates.
-2. The updater reads the same resource profile but **does not block an existing legacy installation solely for a profile violation**: 128 MB without external /opt + >=384 MB external swap and 256 MB without either zRAM or verified external swap get a strong UNSUPPORTED warning. A simultaneous zRAM + disk/file swap also gets a vendor-guidance warning. 512 MB+ does not warn merely because swap is absent. All actual updater safety gates (one-Mihomo, config test, architecture, free space, atomic commit, rollback) remain mandatory.
+2. The updater reads the same resource profile but **does not block an existing legacy installation solely for a profile violation**: 128 MB without external /opt + >=384 MB external swap, 256 MB without either backend, and legacy 512 MB installs without zRAM/external swap get a strong UNSUPPORTED warning. New 512 MB installs are blocked by install.sh, but update-mihomo.sh remains non-blocking so an already-installed legacy router can still be serviced. A simultaneous zRAM + disk/file swap also gets a vendor-guidance warning. All actual updater safety gates (one-Mihomo, config test, architecture, free space, atomic commit, rollback) remain mandatory.
 3. Architecture via `opkg print-architecture`; the package comes from the ready-to-install set of the `saymer-alt/entware-go` feed (release `latest`) — the same one `install.sh` uses: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; the softfloat `nohf` variant is excluded.
 4. Versions: same version → exit (unless `--force`); an available version that is older than the installed one — or cannot be reliably ordered (prerelease suffixes) — is never auto-downgraded, even with `--force`.
 5. Downloads the `.ipk` to `/tmp` (curl, up to 3 attempts) and extracts only the new binary from it — file operations, the service is still running.
@@ -1076,7 +1076,7 @@ MT7621/mipsel devices use the same universal `install.sh` — same command, same
 Platform notes that remain:
 
 - **128 MB RAM is best-effort/experimental:** external /opt + >=384 MB external storage-backed swap are mandatory (project-specific floor; zRAM does not count). Stability is not guaranteed even when prerequisites are met.
-- **256/512 MB-class:** project expects native zRAM **or** verified external storage-backed swap; missing both is WARN, not a hard install gate.
+- **256 MB-class:** project expects native zRAM **or** verified external storage-backed swap; missing both is WARN. **512 MB-class:** bare 512 MB RAM is explicitly unsupported for a new install; zRAM or verified external swap is mandatory, and missing both is installer ERROR / Doctor FAIL.
 - **External swap sizing:** the project warning floor is 1× detected RAM; below 1× is WARN. The 1×..3× range is INFO-only, with ~3× RAM as the preferred target, capped at 2 GiB; >2 GiB is invalid for new installs. Current vendor docs do not define either 1× or 3× as a mandatory minimum; these are project policy thresholds.
 - **Above 512 MB-class:** swap/zRAM is optional.
 - **Do not combine zRAM with disk/file swap:** current vendor guidance says to disable zRAM when classic swap is used.
