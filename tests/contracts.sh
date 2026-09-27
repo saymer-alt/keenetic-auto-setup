@@ -602,6 +602,14 @@ grep -Fq 'nano /opt/etc/mihomo/config.yaml' "$ROOT/README.md" || fail "README mu
 ! grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$"' "$ROOT/setup.sh" || fail "simple setup importer path must not regress to a literal single-dollar suffix"
 pass "simple setup wrapper auto-selects storage profile, uses PID-unique staging and delegates all mutations"
 
+grep -Fq '### 3.1 Рекомендуемый путь' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO must present setup.sh as the recommended installation path"
+grep -Fq '### 3.1 Recommended path' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO must present setup.sh as the recommended installation path"
+grep -Fq 'SCRIPT=setup.sh' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO recommended path must use the validated setup bootstrap"
+grep -Fq 'SCRIPT=setup.sh' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO recommended path must use the validated setup bootstrap"
+! grep -Fq 'stable/install.sh | sh' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO must not present bare install.sh pipe as the primary path"
+! grep -Fq 'stable/install.sh | sh' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO must not present bare install.sh pipe as the primary path"
+pass "RU/EN HOWTO stay aligned with the setup-first production flow"
+
 # Config import is a transactional config replacement, not a direct overwrite.
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/config-import.sh" || fail "config importer must coordinate planned downtime with watchdog"
 grep -Fq 'BACKUP_PATH="$CONFIG_DIR/config.yaml.bak"' "$ROOT/config-import.sh" || fail "config importer must retain the previous config backup"
