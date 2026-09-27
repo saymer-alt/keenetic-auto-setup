@@ -78,6 +78,8 @@ Client
 
 MagiTrickle sits on the router, watches DNS, and decides per domain which exit interface the traffic should use. It is not a VPN and not the proxy itself — it is the decision maker; the interface a decision points at does the actual carrying.
 
+**What the project automates versus what remains user-owned state.** On a clean install, `setup.sh`/`install.sh` add the MagiTrickle repository, install the package, start the service, and configure the required system integration. An exported user `.mtrickle` configuration is not imported automatically: it contains your groups, rules, interfaces, and other personal routing settings. When migrating or reinstalling, save it with **Export Config** first, then after the clean install open MagiTrickle at `http://<router-IP>:8080/` and import it manually. This is intentional so the installer never guesses or overwrites user routing policy.
+
 Its official model (from the [MagiTrickle documentation](https://magitrickle.dev/)) is simple:
 
 - **Group** — a named container that binds a set of domains to one exit. It can be toggled on/off and reordered ("VPN", "Direct", "Torrents" — whatever you name it).
