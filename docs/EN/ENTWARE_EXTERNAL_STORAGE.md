@@ -116,6 +116,23 @@ one of a small number of Entware installer archives
 Do not search for a unique file for every router model. Determine the model's
 architecture group and use that group's installer.
 
+### Practical Keenetic/Netcraze architecture map
+
+According to the official vendor table:
+
+| Architecture | Example models |
+|---|---|
+| **AArch64** | Ultra KN-1811 / NC-1812, Giga KN-1012 / NC-1012, Hopper KN-3811 / NC-3811, Hopper SE KN-3812 / NC-3812, Hopper 4G+ NC-2312, Hero 5G NC-4110, Hopper DSL NC-3611 |
+| **MIPSel** | Giga KN-1010/1011, Ultra KN-1810, Viva KN-1910/1912/1913, Hero 4G KN-2310/2311, Giant KN-2610, Skipper 4G KN-2910, Hopper KN-3810, Viva NC-1913 |
+| **MIPS** | Giga SE KN-2410, Ultra SE KN-2510, DSL KN-2010, Launcher DSL KN-2012, Duo KN-2110, Skipper DSL KN-2112, Hopper DSL KN-3610 |
+
+Source:
+https://support.netcraze.ru/viva/nc-1913/en/69806-installation-of-the-asterisk-ip-pbx-opkg-package.html
+
+That is the correct mental model: **router model → architecture → shared installer
+for that architecture**.
+
+
 Do **not** unpack the downloaded archive. Keep it as one file under `install`:
 
 ```text
@@ -142,7 +159,14 @@ Use this GUI reset sequence:
    `install/<installer>.tar.gz`;
 6. confirm the required user access, for example `admin`;
 7. click **Save** again;
-8. immediately inspect the system log for new installation records.
+8. **wait until the save has actually applied**;
+9. immediately inspect the system log for new installation records.
+
+> Important: selecting a storage device in the dropdown is not enough. Until
+> **Save** is pressed and applied, the installer does not start. In a real field
+> case, this was the entire reason for the apparent endless wait: the correct
+> disk was visible in the UI, but the change had not yet been saved. Once
+> **Save** was pressed, the installer started immediately and completed normally.
 
 A real start should create fresh `Opkg::Manager` / `installer` records and then
 `[1/5]`, `[2/5]`, and later stages. If those records do not appear shortly after

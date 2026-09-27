@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 - Documented the OPKG UI stale-storage trap observed in the field: an already displayed EXT4 selection may be a previous saved binding rather than a fresh installation trigger. The recovery sequence is now explicit: select **Not selected** → Save → wait → re-select the external EXT4 partition → confirm user access → Save again → verify fresh `Opkg::Manager` / `installer` and `[1/5]...` log records.
 - Corrected Entware installer wording: installer archives are architecture/platform-based rather than unique per router model. The OPKG `?` help is documented as a convenient model-to-architecture lookup; KN-1012 maps to the shared AArch64 `aarch64-installer.tar.gz` archive. Official vendor examples are now recorded as additional evidence: NC-1012 and NC-1812 map to AArch64, while NC-1913 maps to MIPSEL.
+- Added the vendor architecture map (AArch64 / MIPSel / MIPS) with representative Keenetic/Netcraze models, and documented the field-proven OPKG UI gotcha that selecting a disk is inert until **Save** is actually applied; once saved, the installer starts immediately.
 
 ### Testing
 - Added contract checks pinning the new Doctor severity split: functional legacy watchdog layout must stay informational, duplicate/execution/scheduling watchdog faults remain warning-level, and the DNS-interception warning must describe supported-profile drift without conflating it with separately checked MagiTrickle runtime health.
