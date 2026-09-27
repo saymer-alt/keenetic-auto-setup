@@ -589,13 +589,14 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 ! grep -Fq '_setup_import_answer' "$ROOT/setup.sh" || fail "simple setup must not consume the first YAML line in a separate confirmation prompt"
 ! grep -q 'dns-proxy intercept enable' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate persistent router configuration"
 ! grep -q 'ip policy bypass_wa' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate policy mutations"
-grep -Fq 'SCRIPT=setup.sh' "$ROOT/README.md" || fail "README must expose setup.sh as the normal bootstrap target"
-grep -Fq 'TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"' "$ROOT/README.md" || fail "README setup bootstrap staging must be PID-unique"
-grep -Fq 'wget -qO "$TMP" "$RAW"' "$ROOT/README.md" || fail "README setup bootstrap must retain raw wget fallback"
-grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/README.md" || fail "README setup bootstrap must retain GitHub Contents API fallback"
-grep -Fq 'sh -n "$TMP"' "$ROOT/README.md" || fail "README setup bootstrap must syntax-check the candidate before execution"
-grep -Fq 'raw через `curl`, затем тот же raw через `wget`, затем GitHub Contents API' "$ROOT/docs/14-setup.md" || fail "RU setup guide must document first-bootstrap fallback order"
-grep -Fq 'raw through `curl`, then the same raw URL through `wget`, then the GitHub Contents API' "$ROOT/docs/EN/SETUP.md" || fail "EN setup guide must document first-bootstrap fallback order"
+PUBLIC_SETUP_CMD='curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh'
+for _f in README.md docs/EN/README.md docs/02-quick-start.md docs/03-install.md docs/14-setup.md docs/EN/SETUP.md docs/HOWTO_RU.md docs/HOWTO.md docs/16-entware-external-storage.md docs/EN/ENTWARE_EXTERNAL_STORAGE.md; do
+    grep -Fq "$PUBLIC_SETUP_CMD" "$ROOT/$_f" || fail "$_f must expose the concise setup.sh bootstrap"
+    ! grep -Fq 'SCRIPT=setup.sh' "$ROOT/$_f" || fail "$_f must not inline the long bootstrap transaction"
+    ! grep -Fq 'application/vnd.github.raw+json' "$ROOT/$_f" || fail "$_f must keep GitHub API fallback details out of the primary setup command"
+done
+grep -Fq 'Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**' "$ROOT/docs/14-setup.md" || fail "RU setup guide must explain where hardened child delivery begins"
+grep -Fq 'resilient multi-transport downloader starts **after `setup.sh` is running**' "$ROOT/docs/EN/SETUP.md" || fail "EN setup guide must explain where hardened child delivery begins"
 grep -Fq 'nano /opt/etc/mihomo/config.yaml' "$ROOT/README.md" || fail "README must keep the quick manual config edit command visible"
 ! grep -Fq 'stable/install.sh | sh -s -- disk' "$ROOT/README.md" || fail "README must keep advanced manual install commands in detailed documentation"
 ! grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$"' "$ROOT/setup.sh" || fail "simple setup staging path must not regress to a literal single-dollar suffix"
@@ -604,8 +605,8 @@ pass "simple setup wrapper auto-selects storage profile, uses PID-unique staging
 
 grep -Fq '### 3.1 Рекомендуемый путь' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO must present setup.sh as the recommended installation path"
 grep -Fq '### 3.1 Recommended path' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO must present setup.sh as the recommended installation path"
-grep -Fq 'SCRIPT=setup.sh' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO recommended path must use the validated setup bootstrap"
-grep -Fq 'SCRIPT=setup.sh' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO recommended path must use the validated setup bootstrap"
+grep -Fq "$PUBLIC_SETUP_CMD" "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO recommended path must use the concise setup bootstrap"
+grep -Fq "$PUBLIC_SETUP_CMD" "$ROOT/docs/HOWTO.md" || fail "EN HOWTO recommended path must use the concise setup bootstrap"
 ! grep -Fq 'stable/install.sh | sh' "$ROOT/docs/HOWTO_RU.md" || fail "RU HOWTO must not present bare install.sh pipe as the primary path"
 ! grep -Fq 'stable/install.sh | sh' "$ROOT/docs/HOWTO.md" || fail "EN HOWTO must not present bare install.sh pipe as the primary path"
 pass "RU/EN HOWTO stay aligned with the setup-first production flow"

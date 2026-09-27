@@ -123,8 +123,12 @@ a real `raw.githubusercontent.com` reset during installation:
 - failed file transfers must remove partial/non-empty candidates before the next transport;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
-- the public fresh-install bootstrap must itself be multi-transport and validated before
-  executing `setup.sh`; do not regress the documented happy path to bare `curl | sh`;
+- the public fresh-install **happy path must stay concise and copy-pasteable**:
+  `opkg update && opkg install curl && curl .../stable/setup.sh | sh`. Do not inline a
+  long temp-file/API fallback transaction into README, Quick Start, HOWTO, Entware guides,
+  or the normal setup command. The hardened multi-transport/validation contract begins once
+  `setup.sh` is running. If the initial raw fetch itself is unavailable, point users to the
+  documented offline/SCP recovery path instead of making the primary command unreadable;
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the

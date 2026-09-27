@@ -6,27 +6,9 @@
 
 ## Обычный запуск
 
-```sh
-SCRIPT=setup.sh
-TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
-RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
-API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
-
+```bash
 opkg update && opkg install curl && \
-rm -f "$TMP" && \
-( curl -fSsL "$RAW" -o "$TMP" || \
-  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
-  { rm -f "$TMP"; curl -fSsL \
-      -H "Accept: application/vnd.github.raw+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      "$API" -o "$TMP"; } ) && \
-[ -s "$TMP" ] && \
-[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
-sh -n "$TMP" && \
-sh "$TMP"
-RC=$?
-rm -f "$TMP"
-[ "$RC" -eq 0 ]
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
 ## Что делает мастер
@@ -44,7 +26,7 @@ rm -f "$TMP"
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Первый bootstrap теперь тоже не зависит от одного `raw.githubusercontent.com`/`curl`: команда выше пробует raw через `curl`, затем тот же raw через `wget`, затем GitHub Contents API. Частичный файл удаляется между transport-попытками, а перед запуском кандидат обязан быть непустым `#!/bin/sh`-скриптом и пройти `sh -n`. После старта `setup.sh` та же модель устойчивой доставки используется уже внутри проекта для дочерних файлов.
+Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают raw/curl → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если именно первая загрузка `setup.sh` с `raw.githubusercontent.com` недоступна, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
 
 ## Почему setup.sh не выбирает режим «на глаз»
 
