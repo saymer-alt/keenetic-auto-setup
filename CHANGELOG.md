@@ -6,13 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- Reduced fallback noise on Keenetic/BusyBox without weakening delivery resilience. Managed `curl`/`wget` retries remain bounded at three attempts but suppress repeated per-attempt stderr/status spam; an exhausted transport is summarized once before the next fallback. This specifically addresses the field output where three `curl: (35) Connection reset` messages were followed by three BusyBox `wget: not an http or ftp url` messages before the GitHub Contents API succeeded.
-- The quiet-retry presentation rule is now part of the same AGENTS/RU/EN output contract as the green/cyan/yellow/red status palette.
-
-### Testing
-- Contract tests pin quiet per-attempt transport behavior for setup, installer, Mihomo updater and watchdog updater while preserving raw curl → raw wget → GitHub Contents API fallback order where applicable.
-
 ---
 
 ## [1.7.1] - 2026-09-27
@@ -23,7 +16,8 @@ All notable changes to this project will be documented in this file.
 - Extended network hardening beyond project helper files: `install.sh` uses curl/wget fallback for entware-go release metadata/assets and stages/validates the MagiTrickle repository helper before execution; `update-mihomo.sh` uses curl/wget fallback for release metadata and package acquisition; `update-watchdog.sh` uses curl/wget plus GitHub Contents API for the normal managed source while preserving an explicit `WATCHDOG_URL` override as authoritative.
 - Doctor is now **v1.2.15**. It prints its own version in every report, distinguishes a raw-host failure from total project-delivery failure, explicitly reports whether top-level `tun:` exists, and gives separate INFO-only guidance for two legacy states: missing TUN → `migrate-mihomo-tun.sh --check`; existing `stack: gvisor` → `migrate-mihomo-mips.sh --check`. No migration hint changes severity or mutates the router.
 - Added `migrate-mihomo-tun.sh` for old configs with no top-level `tun:`. It adds the generator-aligned router TUN (`device: mitun0`, `auto-route: false`, `auto-detect-interface: true`), selects `mips` for a confirmed Mihomo >=1.19.31 or compatibility `gvisor` otherwise, validates with real `mihomo -t`, preserves one-Mihomo/service-state/maintenance-marker invariants, commits atomically, verifies `mitun0` + port 7890 when restarting, and rolls back on failure. Existing TUN configs are never rewritten by this script.
-- Standardized interactive terminal status colors across `setup.sh`, `install.sh`, `config-import.sh`, both updaters, the MIPS migrator, Doctor, route-check and `S00ubifs`: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. ANSI is emitted only to a TTY, honors `NO_COLOR`/`TERM=dumb`, and does not contaminate redirected output. Persistent `mihomo-watchdog.sh` logs intentionally remain plain text.
+- Standardized interactive terminal status colors across `setup.sh`, `install.sh`, `config-import.sh`, both updaters, both TUN migrators, Doctor, route-check and `S00ubifs`: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. ANSI is emitted only to a TTY, honors `NO_COLOR`/`TERM=dumb`, and does not contaminate redirected output. Persistent `mihomo-watchdog.sh` logs intentionally remain plain text.
+- Reduced fallback noise on Keenetic/BusyBox without weakening delivery resilience. Managed `curl`/`wget` retries remain bounded at three attempts but suppress repeated per-attempt stderr/status spam; an exhausted transport is summarized once before the next fallback. This addresses the observed field output where repeated `curl: (35) Connection reset` and BusyBox `wget: not an http or ftp url` lines obscured the successful API fallback.
 
 ### Documentation
 - Added a practical MagiTrickle group-building workflow: collect a service domain list from multiple sources (OpenCCK is documented only as one optional starting point), prefer `mitun0` as the normal Mihomo egress when TUN is enabled, keep `mihomo t2sN` / ProxyN as an alternative SOCKS5 entry, use Namespace for normal domain + subdomain matching, bulk-import text rules, validate the real service, add missing API/CDN/auth domains, and then Export Config.
@@ -31,10 +25,12 @@ All notable changes to this project will be documented in this file.
 - Added the canonical RU/EN terminal-output color contract and linked it from AGENTS, README, HOWTO, installer, troubleshooting, S00ubifs and focused setup/update/import/route-check guides.
 - Updated the primary RU/EN fresh-install paths to use the validated multi-transport bootstrap instead of relying on a bare `curl .../setup.sh | sh`.
 - Clarified the MIPS migrator scope in RU/EN maintenance guides: it migrates an existing TUN `stack: gvisor` → `stack: mips`; it does not add a missing `tun:` block or create `mitun0` from scratch.
+- Documented the new legacy no-TUN bootstrap path in RU/EN README, HOWTO and maintenance guides, including read-only `--check`, version-based `mips`/`gvisor` selection, rollback behavior and the `mitun0` verification contract.
+- Added the quiet-retry presentation rule to the same AGENTS/RU/EN output contract as the green/cyan/yellow/red status palette.
 
 ### Testing
 - Added permanent contract checks for Doctor self-version reporting, resilient installer/setup/updater delivery, partial-download cleanup, shell-candidate validation, same-filesystem staging, custom watchdog-source semantics, and Doctor reporting of fallback-path availability. TUN migration contracts now also pin the no-TUN Doctor guidance, 1.19.31 stack policy, canonical `mitun0` block, one-Mihomo maintenance marker, atomic commit and runtime interface verification.
-- Contract smoke tests pin the TTY/`NO_COLOR` behavior, the Doctor green/cyan/yellow/red mapping, and the rule that persistent watchdog logs contain no ANSI escape sequences.
+- Contract smoke tests pin the TTY/`NO_COLOR` behavior, the Doctor green/cyan/yellow/red mapping, the rule that persistent watchdog logs contain no ANSI escape sequences, and quiet per-attempt transport behavior for setup, installer, Mihomo updater and watchdog updater while preserving the fallback order.
 - The exact provider-side connection reset remains environment-dependent: CI validates the fallback/state-machine contracts, while Max's repeated field install is the intended hardware acceptance for this failure class.
 
 ---
