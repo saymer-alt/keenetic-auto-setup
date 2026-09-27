@@ -21,6 +21,9 @@ pass "installer, doctor and updater pin the same resource-profile contract versi
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" || fail "installer production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
+grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
+grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
+pass "Doctor support output carries an explicit self-version"
 if grep -q 'raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/' "$ROOT/install.sh"; then
     fail "installer must not fetch project-managed runtime files from main"
 fi
