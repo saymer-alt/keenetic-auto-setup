@@ -169,7 +169,7 @@ KeeneticOS имеет встроенный zRAM («Сжатый RAM-диск д�
 | ------- | ----------------------- |
 | 128 MB  | ⚠️ best-effort / experimental: внешний EXT4 `/opt` + внешний storage-backed swap >=384 МБ (project-specific floor; zRAM не считается) |
 | 256 MB  | ⚠️ zRAM **или** внешний storage-backed swap; нет обоих → WARN |
-| 512 MB-класс | ⚠️ zRAM **или** внешний storage-backed swap; нет обоих → WARN |
+| 512 MB-класс | ❌ zRAM **или** проверенный внешний storage-backed swap обязателен; нет обоих → installer ERROR / Doctor FAIL |
 | >512 MB-класс | ✅ swap/zRAM опциональны |
 | 1024 MB | ✅ идеально              |
 
@@ -307,6 +307,6 @@ S00ubifs:
 
 ## Коротко
 
-👉 256/512 МБ-класс → нужен zRAM **или** внешний storage-backed swap; нет обоих → WARN; внешний swap <1× RAM → WARN, 1×..3× → INFO, preferred target ≈3× RAM, max 2 ГиБ
+👉 256 МБ-класс → нужен zRAM **или** внешний storage-backed swap; нет обоих → WARN. 512 МБ-класс → один из этих backend обязателен; нет обоих → installer ERROR / Doctor FAIL. Для внешнего swap на обоих классах: <1× RAM → WARN, 1×..3× → INFO, preferred target ≈3× RAM, max 2 ГиБ
 👉 >512 МБ-класс → swap/zRAM опциональны
 👉 128 МБ → сначала внешний /opt + внешний storage-backed swap >=384 МБ (project-specific floor); `ram` только как best-effort с контролем памяти
