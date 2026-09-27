@@ -53,6 +53,41 @@ KeeneticOS/Netcraze OS then mounts the selected partition as `/opt`, finds the
 installer, and starts Entware installation. No separate CLI installation command
 is required for this path.
 
+## 2.1. How to select the correct installer for your model
+
+Do not choose an Entware installer by copying another router's guide, screenshot,
+or architecture name alone. Different models can require different platform paths.
+
+The safest method is to open the official help directly from your router UI:
+
+1. open **OPKG package manager**;
+2. click the **?** help icon next to the page title;
+3. under **Related articles**, open the USB Entware installation article;
+4. use the installer archive explicitly listed for your router model.
+
+For **Keenetic Giga KN-1012**, the official article specifies:
+
+```text
+aarch64-installer.tar.gz
+```
+
+Its Entware installer URL is:
+
+```text
+https://bin.entware.net/aarch64-k3.10/installer/aarch64-installer.tar.gz
+```
+
+Do not reuse this URL for another model without checking that model's official
+OPKG/Entware article first.
+
+Do **not** unpack the downloaded archive. Keep it as one file under `install`:
+
+```text
+<EXT4 partition>/
+└── install/
+    └── <installer>.tar.gz
+```
+
 ## 3.1. Important trap: a stale storage selection can look active
 
 If the expected EXT4 partition is already shown in the **Storage** field but no
