@@ -53,3 +53,7 @@ A later successful import replaces that backup with the then-current config.
 ## Non-goals
 
 The importer does not generate YAML, edit proxy links, change Keenetic policy/DNS, format storage, update the Mihomo binary, or implement URL import.
+
+---
+
+The importer follows the project-wide CLI status palette: green = normal progress/OK, cyan = INFO, yellow = WARN, red = ERROR/FAIL. Colors never replace the textual prefixes and are disabled for redirected output, `NO_COLOR`, or `TERM=dumb`. See [terminal output colors](OUTPUT_COLORS.md).

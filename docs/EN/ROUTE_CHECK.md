@@ -61,3 +61,7 @@ Optional environment overrides:
 Doctor answers whether the overall stack is healthy.
 
 This helper answers whether one target works through the current local Mihomo path, without turning Doctor into a heavy tracer.
+
+---
+
+`mihomo-route-check.sh` uses green for OK, cyan for INFO, yellow for WARN, and red for ERROR. Textual status markers remain authoritative; see [terminal output colors](OUTPUT_COLORS.md).

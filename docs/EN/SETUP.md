@@ -64,3 +64,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```
 
 For one-domain/IP diagnostics see [mihomo-route-check.sh](ROUTE_CHECK.md).
+
+---
+
+`setup.sh` and the canonical installer use the same project-wide traffic-light status palette. TTY, `NO_COLOR`, redirect and persistent-log rules are documented in [terminal output colors](OUTPUT_COLORS.md).
