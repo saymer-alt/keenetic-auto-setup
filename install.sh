@@ -109,7 +109,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # RAM / STORAGE / SWAP PREFLIGHT
 # ---------------------------
 # Memory capacity, /opt location and swap backends are detected from live
-# system state - never guessed. Resource-profile contract 20260921_3:
+# system state - never guessed. Resource-profile contract 20260927_1:
 #   - 128 MB-class: best-effort/experimental. Installation is REFUSED unless
 #     /opt is on verified EXTERNAL persistent storage AND EXTERNAL
 #     storage-backed active swap is >= 384 MB. This is a project-specific
@@ -117,7 +117,9 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 #   - 256 MB-class: project expects at least ONE active memory-pressure backend:
 #     native KeeneticOS zRAM OR verified EXTERNAL storage-backed swap. Absence
 #     is a WARN (installation continues), not a hard gate.
-#   - 512 MB-class: same project expectation; no backend => WARN and continue.
+#   - 512 MB-class: supported new installs REQUIRE one active backend: native
+#     KeeneticOS zRAM OR verified EXTERNAL storage-backed swap. No backend =>
+#     hard ERROR before downloads/mutations; there is no model/AP-role exception.
 #   - Above the 512 MB class: swap/zRAM is optional.
 #   - If external swap is chosen on 256/512 MB-class, 1x detected RAM is the
 #     project minimum floor for warning severity. Below 1x => WARN; from 1x up
@@ -136,7 +138,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # with partitions mounted under /tmp/mnt/*. Unrecognized state fails
 # conservatively where the contract requires proof.
 # This script never creates, enables, formats or resizes swap or storage.
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_3
+RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
 RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
 RAM256_MAX_KB=450000      # below this total RAM = 256 MB-class
 RAM512_MAX_KB=786432      # below this total RAM = 512 MB-class (real ~486 MB MemTotal fits here)
@@ -378,7 +380,7 @@ case "$MEM_TOTAL_KB" in
             warn "============================================================"
         elif [ "$MEM_TOTAL_KB" -lt "$RAM256_MAX_KB" ]; then
             if [ "$SW_UNVER_KB" = "-1" ]; then
-                warn "256 MB-class device (${MEM_TOTAL_MB} MB): cannot read $PROC_SWAPS, so zRAM/external-SWAP presence cannot be verified. Project policy expects one active backend on <=512 MB-class, but installation continues."
+                warn "256 MB-class device (${MEM_TOTAL_MB} MB): cannot read $PROC_SWAPS, so zRAM/external-SWAP presence cannot be verified. Project policy expects one active backend on the 256 MB-class, but installation continues."
             elif [ "$SW_ZRAM_KB" -gt 0 ]; then
                 log "256 MB-class with active zRAM - supported project profile"
             elif [ "$SW_EXT_KB" -gt 0 ]; then
@@ -389,7 +391,7 @@ case "$MEM_TOTAL_KB" in
                     log "External SWAP is below the preferred project sizing target but meets the minimum floor: $((SW_EXT_KB / 1024)) MB active, minimum about $((MEM_TOTAL_KB / 1024)) MB (1x RAM), preferred target about $((SWAP_TARGET_KB / 1024)) MB (3x RAM, capped at 2048 MB)."
                 fi
             else
-                warn "256 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
+                warn "256 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on the 256 MB-class; installation continues, but memory-pressure stability is not guaranteed."
             fi
         elif [ "$MEM_TOTAL_KB" -lt "$RAM512_MAX_KB" ]; then
             if [ "$SW_ZRAM_KB" -gt 0 ]; then
@@ -402,7 +404,7 @@ case "$MEM_TOTAL_KB" in
                     log "External SWAP is below the preferred project sizing target but meets the minimum floor: $((SW_EXT_KB / 1024)) MB active, minimum about $((MEM_TOTAL_KB / 1024)) MB (1x RAM), preferred target about $((SWAP_TARGET_KB / 1024)) MB (3x RAM, capped at 2048 MB)."
                 fi
             else
-                warn "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. Project policy expects one backend on <=512 MB-class; installation continues, but memory-pressure stability is not guaranteed."
+                err "512 MB-class device (${MEM_TOTAL_MB} MB) has neither active zRAM nor verified external storage-backed SWAP. The supported project profile REQUIRES active KeeneticOS zRAM OR verified external storage-backed SWAP on this memory class. Stopping before package installation or project changes to preserve memory-pressure/OOM headroom. Enable one backend and re-run."
             fi
         else
             log "Above-512 MB memory class (${MEM_TOTAL_MB} MB): swap/zRAM is optional"
