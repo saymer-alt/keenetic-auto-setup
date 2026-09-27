@@ -645,7 +645,7 @@ no dns-proxy tls upstream 9.9.9.9 853
 
 1. **WAN — напрямую, без Mihomo.** Основные цели: `cp.cloudflare.com`, `www.google.com`. Если недоступны *все* — включается whitelist-fallback: `gosuslugi.ru`, `ya.ru`, `mail.ru`, `vk.ru`, `vk.com`. Ответил хотя бы один = WAN есть. Не ответил никто → watchdog выходит, **ничего не перезапуская** — отсутствие WAN не означает, что сломан Mihomo.
 2. **Порт прокси** — `127.0.0.1:7890` должен принимать TCP-соединения. Порт закрыт → Mihomo, вероятно, упал → рестарт.
-3. **Сквозной туннель** — реальный запрос через `socks5h://127.0.0.1:7890` (DNS тоже через туннель) до google должен пройти. Порт открыт, туннель мёртв → рестарт.
+3. **Сквозной туннель** — реальный запрос через `socks5h://127.0.0.1:7890` (DNS тоже через туннель) до google должен пройти. Один FAIL теперь считается только предварительным сигналом: watchdog ждёт 3 секунды и делает один подтверждающий probe. Повторный OK → рестарта нет; второй подряд FAIL → рестарт. Это убирает false-positive рестарты из-за кратковременного сетевого/TLS/DNS/outbound-сбоя, не маскируя устойчивую неисправность.
 
 Ограничение частоты: минимум 300 с между рестартами, состояние в `/tmp/mihomo_watchdog.restart` с валидацией содержимого. От наложения запусков защищает атомарный mkdir-lock-каталог `/tmp/mihomo_watchdog.lock.d` (pid/ts-владение и takeover по живости процесса — после `kill -9` замок подхватывается на следующем запуске, перезагрузка не нужна).
 
@@ -663,7 +663,8 @@ cat /opt/var/log/mihomo_watchdog.log
 | `[OK] All good | WAN=whitelist (...)` | всё здорово; WAN подтверждён whitelist-fallback |
 | `[WARN] WAN unreachable (primary + whitelist targets failed)` | интернета нет — watchdog правильно ничего не делает |
 | `[RESTART] Mihomo port unreachable` | Mihomo упал / не стартовал — перезапущен |
-| `[RESTART] Proxy tunnel check failed` | порт открыт, туннель мёртв — часто проблема на VPN-сервере или в конфиге |
+| `[INFO] Proxy tunnel first probe failed; retry succeeded - no restart` | первый tunnel-probe дал transient FAIL, подтверждающий retry прошёл; рестарта не было |
+| `[RESTART] Proxy tunnel check failed` | порт открыт, но два tunnel-probe подряд не прошли — подтверждённая end-to-end проблема |
 | `[RATE-LIMIT] Restart blocked (Ns < 300s)` | работает защита от циклов, это не ошибка |
 
 Проверки идут каждые 5 минут, но штатный `[OK]` heartbeat записывается не чаще одного раза в 20 минут. После WARN/restart/rate-limit следующий успешный цикл логируется сразу. Смена успешного WAN-пути `primary ↔ whitelist` тоже логируется сразу — fallback/failback виден в момент переключения. Ротация встроена: больше 500 строк → остаются последние 300. Логи лежат в tmpfs (RAM-режим) и пропадают при reboot — так задумано.
