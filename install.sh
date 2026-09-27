@@ -563,6 +563,100 @@ pkg_ensure cron
 command -v jq >/dev/null 2>&1 || err "jq not available after install"
 
 # ---------------------------
+# PROJECT FILE DELIVERY
+# ---------------------------
+# A live field install saw raw.githubusercontent.com reset the connection after
+# earlier GitHub downloads had already succeeded. Project-managed helper scripts
+# therefore use a bounded multi-transport delivery chain:
+#   1) raw.githubusercontent.com via curl (3 attempts)
+#   2) the same raw URL via wget (3 attempts, when wget exists)
+#   3) GitHub Contents API raw media via api.github.com (3 attempts)
+#
+# Every candidate is downloaded to /tmp first, must be a non-empty /bin/sh
+# script and pass sh -n, then is copied beside the destination and committed
+# with a same-filesystem rename. A failed transfer never truncates an already
+# installed project file.
+PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
+
+project_script_candidate_ok() {
+    _psc_file="$1"
+    [ -s "$_psc_file" ] || return 1
+    [ "$(head -n 1 "$_psc_file" 2>/dev/null)" = "#!/bin/sh" ] || return 1
+    sh -n "$_psc_file" >/dev/null 2>&1
+}
+
+project_script_download() {
+    _psd_rel="$1"
+    _psd_dest="$2"
+    _psd_tmp="$TMP_DIR/.keenetic-auto-setup-download.$$"
+    _psd_stage="${_psd_dest}.new.$$"
+    _psd_raw="$PROJECT_RAW_BASE/$_psd_rel"
+    _psd_api="$PROJECT_API_CONTENTS/$_psd_rel?ref=$PROJECT_REF"
+
+    rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+
+    if retry curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
+        if project_script_candidate_ok "$_psd_tmp"; then
+            :
+        else
+            warn "Downloaded $_psd_rel from raw GitHub but script validation failed; trying fallbacks"
+            rm -f "$_psd_tmp"
+        fi
+    fi
+
+    if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
+        log "Trying wget fallback for $_psd_rel..."
+        rm -f "$_psd_tmp"
+        if retry wget -qO "$_psd_tmp" "$_psd_raw"; then
+            if project_script_candidate_ok "$_psd_tmp"; then
+                :
+            else
+                warn "wget downloaded $_psd_rel but script validation failed; trying GitHub API fallback"
+                rm -f "$_psd_tmp"
+            fi
+        fi
+    fi
+
+    if [ ! -s "$_psd_tmp" ]; then
+        log "Trying GitHub Contents API fallback for $_psd_rel..."
+        rm -f "$_psd_tmp"
+        if retry curl -fsSL \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_psd_api" -o "$_psd_tmp"; then
+            if ! project_script_candidate_ok "$_psd_tmp"; then
+                warn "GitHub API returned an invalid script candidate for $_psd_rel"
+                rm -f "$_psd_tmp"
+            fi
+        fi
+    fi
+
+    if ! project_script_candidate_ok "$_psd_tmp"; then
+        rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    _psd_dir=${_psd_dest%/*}
+    [ "$_psd_dir" = "$_psd_dest" ] && _psd_dir="."
+    mkdir -p "$_psd_dir" || {
+        rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+        return 1
+    }
+
+    if ! cp -f "$_psd_tmp" "$_psd_stage" || ! project_script_candidate_ok "$_psd_stage"; then
+        rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+        return 1
+    fi
+    if ! mv -f "$_psd_stage" "$_psd_dest"; then
+        rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    rm -f "$_psd_tmp" 2>/dev/null || true
+    return 0
+}
+
+# ---------------------------
 # SYSTEM INFO
 # ---------------------------
 log "Router: $(ndmc -c "show version" 2>/dev/null | grep -Ei 'model|hw id' | head -1 || echo "unknown")"
@@ -608,13 +702,11 @@ fi
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
 
-    if retry curl -fsSL "$PROJECT_RAW_BASE/S00ubifs" \
-        -o /opt/etc/init.d/S00ubifs; then
-
+    if project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"; then
         chmod +x /opt/etc/init.d/S00ubifs
         /opt/etc/init.d/S00ubifs start || warn "S00ubifs start failed"
     else
-        warn "S00ubifs download failed"
+        warn "S00ubifs download failed after raw/curl, raw/wget and GitHub API fallbacks"
     fi
 else
     log "Skip S00ubifs (disk mode)"
@@ -1170,12 +1262,10 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
-if retry curl -fsSL "$PROJECT_RAW_BASE/020-bypass-wa.sh" \
-    -o /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; then
-
+if project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"; then
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 else
-    warn "bypass download failed"
+    warn "bypass download failed after raw/curl, raw/wget and GitHub API fallbacks"
 fi
 
 # ---------------------------
@@ -1191,7 +1281,6 @@ log "Installing watchdog..."
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
-WATCHDOG_URL="$PROJECT_RAW_BASE/mihomo-watchdog.sh"
 
 watchdog_is_canonical() {
     [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null
@@ -1199,14 +1288,14 @@ watchdog_is_canonical() {
 
 install_watchdog_bin() {
     mkdir -p /opt/bin || return 1
-    if ! retry curl -fsSL "$WATCHDOG_URL" -o "$TMP_DIR/mihomo-watchdog.new"; then
-        warn "Watchdog download failed"
+    if ! project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"; then
+        warn "Watchdog download failed after raw/curl, raw/wget and GitHub API fallbacks"
         return 1
     fi
-    # Same sanity gates as update-watchdog.sh: marker + syntax.
-    if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_DIR/mihomo-watchdog.new" || \
-       ! sh -n "$TMP_DIR/mihomo-watchdog.new"; then
-        warn "Watchdog sanity check failed, not installed"
+    # Same watchdog-specific sanity marker as update-watchdog.sh; generic shell
+    # syntax validation already ran inside project_script_download().
+    if ! grep -q "MIHOMO WATCHDOG SCRIPT" "$TMP_DIR/mihomo-watchdog.new"; then
+        warn "Watchdog sanity marker missing, not installed"
         return 1
     fi
     # Same-filesystem staging: copy the validated candidate next to its

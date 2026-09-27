@@ -417,6 +417,21 @@ grep -Fq 'initial opkg update already refreshed its metadata' "$ROOT/install.sh"
 grep -Fq 'retry opkg update || err "opkg update after changing the MagiTrickle repository failed"' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still refresh metadata reliably"
 pass "MagiTrickle helper avoids duplicate opkg update when repository configuration is unchanged"
 
+# Project-managed helper delivery must survive a transient/raw-host failure without
+# weakening validation or clobbering an already installed file. This was added after
+# a real fresh install reached the watchdog step and raw.githubusercontent.com reset
+# all three curl attempts while the rest of the stack had already installed.
+grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must centralize project-script delivery"
+grep -Fq 'if retry curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with curl first"
+grep -Fq 'retry wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain wget fallback"
+grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
+grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
+grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
+grep -Fq 'project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
+grep -Fq 'project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"' "$ROOT/install.sh" || fail "bypass hook must use resilient project-script delivery"
+grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
+pass "installer project-script downloads use validated curl/wget/API fallbacks and atomic destination commit"
+
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
 grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
