@@ -430,6 +430,7 @@ grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail 
 grep -Fq 'project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
 grep -Fq 'project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"' "$ROOT/install.sh" || fail "bypass hook must use resilient project-script delivery"
 grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
+grep -Fq 'rm -f "$_psd_tmp"' "$ROOT/install.sh" || fail "installer project downloader must clear partial candidates between transports"
 pass "installer project-script downloads use validated curl/wget/API fallbacks and atomic destination commit"
 
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
@@ -485,7 +486,10 @@ grep -Fq 'PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"' "$ROOT/setup.sh" || fail 
 grep -q 'MODE=ram' "$ROOT/setup.sh" || fail "simple setup wrapper must select ram for internal /opt"
 grep -q 'MODE=disk' "$ROOT/setup.sh" || fail "simple setup wrapper must select disk for external /opt"
 grep -q 'KEENETIC_AUTO_SETUP_REF="$PROJECT_REF" sh "$INSTALL_STAGE" "$MODE"' "$ROOT/setup.sh" || fail "simple setup wrapper must delegate to canonical install.sh"
-grep -Fq 'retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must fetch the safe config importer after installation"
+grep -Fq 'download_project_script "install.sh" "$INSTALL_STAGE"' "$ROOT/setup.sh" || fail "simple setup must fetch canonical install.sh through the hardened project downloader"
+grep -Fq 'download_project_script "config-import.sh" "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must fetch the safe config importer through the hardened project downloader"
+grep -Fq 'retry_wget_to_file "$_dps_raw" "$_dps_dst"' "$ROOT/setup.sh" || fail "simple setup downloader must retain raw wget fallback"
+grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/setup.sh" || fail "simple setup downloader must retain GitHub Contents API raw fallback"
 grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must continue directly into the safe importer"
 ! grep -Fq '_setup_import_answer' "$ROOT/setup.sh" || fail "simple setup must not consume the first YAML line in a separate confirmation prompt"
 ! grep -q 'dns-proxy intercept enable' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate persistent router configuration"
