@@ -59,7 +59,8 @@ WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 # Cleanup temp files on any exit (the watchdog stage lives on /opt,
 # next to its final destination - a /tmp -> /opt move is not atomic
 # and must never be claimed as such)
-trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE"' EXIT INT TERM HUP
+MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"
+trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE"' EXIT INT TERM HUP
 
 # ---------------------------
 # CHECK BASE
@@ -662,6 +663,53 @@ project_script_download() {
     return 0
 }
 
+fetch_url_text() {
+    _fut_url="$1"
+    _fut_out=""
+
+    if command -v curl >/dev/null 2>&1; then
+        _fut_out=$(retry curl -fsSL "$_fut_url" 2>/dev/null) || _fut_out=""
+        if [ -n "$_fut_out" ]; then
+            printf '%s' "$_fut_out"
+            return 0
+        fi
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        _fut_out=$(retry wget -qO- -T 20 "$_fut_url" 2>/dev/null) || _fut_out=""
+        if [ -n "$_fut_out" ]; then
+            printf '%s' "$_fut_out"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+download_url_file() {
+    _duf_url="$1"
+    _duf_dst="$2"
+
+    rm -f "$_duf_dst" 2>/dev/null || true
+
+    if command -v curl >/dev/null 2>&1; then
+        if retry curl -fL "$_duf_url" -o "$_duf_dst"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        log "curl download unavailable/failed; trying wget fallback..."
+        if retry wget -qO "$_duf_dst" "$_duf_url"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+    fi
+
+    return 1
+}
+
 # ---------------------------
 # SYSTEM INFO
 # ---------------------------
@@ -778,7 +826,7 @@ else
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    ASSETS_JSON=$(retry curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+    ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
     DOWNLOAD_URL=""
 
     if [ -n "$ASSETS_JSON" ]; then
@@ -798,7 +846,7 @@ else
 
     if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
         log "API failed, trying direct API grep..."
-        ASSETS_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || ASSETS_JSON=""
+        ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
         if [ -n "$ASSETS_JSON" ]; then
             DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
         fi
@@ -807,7 +855,8 @@ else
     if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
         log "Trying HTML scraping..."
         HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
-        REL_PATH=$(curl -fsSL "$HTML_URL" 2>/dev/null | \
+        HTML_BODY=$(fetch_url_text "$HTML_URL") || HTML_BODY=""
+        REL_PATH=$(printf '%s' "$HTML_BODY" | \
             grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | \
             head -n 1 | cut -d'"' -f2)
         if [ -n "$REL_PATH" ]; then
@@ -824,7 +873,7 @@ else
     else
         log "Found: $(basename "$DOWNLOAD_URL")"
         log "Downloading..."
-        if retry curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/mihomo.ipk"; then
+        if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then
             log "Installing package..."
             if opkg install "$TMP_DIR/mihomo.ipk"; then
                 MIHOMO_INSTALLED=1
@@ -1235,13 +1284,17 @@ log "Ensuring MagiTrickle package repository..."
 # The upstream helper prints an interactive "do not forget to install magitrickle"
 # reminder. install.sh performs that step itself, so suppress helper stdout to avoid
 # telling users to repeat an action that is already automated. Keep stderr visible.
-if curl -fsSL https://bin.magitrickle.dev/packages/add_repo.sh 2>/dev/null | sh >/dev/null; then
-    :
-elif wget -qO- https://bin.magitrickle.dev/packages/add_repo.sh | sh >/dev/null; then
-    :
-else
+rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
+if ! download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
+    err "Failed to download MagiTrickle repository helper through curl/wget"
+fi
+if ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
+    err "Downloaded MagiTrickle repository helper failed shell syntax validation"
+fi
+if ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
     err "Failed to add MagiTrickle package repository"
 fi
+rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 
 MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
 if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
