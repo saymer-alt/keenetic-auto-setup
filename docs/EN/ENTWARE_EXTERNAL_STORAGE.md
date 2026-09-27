@@ -72,22 +72,57 @@ If the staged installer never appears, verify the selected partition, EXT4,
 the root-level `install` directory, the correct installer archive, Internet
 access, and DNS resolution for `bin.entware.net`.
 
-## 5. Do not confuse the two SSH services
+## 5. Router CLI is not required for external-storage installation
 
-Before Entware exists, router SSH (normally port 22, router user such as
-`admin`) opens the native router CLI.
+For the USB/SSD path, Entware installation is performed through **Files and
+folders** plus the **OPKG package manager**. You do not need to open the router
+CLI just to install Entware:
 
-After Entware is installed, a separate Dropbear instance under `/opt` becomes
-available. The current vendor installer typically reports the initial Entware
-credentials in the system log (commonly `root` / `keenetic` on port 222).
-Follow the actual final log lines from your installation and change the initial
-credentials afterward.
+- no Telnet is required;
+- no SSH connection to port 22 is required;
+- do not manually run `opkg disk ...`;
+- do not launch the installer from the router CLI.
 
-On macOS, `telnet` may not be installed. Use SSH instead, for example:
+Once `install` is prepared correctly, the proper storage is selected in OPKG,
+and **Save** has been pressed, watch the system log and wait for the final
+`[5/5] "Entware" installed!` message.
+
+### If you need the router CLI for another task
+
+The Web CLI can be opened by appending `/a` to the router address:
+
+```text
+http://<router-IP>/a
+```
+
+For example:
+
+```text
+http://192.168.1.1/a
+```
+
+This is the **router's own CLI**, not an Entware shell, and it is still not
+needed for external-storage Entware installation.
+
+The native router SSH service can also be used, normally on port 22 with a
+router user such as `admin`:
 
 ```bash
 ssh admin@192.168.1.1
 ```
+
+On the first OpenSSH connection, answer the host-key prompt with the full word
+`yes`, not just `y`. Modern macOS may not include a `telnet` command; installing
+Telnet just for this workflow is unnecessary.
+
+### Do not confuse router SSH with Entware SSH
+
+Before Entware exists, router SSH opens the native router CLI. After Entware is
+installed, a separate Dropbear instance under `/opt` becomes available. The
+current vendor installer typically reports the initial Entware credentials in
+the system log (commonly `root` / `keenetic` on port 222). Follow the actual
+final log lines from your installation and change the initial credentials
+afterward.
 
 ## 6. DNS errors are a separate failure class
 
