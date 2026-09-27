@@ -58,6 +58,8 @@ MagiTrickle:  http://192.168.1.1:8080/
 
 If Config Import is skipped with `s`, the minimal bootstrap config keeps only the required `mixed-port: 7890`; `external-controller`/MetaCubeXD is not configured yet, so port 9090 is **not expected** to listen. MagiTrickle on 8080 remains available independently.
 
+> **MagiTrickle itself is installed automatically, but your user `.mtrickle` configuration is not.** `setup.sh`/`install.sh` add the repository, install the MagiTrickle package, start the service, and configure the required system integration. Exported groups, rules, interfaces, and other user settings from a `.mtrickle` file are intentionally not imported by the installer. After a clean install, open MagiTrickle at `http://<router-IP>:8080/` and import your saved configuration manually if you need to restore it.
+
 For the first MetaCubeXD open after importing the full config, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` in both links.
 
 Details → [safe config import](CONFIG_IMPORT.md) · [Mihomo overview](../encyclopedia/10-mihomo-eto.md) · [generator source](https://github.com/saymer-alt/link-generators)
