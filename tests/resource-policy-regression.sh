@@ -52,6 +52,26 @@ SwapTotal:             0 kB
 SwapFree:              0 kB
 EOF
 
+cat > "$TMP/mem-512" <<'EOF'
+MemTotal:         524288 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+EOF
+
+cat > "$TMP/swaps-none" <<'EOF'
+Filename                                Type            Size    Used    Priority
+EOF
+
+cat > "$TMP/swaps-512-zram" <<'EOF'
+Filename                                Type            Size    Used    Priority
+/dev/zram0                              partition       524284  0       100
+EOF
+
+cat > "$TMP/swaps-512-external" <<'EOF'
+Filename                                Type            Size    Used    Priority
+/dev/sda1                               partition       524288  0       -1
+EOF
+
 cat > "$TMP/swaps-oversize" <<'EOF'
 Filename                                Type            Size    Used    Priority
 /dev/sda1                               partition       2200000 0       -1
@@ -161,6 +181,10 @@ expect_reject     "128 MB profile rejects external swap below the 384 MB floor" 
 expect_accept     "128 MB profile accepts the exact 384 MB external-swap floor as experimental"     "$TMP/mem-128" "$TMP/mounts-external" "$TMP/swaps-128-enough"     "LOW-RAM / BEST-EFFORT INSTALL"
 
 expect_accept     "zRAM plus external swap continues but emits the coexistence warning"     "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-zram-plus-disk"     "zRAM and external storage-backed swap are active together"
+
+expect_reject     "512 MB profile rejects a new install with no zRAM/external swap backend"     "$TMP/mem-512" "$TMP/mounts-internal" "$TMP/swaps-none"     "Bare 512 MB RAM is NOT a supported project baseline"
+expect_accept     "512 MB profile accepts active zRAM"     "$TMP/mem-512" "$TMP/mounts-internal" "$TMP/swaps-512-zram"     "512 MB-class with active zRAM - supported project profile"
+expect_accept     "512 MB profile accepts verified external storage-backed swap"     "$TMP/mem-512" "$TMP/mounts-external" "$TMP/swaps-512-external"     "512 MB-class with external storage-backed swap"
 
 if ! run_policy "$TMP/mem-256" "$TMP/mounts-external" "$TMP/swaps-256-below-ram" "$TMP/out-swap-below-ram"; then
     cat "$TMP/out-swap-below-ram" >&2

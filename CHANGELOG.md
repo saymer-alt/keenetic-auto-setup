@@ -8,6 +8,26 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.7.2] - 2026-09-27
+
+### Изменено
+- Контракт ресурсов обновлён до `20260927_1`: **«голые» 512 МБ RAM больше не являются поддерживаемой базой для новой установки**. На 512 МБ-классе обязателен хотя бы один активный memory-pressure backend: штатный KeeneticOS zRAM **или** проверенный внешний storage-backed swap.
+- Если на 512 МБ-классе нет ни zRAM, ни проверенного внешнего swap, `install.sh` теперь останавливается с **ERROR до package installation/project mutations**, а Doctor v1.2.16 показывает **FAIL**. Исключений для точки доступа/extender и отдельного low-memory override нет.
+- Для уже существующих legacy-инсталляций `update-mihomo.sh` остаётся non-blocking: он выдаёт сильный WARN, но не лишает работающий роутер возможности безопасно обновить Mihomo. 256 МБ-класс остаётся WARN-only; >512 МБ-класс в этом релизе не переводится на hard gate.
+- Пользовательская документация, AGENTS.md, Doctor, installer и contract/regression tests синхронизированы с одним и тем же правилом. В README явно добавлено предупреждение про 512 МБ-класс.
+
+### Основание
+- Read-only MCP-срез реального парка 2026-09-27 показал, что два KN-1012 без swap были не основными роутерами, а домашними точками доступа и имели лишь около 41–49% non-cache RAM use. Они не являются репрезентативным примером нагрузки gateway.
+- Основные KN-3811/NC-3812 того же 512 МБ-класса находились примерно на 63–76% non-cache RAM use; три доступных zRAM backend уже реально содержали около 7–17 МБ данных. Ещё один основной KN-1012 с внешним swap имел около 68% non-cache RAM use и лишь ~26 МБ raw `memfree`.
+- Это project OOM-headroom policy, а не утверждение, что производитель требует zRAM на каждом 512 МБ устройстве. Один доступный 1 GiB-class NC-1812 в том же срезе имел заметно больший запас (~58% non-cache RAM use, ~279 МБ raw `memfree`, swap не использовался), поэтому 1 GiB-класс пока оставлен под наблюдением без нового hard gate.
+
+### Тестирование
+- Добавлены fixture-тесты: 512 МБ без обоих backend → reject; 512 МБ + zRAM → accept; 512 МБ + verified external swap → accept.
+- Contract tests закрепляют installer ERROR / Doctor FAIL / updater WARN-only legacy behavior и явную формулировку, что bare 512 MB RAM не является поддерживаемой базой.
+- Полный CI release candidate должен быть зелёным: shell syntax, contract smoke tests, transaction invariants, local Markdown links и whitespace.
+
+---
+
 ## [1.7.1] - 2026-09-27
 
 ### Changed

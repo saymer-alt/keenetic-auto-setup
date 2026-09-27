@@ -677,7 +677,7 @@ command -v tar >/dev/null || error "tar is required but not installed (busybox a
 # -----------------------------
 # 2. Resource-profile advisory (read-only; never blocks legacy updates)
 # -----------------------------
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_3
+RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
 UP_SWAP128_MIN_KB=393216
@@ -778,7 +778,7 @@ if [ -n "$TOTAL_MEM_KB" ]; then
     fi
   elif [ "$TOTAL_MEM_KB" -lt "$UP_RAM256_MAX_KB" ]; then
     if [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
-      _profile_warn_banner "MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external swap" "Project policy expects one ACTIVE backend on <=512 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking for this existing installation."
+      _profile_warn_banner "MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external swap" "Project policy expects one ACTIVE backend on the 256 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking for this existing installation."
     elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$TOTAL_MEM_KB" ]; then
       warn "External SWAP is below project minimum floor: $((UP_EXT_KB/1024)) MB active vs about $((TOTAL_MEM_KB/1024)) MB minimum (1x detected RAM; project policy, not vendor minimum)."
     elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_SWAP_TARGET_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$UP_SWAP_TARGET_KB" ]; then
@@ -786,7 +786,7 @@ if [ -n "$TOTAL_MEM_KB" ]; then
     fi
   elif [ "$TOTAL_MEM_KB" -lt "$UP_RAM512_MAX_KB" ]; then
     if [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -le 0 ]; then
-      _profile_warn_banner "MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap" "Project policy expects one ACTIVE backend on <=512 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking for this existing installation."
+      _profile_warn_banner "MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap" "Current supported new-install policy REQUIRES one ACTIVE backend on the 512 MB-class: KeeneticOS zRAM OR verified EXTERNAL storage-backed swap." "Updater remains non-blocking only to service this existing legacy installation; enable one backend to return to the supported profile."
     elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$TOTAL_MEM_KB" ]; then
       warn "External SWAP is below project minimum floor: $((UP_EXT_KB/1024)) MB active vs about $((TOTAL_MEM_KB/1024)) MB minimum (1x detected RAM; project policy, not vendor minimum)."
     elif [ "$UP_ZRAM_KB" -le 0 ] && [ "$UP_EXT_KB" -gt 0 ] && [ "$UP_SWAP_TARGET_KB" -gt 0 ] && [ "$UP_EXT_KB" -lt "$UP_SWAP_TARGET_KB" ]; then

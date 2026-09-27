@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.15 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.16 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,7 +33,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.15"
+DOCTOR_VERSION="1.2.16"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -856,7 +856,7 @@ SWAP_TOTAL=$(awk '/^SwapTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAP_FREE=$(awk '/^SwapFree:/ {print $2}' "$MEMINFO" 2>/dev/null)
 SWAPS_SRC="${DOCTOR_SWAPS:-/proc/swaps}"
 MOUNTS_SRC="${DOCTOR_MOUNTS:-/proc/mounts}"
-RESOURCE_PROFILE_CONTRACT_VERSION=20260921_3
+RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
 DOC_RAM256_MAX_KB=450000
 DOC_RAM512_MAX_KB=786432
 DOC_SWAP_MAX_KB=2097152
@@ -1053,7 +1053,7 @@ if is_num "$MEM_TOTAL"; then
                 info "External SWAP is below preferred project sizing target but meets the minimum floor: $((_doc_ext_kb/1024)) MB active, minimum about $((MEM_TOTAL/1024)) MB (1x RAM), preferred target about $((_doc_swap_target_kb/1024)) MB (3x RAM, capped at 2048 MB)"
             fi
         else
-            warn "256 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
+            warn "256 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on the 256 MB-class"
         fi
     elif [ "$MEM_TOTAL" -lt "$DOC_RAM512_MAX_KB" ]; then
         if [ "$_doc_zram_kb" -gt 0 ]; then
@@ -1066,7 +1066,7 @@ if is_num "$MEM_TOTAL"; then
                 info "External SWAP is below preferred project sizing target but meets the minimum floor: $((_doc_ext_kb/1024)) MB active, minimum about $((MEM_TOTAL/1024)) MB (1x RAM), preferred target about $((_doc_swap_target_kb/1024)) MB (3x RAM, capped at 2048 MB)"
             fi
         else
-            warn "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - project policy expects one backend on <=512 MB-class"
+            fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP - bare 512 MB RAM is not a supported project baseline; one active backend is mandatory to preserve OOM headroom"
         fi
     else
         info "Above-512 MB memory class: swap/zRAM is optional"

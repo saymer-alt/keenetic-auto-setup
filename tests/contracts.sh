@@ -32,7 +32,7 @@ grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fa
 grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
-PROFILE_CONTRACT=20260921_3
+PROFILE_CONTRACT=20260927_1
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||
         fail "$_f must carry resource-profile contract $PROFILE_CONTRACT"
@@ -43,6 +43,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
+grep -Fq 'DOCTOR_VERSION="1.2.16"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must advance for the 512 MB severity contract change"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
@@ -87,9 +88,9 @@ grep -q 'project minimum floor: .*1x detected RAM' "$ROOT/install.sh" || fail "i
 grep -q 'below the preferred project sizing target but meets the minimum floor' "$ROOT/install.sh" || fail "installer must keep the 1x..3x swap range informational"
 grep -q '3x RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must retain the preferred 3x RAM sizing target"
 grep -q '256 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "256 MB missing backend must WARN"
-grep -q '512 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "512 MB missing backend must WARN"
+grep -q 'err "512 MB-class device .*Bare 512 MB RAM is NOT a supported project baseline' "$ROOT/install.sh" || fail "512 MB missing backend must hard-stop new installs with explicit unsupported-baseline wording"
 grep -q 'Stopping before package installation or project changes' "$ROOT/install.sh" || fail "oversized external swap must be an early installer error"
-pass "installer enforces resource contract 20260921_3"
+pass "installer enforces resource contract 20260927_1"
 
 sh "$ROOT/tests/resource-scan-regression.sh" "$ROOT" ||
     fail "resource scanner must remain non-fatal for ordinary states under set -e"
@@ -97,7 +98,7 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
-pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, zRAM+disk warning, and 1x/3x swap severity"
+pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk warning, and 1x/3x swap severity"
 
 grep -Fq -- '--allow-internal-disk' "$ROOT/install.sh" || fail "installer must expose the narrow internal-disk override"
 grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage' "$ROOT/install.sh" || fail "installer must hard-stop accidental disk mode on internal /opt"
@@ -125,10 +126,10 @@ pass "Mihomo free-space checks distinguish Doctor estimate from updater candidat
 grep -q 'External storage-backed SWAP exceeds 2 GiB' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL oversized external swap"
 grep -q "swap source(s) are marked '(deleted)'" "$ROOT/mihomo-doctor.sh" || fail "doctor must surface stale/deleted swap sources"
 grep -q '256 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 256 MB missing backend"
-grep -q '512 MB-class has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN 512 MB missing backend"
+grep -q 'fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP .*bare 512 MB RAM is not a supported project baseline' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL 512 MB missing backend with explicit unsupported-baseline wording"
 grep -q 'External SWAP is below project minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN below the 1x RAM swap floor"
 grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must report the 1x..3x swap range as INFO"
-pass "doctor mirrors resource contract 20260921_3"
+pass "doctor mirrors resource contract 20260927_1"
 
 grep -q 'UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB' "$ROOT/update-mihomo.sh" || fail "updater must surface oversized external swap"
 grep -q "UP_DELETED_COUNT" "$ROOT/update-mihomo.sh" || fail "updater must exclude deleted swap sources from capacity decisions"
