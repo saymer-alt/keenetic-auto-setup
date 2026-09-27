@@ -6,9 +6,27 @@
 
 ## Обычный запуск
 
-```bash
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
 ## Что делает мастер
@@ -26,7 +44,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Важно: самая первая команда `curl .../setup.sh | sh` всё равно является bootstrap-входом и физически должна получить сам `setup.sh`. Fallback-цепочка начинает работать уже **внутри успешно запущенного `setup.sh`** для его дочерних файлов.
+Первый bootstrap теперь тоже не зависит от одного `raw.githubusercontent.com`/`curl`: команда выше пробует raw через `curl`, затем тот же raw через `wget`, затем GitHub Contents API. Частичный файл удаляется между transport-попытками, а перед запуском кандидат обязан быть непустым `#!/bin/sh`-скриптом и пройти `sh -n`. После старта `setup.sh` та же модель устойчивой доставки используется уже внутри проекта для дочерних файлов.
 
 ## Почему setup.sh не выбирает режим «на глаз»
 

@@ -25,7 +25,7 @@
 
 ```sh
 SCRIPT=setup.sh
-TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$"
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
 RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
 API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
 
