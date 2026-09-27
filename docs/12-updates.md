@@ -114,7 +114,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - повторный запуск идемпотентен;
 - WireGuard `ip-stack` не затрагивает.
 
-Если TUN в конфиге нет, миграция не нужна.
+Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.14 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
 
 ## После обслуживания
 
