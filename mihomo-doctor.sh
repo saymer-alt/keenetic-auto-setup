@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # =========================================================
-# mihomo-doctor.sh v1.2.11 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.12 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,7 +33,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.11"
+DOCTOR_VERSION="1.2.12"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -56,6 +56,7 @@ MT_PIDFILE="$OPT_ROOT/var/run/magitrickle.pid"
 ENTWARE_REPO="saymer-alt/entware-go"
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
+PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
 CONTRACT_PORT=7890          # watchdog PROXY + project ProxyN upstream
 MAX_PROXY_PROBE=32          # same protective scan cap as install.sh
 # Same updater staging safety margin as install.sh/update-mihomo.sh.
@@ -329,17 +330,31 @@ proxy_profile_class() {
 }
 
 # fetch_url URL -> globals FETCH_OUT (body) and FETCH_RC.
-# curl preferred, wget fallback; nothing is written to disk.
+# curl is tried first; an actual curl failure falls back to wget rather than
+# using wget only when curl is absent. Nothing is written to disk.
 fetch_url() {
+    FETCH_OUT=""
+    FETCH_RC=1
     if command -v curl >/dev/null 2>&1; then
         FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 "$1" 2>/dev/null)
         FETCH_RC=$?
-    elif command -v wget >/dev/null 2>&1; then
+        if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
+            return 0
+        fi
+        FETCH_OUT=""
+    fi
+    if command -v wget >/dev/null 2>&1; then
         FETCH_OUT=$(wget -qO- -T 15 "$1" 2>/dev/null)
         FETCH_RC=$?
-    else
-        FETCH_OUT=""; FETCH_RC=127
+        if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
+            return 0
+        fi
+        FETCH_OUT=""
     fi
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        FETCH_RC=127
+    fi
+    return "$FETCH_RC"
 }
 
 # run_with_timeout SECS CMD... -> globals RUN_OUT / RUN_RC.
@@ -2317,13 +2332,28 @@ else
     NET_GITHUB=0
 fi
 
+PROJECT_RAW_OK=0
+PROJECT_API_OK=0
 fetch_url "$PROJECT_RAW_BASE/README.md"
 if [ "$FETCH_RC" -eq 127 ]; then
-    info "raw.githubusercontent.com check skipped (no curl/wget)"
-elif [ -n "$FETCH_OUT" ]; then
-    ok "raw.githubusercontent.com reachable (script delivery path for install.sh/update-watchdog.sh)"
+    info "Project script-delivery checks skipped (no curl/wget)"
 else
-    warn "raw.githubusercontent.com unreachable - curl|sh delivery of install.sh and updaters would fail"
+    [ -n "$FETCH_OUT" ] && PROJECT_RAW_OK=1
+
+    fetch_url "$PROJECT_API_CONTENTS/README.md?ref=$PROJECT_REF"
+    if [ -n "$FETCH_OUT" ] && ! printf "%s\n" "$FETCH_OUT" | grep -q '"API rate limit'; then
+        PROJECT_API_OK=1
+    fi
+
+    if [ "$PROJECT_RAW_OK" -eq 1 ] && [ "$PROJECT_API_OK" -eq 1 ]; then
+        ok "Project delivery reachable through raw.githubusercontent.com and GitHub Contents API fallback"
+    elif [ "$PROJECT_RAW_OK" -eq 1 ]; then
+        info "raw.githubusercontent.com reachable; GitHub Contents API fallback is unavailable/rate-limited right now"
+    elif [ "$PROJECT_API_OK" -eq 1 ]; then
+        info "raw.githubusercontent.com unavailable, but GitHub Contents API fallback is reachable - hardened project downloads can continue"
+    else
+        warn "Both raw.githubusercontent.com and the GitHub Contents API project-delivery fallback are unreachable - remote project script downloads may fail"
+    fi
 fi
 
 # =========================================================
