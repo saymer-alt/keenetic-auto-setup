@@ -4,6 +4,7 @@ set -e
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
+PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
 INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
 CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
@@ -17,16 +18,77 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
-retry_download() {
-    _rd_url="$1"
-    _rd_dst="$2"
-    for _rd_try in 1 2 3; do
-        if curl -fSsL "$_rd_url" -o "$_rd_dst"; then
+script_candidate_ok() {
+    _sc_file="$1"
+    [ -s "$_sc_file" ] || return 1
+    [ "$(head -n 1 "$_sc_file" 2>/dev/null)" = "#!/bin/sh" ] || return 1
+    sh -n "$_sc_file" >/dev/null 2>&1
+}
+
+retry_curl_to_file() {
+    _rc_url="$1"
+    _rc_dst="$2"
+    _rc_api="${3:-0}"
+    for _rc_try in 1 2 3; do
+        rm -f "$_rc_dst" 2>/dev/null || true
+        if [ "$_rc_api" -eq 1 ]; then
+            if curl -fSsL \
+                -H "Accept: application/vnd.github.raw+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$_rc_url" -o "$_rc_dst"; then
+                return 0
+            fi
+        elif curl -fSsL "$_rc_url" -o "$_rc_dst"; then
             return 0
         fi
-        warn "Download attempt $_rd_try/3 failed"
+        rm -f "$_rc_dst" 2>/dev/null || true
+        warn "curl download attempt $_rc_try/3 failed"
         sleep 2
     done
+    return 1
+}
+
+retry_wget_to_file() {
+    _rw_url="$1"
+    _rw_dst="$2"
+    command -v wget >/dev/null 2>&1 || return 1
+    for _rw_try in 1 2 3; do
+        rm -f "$_rw_dst" 2>/dev/null || true
+        if wget -qO "$_rw_dst" "$_rw_url"; then
+            return 0
+        fi
+        rm -f "$_rw_dst" 2>/dev/null || true
+        warn "wget download attempt $_rw_try/3 failed"
+        sleep 2
+    done
+    return 1
+}
+
+download_project_script() {
+    _dps_rel="$1"
+    _dps_dst="$2"
+    _dps_raw="$PROJECT_RAW_BASE/$_dps_rel"
+    _dps_api="$PROJECT_API_CONTENTS/$_dps_rel?ref=$PROJECT_REF"
+
+    rm -f "$_dps_dst" 2>/dev/null || true
+
+    if retry_curl_to_file "$_dps_raw" "$_dps_dst" && script_candidate_ok "$_dps_dst"; then
+        return 0
+    fi
+    rm -f "$_dps_dst" 2>/dev/null || true
+
+    log "Trying wget fallback for $_dps_rel..."
+    if retry_wget_to_file "$_dps_raw" "$_dps_dst" && script_candidate_ok "$_dps_dst"; then
+        return 0
+    fi
+    rm -f "$_dps_dst" 2>/dev/null || true
+
+    log "Trying GitHub Contents API fallback for $_dps_rel..."
+    if retry_curl_to_file "$_dps_api" "$_dps_dst" 1 && script_candidate_ok "$_dps_dst"; then
+        return 0
+    fi
+
+    rm -f "$_dps_dst" 2>/dev/null || true
     return 1
 }
 
@@ -101,10 +163,8 @@ case "$OPT_CLASS" in
 esac
 
 log "Downloading the canonical installer from '${PROJECT_REF}'..."
-retry_download "$PROJECT_RAW_BASE/install.sh" "$INSTALL_STAGE" || \
-    err "Could not download install.sh after 3 attempts"
-
-sh -n "$INSTALL_STAGE" || err "Downloaded install.sh failed shell syntax validation"
+download_project_script "install.sh" "$INSTALL_STAGE" || \
+    err "Could not download a valid install.sh through raw/curl, raw/wget or GitHub API fallbacks"
 
 log "Starting canonical installer..."
 KEENETIC_AUTO_SETUP_REF="$PROJECT_REF" sh "$INSTALL_STAGE" "$MODE"
@@ -117,9 +177,8 @@ echo "Next step: Mihomo configuration"
 
 if [ -r /dev/tty ] && [ -w /dev/tty ]; then
     log "Downloading safe config importer..."
-    retry_download "$PROJECT_RAW_BASE/config-import.sh" "$CONFIG_IMPORT_STAGE" || \
-        err "Could not download config-import.sh after 3 attempts"
-    sh -n "$CONFIG_IMPORT_STAGE" || err "Downloaded config-import.sh failed shell syntax validation"
+    download_project_script "config-import.sh" "$CONFIG_IMPORT_STAGE" || \
+        err "Could not download a valid config-import.sh through raw/curl, raw/wget or GitHub API fallbacks"
     log "Starting safe config importer..."
     sh "$CONFIG_IMPORT_STAGE"
 else
