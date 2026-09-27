@@ -320,16 +320,37 @@ date                       # сбитое время → позже упадут
 
 ## 3. Установка
 
-### 3.1 Команда
+### 3.1 Рекомендуемый путь
 
-**Основной путь — универсальный установщик** (автоопределение архитектуры: aarch64 / armv7 / mipsel / mips):
+Для обычной установки нужен один запуск. `setup.sh` сам определит профиль хранения (`ram`/`disk`), передаст все проверки каноническому installer и после успешной установки **сразу запустит безопасный импорт конфигурации Mihomo**.
 
-```bash
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
-**MT7621 / mipsel-устройства** используют тот же универсальный установщик — та же команда выше; отдельного установщика больше нет.
+Во время установки мастер проверяет storage, RAM/swap и обязательные компоненты KeeneticOS. Если состояние нельзя определить безопасно, установка останавливается вместо угадывания.
+
+
+Для явного выбора профиля `ram|disk`, offline/SCP-сценария и других advanced-вариантов используйте [подробную документацию по установке](03-install.md). Сам `install.sh` остаётся каноническим backend-installer'ом, но обычный пользовательский вход — через `setup.sh`.
 
 ### 3.2 Что именно делает `install.sh`
 

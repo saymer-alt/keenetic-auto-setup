@@ -320,16 +320,39 @@ If `opkg update` fails: check DNS first (`cat /opt/etc/resolv.conf` — usually 
 
 ## 3. Installation
 
-### 3.1 The command
+### 3.1 Recommended path
 
-**The primary path is the universal installer** (architecture auto-detection: aarch64 / armv7 / mipsel / mips):
+### 🚀 Simple path — recommended for most users
 
-```bash
+You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
+
+```sh
+SCRIPT=setup.sh
+TMP="/tmp/keenetic-auto-setup-${SCRIPT}.$$"
+RAW="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/${SCRIPT}"
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/${SCRIPT}?ref=stable"
+
 opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/install.sh | sh
+rm -f "$TMP" && \
+( curl -fSsL "$RAW" -o "$TMP" || \
+  { rm -f "$TMP"; wget -qO "$TMP" "$RAW"; } || \
+  { rm -f "$TMP"; curl -fSsL \
+      -H "Accept: application/vnd.github.raw+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API" -o "$TMP"; } ) && \
+[ -s "$TMP" ] && \
+[ "$(head -n 1 "$TMP" 2>/dev/null)" = "#!/bin/sh" ] && \
+sh -n "$TMP" && \
+sh "$TMP"
+RC=$?
+rm -f "$TMP"
+[ "$RC" -eq 0 ]
 ```
 
-**MT7621 / mipsel devices** run the same universal installer — the same command above; there is no separate installer anymore.
+If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
+
+
+For explicit `ram|disk` selection, offline/SCP delivery and other advanced cases, use the [detailed installation guide](03-install.md). `install.sh` remains the canonical backend installer, while the normal user entry point is `setup.sh`.
 
 ### 3.2 What `install.sh` actually does
 
