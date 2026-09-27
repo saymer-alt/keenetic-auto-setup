@@ -602,6 +602,10 @@ project_script_download() {
             warn "Downloaded $_psd_rel from raw GitHub but script validation failed; trying fallbacks"
             rm -f "$_psd_tmp"
         fi
+    else
+        # curl may leave a partial non-empty file after a reset; never let that
+        # suppress the next transport.
+        rm -f "$_psd_tmp"
     fi
 
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
@@ -614,6 +618,8 @@ project_script_download() {
                 warn "wget downloaded $_psd_rel but script validation failed; trying GitHub API fallback"
                 rm -f "$_psd_tmp"
             fi
+        else
+            rm -f "$_psd_tmp"
         fi
     fi
 
