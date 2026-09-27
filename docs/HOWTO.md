@@ -629,6 +629,137 @@ Only save the router configuration after the end-to-end path has been confirmed.
 
 Status as of 2026-09-22: the Keenetic CLI capability and the ProxyN architecture are confirmed by documentation/code, but the full secure-DNS path has not yet had a dedicated live acceptance on KeeneticOS 5.1.5. Until that test exists, treat this section as an **experimental procedure**, not a ready-made project configuration.
 
+
+### 6.4 Building a domain list and a MagiTrickle group from scratch
+
+If you do not already have a saved MagiTrickle user configuration, you do not need
+to hand-write a config file. Build the rules in the web UI, validate them against
+the real service, then use **Export Config**.
+
+The official MagiTrickle UI is available at:
+
+```text
+http://<router-IP>:8080/
+```
+
+On the **Groups** tab you can create a group, select an interface, add rules, import
+rules from a text list, save the configuration, and export the finished user config.
+See the official
+[UI overview](https://magitrickle.dev/docs/usage/overview/) and
+[rule types](https://magitrickle.dev/docs/usage/rules/).
+
+#### Step 1. Decide which service should use Mihomo
+
+Start with one service or site rather than a giant catch-all list. Small groups are
+much easier to validate and troubleshoot.
+
+#### Step 2. Build an initial domain list
+
+One useful external source is [OpenCCK IP List](https://iplist.opencck.org/ru/).
+It groups data by portals/services and provides multiple data views. For the normal
+MagiTrickle domain-routing workflow, start from the service's **domain names**.
+
+OpenCCK is a convenient starting point, not a project contract or a guarantee of
+completeness. A modern service may use separate domains for its main site, API,
+authentication, static assets, CDN, video/media, telemetry, and other helpers.
+Always validate the list against the real service.
+
+Do not begin with broad IP/CIDR ranges unless you actually need subnet routing.
+Shared CDN ranges can carry unrelated services and send much more traffic through
+the proxy than intended. MagiTrickle supports IPv4/IPv6 subnet rules, but they are
+a separate tool rather than a substitute for a careful domain list.
+
+#### Step 3. Create the group and select the egress interface
+
+In MagiTrickle:
+
+1. create a new group;
+2. give it a clear name such as `Mihomo`, `Video`, or `AI`;
+3. select the project `mihomo t2sN` / corresponding ProxyN interface;
+4. enable the group.
+
+A typical clean install maps Proxy0 to `mihomo t2s0`, but the ProxyN number is
+not guaranteed: the installer may reuse a compatible legacy interface or choose
+the next free slot.
+
+#### Step 4. Add the domain rules
+
+For most normal domain lists, **Namespace** is the useful default. According to the
+official MagiTrickle documentation, a Namespace rule such as:
+
+```text
+example.com
+```
+
+matches both `example.com` and its subdomains such as
+`api.example.com` and `cdn.example.com`.
+
+Use **Domain** when only one exact hostname should match. Keep Wildcard and RegExp
+for cases where Namespace/Domain are genuinely insufficient.
+
+For a larger list, use **Import rule list** and paste one domain per line, for
+example:
+
+```text
+example.com
+example-cdn.net
+example-auth.org
+```
+
+After import, review the created rules and their types. For a normal domain list,
+Namespace is usually the intended type when subdomains should be included.
+
+#### Step 5. Save the changes
+
+Use MagiTrickle's **Save configuration** control after adding/importing the rules.
+The official UI documentation notes that it appears when there are unsaved changes.
+Do not treat the group as complete until the changes have actually been saved.
+
+#### Step 6. Validate the real service and expand the list
+
+From a LAN client:
+
+1. make sure the client uses Keenetic DNS and is not bypassing it with its own DoH/DoT;
+2. open the target service;
+3. verify that the expected connections appear in MetaCubeXD/Mihomo and use the
+   intended outbound;
+4. test more than the landing page: login, images, media/video, APIs, and other
+   service functions matter too.
+
+If the service works only partially, the common cause is an incomplete domain set:
+identify the missing API/CDN/auth domain, add it, and test again.
+
+`mihomo-route-check.sh` can provide an additional read-only check for one domain
+through the current Mihomo path, but it does **not prove** that a particular LAN
+client was classified by MagiTrickle policy; those are different layers.
+
+#### Step 7. Export the working configuration
+
+Once the groups and rules are validated, use **Export Config**. This is the normal
+way to create a portable MagiTrickle user configuration for backup or another router.
+
+The project installs and starts MagiTrickle automatically, but intentionally does
+**not** auto-import your personal rules/config. After a clean install, restore them
+through **Import Config** when needed.
+
+Short workflow:
+
+```text
+OpenCCK / your own domain list
+        ↓
+MagiTrickle: group + interface
+        ↓
+Import rules → Namespace
+        ↓
+Save
+        ↓
+validate the service
+        ↓
+add missing API/CDN/auth domains
+        ↓
+Export Config
+```
+
 ---
 
 ## 7. Watchdog in operation
