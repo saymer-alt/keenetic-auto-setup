@@ -124,7 +124,7 @@ tun:
 
 Если `tun:` уже существует, этот migrator делает no-op и ничего не нормализует. Для существующего `stack: gvisor` → `stack: mips` используется отдельный `migrate-mihomo-mips.sh`.
 
-Doctor v1.2.15 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
+Doctor v1.2.16 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
 
 ## MIPS TUN migration
 
@@ -153,7 +153,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - повторный запуск идемпотентен;
 - WireGuard `ip-stack` не затрагивает.
 
-Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.15 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
+Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.16 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
 
 ## После обслуживания
 

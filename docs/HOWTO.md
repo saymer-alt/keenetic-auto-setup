@@ -276,7 +276,7 @@ Check every point — most failed installs trace back to one of these:
 
 | Requirement | How to check | Notes |
 | --- | --- | --- |
-| Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap. 256/512 MB-class: project expects native zRAM **or** verified external storage-backed swap; neither present => WARN, install continues. External swap below 1× detected RAM is WARN; 1×..3× is INFO; the preferred target is ~3× RAM, capped at 2 GiB; >2 GiB is an install error. Above 512 MB-class, swap/zRAM is optional. Vendor guidance says not to combine zRAM with disk/file swap. |
+| Keenetic router: **256 MB RAM or more** | router spec / `free` on the router | 128 MB-class: best-effort/experimental only with external /opt + >=384 MB external storage-backed swap. 256 MB-class: project expects native zRAM **or** verified external storage-backed swap; neither present => WARN, install continues. **512 MB-class: one of those backends is required for a new install; neither present => installer ERROR / Doctor FAIL.** External swap below 1× detected RAM is WARN; 1×..3× is INFO; the preferred target is ~3× RAM, capped at 2 GiB; >2 GiB is an install error. Above 512 MB-class, swap/zRAM is optional. Vendor guidance says not to combine zRAM with disk/file swap. |
 | **Entware installed** (`/opt` exists) | `opkg` command works | See step 2; if `/opt` is external, the project supports EXT4 only |
 | **External `/opt`: `ext` + `ext-utils`** | `show version` contains both component ids | required only for the external Entware profile; `ext-utils` provides the supported EXT4 check/repair tooling |
 | KeeneticOS **Proxy client / Клиент прокси** | component is present in the KeeneticOS component set | required to create the project ProxyN; the installer verifies the creation result |
@@ -885,7 +885,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 It adds only the standard `tun:` block with `device: mitun0`, `auto-route: false` and `auto-detect-interface: true`, then selects the stack from the safely observed version after a controlled stop: `mips` for Mihomo >= 1.19.31, otherwise `gvisor`. The candidate must pass `mihomo -t`; when the service was running before the operation, restart verification requires the process, port 7890 and real `mitun0`, otherwise rollback is automatic. Existing TUN is never rewritten.
 
-Doctor v1.2.15 prints an INFO hint when the top-level TUN section is absent.
+Doctor v1.2.16 prints an INFO hint when the top-level TUN section is absent.
 
 ### 8.2 Migrating an existing TUN stack to mips
 
@@ -1087,7 +1087,7 @@ Platform notes that remain:
 
 ## 14. Known limits
 
-- **Memory profile:** 128 MB is best-effort/experimental only with external /opt + >=384 MB external swap; 256/512 MB-class expects zRAM **or** verified external swap (missing both => WARN); external swap <1× RAM => WARN, 1×..3× => INFO, preferred target ~3× RAM, hard cap 2 GiB; above 512 MB-class swap/zRAM is optional; simultaneous zRAM + disk/file swap is warned against.
+- **Memory profile:** 128 MB is best-effort/experimental only with external /opt + >=384 MB external swap; 256 MB-class expects zRAM **or** verified external swap (missing both => WARN); **512 MB-class requires zRAM or verified external swap for a new install (missing both => ERROR/FAIL)**; external swap <1× RAM => WARN, 1×..3× => INFO, preferred target ~3× RAM, hard cap 2 GiB; above 512 MB-class swap/zRAM is optional; simultaneous zRAM + disk/file swap is warned against.
 - **The watchdog fixes Mihomo only.** It won't fix a dead VPN server, ISP outage, DNS or config mistakes.
 - **bypass_wa for selected VoIP/real-time UDP is a deliberate routing choice, not a universal claim that Mihomo handles UDP poorly.**
 - **Entware is not a full Linux.** BusyBox quirks (`$RANDOM`, `pidof`, `ss`, `run-parts`), trimmed packages — keep that in mind before "modernizing" the scripts.
