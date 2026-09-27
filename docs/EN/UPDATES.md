@@ -92,6 +92,8 @@ The script changes only `stack:` values, feature-gates support with `mihomo -t`,
 preserves the one-Mihomo invariant, keeps `config.yaml.pre-mips`, rolls back on
 validation/start/port failure, and is idempotent.
 
+It does **not** add a missing `tun:` block or create `mitun0` from scratch; its current scope is an existing TUN with `stack: gvisor`. Doctor v1.2.14 emits an INFO hint when that legacy stack is present and the observed Mihomo version meets the documented 1.19.31 minimum. That is only a readiness hint; the migrator's own `mihomo -t` probe remains the definitive feature gate.
+
 ## After maintenance
 
 Run Doctor:

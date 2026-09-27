@@ -879,7 +879,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/migrate-mihomo-mips.sh | sh -s -- --check
 ```
 
-Properties: the support gate is a `mihomo -t` probe (not a version read from the banner); only `stack:` values change — the rest of the config is preserved byte-for-byte; a short controlled downtime (stop + confirmation before any binary execution); the original service state is preserved (a service you stopped stays stopped); the `config.yaml.pre-mips` backup is kept after success and never overwritten; rollback is automatic when validation/start/port fails; idempotent — a second run is a safe no-op; the WireGuard `ip-stack` is not touched. Without TUN in the config it is a safe no-op.
+Properties: the support gate is a `mihomo -t` probe (not a version read from the banner); only `stack:` values change — the rest of the config is preserved byte-for-byte; a short controlled downtime (stop + confirmation before any binary execution); the original service state is preserved (a service you stopped stays stopped); the `config.yaml.pre-mips` backup is kept after success and never overwritten; rollback is automatic when validation/start/port fails; idempotent — a second run is a safe no-op; the WireGuard `ip-stack` is not touched. Without TUN in the config it is a safe no-op. The script **does not add a `tun:` block or create `mitun0` from scratch**; its current scope is only safe migration of an existing TUN `stack: gvisor` → `stack: mips`. When Doctor sees that legacy stack together with a suitable Mihomo version it prints an INFO migration hint; the migrator still performs the definitive `mihomo -t` support gate.
 
 ---
 

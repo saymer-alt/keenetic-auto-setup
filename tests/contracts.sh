@@ -45,6 +45,15 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
+
+grep -Fq 'MIPS_MIGRATION_MIN_VERSION="1.19.31"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep the documented minimum version for the optional MIPS-stack hint"
+grep -Fq "Legacy TUN stack detected:" "$ROOT/mihomo-doctor.sh" || fail "Doctor must identify legacy gvisor TUN stack candidates"
+grep -Fq "Optional migration to 'stack: mips' is available via migrate-mihomo-mips.sh" "$ROOT/mihomo-doctor.sh" || fail "Doctor must suggest the supported migrator only when the version prerequisite is met"
+grep -Fq "the migrator still performs the definitive mihomo -t feature gate" "$ROOT/mihomo-doctor.sh" || fail "Doctor migration hint must not claim version-only support"
+grep -Fq 'Migration preview (read-only): curl -fSsL $PROJECT_RAW_BASE/migrate-mihomo-mips.sh | sh -s -- --check' "$ROOT/mihomo-doctor.sh" || fail "Doctor must provide a read-only migration preview command"
+grep -Fq 'не создаёт `tun:`/`mitun0` с нуля' "$ROOT/docs/12-updates.md" || fail "RU updates guide must state that the MIPS migrator does not create TUN from scratch"
+grep -Fq 'does **not** add a missing `tun:` block or create `mitun0` from scratch' "$ROOT/docs/EN/UPDATES.md" || fail "EN updates guide must state that the MIPS migrator does not create TUN from scratch"
+pass "Doctor MIPS migration hint stays informational, scoped and feature-gated by the migrator"
 if grep -q 'raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/' "$ROOT/install.sh"; then
     fail "installer must not fetch project-managed runtime files from main"
 fi
