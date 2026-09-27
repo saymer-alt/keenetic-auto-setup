@@ -675,12 +675,28 @@ In MagiTrickle:
 
 1. create a new group;
 2. give it a clear name such as `Mihomo`, `Video`, or `AI`;
-3. select the project `mihomo t2sN` / corresponding ProxyN interface;
+3. for the current TUN-enabled setup, the **recommended egress is `mitun0`**;
 4. enable the group.
 
-A typical clean install maps Proxy0 to `mihomo t2s0`, but the ProxyN number is
-not guaranteed: the installer may reuse a compatible legacy interface or choose
-the next free slot.
+Why `mitun0` is recommended here: it is Mihomo's transparent TUN entry for normal
+IP traffic, and this HOWTO already uses it as the primary MagiTrickle → Mihomo
+example. After MagiTrickle classifies the domain, traffic is sent to `mitun0`;
+Mihomo then applies its own `rules` / `proxy-groups` and selects the actual
+outbound.
+
+`mihomo t2sN` / the corresponding ProxyN remains a valid **alternative** entry
+through SOCKS5 `127.0.0.1:7890`. It is useful for Keenetic proxy-based policies,
+legacy compatibility, and setups where TUN is not enabled in the user
+`config.yaml`. But when the active Mihomo config contains:
+
+```yaml
+tun:
+  enable: true
+  device: mitun0
+```
+
+and `mitun0` is visible in MagiTrickle, use **`mitun0`** for a normal
+domain-routing group.
 
 #### Step 4. Add the domain rules
 
@@ -747,7 +763,7 @@ Short workflow:
 ```text
 OpenCCK / your own domain list
         ↓
-MagiTrickle: group + interface
+MagiTrickle: group + mitun0
         ↓
 Import rules → Namespace
         ↓
