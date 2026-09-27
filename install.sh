@@ -82,6 +82,16 @@ retry() {
     return 1
 }
 
+# Managed download retries are intentionally quiet per attempt. A transport
+# failure is summarized once by the caller before moving to the next fallback.
+retry_silent() {
+    for i in 1 2 3; do
+        "$@" 2>/dev/null && return 0
+        sleep 2
+    done
+    return 1
+}
+
 # Cleanup temp files on any exit
 WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 # Cleanup temp files on any exit (the watchdog stage lives on /opt,
@@ -624,43 +634,51 @@ project_script_download() {
 
     rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
 
-    if retry curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
+    if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
         if project_script_candidate_ok "$_psd_tmp"; then
             :
         else
-            warn "Downloaded $_psd_rel from raw GitHub but script validation failed; trying fallbacks"
             rm -f "$_psd_tmp"
+            if command -v wget >/dev/null 2>&1; then
+                warn "raw/curl returned an invalid script candidate for $_psd_rel; trying wget fallback"
+            else
+                warn "raw/curl returned an invalid script candidate for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
+            fi
         fi
     else
         # curl may leave a partial non-empty file after a reset; never let that
         # suppress the next transport.
         rm -f "$_psd_tmp"
+        if command -v wget >/dev/null 2>&1; then
+            warn "raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback"
+        else
+            warn "raw/curl failed after 3 attempts for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
+        fi
     fi
 
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
-        log "Trying wget fallback for $_psd_rel..."
         rm -f "$_psd_tmp"
-        if retry wget -qO "$_psd_tmp" "$_psd_raw"; then
+        if retry_silent wget -qO "$_psd_tmp" "$_psd_raw"; then
             if project_script_candidate_ok "$_psd_tmp"; then
                 :
             else
-                warn "wget downloaded $_psd_rel but script validation failed; trying GitHub API fallback"
+                warn "raw/wget returned an invalid script candidate for $_psd_rel; trying GitHub Contents API fallback"
                 rm -f "$_psd_tmp"
             fi
         else
             rm -f "$_psd_tmp"
+            warn "raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback"
         fi
     fi
 
     if [ ! -s "$_psd_tmp" ]; then
-        log "Trying GitHub Contents API fallback for $_psd_rel..."
         rm -f "$_psd_tmp"
-        if retry curl -fsSL \
+        if retry_silent curl -fsSL \
             -H "Accept: application/vnd.github.raw+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$_psd_api" -o "$_psd_tmp"; then
             if ! project_script_candidate_ok "$_psd_tmp"; then
-                warn "GitHub API returned an invalid script candidate for $_psd_rel"
+                warn "GitHub Contents API returned an invalid script candidate for $_psd_rel"
                 rm -f "$_psd_tmp"
             fi
         fi
@@ -696,7 +714,7 @@ fetch_url_text() {
     _fut_out=""
 
     if command -v curl >/dev/null 2>&1; then
-        _fut_out=$(retry curl -fsSL "$_fut_url" 2>/dev/null) || _fut_out=""
+        _fut_out=$(retry_silent curl -fsSL "$_fut_url") || _fut_out=""
         if [ -n "$_fut_out" ]; then
             printf '%s' "$_fut_out"
             return 0
@@ -704,7 +722,7 @@ fetch_url_text() {
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        _fut_out=$(retry wget -qO- -T 20 "$_fut_url" 2>/dev/null) || _fut_out=""
+        _fut_out=$(retry_silent wget -qO- -T 20 "$_fut_url") || _fut_out=""
         if [ -n "$_fut_out" ]; then
             printf '%s' "$_fut_out"
             return 0
@@ -721,15 +739,15 @@ download_url_file() {
     rm -f "$_duf_dst" 2>/dev/null || true
 
     if command -v curl >/dev/null 2>&1; then
-        if retry curl -fL "$_duf_url" -o "$_duf_dst"; then
+        if retry_silent curl -fL "$_duf_url" -o "$_duf_dst"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        log "curl download unavailable/failed; trying wget fallback..."
-        if retry wget -qO "$_duf_dst" "$_duf_url"; then
+        warn "curl download failed after 3 attempts; trying wget fallback"
+        if retry_silent wget -qO "$_duf_dst" "$_duf_url"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true

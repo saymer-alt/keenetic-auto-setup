@@ -173,43 +173,48 @@ download_watchdog_candidate() {
     if command -v curl >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if curl -fSsL "$_dw_url" -o "$TMP_FILE"; then
+            if curl -fSsL "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            status_out "$COLOR_YELLOW" "[WARN] curl download attempt $_dw_try/3 failed"
             sleep 2
         done
+        if command -v wget >/dev/null 2>&1; then
+            status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; trying wget fallback"
+        elif [ -z "${WATCHDOG_URL:-}" ]; then
+            status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; wget unavailable, trying GitHub Contents API fallback"
+        fi
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        status_out "$COLOR_CYAN" "[INFO] Trying wget fallback..."
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if wget -qO "$TMP_FILE" "$_dw_url"; then
+            if wget -qO "$TMP_FILE" "$_dw_url" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            status_out "$COLOR_YELLOW" "[WARN] wget download attempt $_dw_try/3 failed"
             sleep 2
         done
+        if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
+            status_out "$COLOR_YELLOW" "[WARN] wget download failed after 3 attempts; trying GitHub Contents API fallback"
+        else
+            status_out "$COLOR_YELLOW" "[WARN] wget download failed after 3 attempts"
+        fi
     fi
 
     # The API fallback is valid only for the normal project-managed source.
     # A caller-provided WATCHDOG_URL remains authoritative and is never
     # silently replaced with a different payload.
     if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
-        status_out "$COLOR_CYAN" "[INFO] Trying GitHub Contents API fallback..."
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
             if curl -fSsL \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                "$_dw_api" -o "$TMP_FILE"; then
+                "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
-            status_out "$COLOR_YELLOW" "[WARN] GitHub API download attempt $_dw_try/3 failed"
             sleep 2
         done
     fi

@@ -469,8 +469,8 @@ pass "MagiTrickle helper avoids duplicate opkg update when repository configurat
 # a real fresh install reached the watchdog step and raw.githubusercontent.com reset
 # all three curl attempts while the rest of the stack had already installed.
 grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must centralize project-script delivery"
-grep -Fq 'if retry curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with curl first"
-grep -Fq 'retry wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain wget fallback"
+grep -Fq 'if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with quiet curl retries first"
+grep -Fq 'retry_silent wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
@@ -495,11 +495,33 @@ grep -Fq 'rm -f "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater mus
 pass "Mihomo updater network acquisition uses curl/wget fallback without weakening transactions"
 
 grep -q '^download_watchdog_candidate()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must centralize resilient candidate download"
-grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain wget fallback"
+grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url" 2>/dev/null' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain quiet wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain GitHub Contents API fallback for managed source"
 grep -Fq 'if [ -z "${WATCHDOG_URL:-}" ]' "$ROOT/update-watchdog.sh" || fail "watchdog updater API fallback must not override a caller-provided WATCHDOG_URL"
 grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must clear partial candidates between transports"
 pass "watchdog updater download path is resilient and preserves source override semantics"
+
+# Managed network retries must not flood a router console with one raw error and
+# one project WARN per attempt. Keep the three-attempt resilience, summarize a
+# failed transport once, and preserve the next fallback.
+grep -q '^retry_silent()' "$ROOT/install.sh" || fail "installer must have a quiet managed-download retry helper"
+grep -Fq '"$@" 2>/dev/null && return 0' "$ROOT/install.sh" || fail "installer quiet retry must suppress per-attempt transport stderr"
+grep -Fq 'raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
+grep -Fq 'raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/wget once"
+grep -Fq 'retry_silent curl -fsSL "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use quiet retries"
+grep -Fq 'retry_silent curl -fsSL "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use quiet retries"
+! grep -Fq 'curl download attempt $_rc_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every curl retry"
+! grep -Fq 'wget download attempt $_rw_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every wget retry"
+grep -Fq 'raw/curl failed after 3 attempts for $_dps_rel; trying wget fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/curl once"
+grep -Fq 'raw/wget failed after 3 attempts for $_dps_rel; trying GitHub Contents API fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/wget once"
+! grep -Fq 'curl download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every curl retry"
+! grep -Fq 'wget download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every wget retry"
+! grep -Fq 'GitHub API download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every API retry"
+grep -Fq 'curl download failed after 3 attempts; trying wget fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted curl once"
+grep -Fq 'wget download failed after 3 attempts; trying GitHub Contents API fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted wget once"
+grep -Fq 'quiet per attempt' "$ROOT/AGENTS.md" || fail "AGENTS must preserve the quiet managed-download retry contract"
+grep -Fq 'не печатают каждую внутреннюю попытку' "$ROOT/docs/18-output-colors.md" || fail "RU output contract must document quiet retry presentation"
+pass "managed download retries stay resilient without per-attempt console spam"
 
 grep -Fq 'curl is tried first; an actual curl failure falls back to wget' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must fall back after a real curl failure"
 grep -Fq 'PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must know the project API delivery fallback"

@@ -101,7 +101,11 @@ Confirmed by code and docs:
   honor `NO_COLOR` and `TERM=dumb`, and keep redirected/captured output plain.
   Persistent logs (especially `mihomo-watchdog.sh`) must never contain ANSI escapes.
   Recoverable retries/fallbacks stay WARN even if an underlying command failed; red is
-  reserved for a final fatal operation or a failed diagnostic/check.
+  reserved for a final fatal operation or a failed diagnostic/check. Bounded managed
+  download retries must be quiet per attempt: suppress repeated curl/wget stderr and
+  per-attempt status spam, then emit at most one project status line when a transport
+  is exhausted before moving to the next fallback. Do not weaken the retry count or
+  remove the fallback chain merely to make output shorter.
 - Do not fight KeeneticOS: integration is through ndmc / RCI (localhost:79) / netfilter.d.
 
 (proposal) expose new configurable parameters as variables at the top of the script —
