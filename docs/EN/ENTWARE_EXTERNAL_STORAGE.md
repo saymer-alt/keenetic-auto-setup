@@ -53,6 +53,32 @@ KeeneticOS/Netcraze OS then mounts the selected partition as `/opt`, finds the
 installer, and starts Entware installation. No separate CLI installation command
 is required for this path.
 
+## 3.1. Important trap: a stale storage selection can look active
+
+If the expected EXT4 partition is already shown in the **Storage** field but no
+new installation starts and the system log has no fresh `Opkg::Manager` /
+`installer` lines, do not treat the displayed value as proof that a new install
+was triggered. The UI can retain a previously saved storage binding from an
+earlier attempt.
+
+Use this GUI reset sequence:
+
+1. select **Not selected** in the OPKG package manager;
+2. click **Save**;
+3. wait until that change has fully applied;
+4. open **Storage** again;
+5. re-select the external EXT4 partition that contains
+   `install/<installer>.tar.gz`;
+6. confirm the required user access, for example `admin`;
+7. click **Save** again;
+8. immediately inspect the system log for new installation records.
+
+A real start should create fresh `Opkg::Manager` / `installer` records and then
+`[1/5]`, `[2/5]`, and later stages. If those records do not appear shortly after
+the second save, the installer is not merely "slow"; it did not start, so verify
+the selected partition, `install` directory, installer archive, and network
+reachability again.
+
 ## 4. Watch the system log
 
 Open **Diagnostics → System log** and wait for the installer to finish. A normal
