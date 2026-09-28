@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 
 set -e
 
@@ -321,6 +409,26 @@ SYS_CLASS_BLOCK="${INSTALL_SYS_CLASS_BLOCK:-/sys/class/block}"
 PROC_MOUNTS="${INSTALL_MOUNTS:-/proc/mounts}"
 PROC_SWAPS="${INSTALL_SWAPS:-/proc/swaps}"
 
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number device major minor expected
+    [ "$2" = partition ] || return 1
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
+    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
+    major=${device%:*}; minor=${device#*:}
+    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
+    [ -n "$major" ] && [ -n "$minor" ] || return 1
+    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
+    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
+
 # classify_mount SOURCE FSTYPE -> internal | external | ram | unknown
 classify_mount() {
     case "$2" in
@@ -423,8 +531,10 @@ scan_swap_backends() {
                 SW_DELETED_COUNT=$((SW_DELETED_COUNT + 1))
                 continue
                 ;;
-            *zram*) SW_ZRAM_KB=$((SW_ZRAM_KB + _sw_size)); continue ;;
         esac
+        if swap_is_zram "$_sw_file" "$_sw_type" "$SYS_CLASS_BLOCK"; then
+            SW_ZRAM_KB=$((SW_ZRAM_KB + _sw_size)); continue
+        fi
         case "$_sw_type" in
             partition)
                 # Keenetic internal storage (UBIFS) has no block-device nodes
@@ -737,6 +847,7 @@ require_project_keeneticos_components() {
 
 require_project_keeneticos_components
 ml_lifecycle_acquire || err "Mihomo lifecycle is busy or unverifiable; installation not started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
+mp_known || err "Mihomo runtime UNKNOWN; installation not started."
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
@@ -1033,14 +1144,9 @@ resolve_installed_mihomo() {
 }
 
 # Conservative one-Mihomo guard used by both the early informational version
-# probe and the final self-check. If pidof is unavailable, executable probes
-# are skipped rather than risking a second Mihomo process.
+# probe and final self-check. Only a positive stopped observation permits ELF probes.
 mihomo_running() {
-    if command -v pidof >/dev/null 2>&1; then
-        pidof mihomo >/dev/null 2>&1
-    else
-        return 0
-    fi
+    mp_running
 }
 
 REPO_OWNER="saymer-alt"
@@ -1061,6 +1167,7 @@ if [ -n "$MIHOMO_BIN" ]; then
     log "Existing Mihomo binary found at $MIHOMO_BIN - package install/upgrade skipped"
     log "Use update-mihomo.sh to update an installed Mihomo transactionally"
 else
+    mp_stopped || err "Cannot prove Mihomo stopped before package installation."
     log "Installing Mihomo..."
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
@@ -1138,8 +1245,8 @@ else
     [ -z "$MIHOMO_BIN" ] && err "Mihomo package installation completed but no executable canonical binary was found at /opt/sbin/mihomo or /opt/bin/mihomo"
 fi
 
-if mihomo_running; then
-    log "Mihomo version probe skipped - daemon is running (one-Mihomo invariant)"
+if ! mp_stopped; then
+    log "Mihomo version probe skipped - daemon is running or state is unknown (one-Mihomo invariant)"
 elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
     log "Mihomo version: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
 else
@@ -1177,6 +1284,7 @@ ensure_bootstrap_config() {
     fi
 
     if [ "$_replace" -eq 1 ]; then
+        mp_known || err "Runtime UNKNOWN; bootstrap config not changed."
         log "Writing bootstrap config (mixed-port 7890)..."
         cat > "$_config" <<'EOF' || err "Failed to write required Mihomo bootstrap config"
 # Bootstrap config installed by keenetic-auto-setup.
@@ -1674,6 +1782,7 @@ fi
 # no-op for the running service. Restart only when this installer changed
 # something Mihomo must reload. If the service is stopped, start it so the
 # installer can still satisfy its working-stack contract.
+mp_known || err "Runtime UNKNOWN; service action aborted."
 MIHOMO_SERVICE_ACTION=none
 if [ -x /opt/etc/init.d/S99mihomo ]; then
     if [ "$MIHOMO_RESTART_NEEDED" -eq 1 ]; then
@@ -1683,6 +1792,7 @@ if [ -x /opt/etc/init.d/S99mihomo ]; then
             MIHOMO_SERVICE_ACTION=restart
         else
             log "Mihomo binary/config changed and service is stopped - starting service"
+            mp_stopped || err "Cannot prove stop before service start."
             /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
             MIHOMO_SERVICE_ACTION=start
         fi
@@ -1690,6 +1800,7 @@ if [ -x /opt/etc/init.d/S99mihomo ]; then
         log "Mihomo binary/config unchanged and daemon is running - restart skipped"
     else
         log "Mihomo binary/config unchanged but daemon is stopped - starting service"
+        mp_stopped || err "Cannot prove stop before service start."
         /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
         MIHOMO_SERVICE_ACTION=start
     fi
@@ -1699,6 +1810,7 @@ fi
 
 if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then
     sleep 2
+    mp_running || err "Mihomo start/restart could not be confirmed."
 fi
 
 # ---------------------------
@@ -1759,8 +1871,8 @@ CONFIG="/opt/etc/mihomo/config.yaml"
 # Mihomo binary + version
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
 if [ -n "$MIHOMO_BIN" ]; then
-    if mihomo_running; then
-        check_info "Mihomo daemon is running - binary probe (-v) skipped (one-Mihomo invariant); the running daemon itself proves the binary executes"
+    if ! mp_stopped; then
+        check_info "Mihomo daemon is running or unknown - binary probe (-v) skipped (one-Mihomo invariant); runtime execution is not verified by this probe"
     elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
         check_ok "Mihomo binary: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
     else
@@ -1892,8 +2004,8 @@ fi
 # Config.yaml: the bootstrap (mixed-port 7890) should always be present;
 # port 7890 is checked whenever a config exists.
 if [ -f "$CONFIG" ]; then
-    if mihomo_running; then
-        check_info "Mihomo config syntax check skipped - the daemon is running and 'mihomo -t' would execute a second Mihomo (one-Mihomo invariant); the running service proves the config loads"
+    if ! mp_stopped; then
+        check_info "Mihomo config syntax check skipped - the daemon is running or unknown and 'mihomo -t' would execute a second Mihomo (one-Mihomo invariant); this probe does not verify the running config"
     elif ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
         check_ok "Mihomo config syntax valid"
     else

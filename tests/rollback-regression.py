@@ -125,7 +125,7 @@ exit 0
 '''+generation+'\n'
 
 
-def run(shell, kind, case, running=True, historical=True, state=True):
+def run(shell, kind, case, running=True, historical=True, state=True, no_pidof=False):
     with tempfile.TemporaryDirectory(prefix='mihomo-rollback-') as directory:
         lab = Path(directory)
         for d in ['opt/bin', 'opt/etc/init.d', 'opt/etc/mihomo', 'tmp']:
@@ -175,11 +175,38 @@ opkg() {{ echo 'mihomo - 1.19.31-1'; }}
 '''
             text += full[full.index('NEW_SIZE_BYTES=$(wc -c < "$TMP_NEW")'):]
         text = text.replace('/tmp/', str(lab / 'tmp') + '/').replace('/opt/', str(lab / 'opt') + '/')
+        wrappers = WRAPPERS
+        if no_pidof:
+            # Kernel observation seam only: the same real-file service fixture
+            # now feeds /proc discovery instead of pidof. B3/B4 assertions stay.
+            proc=lab/'proc'
+            (proc/'self').mkdir(parents=True);(proc/'1').mkdir();(proc/'4242').mkdir()
+            (proc/'self/stat').write_text('self\n')
+            (proc/'mounts').write_text('proc /proc proc rw 0 0\n')
+            (proc/'1/stat').write_text('1 (kernel) S 0 0 0 0 0 2097152 0\n')
+            a=text.index('# BEGIN MIHOMO PROCESS STATE v1');b=text.index('# END MIHOMO PROCESS STATE v1')
+            text=text[:a]+text[a:b].replace('/proc/',str(proc)+'/').replace('command -v pidof', 'false')+text[b:]
+            wrappers += r'''
+readlink() {
+  case "$1" in *'/proc/4242/exe')
+    [ -f "$LAB/running" ] || return 1
+    echo "$LAB/opt/bin/mihomo"; return 0 ;;
+  esac
+  env readlink "$@"
+}
+cat() {
+  case "$1" in *'/proc/4242/stat')
+    [ ! -f "$LAB/running" ] || return 1
+    echo '4242 (exited) Z 1 1 1 0 0 0 0'; return 0 ;;
+  esac
+  env cat "$@"
+}
+'''
         script = lab / 'run.sh'
-        script.write_text('#!/bin/sh\n'+WRAPPERS+'\n'+text)
+        script.write_text('#!/bin/sh\n'+wrappers+'\n'+text)
         env = dict(os.environ, LAB=str(lab), CASE=case, KIND=kind)
         p = subprocess.run(shell+[str(script)], env=env, capture_output=True, text=True, timeout=20)
-        events = (lab / 'actions').read_text().splitlines()
+        events = (lab / 'actions').read_text().splitlines() if (lab / 'actions').exists() else []
         context = (shell, kind, case, running, p.returncode, events, p.stdout, p.stderr)
         assert 'SECOND-PROBE' not in events, context
         assert 'DIRECT-CANONICAL-COPY' not in events, context
@@ -242,7 +269,7 @@ opkg() {{ echo 'mihomo - 1.19.31-1'; }}
                 assert events.index('start:new') < events.index('stop', events.index('start:new')) < events.index('stage'), context
             if case in {'copy-fail','chmod-fail','rename-fail','stop-fail'}:
                 assert 'state' not in events and 'start:old' not in events, context
-        print('PASS', '/'.join(shell), kind, case, 'running='+str(running), 'historical='+str(historical), 'state='+str(state), flush=True)
+        print('PASS', '/'.join(shell), kind, case, 'running='+str(running), 'historical='+str(historical), 'state='+str(state), 'no_pidof='+str(no_pidof), flush=True)
 
 
 def runtime_identity(shell):
@@ -253,7 +280,9 @@ def runtime_identity(shell):
         shutil.copy2('/bin/sleep', exe)
         p = subprocess.Popen([str(exe), '30'])
         try:
-            body = function(source('update-mihomo.sh'), 'restored_runtime_ok')
+            full = source('update-mihomo.sh')
+            body = full[full.index('# BEGIN MIHOMO PROCESS STATE v1'):full.index('# END MIHOMO PROCESS STATE v1')]
+            body += function(full, 'restored_runtime_ok')
             body += f'\nMIHOMO_PATH={shlex.quote(str(exe))}\npidof() {{ echo {p.pid}; }}\nrestored_runtime_ok\n'
             assert subprocess.run(shell, input=body, text=True).returncode == 0
             replacement = Path(directory) / 'replacement'
@@ -279,6 +308,11 @@ def main():
         for case in ['success','post-commit','term-commit']:
             run(shell, 'updater', case, running=False)
         run(shell, 'updater', 'term-start', state=False)
+        for kind in ['mips','updater']:
+            for running in [True,False]:
+                for case in ['success','term-commit']:
+                    run(shell,kind,case,running=running,no_pidof=True)
+        run(shell,'updater','wrong-runtime',no_pidof=True)
     print('All B3/B4 behavioural rollback tests passed (dash and BusyBox ash).')
 
 

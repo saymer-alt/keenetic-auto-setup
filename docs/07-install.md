@@ -5,6 +5,11 @@
 
 ## Граница ответственности
 
+Development B6/C1: отсутствие `pidof` не доказывает остановку daemon; installer
+использует `/proc` fallback и прекращает опасный шаг при unknown. Native zRAM
+требует block-device identity и согласованного sysfs, поэтому `zram.swap` на USB
+проверяется как внешний swap со всеми size limits. См. [контракт](20-process-swap-detection.md).
+
 `install.sh` поддерживает aarch64 / armv7 / mipsel / mips и два режима хранения:
 
 - `ram` — проект включает `S00ubifs` для tmpfs runtime-каталогов;

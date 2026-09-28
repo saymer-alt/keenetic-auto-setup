@@ -1,5 +1,11 @@
 # Обновление и обслуживание
 
+В development B6/C1 process detection работает без `pidof` через `/proc`;
+неизвестное состояние запрещает probe/commit/start. После rollback updater
+по-прежнему проверяет точный inode восстановленного executable. Ошибки resource
+profile остаются advisory для updater; имя `zram.swap` не делает файл native zRAM.
+Подробности и ограничения: [process/swap contract](20-process-swap-detection.md).
+
 Операции обслуживания используют [общий lifecycle lock](19-lifecycle-lock.md).
 Не запускайте старые и новые копии инструментов одновременно; при занятом lock
 повторите операцию после завершения владельца, не удаляя его state вручную.

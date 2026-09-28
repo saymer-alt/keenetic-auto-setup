@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 
 # =========================================================
 # MIHOMO MIPS STACK MIGRATION
@@ -353,11 +441,11 @@ stop_mihomo_confirmed() {
   SERVICE_WAS_STOPPED=1
   _i=0
   while [ "$_i" -lt 10 ]; do
-    pidof mihomo >/dev/null 2>&1 || break
+    mp_stopped && break
     sleep 1
     _i=$((_i + 1))
   done
-  if pidof mihomo >/dev/null 2>&1; then
+  if ! mp_stopped; then
     return 1
   fi
   sleep 1
@@ -370,13 +458,14 @@ stop_mihomo_confirmed() {
 # updater): a watchdog-revived instance must never run alongside
 # the probe, and the final start must load the migrated config.
 ensure_stopped_before_exec() {
-  if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  if mp_running; then
     log "Mihomo is running again (watchdog restart?) - stopping before executing the binary..."
     if ! stop_mihomo_confirmed; then
       restore_stopped_service
       error "Mihomo could not be stopped - refusing a second instance, config untouched."
     fi
   fi
+  mp_stopped || error "Cannot prove Mihomo stopped; no executable probe or mutation allowed."
 }
 
 # Bring back a service that THIS script stopped. A user-stopped
@@ -385,16 +474,17 @@ restore_stopped_service() {
   if [ "$SERVICE_WAS_RUNNING" -ne 1 ] || [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
     return 0
   fi
-  if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  if mp_running; then
     log "Mihomo is already running again; nothing to restore."
     return 0
   fi
+  mp_stopped || return 1
   log "Restarting Mihomo stopped by this script..."
   "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-  if command -v pidof >/dev/null 2>&1; then
+  if mp_known; then
     _i=0
     while [ "$_i" -lt 5 ]; do
-      if pidof mihomo >/dev/null 2>&1; then
+      if mp_running; then
         log "Mihomo is running again."
         return 0
       fi
@@ -404,7 +494,8 @@ restore_stopped_service() {
     warn "Could not confirm Mihomo is running after restore."
     return 1
   else
-    log "pidof not available, skipping restore verification."
+    warn "Mihomo runtime UNKNOWN; restore not confirmed."
+    return 1
   fi
   return 0
 }
@@ -413,10 +504,11 @@ restore_stopped_service() {
 rollback_config() {
   [ -f "$RUN_BACKUP" ] || return 1
   # Never restart an already-running candidate after restoring only its file.
-  command -v pidof >/dev/null 2>&1 || return 1
-  if pidof mihomo >/dev/null 2>&1; then
+  mp_known || return 1
+  if mp_running; then
     [ -n "$INIT_SCRIPT" ] && stop_mihomo_confirmed || return 1
   fi
+  mp_stopped || return 1
   cp -p "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
   cmp -s "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
   mv -f "$ROLLBACK_STAGE" "$CONFIG" || return 1
@@ -425,7 +517,7 @@ rollback_config() {
 }
 
 # Contract port check (mixed-port 7890). Returns 2 when no HTTP
-# client exists to check with (pidof verification remains).
+# client exists to check with (process verification remains).
 port_ok() {
   if command -v curl >/dev/null 2>&1; then
     curl -s --connect-timeout 3 --max-time 5 "http://127.0.0.1:7890" >/dev/null 2>&1 && return 0
@@ -504,8 +596,8 @@ done
 # considered.
 # -----------------------------
 resolve_mihomo_binary() {
-  if command -v pidof >/dev/null 2>&1; then
-    for _p in $(pidof mihomo 2>/dev/null); do
+  if mp_known; then
+    for _p in $(mp_pids); do
       _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
       if [ "$_exe" = "/opt/sbin/mihomo" ] || [ "$_exe" = "/opt/bin/mihomo" ]; then
         if [ -x "$_exe" ]; then
@@ -546,19 +638,19 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 
   # --check is read-only AND obeys the universal one-Mihomo invariant.
   # A version/support probe executes the Mihomo binary, so it is allowed only
-  # when pidof is available and confirms that no daemon is running. Otherwise
+  # when process discovery confirms that no daemon is running. Otherwise
   # the config inspection below still runs, but binary support stays unknown.
   CHECK_CAN_EXEC=0
-  if command -v pidof >/dev/null 2>&1; then
-    if pidof mihomo >/dev/null 2>&1; then
+  if mp_known; then
+    if mp_running; then
       log "Mihomo daemon is running - executable version/support probes skipped (one-Mihomo invariant)"
     elif ml_lifecycle_acquire; then
-      if ! pidof mihomo >/dev/null 2>&1; then CHECK_CAN_EXEC=1; fi
+      if mp_stopped; then CHECK_CAN_EXEC=1; fi
     else
       log "Mihomo lifecycle busy or unverifiable - executable probes skipped"
     fi
   else
-    warn "pidof unavailable - executable version/support probes skipped conservatively (one-Mihomo invariant)"
+    warn "Runtime UNKNOWN - executable version/support probes skipped conservatively (one-Mihomo invariant)"
   fi
 
   # Support state controls how the config findings below may be worded:
@@ -650,7 +742,8 @@ fi
 log "Binary: $MIHOMO_BIN"
 
 # 3. Service state + init script requirements
-if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+mp_known || error "Mihomo runtime UNKNOWN; migration aborted."
+if mp_running; then
   SERVICE_WAS_RUNNING=1
 fi
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -z "$INIT_SCRIPT" ]; then
@@ -660,7 +753,7 @@ fi
 # -----------------------------
 # 4. Cheap version pre-filter (not the gate) - one-Mihomo invariant:
 # the installed binary is probed with -v ONLY when no daemon is
-# running (pidof reports none). While a daemon lives, executing a
+# running (process discovery proves absence). While a daemon lives, executing a
 # second Mihomo is the established SIGSEGV pattern on constrained
 # hardware, so the probe is deferred: the definitive support gate
 # after the controlled stop decides anyway, and the version
@@ -668,7 +761,7 @@ fi
 # daemon-stopped case.
 # -----------------------------
 DEFER_VERSION_DECISION=1
-if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+if mp_stopped; then
   DEFER_VERSION_DECISION=0
 fi
 if [ "$DEFER_VERSION_DECISION" -eq 0 ]; then
@@ -771,6 +864,7 @@ if ! "$MIHOMO_BIN" -t -d "$CONFIG_DIR" -f "$TMP_NEW" > /dev/null 2>&1; then
 fi
 
 # 11. Atomic replace; from here any failure must roll back
+ensure_stopped_before_exec
 REPLACEMENT_DONE=1
 log "Replacing config..."
 if ! mv -f "$TMP_NEW" "$CONFIG"; then
@@ -785,10 +879,10 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     log "WARNING: Mihomo init script reported start failure. Checking process..."
   fi
   SERVICE_OK=0
-  if command -v pidof >/dev/null 2>&1; then
+  if mp_known; then
     _i=0
     while [ "$_i" -lt 5 ]; do
-      if pidof mihomo >/dev/null 2>&1; then
+      if mp_running; then
         SERVICE_OK=1
         break
       fi
@@ -796,8 +890,8 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
       _i=$((_i + 1))
     done
   else
-    SERVICE_OK=1
-    log "pidof not available, skipping process verification."
+    SERVICE_OK=0
+    warn "Mihomo runtime UNKNOWN after start."
   fi
   if [ "$SERVICE_OK" -eq 1 ]; then
     # The process may appear several seconds before the proxy listener is ready.
@@ -819,7 +913,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
       SERVICE_OK=0
       log "Process is running but the contract port 7890 did not become ready within 15 seconds."
     elif [ "$_port_rc" -eq 2 ]; then
-      warn "No curl/wget available — port verification skipped (pidof check only)."
+      warn "No curl/wget available — port verification skipped (process check only)."
     fi
   fi
   if [ "$SERVICE_OK" -ne 1 ]; then

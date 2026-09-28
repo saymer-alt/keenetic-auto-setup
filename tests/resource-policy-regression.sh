@@ -11,7 +11,15 @@ TMP="${TMPDIR:-/tmp}/keenetic-resource-policy.$$"
 fail() { echo "[FAIL] $1" >&2; exit 1; }
 pass() { echo "[OK] $1"; }
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
-mkdir -p "$TMP/sys-empty"
+mkdir -p "$TMP/sys-empty/zram0"
+echo '252:0' > "$TMP/sys-empty/zram0/dev"
+# Simulate the kernel device observation only; scanner/policy remain production.
+stat() {
+    case "$*" in *'/dev/zram0') echo 'block special file:fc:0' ;; *) command stat "$@" ;; esac
+}
+readlink() {
+    case "$*" in '-f /dev/zram0') echo /dev/zram0 ;; *) command readlink "$@" ;; esac
+}
 
 awk '
     /^RESOURCE_PROFILE_CONTRACT_VERSION=/ { copy=1 }
