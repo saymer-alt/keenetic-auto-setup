@@ -885,7 +885,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 It adds only the standard `tun:` block with `device: mitun0`, `auto-route: false` and `auto-detect-interface: true`, then selects the stack from the safely observed version after a controlled stop: `mips` for Mihomo >= 1.19.31, otherwise `gvisor`. The candidate must pass `mihomo -t`; when the service was running before the operation, restart verification requires the process, port 7890 and real `mitun0`, otherwise rollback is automatic. Existing TUN is never rewritten.
 
-Doctor v1.2.16 prints an INFO hint when the top-level TUN section is absent.
+Doctor v1.2.17 prints an INFO hint when the top-level TUN section is absent.
 
 ### 8.2 Migrating an existing TUN stack to mips
 
