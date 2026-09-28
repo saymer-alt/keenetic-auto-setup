@@ -34,6 +34,15 @@ suffix:
 
 ## Источник Mihomo и fallback
 
+Project-managed shell helpers (`S00ubifs`, bypass hook, watchdog) загружаются
+отдельным `project_script_download`: raw curl → raw wget → Contents API raw media,
+по три transport attempts. В development-исправлении B5 каждый retry начинает с
+чистого candidate, а non-zero transport удаляет partial и не допускает его к
+validation/commit — даже если prefix содержит shebang и проходит `sh -n`.
+После успешного transport остаются прежние проверки non-empty/shebang/syntax,
+проверка соседнего stage и atomic rename в destination. Неудача оставляет
+canonical файл прежним; невозможность очистить candidate прерывает загрузку.
+
 Перед package-path installer ищет executable canonical binary:
 `/opt/sbin/mihomo`, затем `/opt/bin/mihomo`.
 

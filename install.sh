@@ -800,6 +800,19 @@ project_script_candidate_ok() {
     sh -n "$_psc_file" >/dev/null 2>&1
 }
 
+# Invalidate each attempt, including retries within one transport. A successful
+# attempt that writes nothing must not inherit a failed attempt's valid prefix.
+project_script_transfer() {
+    _pst_dest="$1"
+    shift
+    rm -f "$_pst_dest" || return 1
+    if "$@"; then
+        return 0
+    fi
+    rm -f "$_pst_dest"
+    return 1
+}
+
 project_script_download() {
     _psd_rel="$1"
     _psd_dest="$2"
@@ -808,13 +821,13 @@ project_script_download() {
     _psd_raw="$PROJECT_RAW_BASE/$_psd_rel"
     _psd_api="$PROJECT_API_CONTENTS/$_psd_rel?ref=$PROJECT_REF"
 
-    rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+    rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || return 1
 
-    if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
+    if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
         if project_script_candidate_ok "$_psd_tmp"; then
             :
         else
-            rm -f "$_psd_tmp"
+            rm -f "$_psd_tmp" || return 1
             if command -v wget >/dev/null 2>&1; then
                 warn "raw/curl returned an invalid script candidate for $_psd_rel; trying wget fallback"
             else
@@ -824,7 +837,7 @@ project_script_download() {
     else
         # curl may leave a partial non-empty file after a reset; never let that
         # suppress the next transport.
-        rm -f "$_psd_tmp"
+        rm -f "$_psd_tmp" || return 1
         if command -v wget >/dev/null 2>&1; then
             warn "raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback"
         else
@@ -833,30 +846,34 @@ project_script_download() {
     fi
 
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
-        rm -f "$_psd_tmp"
-        if retry_silent wget -qO "$_psd_tmp" "$_psd_raw"; then
+        rm -f "$_psd_tmp" || return 1
+        if retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"; then
             if project_script_candidate_ok "$_psd_tmp"; then
                 :
             else
                 warn "raw/wget returned an invalid script candidate for $_psd_rel; trying GitHub Contents API fallback"
-                rm -f "$_psd_tmp"
+                rm -f "$_psd_tmp" || return 1
             fi
         else
-            rm -f "$_psd_tmp"
+            rm -f "$_psd_tmp" || return 1
             warn "raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback"
         fi
     fi
 
     if [ ! -s "$_psd_tmp" ]; then
-        rm -f "$_psd_tmp"
-        if retry_silent curl -fsSL \
+        rm -f "$_psd_tmp" || return 1
+        if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL \
             -H "Accept: application/vnd.github.raw+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$_psd_api" -o "$_psd_tmp"; then
             if ! project_script_candidate_ok "$_psd_tmp"; then
                 warn "GitHub Contents API returned an invalid script candidate for $_psd_rel"
-                rm -f "$_psd_tmp"
+                rm -f "$_psd_tmp" || return 1
             fi
+        else
+            # Syntax-valid partial content is still invalid after transport failure.
+            rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+            return 1
         fi
     fi
 

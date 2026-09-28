@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Исправлено
+- B5 аудита: installer больше не принимает синтаксически валидный partial script после transport failure Contents API. Каждый retry project-script download очищает candidate; только успешный transport допускается к validation и atomic commit. Добавлены fault regressions для curl/wget/API под dash и BusyBox ash.
 - B3/B4 аудита: MIPS migration откатывает текущий per-run config через atomic rename, не historical `.pre-mips`; binary updater подтверждает остановку, валидирует rollback stage, атомарно возвращает binary и только затем project state. Успех восстановления runtime требует совпадения canonical inode с `/proc/<pid>/exe`; неуспешный recovery сохраняет backup и завершается ошибкой. Добавлены fault regressions для dash/BusyBox ash; hardware acceptance ещё не выполнялся.
 - B1/B2 независимого аудита: общий PID/starttime lifecycle lock для installer, updater, import, migrators и watchdog restart. Запуск через `curl | sh` больше не определяется по имени скрипта в cmdline; cleanup проверяет владельца, stale recovery сериализована.
 - Watchdog получает общий lock непосредственно перед restart; maintenance, начавшийся во время WAN/proxy checks, не допускает вмешательства. Doctor и read-only migration probes повторно проверяют процессы под временным lock.
