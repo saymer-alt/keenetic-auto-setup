@@ -1,7 +1,8 @@
 # Process discovery и тип swap backend
 
-Изменения B6/C1 относятся к development; promotion в stable требует отдельного
-решения и hardware acceptance.
+B6/C1 входят в текущий release-candidate. C1 уже прошёл focused hardware acceptance
+на KN-1010 в обоих профилях: внешний storage-backed swap при неактивных zRAM nodes
+и отдельный native-zRAM-only профиль.
 
 ## B6: контракт состояния процесса
 
@@ -59,7 +60,7 @@ tests pin stop/restore, lifecycle exclusion и B4 inode verification; их asser
 
 Единый embedded `swap_is_zram` используется installer, Doctor и updater.
 Нужны все признаки: active swap type `partition`, canonicalized basename
-`zram` + непустой числовой индекс, фактический block-device тип из stat и
+`zram` + непустой числовой индекс, фактический block-device тип из BusyBox-compatible device metadata и
 совпадающий major:minor в `/sys/class/block/zramN/dev`.
 Symlink допускается, если canonical target удовлетворяет этим требованиям.
 Недоступный/противоречивый sysfs или device metadata означает unverified,
@@ -83,5 +84,6 @@ escaped и сопоставляется с таким же mount path; deleted e
 Наблюдение `/proc` не является атомарным snapshot. Протокол исключает другие
 project tools, но не ручные старты, внешний supervisor, иной PID namespace или
 намеренно замаскированный executable. Доступный pidof сохраняет свою штатную
-семантику. Hardware acceptance на Keenetic/Entware ещё не выполнен; power-loss
-и SIGKILL recovery не расширялись. WAN/proxy/cooldown watchdog не изменены.
+семантику. C1 hardware acceptance выполнен на KN-1010; B6 absence/error shapes остаются
+покрыты focused regressions и fail-closed контрактом, а не заявляются как полный emulator.
+Power-loss и SIGKILL recovery не расширялись. WAN/proxy/cooldown watchdog не изменены.
