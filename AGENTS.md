@@ -121,6 +121,7 @@ a real `raw.githubusercontent.com` reset during installation:
 - project-managed script acquisition must use bounded fallbacks where applicable:
   raw GitHub via bounded normal `curl` → one bounded `curl --curves X25519` compatibility retry → the same raw URL via `wget` → GitHub Contents API raw media;
 - failed file transfers must remove partial/non-empty candidates before the next transport;
+- do not reuse the short metadata/script total timeout for package assets. Live KN-1010 acceptance on 2026-09-28 showed that the ~12.8 MB mipsel IPK can exceed a 20 s total transfer window even when the path is otherwise healthy. Metadata/project scripts keep the short bounded window; large asset downloads in installer/updater use a separate 180 s bounded transfer window while retaining the 5 s connect/TLS gate and IPv4+X25519 compatibility retry;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
 - the public fresh-install **happy path must stay concise and copy-pasteable**:
