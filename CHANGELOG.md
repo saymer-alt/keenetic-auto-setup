@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Исправлено
+- Config importer: удалены два оставшихся вызова неопределённого `updater_in_progress`; взаимное исключение сохраняется общим lifecycle lock. Узкий regression исполняет полный importer под dash/BusyBox ash и проверяет helpers, lock, stop/probe/commit и отсутствие второго ELF.
 - B6: отсутствие `pidof` больше не означает остановленный Mihomo. Общий process-state contract использует `/proc` fallback; unknown запрещает executable probes, commit и start. Строгий B4 device/inode verifier и lifecycle lock сохранены. Добавлены process/barrier и rollback regressions без pidof под dash/BusyBox ash.
 - C1: native zRAM определяется по block-device identity и sysfs major/minor. Файлы `zram.swap` остаются storage-backed и не обходят size cap; resource policy не меняется. Три scanner implementation проверяются одинаковыми fixtures. [Контракт и ограничения B6/C1](docs/20-process-swap-detection.md); hardware acceptance ещё не выполнялся.
 - B5 аудита: installer больше не принимает синтаксически валидный partial script после transport failure Contents API. Каждый retry project-script download очищает candidate; только успешный transport допускается к validation и atomic commit. Добавлены fault regressions для curl/wget/API под dash и BusyBox ash.

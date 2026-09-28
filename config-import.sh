@@ -541,11 +541,6 @@ else
     log "Mihomo was already stopped; it will remain stopped after a successful import."
 fi
 
-if updater_in_progress; then
-    restore_old_service || true
-    error "Mihomo updater became active during config import. Candidate was not installed."
-fi
-
 mp_stopped || error "Cannot prove Mihomo stopped before validation."
 log "Validating candidate with Mihomo..."
 if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t >"$TEST_LOG" 2>&1; then
@@ -575,11 +570,6 @@ mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
     restore_old_service || true
     error "Could not commit config backup; candidate was not installed."
 }
-
-if updater_in_progress; then
-    restore_old_service || true
-    error "Mihomo updater became active before config commit. Candidate was not installed."
-fi
 
 mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Installing config atomically..."

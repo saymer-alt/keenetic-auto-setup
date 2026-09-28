@@ -7,6 +7,7 @@ The full watchdog is also run with failed WAN transports. Shells are mandatory.
 from pathlib import Path
 import argparse
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -376,6 +377,92 @@ doctor_mihomo_probe 15 fake -v
     print("[OK] Doctor re-observes under lock; busy/running skips ELF without service mutation")
 
 
+def test_full_importer(shell):
+    text = source("config-import.sh")
+    # Local safety helpers have underscore names. Inspect literal command heads,
+    # including conditional calls where command-not-found would not stop set -e.
+    definitions = set(re.findall(r'^([a-z][a-z0-9_]*)\(\)\s*\{', text, re.M))
+    calls = set(re.findall(r'^\s*(?:(?:if|elif|while)\s+)?(?:!\s+)?'
+                           r'([a-z][a-z0-9]*_[a-z0-9_]+)(?=\s|[;&|]|$)', text, re.M))
+    assert calls <= definitions, ('undefined importer helpers', calls - definitions)
+    assert 'updater_in_progress' not in text
+    for case in ['running', 'stopped', 'busy', 'stop-fails', 'unknown']:
+        with Fixture(shell) as f:
+            cfgdir = f.path / 'opt/etc/mihomo'
+            cfgdir.mkdir(parents=True)
+            cfg = cfgdir / 'config.yaml'
+            cfg.write_text('mixed-port: 7890\n# old\n')
+            candidate = f.path / 'candidate'
+            candidate.write_text('mixed-port: 7890\n# new\n')
+            bindir = f.path / 'opt/bin'
+            bindir.mkdir(parents=True)
+            exe = bindir / 'mihomo'
+            exe.write_text('''#!/bin/sh
+[ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || exit 90
+[ ! -f "$LAB/running" ] || { echo SECOND-ELF >&2; exit 91; }
+echo validate >> "$LAB/actions"
+''')
+            exe.chmod(0o700)
+            init = f.path / 'init'
+            init.write_text('''#!/bin/sh
+[ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || exit 90
+echo "$1" >> "$LAB/actions"
+case "$1" in
+stop) [ "$CASE" = stop-fails ] || rm -f "$LAB/running" ;;
+start) touch "$LAB/running" ;;
+esac
+''')
+            if case != 'stopped':
+                (f.path / 'running').touch()
+            if case == 'busy':
+                owner = f.start(FILES[0], HOLD)
+                wait_file(f.path / 'ready', owner)
+            prefix = '''pidof() {
+  [ "$CASE" != unknown ] || return 127
+  [ -f "$LAB/running" ] || return 1
+  echo 4242
+}
+sleep() { :; }
+netstat() { echo '127.0.0.1:7890 '; }
+mv() {
+  case "$*" in *config.yaml*)
+    [ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || return 90
+    [ ! -f "$LAB/running" ] || return 91
+    echo commit >> "$LAB/actions" ;;
+  esac
+  command mv "$@"
+}
+'''
+            script = f.path / 'import.sh'
+            script.write_text(prefix + f.redirect(text))
+            p = subprocess.run(shell + [str(script), str(candidate)],
+                               env=dict(os.environ, LAB=str(f.path), CASE=case),
+                               text=True, capture_output=True, timeout=10)
+            events = f.actions()
+            success = case in ['running', 'stopped']
+            assert (p.returncode == 0) == success, (case, p.stdout, p.stderr)
+            # Reproduces the original defect even though its if-condition hid rc=127.
+            assert 'not found' not in p.stderr and 'SECOND-ELF' not in p.stderr, p.stderr
+            if success:
+                assert p.stderr == '', p.stderr
+                expected = ['validate', 'commit', 'commit', 'validate']
+                if case == 'running': expected = ['stop'] + expected + ['start']
+                assert events == expected, (case, events)
+                assert cfg.read_bytes() == candidate.read_bytes()
+                assert (cfgdir / 'config.yaml.bak').read_text().endswith('# old\n')
+                assert (f.path / 'running').exists() == (case == 'running')
+            else:
+                assert cfg.read_text().endswith('# old\n')
+                assert events == (['stop'] if case == 'stop-fails' else []), (case, events)
+            if case == 'busy':
+                assert (f.path / 'mihomo-lifecycle.lock.d/owner').exists()
+                (f.path / 'go').touch()
+                assert owner.wait(timeout=5) == 0
+            else:
+                assert not (f.path / 'mihomo-lifecycle.lock.d').exists()
+            print('[OK] full importer:', case, 'defined helpers, lock before stop/ELF/commit')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--shell", action="append", help="sh or 'busybox ash'; repeatable")
@@ -389,6 +476,7 @@ def main():
         test_ownership(shell)
         test_interleaving(shell)
         test_watchdog_doctor(shell)
+        test_full_importer(shell)
     print("[OK] Lifecycle behavioural regressions passed")
 
 
