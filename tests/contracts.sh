@@ -496,7 +496,7 @@ pass "installer project-script downloads use validated curl/wget/API fallbacks a
 grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
 grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
 grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/install.sh" || fail "installer must give large assets a separate bounded transfer window"
-grep -Fq '--max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
+grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
 grep -Fq 'wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"' "$ROOT/install.sh" || fail "installer large-file wget fallback must remain bounded"
 grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
 grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
