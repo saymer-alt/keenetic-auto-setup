@@ -465,7 +465,15 @@ download_file_with_fallback() {
 # either version carries non-numeric components (prerelease/build suffixes).
 # Deliberately minimal — unknown means "cannot order" and the caller errs on
 # the safe side (no replacement). Not a SemVer library.
+valid_version() {
+  printf '%s\n' "$1" | grep -Eq '^[0-9]{1,9}(\.[0-9]{1,9})*([-+][A-Za-z0-9]+([.+-][A-Za-z0-9]+)*)?$'
+}
+
 ver_compare() {
+  # Validate the ENTIRE numeric string before comparing the first component.
+  for _vc in "$1" "$2"; do
+    printf '%s\n' "$_vc" | grep -Eq '^[0-9]{1,9}(\.[0-9]{1,9})*$' || { echo unknown; return 0; }
+  done
   _va=$1
   _vb=$2
   while :; do
@@ -1109,7 +1117,7 @@ case "$ASSET_VER" in
   *) error "Cannot parse package release from asset name: $ASSET_NAME" ;;
 esac
 
-[ -z "$AVAILABLE_VER" ] && error "Cannot parse version from asset name: $ASSET_NAME"
+valid_version "$AVAILABLE_VER" || error "Cannot parse version from asset name: $ASSET_NAME"
 
 log "Available package: $ASSET_NAME"
 log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
@@ -1125,6 +1133,9 @@ log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
 # manual task. Exact string equality short-circuits first, so devices on a
 # prerelease are recognized as up to date when the same version is packaged.
 # An unreadable current version is treated as a repair case.
+if [ -n "$CURRENT_VER" ]; then
+  valid_version "$CURRENT_VER" || error "Malformed installed version; automatic update refused"
+fi
 if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
   log "Version decision deferred until after the controlled stop — the package is fetched so the comparison can be made safely."
 elif [ -z "$CURRENT_VER" ]; then
@@ -1354,6 +1365,9 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
     INSTALLED_VER=${INSTALLED_VER#v}
   fi
   CURRENT_VER="$INSTALLED_VER"
+  if [ -n "$CURRENT_VER" ]; then
+    valid_version "$CURRENT_VER" || preflight_fail "Malformed installed version; automatic update refused"
+  fi
   if [ -z "$INSTALLED_VER" ]; then
     log "Installed version still unreadable after the stop — proceeding with the repair update."
   elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
@@ -1391,7 +1405,10 @@ fi
 # stopped (a service that was already down stays down) and leaves the old
 # binary in place.
 # -----------------------------
-PACKAGE_VER=$("$STAGE_BIN" -v 2>/dev/null | head -1 | awk '{print $3}')
+if ! PACKAGE_OUTPUT=$("$STAGE_BIN" -v 2>/dev/null); then
+  preflight_fail "Candidate version probe failed; installed Mihomo untouched"
+fi
+PACKAGE_VER=$(printf '%s\n' "$PACKAGE_OUTPUT" | head -1 | awk '{print $3}')
 PACKAGE_VER=${PACKAGE_VER#v}
 if [ "$PACKAGE_VER" != "$AVAILABLE_VER" ]; then
   preflight_fail "Pre-flight failed: package binary reports ${PACKAGE_VER:-unknown}, expected $AVAILABLE_VER (from $ASSET_NAME) — installed Mihomo untouched"

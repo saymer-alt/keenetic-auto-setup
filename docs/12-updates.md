@@ -43,6 +43,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - не перезаписывает пользовательский `config.yaml`; updater меняет бинарник Mihomo, а не пользовательскую конфигурацию;
 - не делает автоматический downgrade.
 
+Development C7 проверяет version string целиком до сравнения и требует успешного
+exit code candidate `-v`. Malformed/non-orderable версии не разрешают замену;
+`--force` допускает повторную установку той же версии, но не downgrade.
+Нечитаемая версия после безопасного stop остаётся прежним repair-сценарием;
+opkg/project metadata не подменяет runtime truth. Запущенный daemon не пробуется
+ради сравнения; решение откладывается до stop. Explicit package/source override
+у Mihomo updater отсутствует, downgrade остаётся отдельной ручной операцией.
+
 После обновления:
 
 ```bash
@@ -110,6 +118,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Подробности → [Watchdog](04-watchdog.md).
 
+Development C2/C3: updater держит общий lifecycle lock, включая stage cleanup.
+Canonical watchdog и managed wrapper имеют root:root/0755, backup — 0600 вне
+cron.5mins. Ошибка до atomic rename оставляет прежний файл; общий rollback всех
+файлов не обещается, каждый committed файл отдельно валиден. Распознанные
+пяти-минутные direct/run-parts routes сводятся к одному; комментарии не являются
+active routes. Неизвестные active references сохраняются с ERROR для ручной
+проверки. Корректный повторный запуск не меняет bytes/inode/mtime managed files.
+
 ## Legacy config: добавление TUN / `mitun0`
 
 Для старых `config.yaml`, в которых **вообще нет top-level секции `tun:`**, используется отдельный `migrate-mihomo-tun.sh`. Он не переписывает proxy/rules/DNS и не заменяет существующий TUN.
@@ -146,6 +162,12 @@ tun:
 Транзакция соблюдает one-Mihomo invariant: при работающем daemon выполняется контролируемая остановка, создаются per-run rollback и постоянный `config.yaml.pre-tun`, кандидат проходит `mihomo -t`, затем выполняется same-filesystem atomic replace. После возврата ранее работающего сервиса migrator ждёт процесс, contract-port 7890 и реальное появление `/sys/class/net/mitun0`; при провале автоматически возвращается исходный config. Если сервис был остановлен пользователем, он остаётся остановленным.
 
 Если `tun:` уже существует, этот migrator делает no-op и ничего не нормализует. Для существующего `stack: gvisor` → `stack: mips` используется отдельный `migrate-mihomo-mips.sh`.
+
+Development C5 вооружает recovery до commit и до stop: INT/TERM/HUP и ошибочный
+EXIT возвращают per-run config через same-filesystem stage/rename и проверяют
+восстановление прежнего сервиса. Во время recovery повторные сигналы игнорируются.
+Failed recovery сохраняет per-run backup и сообщает ошибку; historical `.pre-tun`
+не подменяет текущий snapshot. Power-loss/SIGKILL recovery не гарантируется.
 
 Doctor v1.2.16 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
 

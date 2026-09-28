@@ -1,6 +1,6 @@
 # 19 — взаимное исключение операций Mihomo
 
-Installer, updater, config import, MIPS/TUN migration и watchdog restart используют
+Installer, Mihomo/watchdog updater, config import, MIPS/TUN migration и watchdog restart используют
 один lock: `/tmp/mihomo-lifecycle.lock.d`. Doctor и `--check` migrator используют
 его только для краткого резервирования времени ELF-проверки. Они не меняют сервис,
 конфигурацию или маршруты; временная координация в `/tmp` не является настройкой роутера.

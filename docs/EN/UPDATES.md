@@ -35,6 +35,21 @@ The updater:
 - never overwrites the user `config.yaml`; the updater replaces the Mihomo binary, not the user's configuration;
 - never auto-downgrades.
 
+`--force` allows reinstalling the same version, not downgrading. Malformed
+versions and incomparable prereleases fail closed; an unreadable installed
+version after a controlled stop remains a repair case. Candidate `-v` must
+exit successfully and match the selected package version.
+
+Watchdog maintenance uses the same lifecycle lock. Managed executables require
+root:root/0755, legacy backups remain 0600 outside cron, and only recognized
+five-minute cron routes are normalized. Unknown active routes need manual review.
+Correct repeat runs preserve file content, inode and modification time.
+
+TUN migration arms recovery before stop/rename. INT/TERM/HUP use the EXIT
+recovery path, restoring config through a verified adjacent stage and atomic
+rename. Failed recovery retains the per-run snapshot; power loss/SIGKILL and
+hardware acceptance remain outside this test coverage.
+
 After an update:
 
 ```bash

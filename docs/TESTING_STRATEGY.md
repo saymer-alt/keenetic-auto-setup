@@ -1,5 +1,19 @@
 # Testing Strategy
 
+## C2–C7 maintenance regressions
+
+`python3 tests/maintenance-regression.py` runs production watchdog updater,
+cron normalization, S00ubifs dispatcher, installer asset selector and updater
+version decisions under dash and BusyBox ash. Kernel mounts, ownership and
+downloads are controlled fixtures; file modes, bytes and renames are real.
+Asset names/URLs were recorded from entware-go:latest on 2026-09-28; ambiguity,
+wrong-package and missing-asset variants are derived fixtures. Coverage includes
+permission/rename failures, foreign schedules, comments, duplicate routes,
+idempotence, lock exclusion, partial mount setup and malformed/older versions.
+The rollback suite adds full TUN migration INT/TERM/HUP cases around stop,
+backup, commit and start, plus failed recovery with retained per-run backups.
+No router, privileged mount or live-network acceptance is implied.
+
 ## B6/C1: process discovery and swap identity
 
 Run `python3 tests/process-regression.py` and `python3 tests/swap-regression.py`.

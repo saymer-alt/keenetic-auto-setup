@@ -292,6 +292,8 @@ CONFIG="$CONFIG_DIR/config.yaml"
 PERSIST_BACKUP="$CONFIG_DIR/config.yaml.pre-tun"
 TMP_NEW="$CONFIG_DIR/.config.yaml.tun-tmp.$$"
 RUN_BACKUP="/tmp/mihomo-tun-config.backup.$$"
+ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.tun-rollback.$$"
+RECOVERY_FAILED=0
 VALIDATE_ERR="/tmp/mihomo-tun-validate.$$"
 MIN_MIPS_VERSION="1.19.31"
 
@@ -430,8 +432,8 @@ port_ok() {
 }
 
 stop_mihomo_confirmed() {
-    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     SERVICE_WAS_STOPPED=1
+    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     _i=0
     while [ "$_i" -lt 10 ]; do
         mp_stopped && return 0
@@ -463,8 +465,10 @@ rollback_config() {
     mp_known || return 1
     if mp_running; then stop_mihomo_confirmed || return 1; fi
     mp_stopped || return 1
-    cp -f "$RUN_BACKUP" "$CONFIG" || return 1
-    [ -n "$CFG_MODE" ] && chmod "$CFG_MODE" "$CONFIG" 2>/dev/null || true
+    cp -p "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
+    cmp -s "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
+    mv -f "$ROLLBACK_STAGE" "$CONFIG" || return 1
+    REPLACEMENT_DONE=0
     return 0
 }
 
@@ -473,26 +477,36 @@ rollback_config() {
 
 
 cleanup() {
-    rm -f "$TMP_NEW" "$RUN_BACKUP" "$VALIDATE_ERR" 2>/dev/null || true
+    rm -f "$TMP_NEW" "$ROLLBACK_STAGE" "$VALIDATE_ERR" 2>/dev/null || true
+    if [ "$RECOVERY_FAILED" -eq 0 ]; then rm -f "$RUN_BACKUP"; fi
     ml_lifecycle_release || true
+}
+
+finish_transaction() {
+    _finish_rc=$?
+    trap - EXIT
+    trap "" INT TERM HUP
+    if [ "$REPLACEMENT_DONE" -eq 1 ]; then
+        if ! rollback_config; then
+            RECOVERY_FAILED=1
+            _finish_rc=1
+            warn "Config recovery FAILED; per-run backup retained at $RUN_BACKUP"
+        fi
+    fi
+    if [ "$RECOVERY_FAILED" -eq 0 ] && [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
+        if ! restore_service_if_needed; then
+            RECOVERY_FAILED=1
+            _finish_rc=1
+            warn "Service recovery FAILED; backup retained at $RUN_BACKUP"
+        fi
+    fi
+    cleanup
+    exit "$_finish_rc"
 }
 
 signal_handler() {
     trap "" INT TERM HUP
     warn "Received $1 - aborting migration."
-    if [ "$REPLACEMENT_DONE" -eq 1 ]; then
-        warn "Config was already replaced; rolling back the current transaction."
-        if rollback_config; then
-            if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
-                "$INIT_SCRIPT" restart >/dev/null 2>&1 || true
-            fi
-        else
-            warn "Automatic config rollback failed; persistent backup remains at $PERSIST_BACKUP"
-        fi
-    else
-        restore_service_if_needed || warn "Could not confirm Mihomo service restoration."
-    fi
-    cleanup
     exit 1
 }
 
@@ -551,7 +565,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no migration started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
-trap cleanup EXIT
+trap finish_transaction EXIT
 trap "signal_handler INT" INT
 trap "signal_handler TERM" TERM
 trap "signal_handler HUP" HUP
@@ -626,11 +640,11 @@ fi
 
 mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Committing TUN block atomically..."
+# Arm recovery BEFORE rename; a signal can arrive after mv but before its return.
+REPLACEMENT_DONE=1
 if ! mv -f "$TMP_NEW" "$CONFIG"; then
-    restore_service_if_needed || true
     error "Atomic config replace failed; original config is still available in the rollback copy."
 fi
-REPLACEMENT_DONE=1
 
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     log "Starting Mihomo with the migrated config..."
@@ -654,10 +668,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
 
     if [ "$_process_ok" -ne 1 ] || [ "$_tun_ok" -ne 1 ] || [ "$_port_rc" -eq 1 ]; then
         warn "Post-migration verification failed (process=$_process_ok mitun0=$_tun_ok port7890_rc=$_port_rc); rolling back."
-        rollback_config || error "Migration failed and automatic config rollback failed. Restore $PERSIST_BACKUP manually."
-        "$INIT_SCRIPT" restart >/dev/null 2>&1 || true
-        REPLACEMENT_DONE=0
-        error "Rolled back to the pre-migration config."
+        error "Migration verification failed; restoring the current transaction on exit."
     fi
     [ "$_port_rc" -eq 2 ] && warn "No curl/wget available; port 7890 probe skipped, but process and mitun0 were confirmed."
     status_out "$COLOR_GREEN" "[OK] Mihomo is running and mitun0 is present."
@@ -666,6 +677,7 @@ else
 fi
 
 REPLACEMENT_DONE=0
+SERVICE_WAS_STOPPED=0
 status_out "$COLOR_GREEN" "[OK] Added project TUN block with device mitun0 and stack: $SELECTED_STACK."
 if [ "$SELECTED_STACK" = "gvisor" ]; then
     info "stack: mips requires Mihomo >= $MIN_MIPS_VERSION. After upgrading, use migrate-mihomo-mips.sh for the stack-only migration."

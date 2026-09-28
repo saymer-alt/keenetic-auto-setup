@@ -294,6 +294,59 @@ def runtime_identity(shell):
     print('PASS', '/'.join(shell), 'real /proc runtime inode identity', flush=True)
 
 
+def tun_signals(shell):
+    """Full TUN migrator, same recorded init/ELF model and real-file faults."""
+    cases = ['success', 'commit-fail', 'term-stop', 'term-backup',
+             'term-before', 'term-commit', 'int-commit', 'hup-commit',
+             'term-start', 'int-start', 'hup-start', 'copy-fail', 'rename-fail']
+    for running in [True, False]:
+        for case in cases:
+            if not running and case in ['term-stop','term-start','int-start','hup-start','copy-fail','rename-fail']:
+                continue
+            with tempfile.TemporaryDirectory(prefix='tun-rollback-') as directory:
+                lab=Path(directory)
+                for d in ['opt/bin','opt/etc/init.d','opt/etc/mihomo','tmp','sys/class/net/mitun0']:
+                    (lab/d).mkdir(parents=True)
+                cfg=lab/'opt/etc/mihomo/config.yaml';cfg.write_text('mixed-port: 7890\n# current\n');cfg.chmod(0o640)
+                original=cfg.read_bytes()
+                hist=Path(str(cfg)+'.pre-tun');hist.write_text('historical\n')
+                exe=lab/'opt/bin/mihomo';exe.write_text(binary('old'));exe.chmod(0o750)
+                init=INIT.replace('if [ "$KIND" = mips ]; then', '''if [ "$KIND" = tun ]; then
+    if grep -q '^tun:' "$LAB/opt/etc/mihomo/config.yaml"; then gen=new; else gen=old; fi
+  elif [ "$KIND" = mips ]; then''')
+                init=init.replace('rm -f "$LAB/running" ;;', 'rm -f "$LAB/running"\n  if [ "$CASE" = term-stop ]; then kill -TERM "$PPID"; fi ;;')
+                ip=lab/'opt/etc/init.d/S99mihomo';ip.write_text(init);ip.chmod(0o700)
+                if running: (lab/'running').write_text('original\n')
+                wrappers=WRAPPERS.replace('*mips-rollback.*)', '*mips-rollback.*|*tun-rollback.*)')
+                wrappers=wrappers.replace('*mips-tmp*)', '*mips-tmp*|*tun-tmp*)')
+                wrappers=wrappers.replace('command mv "$@" || return', 'if [ "$CASE" = term-before ]; then kill -TERM "$$"; fi\n      command mv "$@" || return')
+                wrappers=wrappers.replace('command cp "$@"\n}', '''command cp "$@" || return
+  case "$dest" in *tun-config.backup.*)
+    [ "$CASE" != term-backup ] || kill -TERM "$$" ;;
+  esac
+}''')
+                text=source('migrate-mihomo-tun.sh').replace('/tmp/',str(lab/'tmp')+'/').replace('/opt/',str(lab/'opt')+'/').replace('/sys/',str(lab/'sys')+'/')
+                script=lab/'run.sh';script.write_text(wrappers+text)
+                p=subprocess.run(shell+[str(script)],env=dict(os.environ,LAB=str(lab),CASE=case,KIND='tun'),capture_output=True,text=True,timeout=15)
+                events=(lab/'actions').read_text().splitlines() if (lab/'actions').exists() else []
+                context=(shell,running,case,p.returncode,events,p.stdout,p.stderr)
+                assert 'SECOND-PROBE' not in events,context
+                assert hist.read_text()=='historical\n',context
+                assert cfg.stat().st_mode & 0o777 == 0o640,context
+                failed=case in ['copy-fail','rename-fail']
+                if case=='success':
+                    assert p.returncode==0 and b'\ntun:\n' in cfg.read_bytes(),context
+                elif failed:
+                    assert p.returncode!=0 and 'recovery FAILED' in p.stdout,context
+                    assert 'start:old' not in events,context
+                else:
+                    assert p.returncode!=0 and cfg.read_bytes()==original,context
+                assert bool(list((lab/'tmp').glob('mihomo-tun-config.backup.*')))==failed,context
+                assert (lab/'running').exists()==(running and not failed),context
+                assert not (lab/'tmp/mihomo-lifecycle.lock.d').exists(),context
+                print('PASS','/'.join(shell),'TUN',case,'running='+str(running),flush=True)
+
+
 def main():
     for shell in [['sh'], ['busybox', 'ash']]:
         runtime_identity(shell)
@@ -313,6 +366,7 @@ def main():
                 for case in ['success','term-commit']:
                     run(shell,kind,case,running=running,no_pidof=True)
         run(shell,'updater','wrong-runtime',no_pidof=True)
+        tun_signals(shell)
     print('All B3/B4 behavioural rollback tests passed (dash and BusyBox ash).')
 
 
