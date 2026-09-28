@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.16 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.17 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.16"
+DOCTOR_VERSION="1.2.17"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -412,6 +412,9 @@ finding_action() {
             ;;
         *"Unsupported external /opt filesystem:"*)
             printf '%s' "Migrate/reformat the external Entware storage to EXT4, verify that Keenetic mounts it and Entware starts from it, then run Doctor again. This project never formats or converts storage."
+            ;;
+        *"Internal /opt flash protection is required"*|*"Internal /opt volatile-write protection is incomplete"*)
+            printf '%s' "Restore the project RAM-mode protection: keep /opt/etc/init.d/S00ubifs executable and ENABLED=yes, start it, and verify /opt/tmp, /opt/var/log and /opt/var/run are mounted as tmpfs; then run Doctor again."
             ;;
         *"Supported-profile component missing: dns-filter; runtime DNS interception is currently active"*)
             printf '%s' "No immediate runtime repair is required: DNS interception is live. This legacy installation does not match the supported component profile; install dns-filter before reprovisioning or rebuilding the component set, then re-check."
@@ -1220,6 +1223,73 @@ _doc_opt_fstype() {
     done < "$MOUNTS_SRC"
     echo "$_doc_of_fst"
 }
+
+# BEGIN DOCTOR STORAGE PROTECTION v1
+# Resolve the deepest mount carrying a path and expose the actual Entware
+# location instead of reporting only an internal/external class.
+_doc_resolve_mount() {
+    _doc_rm_path="${1:-$OPT_ROOT}"
+    _doc_rm_bl=0
+    DOC_MOUNT_SOURCE=unknown
+    DOC_MOUNTPOINT=unknown
+    DOC_MOUNT_FSTYPE=unknown
+    DOC_MOUNT_CLASS=unknown
+    [ -r "$MOUNTS_SRC" ] || return 1
+    while read -r _doc_rm_src _doc_rm_mp _doc_rm_fst _doc_rm_rest; do
+        case "$_doc_rm_path" in
+            "$_doc_rm_mp") ;;
+            *) case "$_doc_rm_path" in
+                   "$_doc_rm_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _doc_rm_len=${#_doc_rm_mp}
+        [ "$_doc_rm_len" -ge "$_doc_rm_bl" ] || continue
+        _doc_rm_bl=$_doc_rm_len
+        DOC_MOUNT_SOURCE=$_doc_rm_src
+        DOC_MOUNTPOINT=$_doc_rm_mp
+        DOC_MOUNT_FSTYPE=$_doc_rm_fst
+        DOC_MOUNT_CLASS=$(_doc_classify_mount "$_doc_rm_src" "$_doc_rm_fst")
+    done < "$MOUNTS_SRC"
+    [ "$DOC_MOUNTPOINT" != unknown ]
+}
+
+_doc_exact_tmpfs_mount() {
+    [ -r "$MOUNTS_SRC" ] || return 1
+    awk -v path="$1" '$2 == path && $3 == "tmpfs" {found=1} END {exit !found}' "$MOUNTS_SRC"
+}
+
+_doc_check_internal_flash_protection() {
+    _doc_fp_script="$OPT_ROOT/etc/init.d/S00ubifs"
+    _doc_fp_missing=""
+
+    if [ ! -f "$_doc_fp_script" ]; then
+        fail "Internal /opt flash protection is required but S00ubifs is missing"
+    elif [ ! -x "$_doc_fp_script" ]; then
+        fail "Internal /opt flash protection is required but S00ubifs is not executable"
+    elif ! grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]*(#.*)?)?$' "$_doc_fp_script" 2>/dev/null; then
+        fail "Internal /opt flash protection is required but S00ubifs is disabled"
+    else
+        ok "Internal /opt flash protection service is present, executable and enabled (S00ubifs)"
+    fi
+
+    for _doc_fp_dir in "$OPT_ROOT/tmp" "$OPT_ROOT/var/log" "$OPT_ROOT/var/run"; do
+        if ! _doc_exact_tmpfs_mount "$_doc_fp_dir"; then
+            if [ -n "$_doc_fp_missing" ]; then
+                _doc_fp_missing="$_doc_fp_missing, $_doc_fp_dir"
+            else
+                _doc_fp_missing=$_doc_fp_dir
+            fi
+        fi
+    done
+
+    if [ -z "$_doc_fp_missing" ]; then
+        ok "Internal /opt volatile-write protection is active: $OPT_ROOT/tmp, $OPT_ROOT/var/log and $OPT_ROOT/var/run are tmpfs"
+    else
+        fail "Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing: $_doc_fp_missing"
+    fi
+}
+# END DOCTOR STORAGE PROTECTION v1
 _doc_swap_source_capacity_kb() {
     _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
     case "$_dsc_type" in
@@ -1284,13 +1354,25 @@ _doc_scan_swap() {
     [ "$_doc_ext_kb" -gt "$DOC_SWAP_MAX_KB" ] 2>/dev/null && _doc_ext_oversize=1
 }
 
+_doc_resolve_mount "$OPT_ROOT" || true
 _doc_opt=$(_doc_opt_class)
 _doc_opt_fstype_value=$(_doc_opt_fstype)
+info "Entware /opt mount: source=${DOC_MOUNT_SOURCE:-unknown}; mountpoint=${DOC_MOUNTPOINT:-unknown}; filesystem=${DOC_MOUNT_FSTYPE:-${_doc_opt_fstype_value:-unknown}}; class=${DOC_MOUNT_CLASS:-$_doc_opt}"
 case "$_doc_opt" in
-    internal) info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
-    external) info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
-    ram)      info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent" ;;
-    *)        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
+    internal)
+        info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        _doc_check_internal_flash_protection
+        ;;
+    external)
+        info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        info "Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage"
+        ;;
+    ram)
+        info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent"
+        ;;
+    *)
+        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        ;;
 esac
 
 if [ "$_doc_opt" = external ]; then

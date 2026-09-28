@@ -43,7 +43,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
-grep -Fq 'DOCTOR_VERSION="1.2.16"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must advance for the 512 MB severity contract change"
+grep -Fq 'DOCTOR_VERSION="1.2.17"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
@@ -116,6 +116,14 @@ grep -Fq "The project supports external Entware /opt only on EXT4" "$ROOT/instal
 grep -Fq 'Unsupported external /opt filesystem:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must diagnose unsupported external /opt filesystems"
 grep -Fq 'UNSUPPORTED EXTERNAL /opt FILESYSTEM:' "$ROOT/update-mihomo.sh" || fail "updater must warn on legacy non-EXT4 external /opt"
 pass "external Entware storage contract is EXT4-only and mirrored by installer/Doctor/updater"
+
+grep -Fq 'Entware /opt mount: source=' "$ROOT/mihomo-doctor.sh" || fail "Doctor must report the actual Entware mount source/mountpoint/filesystem/class"
+grep -Fq 'Internal /opt flash protection is required but S00ubifs is missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must hard-diagnose missing S00ubifs on internal Entware"
+grep -Fq 'Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require active tmpfs protection on internal Entware"
+grep -Fq 'Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep internal-flash protection N/A for external Entware"
+sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
+    fail "Doctor Entware storage / internal-flash protection fixtures failed"
+pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
 
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q '^MIHOMO_STAGE_MARGIN_KB=4096$' "$ROOT/$_f" || fail "$_f must use the shared 4 MB Mihomo staging margin"
