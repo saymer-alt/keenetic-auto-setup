@@ -1,5 +1,17 @@
 # Testing Strategy
 
+## B3/B4: rollback fault regression
+
+Run `python3 tests/rollback-regression.py`. It runs the full MIPS migration and
+the updater's production transaction from staging onward against real temporary
+files, with recorded init/process/ELF stubs. Both dash and BusyBox ash exercise
+historical A/current B/candidate C, failed commit, permissions, running/stopped
+service, INT/TERM/HUP after commit/start, repeated recovery signals, rollback
+copy/chmod/rename/state failures, stop failure, failed restored start and wrong
+runtime identity. A separate real Linux process checks `/proc` inode identity.
+The fixtures assert action ordering and absence of concurrent ELF probes;
+they do not replace real Keenetic/Entware hardware acceptance.
+
 ## B1/B2: process-based lifecycle regression
 
 Run `python3 tests/lifecycle-regression.py` with host `sh` and BusyBox installed.

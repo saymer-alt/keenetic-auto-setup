@@ -43,6 +43,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 When replacing `config.yaml` itself, use `config-import.sh`: it keeps the previous config as `config.yaml.bak`, validates the candidate and rolls back if startup or the contract-port check fails.
 
+The B3/B4 development rollback first confirms daemon shutdown, copies the backup
+to a stage beside the canonical binary, checks bytes, permissions and version,
+and restores the binary by atomic rename. Project binary state (including prior
+absence) is restored only afterwards; opkg metadata is untouched. A previously
+running service is started only after both restorations, and its `/proc/<pid>/exe`
+must match the restored canonical inode. INT/TERM/HUP after commit/start use this
+same recovery; further signals are ignored during recovery. Failed recovery is
+an ERROR with retained manual backups, never a success based on `pidof` alone.
+No automatic start follows file/state restoration failure; unverifiable restored
+runtime is stopped again. If stop itself fails, a process may remain running.
+Backups in `/tmp` are volatile; subsequent updater runs do not sweep other runs'
+recovery backups. Hardware acceptance of these changes is still pending.
+
 ## MagiTrickle update
 
 MagiTrickle uses its normal Entware/opkg package path:
@@ -134,6 +147,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 The script changes only `stack:` values, feature-gates support with `mihomo -t`,
 preserves the one-Mihomo invariant, keeps `config.yaml.pre-mips`, rolls back on
 validation/start/port failure, and is idempotent.
+
+In the B3/B4 development version, `.pre-mips` remains the historical first-run
+backup. Transaction rollback uses a separate `.config.yaml.mips-backup.<pid>`
+snapshot of the current config, staged and renamed on the same filesystem with
+permissions preserved. A failed candidate commit also restores this current
+snapshot, never historical config. Successful completion/recovery removes the
+per-run copy; failed recovery retains it and reports its path. These changes do
+not promote development to `stable`.
 
 It does **not** add a missing `tun:` block or create `mitun0` from scratch; its current scope is an existing TUN with `stack: gvisor`. Doctor v1.2.16 emits an INFO hint when that legacy stack is present and the observed Mihomo version meets the documented 1.19.31 minimum. That is only a readiness hint; the migrator's own `mihomo -t` probe remains the definitive feature gate.
 

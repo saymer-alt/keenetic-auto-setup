@@ -536,9 +536,9 @@ grep -Fq 'ml_lifecycle_acquire || error' "$ROOT/update-mihomo.sh" || fail "updat
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate planned downtime with watchdog"
 grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
 grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
-grep -Fq 'cp -f "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must copy the current binary to rollback backup before commit"
+grep -Fq 'cp -p "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must preserve the current binary in rollback backup before commit"
 grep -Fq 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater commit must remain a same-filesystem atomic rename"
-grep -Fq 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must retain rollback restoration"
+grep -Fq 'mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must atomically restore the rollback stage"
 ! grep -Fq 'rm -f "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must never delete the canonical binary before atomic commit"
 _stage_line=$(grep -n 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
 _backup_line=$(grep -n 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)

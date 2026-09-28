@@ -155,6 +155,8 @@ If a change in these areas is required, first understand the dependency
 for the operator.
 
 Risk-zone specifics:
+- MIPS migration rollback must use the current run's config snapshot, never the historical `.pre-mips` artifact. Restore through a same-filesystem stage/rename with permissions preserved; retain the snapshot on recovery failure.
+- Binary rollback stays under the shared lifecycle lock: confirmed stop → verified same-filesystem rollback stage → atomic binary rename → project-state restore → optional previous-service start and canonical executable-inode verification. Failure in recovery must remain an ERROR with manual backups retained; never report success merely because `pidof` finds a process. INT/TERM/HUP are already handled; repeated signals during recovery must not re-enter it.
 - update-mihomo.sh is transactional: acquire/download/extract while the old service runs, verify destination free space, same-filesystem stage beside the canonical binary, create/verify the volatile /tmp rollback backup, controlled one-Mihomo stop, runtime/config pre-flight, then a single same-filesystem rename commit followed by verification/start. There is no rm-old-then-copy window. Change this order only with full understanding.
 - watchdog: restart only when WAN is confirmed and the proxy/tunnel check fails; on total
   WAN failure the script exits without action — an intentional decision (comment in code,

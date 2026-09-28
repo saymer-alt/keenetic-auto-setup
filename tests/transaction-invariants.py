@@ -47,7 +47,13 @@ def test_updater() -> None:
         'if ! mv -f "$STAGE_BIN" "$MIHOMO_PATH"; then',
         '# 16. Verify the replaced binary (version + config) — rollback on any failure',
     )
-    require(text, 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"', label)
+    forbid(text, 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"', label)
+    ordered(text, label, 'rollback_stop_confirmed || rollback_failed',
+            'cp -p "$TMP_BACKUP" "$ROLLBACK_STAGE"',
+            'chmod "$_rb_mode" "$ROLLBACK_STAGE"',
+            '_rb_output=$("$ROLLBACK_STAGE" -v',
+            'mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"',
+            'if ! restore_binary_state; then', 'if ! restored_runtime_ok; then')
     require(text, 'UPDATE FAILED AND RECOVERY FAILED', label)
     require(text, 'update failed, previous version restored', label)
     require(text, 'Mihomo is running again (watchdog restart?) - stopping before the commit', label)
@@ -99,7 +105,7 @@ def test_mips_migrator() -> None:
     ordered(
         text, label,
         'if [ ! -f "$BACKUP" ]; then',
-        'cp -f "$CONFIG" "$BACKUP"',
+        'cp -p "$RUN_BACKUP" "$BACKUP"',
         "if ! sed ",
         'log "Testing the migrated config with mihomo -t..."',
         'REPLACEMENT_DONE=1',
@@ -107,7 +113,11 @@ def test_mips_migrator() -> None:
         'log "Starting Mihomo with the migrated config..."',
     )
     require(text, 'Backup already exists, kept: $BACKUP', label)
-    require(text, 'cp -f "$BACKUP" "$CONFIG"', label)
+    forbid(text, 'cp -f "$BACKUP" "$CONFIG"', label)
+    require(text, 'cp -p "$CONFIG" "$RUN_BACKUP"', label)
+    ordered(text, label, 'cp -p "$RUN_BACKUP" "$ROLLBACK_STAGE"',
+            'cmp -s "$RUN_BACKUP" "$ROLLBACK_STAGE"',
+            'mv -f "$ROLLBACK_STAGE" "$CONFIG"')
     require(text, 'ensure_stopped_before_exec', label)
     require(text, 'executable version/support probes skipped (one-Mihomo invariant)', label)
     require(text, 'MAINT_MARKER="/tmp/mihomo.maintenance"', label)

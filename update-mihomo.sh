@@ -237,7 +237,7 @@ ml_lifecycle_release() {
 #     An older available version — or one that cannot be reliably ordered,
 #     e.g. prerelease/build suffixes — is skipped with a warning, even with
 #     --force. Downgrade, if ever needed, is a separate manual task.
-#   - Signal safety: INT/TERM abort the updater and restore the system
+#   - Signal safety: INT/TERM/HUP abort the updater and restore the system
 #     (service state in Phase A, binary rollback in Phase B); EXIT only
 #     cleans temp files.
 #   - User config.yaml is only ever read (mihomo -t); never written.
@@ -267,6 +267,7 @@ REPLACEMENT_STARTED=0
 TMP_NEW=""
 WORK_DIR=""
 STAGE_BIN=""
+ROLLBACK_STAGE=""
 MIHOMO_STAGE_MARGIN_KB=4096
 RECOVERY_FAILED=0
 BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
@@ -447,10 +448,11 @@ restore_binary_state() {
   if [ "$STATE_HAD_OLD" -eq 1 ]; then
     if [ ! -s "$TMP_STATE_BACKUP" ]; then
       RECOVERY_FAILED=1
-      warn "Binary-state rollback backup is missing; runtime binary will still be restored, but project metadata may be stale: $BINARY_STATE"
+      warn "Binary-state rollback backup is missing; binary was restored, but project metadata may be stale: $BINARY_STATE"
       return 1
     fi
-    if ! cp -f "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
+    if ! cp -p "$TMP_STATE_BACKUP" "$_rollback_stage" ||
+       ! cmp -s "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
       rm -f "$_rollback_stage" 2>/dev/null || true
       RECOVERY_FAILED=1
       warn "Could not restore previous project binary state at $BINARY_STATE (backup kept at $TMP_STATE_BACKUP)"
@@ -470,43 +472,86 @@ restore_binary_state() {
 # Rollback helper: restores the pre-update binary AND the project-owned
 # binary-state metadata, then attempts to start the previous service state.
 # opkg package metadata is intentionally not modified by this binary updater.
+rollback_failed() {
+  RECOVERY_FAILED=1
+  error "$1 — UPDATE FAILED AND RECOVERY FAILED. Service is not restarted. Manual recovery backups: $TMP_BACKUP and $TMP_STATE_BACKUP (volatile — gone after reboot). Canonical: $MIHOMO_PATH; metadata: $BINARY_STATE"
+}
+
+# Rollback must not call the Phase-A stop helper: its error path may restart
+# the failed new binary. Confirm quiescence before copying/probing/restoring.
+rollback_stop_confirmed() {
+  command -v pidof >/dev/null 2>&1 || return 1
+  if pidof mihomo >/dev/null 2>&1; then
+    [ -n "$INIT_SCRIPT" ] || return 1
+    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+  fi
+  for _rs_i in 1 2 3 4 5 6 7 8 9 10; do
+    pidof mihomo >/dev/null 2>&1 || return 0
+    sleep 1
+  done
+  return 1
+}
+
+# No ELF probe beside the restored daemon. Its /proc executable must be the
+# exact canonical inode we just restored, not merely some process named mihomo.
+restored_runtime_ok() {
+  _rr_pids=$(pidof mihomo 2>/dev/null) || return 1
+  set -- $_rr_pids
+  [ "$#" -eq 1 ] || return 1
+  _rr_file=$(stat -L -c '%d:%i' "$MIHOMO_PATH" 2>/dev/null) || return 1
+  _rr_exe=$(stat -L -c '%d:%i' "/proc/$1/exe" 2>/dev/null) || return 1
+  [ -n "$_rr_file" ] && [ "$_rr_file" = "$_rr_exe" ]
+}
+
 rollback_and_exit() {
+  # A signal during error recovery must not recurse into rollback or cleanup.
+  trap '' INT TERM HUP
   log "Rolling back to previous version..."
+  rollback_stop_confirmed || rollback_failed "Cannot confirm Mihomo stopped for rollback"
+  [ -s "$TMP_BACKUP" ] || rollback_failed "Rollback backup is missing or empty"
 
-  # Usable rollback candidate: the backup this run created and
-  # size-verified in /tmp. It is volatile (gone after reboot).
-  if [ ! -s "$TMP_BACKUP" ]; then
-    RECOVERY_FAILED=1
-    restore_stopped_service
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: rollback backup is missing or empty at $TMP_BACKUP (volatile — gone after reboot). The new binary remains installed at $MIHOMO_PATH. Restore the previous binary manually (install.sh) or verify the new one with: mihomo -v"
-  fi
-
+  ROLLBACK_STAGE="$MIHOMO_DIR/.mihomo.rollback.$$"
   rm -f "$STAGE_BIN" 2>/dev/null || true
-  if ! cp -f "$TMP_BACKUP" "$MIHOMO_PATH"; then
-    RECOVERY_FAILED=1
-    restore_stopped_service
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: could not copy the backup back to $MIHOMO_PATH. The file there may be the failed new version. Restore manually from $TMP_BACKUP (volatile — gone after reboot)."
+  if ! cp -p "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
+    rollback_failed "Could not stage rollback binary"
   fi
-  if ! chmod +x "$MIHOMO_PATH"; then
-    RECOVERY_FAILED=1
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: backup restored but chmod failed on $MIHOMO_PATH. Fix permissions manually: chmod +x $MIHOMO_PATH"
+  _rb_mode=$(stat -c '%a' "$TMP_BACKUP" 2>/dev/null) || rollback_failed "Cannot read backup permissions"
+  chmod "$_rb_mode" "$ROLLBACK_STAGE" || rollback_failed "Could not set rollback permissions"
+  if [ ! -s "$ROLLBACK_STAGE" ] || [ ! -x "$ROLLBACK_STAGE" ] ||
+     ! cmp -s "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
+    rollback_failed "Rollback stage verification failed"
   fi
+  # The restored backup is verified while no daemon is running. An unreadable
+  # old version (repair case) is not silently declared a successful recovery.
+  _rb_output=$("$ROLLBACK_STAGE" -v 2>/dev/null) || rollback_failed "Rollback binary sanity test failed"
+  _rb_ver=$(printf '%s\n' "$_rb_output" | head -1 | awk '{print $3}')
+  _rb_ver=${_rb_ver#v}
+  [ -n "$_rb_ver" ] || rollback_failed "Rollback binary version is unreadable"
+  if [ -n "$CURRENT_VER" ] && [ "$_rb_ver" != "$CURRENT_VER" ]; then
+    rollback_failed "Rollback version differs from the pre-update version"
+  fi
+  if ! mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"; then
+    rollback_failed "Could not atomically restore previous binary"
+  fi
+  ROLLBACK_STAGE=""
   log "Previous binary restored."
-
   if ! restore_binary_state; then
-    warn "Previous binary is restored, but project binary-state metadata could not be fully restored."
+    rollback_failed "Previous binary restored, but project binary-state restoration failed"
   fi
+  REPLACEMENT_STARTED=0
 
-  if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
+  if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+    [ -n "$INIT_SCRIPT" ] || rollback_failed "No init script to restore previous service"
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     sleep 2
-    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-      log "Rollback successful. Previous mihomo is running."
-    else
-      log "WARNING: Rollback completed, but mihomo process is not detected."
+    if ! restored_runtime_ok; then
+      rollback_stop_confirmed || true
+      rollback_failed "Restored runtime could not be verified"
     fi
+    log "Rollback successful. Previous mihomo is running from the restored binary."
+  else
+    log "Previous service was stopped; leaving it stopped."
   fi
-
   error "$1 — update failed, previous version restored."
 }
 
@@ -586,10 +631,10 @@ cleanup_tmp() {
   # After a FAILED RECOVERY the backup is the user's manual restore
   # path - the error message points at it, so it must survive.
   if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
-    rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
-    rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
+    rm -f "${TMP_BACKUP:-}" 2>/dev/null || true
+    rm -f "${TMP_STATE_BACKUP:-}" 2>/dev/null || true
   fi
-  rm -f "$STAGE_BIN" 2>/dev/null || true
+  rm -f "$STAGE_BIN" "${ROLLBACK_STAGE:-}" 2>/dev/null || true
   if [ -n "$MIHOMO_DIR" ]; then
     rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
   fi
@@ -600,7 +645,7 @@ cleanup_tmp() {
   ml_lifecycle_release || true
 }
 
-# Signal safety: INT/TERM explicitly abort the updater and restore the
+# Signal safety: INT/TERM/HUP explicitly abort the updater and restore the
 # system; EXIT only cleans temp files. REPLACEMENT_STARTED separates
 #   Phase A (0): old binary untouched — restore a service the updater
 #                stopped itself; a user-stopped service is never started.
@@ -1014,7 +1059,7 @@ TMP_IPK="$TMP_DIR/mihomo-update.ipk"
 
 # Remove stale artifacts from earlier runs / crashes (the exit trap cleans
 # every normal path; this also covers kill -9 leftovers)
-rm -f "$TMP_DIR"/mihomo-update.ipk "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
+rm -f "$TMP_DIR"/mihomo-update.ipk 2>/dev/null || true
 rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 
 log "Downloading: $ASSET_NAME"
@@ -1122,8 +1167,12 @@ log "Candidate staged at $STAGE_BIN"
 
 # Rollback backup (pre-stop: the old binary is intact and running)
 TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
+if [ -e "$TMP_BACKUP" ] || [ -L "$TMP_BACKUP" ]; then
+  RECOVERY_FAILED=1
+  error "Existing recovery backup at $TMP_BACKUP — preserve it and resolve manually before retrying"
+fi
 log "Backing up current binary to $TMP_BACKUP ..."
-if ! cp -f "$MIHOMO_PATH" "$TMP_BACKUP"; then
+if ! cp -p "$MIHOMO_PATH" "$TMP_BACKUP"; then
   error "Failed to create backup in /tmp - nothing was modified, service untouched"
 fi
 BACKUP_BYTES=$(wc -c < "$TMP_BACKUP" 2>/dev/null || echo 0)
@@ -1134,8 +1183,12 @@ fi
 # Snapshot project-owned binary metadata for rollback. Absence is a valid
 # legacy/out-of-band state and is restored as absence.
 TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"
+if [ -e "$TMP_STATE_BACKUP" ] || [ -L "$TMP_STATE_BACKUP" ]; then
+  RECOVERY_FAILED=1
+  error "Existing recovery metadata at $TMP_STATE_BACKUP — preserve it and resolve manually before retrying"
+fi
 if [ -f "$BINARY_STATE" ]; then
-  if ! cp -f "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
+  if ! cp -p "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
     error "Failed to back up project binary-state metadata - nothing was modified, service untouched"
   fi
   STATE_HAD_OLD=1
@@ -1183,6 +1236,7 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
     INSTALLED_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
     INSTALLED_VER=${INSTALLED_VER#v}
   fi
+  CURRENT_VER="$INSTALLED_VER"
   if [ -z "$INSTALLED_VER" ]; then
     log "Installed version still unreadable after the stop — proceeding with the repair update."
   elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
