@@ -938,7 +938,7 @@ project_script_curl_retry() {
             return 0
         fi
         project_script_transfer "$_pc_dest" curl -fsSL \
-            --connect-timeout 5 --max-time 20 --curves X25519 \
+            --connect-timeout 5 --max-time 20 -4 --curves X25519 \
             -H "Accept: application/vnd.github.raw+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$_pc_url" -o "$_pc_dest"
@@ -949,7 +949,7 @@ project_script_curl_retry() {
             return 0
         fi
         project_script_transfer "$_pc_dest" curl -fsSL \
-            --connect-timeout 5 --max-time 20 --curves X25519 \
+            --connect-timeout 5 --max-time 20 -4 --curves X25519 \
             "$_pc_url" -o "$_pc_dest"
     fi
 }
@@ -1047,7 +1047,7 @@ fetch_url_text() {
     if command -v curl >/dev/null 2>&1; then
         _fut_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_fut_url") || _fut_out=""
         if [ -z "$_fut_out" ]; then
-            _fut_out=$(curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_fut_url" 2>/dev/null) || _fut_out=""
+            _fut_out=$(curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_fut_url" 2>/dev/null) || _fut_out=""
         fi
         if [ -n "$_fut_out" ]; then
             printf '%s' "$_fut_out"
@@ -1077,7 +1077,7 @@ download_url_file() {
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
-        if curl -fL --connect-timeout 5 --max-time 20 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
+        if curl -fL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true

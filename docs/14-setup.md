@@ -26,7 +26,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если первая загрузка `setup.sh` зависает на TLS handshake до вывода скрипта, повторите команду с `--connect-timeout 5 --max-time 20 --curves X25519`. Если raw-хост всё равно недоступен, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
+Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если первая загрузка `setup.sh` зависает на TLS handshake до вывода скрипта, повторите команду с `-4 --connect-timeout 5 --max-time 20 --curves X25519`. Если raw-хост всё равно недоступен, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
 
 ## Почему setup.sh не выбирает режим «на глаз»
 

@@ -30,7 +30,7 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
-Если `curl` зависает до первого вывода скрипта на TLS handshake, используйте `--connect-timeout 5 --max-time 20 --curves X25519`; подробности и offline/SCP fallback — в [подробной установке](03-install.md).
+Если `curl` зависает до первого вывода скрипта на TLS handshake, используйте `-4 --connect-timeout 5 --max-time 20 --curves X25519`; подробности и offline/SCP fallback — в [подробной установке](03-install.md).
 
 Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 

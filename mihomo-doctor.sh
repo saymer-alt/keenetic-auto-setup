@@ -628,7 +628,7 @@ fetch_url() {
             return 0
         fi
         FETCH_OUT=""
-        FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 --curves X25519 "$1" 2>/dev/null)
+        FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 -4 --curves X25519 "$1" 2>/dev/null)
         FETCH_RC=$?
         if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
             return 0

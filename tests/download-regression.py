@@ -31,6 +31,7 @@ else:
 method=base_method + ('-x25519' if '--curves' in args else '')
 if '--curves' in args:
     assert args[args.index('--curves')+1] == 'X25519'
+    assert '-4' in args
     assert '--connect-timeout' in args and '--max-time' in args
 dest=Path(args[args.index('-o' if base_method != 'wget' else '-qO')+1])
 plan=json.loads((lab/'plan').read_text())

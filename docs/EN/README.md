@@ -33,7 +33,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 If `curl` stalls **before setup/Doctor prints anything** during the TLS handshake to `raw.githubusercontent.com`, use the compatibility retry below (certificate verification remains enabled):
 
 ```bash
-curl -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
 Normal TLS remains the primary path. `X25519` is only a compatibility fallback for paths where the larger OpenSSL 3.5 ClientHello is dropped; once the project downloader is running it tries normal TLS → X25519 → wget/API fallback.

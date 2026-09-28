@@ -414,7 +414,7 @@ download_watchdog_candidate() {
             sleep 2
         done
         rm -f "$TMP_FILE" 2>/dev/null || true
-        if curl -fSsL --connect-timeout 5 --max-time 20 --curves X25519 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
             return 0
         fi
         rm -f "$TMP_FILE" 2>/dev/null || true
@@ -457,7 +457,7 @@ download_watchdog_candidate() {
             sleep 2
         done
         rm -f "$TMP_FILE" 2>/dev/null || true
-        if curl -fSsL --connect-timeout 5 --max-time 20 --curves X25519 \
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 \
             -H "Accept: application/vnd.github.raw+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then

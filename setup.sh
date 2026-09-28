@@ -60,7 +60,7 @@ curl_to_file_once() {
     _rc_curve="${4:-}"
     if [ "$_rc_api" -eq 1 ]; then
         if [ -n "$_rc_curve" ]; then
-            curl -fSsL --connect-timeout 5 --max-time 20 --curves "$_rc_curve" \
+            curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$_rc_url" -o "$_rc_dst" 2>/dev/null
@@ -71,7 +71,7 @@ curl_to_file_once() {
                 "$_rc_url" -o "$_rc_dst" 2>/dev/null
         fi
     elif [ -n "$_rc_curve" ]; then
-        curl -fSsL --connect-timeout 5 --max-time 20 --curves "$_rc_curve" \
+        curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
             "$_rc_url" -o "$_rc_dst" 2>/dev/null
     else
         curl -fSsL --connect-timeout 5 --max-time 20 \

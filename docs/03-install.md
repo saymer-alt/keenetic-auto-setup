@@ -33,7 +33,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Если команда `curl ... | sh` зависает ещё **до первого вывода скрипта**, сначала проверьте compatibility-вариант для TLS:
 
 ```bash
-curl -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
 Этот вариант не отключает проверку сертификата и не использует `--insecure`: меняется только TLS key-exchange group. Обычный TLS остаётся первым вариантом. После запуска `setup.sh` project-managed downloader сам использует bounded normal curl, затем один `X25519` compatibility retry, затем wget и GitHub Contents API.

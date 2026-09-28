@@ -428,7 +428,7 @@ fetch_text_with_fallback() {
   if command -v curl >/dev/null 2>&1; then
     _ft_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url") || _ft_out=""
     if [ -z "$_ft_out" ]; then
-      _ft_out=$(curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_ft_url" 2>/dev/null) || _ft_out=""
+      _ft_out=$(curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_ft_url" 2>/dev/null) || _ft_out=""
     fi
     if [ -n "$_ft_out" ]; then
       printf "%s" "$_ft_out"
@@ -454,7 +454,7 @@ download_file_with_fallback() {
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
-    if curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
+    if curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
