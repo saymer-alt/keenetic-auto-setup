@@ -531,8 +531,8 @@ pass "Doctor reports the hardened project delivery paths accurately"
 
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
-grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
-grep -Fq 'if mkdir "$LOCK_DIR" 2>/dev/null; then' "$ROOT/update-mihomo.sh" || fail "updater lock acquisition must remain mkdir-based"
+grep -Fq 'MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must join the shared lifecycle"
+grep -Fq 'ml_lifecycle_acquire || error' "$ROOT/update-mihomo.sh" || fail "updater must acquire lifecycle before mutation"
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate planned downtime with watchdog"
 grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
 grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
@@ -627,11 +627,10 @@ grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/con
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
 grep -Fq 'Previous Mihomo service restored; port 7890 is listening.' "$ROOT/config-import.sh" || fail "pre-commit failure recovery must wait for old service port 7890 readiness"
 grep -Fq 'start_mihomo_confirmed || return 1' "$ROOT/config-import.sh" || fail "old service restoration must fail if the process cannot be restarted"
-grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
+grep -Fq 'ml_lifecycle_acquire ||' "$ROOT/config-import.sh" || fail "config importer must acquire shared lifecycle"
 grep -Fq 'CONFIG_COMMIT_STARTED=1' "$ROOT/config-import.sh" || fail "config importer must mark the commit phase before atomic replacement"
 grep -Fq 'if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then' "$ROOT/config-import.sh" || fail "signals during the commit window must roll back"
-grep -Fq 'CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate with active config import"
-grep -Fq 'if config_import_active; then' "$ROOT/update-mihomo.sh" || fail "updater must refuse active config import before acquiring update lock"
+grep -Fq 'ml_lifecycle_release || true' "$ROOT/update-mihomo.sh" || fail "updater cleanup must release only owned lifecycle"
 ! grep -Fq 'cat > "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config importer must never stream input directly into canonical config"
 pass "config importer validates, atomically commits and rolls back under one-Mihomo safety"
 

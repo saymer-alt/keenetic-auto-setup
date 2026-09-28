@@ -799,7 +799,7 @@ Every 5 minutes (cron), with a 0–24 s random jitter (busybox-safe, `date +%s %
 2. **Proxy port** — `127.0.0.1:7890` must accept TCP connections. Closed port → Mihomo probably crashed → restart.
 3. **End-to-end tunnel** — a real request through `socks5h://127.0.0.1:7890` (DNS resolved through the tunnel) to google must succeed. A single failure is now only a preliminary signal: the watchdog waits 3 seconds and performs one confirming probe. Retry OK → no restart; two consecutive failures → restart. This avoids false-positive restarts from brief network/TLS/DNS/outbound hiccups without masking a persistent failure.
 
-Restart rate limit: minimum 300 s between restarts, tracked in `/tmp/mihomo_watchdog.restart` with content validation. Overlapping runs are prevented by an atomic mkdir lock dir `/tmp/mihomo_watchdog.lock.d` (with pid/ts ownership and a live-process takeover — a `kill -9`ed holder is taken over on the next run, no reboot needed).
+Restart rate limit: minimum 300 s between restarts, tracked in `/tmp/mihomo_watchdog.restart` with content validation. Overlapping runs are prevented by `/tmp/mihomo_watchdog.lock.d` with PID/starttime ownership. Restart also requires the shared lifecycle lock; if busy, watchdog skips the action. Ordinary dead owners are recovered automatically; a crash inside the metadata guard requires manual recovery. See the [protocol and limitations (RU)](19-lifecycle-lock.md).
 
 ### 7.2 Reading the log
 

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Исправлено
+- B1/B2 независимого аудита: общий PID/starttime lifecycle lock для installer, updater, import, migrators и watchdog restart. Запуск через `curl | sh` больше не определяется по имени скрипта в cmdline; cleanup проверяет владельца, stale recovery сериализована.
+- Watchdog получает общий lock непосредственно перед restart; maintenance, начавшийся во время WAN/proxy checks, не допускает вмешательства. Doctor и read-only migration probes повторно проверяют процессы под временным lock.
+- Добавлены поведенческие process/barrier/fault regressions для dash и BusyBox ash; [границы и recovery протокола](docs/19-lifecycle-lock.md) описаны отдельно. Остальные находки аудита не входят в это изменение.
+
 ---
 
 ## [1.7.2] - 2026-09-27

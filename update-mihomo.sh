@@ -1,5 +1,168 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
 # Binary-update edition, package-container source:
@@ -106,7 +269,6 @@ WORK_DIR=""
 STAGE_BIN=""
 MIHOMO_STAGE_MARGIN_KB=4096
 RECOVERY_FAILED=0
-MAINT_MARKER="/tmp/mihomo.maintenance"
 BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
 TMP_STATE_BACKUP=""
 STATE_HAD_OLD=0
@@ -418,15 +580,15 @@ stop_mihomo_confirmed() {
 # (downloaded .ipk, extracted package data, new binary, backup) survive the
 # updater; the lock file is cleaned by the same trap.
 cleanup_tmp() {
+  # A second EXIT cleanup must not touch a subsequent transaction.
+  [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+  [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
   # After a FAILED RECOVERY the backup is the user's manual restore
   # path - the error message points at it, so it must survive.
   if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
     rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
     rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
   fi
-  rm -f "$LOCK_LEGACY" 2>/dev/null || true
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
-  rm -f "$MAINT_MARKER" 2>/dev/null || true
   rm -f "$STAGE_BIN" 2>/dev/null || true
   if [ -n "$MIHOMO_DIR" ]; then
     rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
@@ -435,6 +597,7 @@ cleanup_tmp() {
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.new.* 2>/dev/null || true
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.rollback.* 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
+  ml_lifecycle_release || true
 }
 
 # Signal safety: INT/TERM explicitly abort the updater and restore the
@@ -458,185 +621,11 @@ signal_handler() {
   exit 1
 }
 
-# -----------------------------
-# -----------------------------
-# 0. Prevent parallel updates - atomic mkdir lock, stale-safe takeover.
-#
-# /tmp/mihomo-update.lock.d IS the lock: mkdir is an atomic test-and-set,
-# so two concurrent updaters can never both believe they own it. The pid
-# and ts files inside serve liveness and stale recovery only - losing or
-# misreading them never weakens mutual exclusion:
-#   mkdir ok            -> we own the lock
-#   dir held, pid alive and its /proc/<pid>/cmdline references this
-#   updater             -> another run is active, abort
-#   pid dead, or alive with a foreign cmdline (PID reuse) -> stale owner
-#   pid missing/garbage -> fresh (<60s by ts) may be a starter between
-#   its mkdir and its pid write: abort; otherwise stale
-# A stale takeover renames the directory away first (the mv IS the atomic
-# claim: exactly one recoverer wins) and then removes only the directory
-# it renamed. A takeover additionally requires that NO live process with
-# this updater's name exists in /proc - the independent process scan is
-# the backstop that keeps malformed metadata or clock anomalies from ever
-# overrunning a live run. Wall-clock age alone decides nothing: the
-# router may boot before time sync, so a live owner pid (checked through
-# /proc/<pid>/cmdline) always outranks any timestamp.
-# Legacy form: versions before the mkdir lock used the plain file
-# /tmp/mihomo-update.lock with no owner metadata. It is still honored:
-# a legacy lock backed by a live update process blocks this run; with no
-# live update process behind it, it is stale and reclaimed. While we
-# hold the lock we keep the legacy file present with our pid, so an
-# old-version updater (which only checks that the file exists) still
-# sees "another update is running" instead of racing us. Residual: an
-# old-version updater has a racy check-then-touch of its own and can
-# slip through a microseconds-wide window; that generation is racy by
-# design and phases out as routers update.
-# -----------------------------
-LOCK_DIR="/tmp/mihomo-update.lock.d"
-LOCK_LEGACY="/tmp/mihomo-update.lock"
-LOCK_TOOL_MARKER="update-mihomo"
-LOCK_HINT="If no update is actually running, remove it manually: rm -rf /tmp/mihomo-update.lock.d /tmp/mihomo-update.lock"
-
-# True when <pid> is a live process whose cmdline references this updater.
-lock_pid_is_ours() {
-  case "$1" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ -d "/proc/$1" ] || return 1
-  grep -q "$LOCK_TOOL_MARKER" "/proc/$1/cmdline" 2>/dev/null
-}
-
-# Independent backstop for every takeover decision: is any OTHER live
-# process visibly running this updater? Covers legacy locks (which carry
-# no pid), half-written metadata and PID reuse. Self and the direct
-# parent are excluded; a false positive only errs on the safe side.
-LOCK_TOOL_PIDS=""
-lock_tool_alive() {
-  LOCK_TOOL_PIDS=""
-  for _lock_d in /proc/[0-9]*; do
-    [ "$_lock_d" = "/proc/$$" ] && continue
-    [ "$_lock_d" = "/proc/$PPID" ] && continue
-    if grep -q "$LOCK_TOOL_MARKER" "$_lock_d/cmdline" 2>/dev/null; then
-      LOCK_TOOL_PIDS="$LOCK_TOOL_PIDS ${_lock_d#/proc/}"
-    fi
-  done
-  [ -n "$LOCK_TOOL_PIDS" ]
-}
-
-lock_write_owner() {
-  # The claim symlink is the ownership decider: creating it is an atomic
-  # create-if-absent, so on a filesystem/kernel where directory creation
-  # itself is not a reliable test-and-set (observed on a WSL2 kernel), two
-  # concurrent starters still cannot both hold the lock - exactly one
-  # claim lands, the loser backs off without touching anything. On normal
-  # kernels the ln cannot fail after our own mkdir and this is a no-op
-  # guarantee. Written before pid/ts so a lost claim never corrupts the
-  # winner's metadata.
-  ln -s "pid=$$;ts=$(date +%s)" "$LOCK_DIR/claim" 2>/dev/null || return 1
-  echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-  date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
-  # Best-effort legacy companion: old-version updaters only check that
-  # the plain file exists; new runs read our pid from it.
-  echo "$$" > "$LOCK_LEGACY" 2>/dev/null || true
-}
-
+# One lifecycle owner covers download, stop/probe, commit, restore and cleanup.
 acquire_lock() {
-  # Legacy evidence first: an old-version updater only knows the plain
-  # lock file, so its presence outranks everything else.
-  if [ -e "$LOCK_LEGACY" ]; then
-    if [ ! -f "$LOCK_LEGACY" ] || [ -L "$LOCK_LEGACY" ]; then
-      error "Update lock has an unexpected form: $LOCK_LEGACY is not a regular file. Will not remove an unknown object. $LOCK_HINT"
-    fi
-    _lp=$(head -n 1 "$LOCK_LEGACY" 2>/dev/null | awk '{print $1}' || true)
-    if lock_pid_is_ours "$_lp"; then
-      error "Another Mihomo update is already running (pid $_lp). Aborting."
-    fi
-    if lock_tool_alive; then
-      error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-    fi
-    log "Removing stale legacy update lock (no live update process behind it)..."
-    rm -f "$LOCK_LEGACY"
-  fi
-
-  if mkdir "$LOCK_DIR" 2>/dev/null; then
-    if ! lock_write_owner; then
-      # The claim was lost to a concurrent starter (or the write failed):
-      # back off WITHOUT cleanup - the visible lock belongs to the winner.
-      error "Another Mihomo update is already running (lock claim lost). Aborting."
-    fi
-    return 0
-  fi
-
-  if [ ! -d "$LOCK_DIR" ]; then
-    error "Update lock has an unexpected form: $LOCK_DIR is not a directory. Will not remove an unknown object. $LOCK_HINT"
-  fi
-
-  _lp=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-  _lock_busy=0
-  case "$_lp" in
-    ''|*[!0-9]*)
-      # Missing/garbage pid: possibly a starter between its mkdir and its
-      # pid write (microseconds). Trust only a fresh ts; a malformed or
-      # missing ts counts as ancient and falls through to the
-      # live-process backstop before any takeover.
-      _now=$(date +%s)
-      _ts=$(cat "$LOCK_DIR/ts" 2>/dev/null || true)
-      case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
-      [ $((_now - _ts)) -lt 60 ] && _lock_busy=1
-      ;;
-    *)
-      lock_pid_is_ours "$_lp" && _lock_busy=1
-      # /proc/<pid> gone, or alive with a foreign cmdline (PID reuse):
-      # a dead or stale owner either way; the backstop below still runs.
-      ;;
-  esac
-  if [ "$_lock_busy" -eq 1 ]; then
-    error "Another Mihomo update is already running. Aborting."
-  fi
-
-  # Stale verdict: a live maintenance process must never be overrun,
-  # whatever its (malformed) metadata says.
-  if lock_tool_alive; then
-    error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-  fi
-
-  log "Taking over a stale update lock (owner pid ${_lp:-unknown} is gone)..."
-  _claim="$LOCK_DIR.stale.$$"
-  if mv "$LOCK_DIR" "$_claim" 2>/dev/null; then
-    rm -rf "$_claim"
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-      lock_write_owner
-      return 0
-    fi
-    # A fresh run took the freed path first; it owns the lock now.
-    error "Another Mihomo update is already running. Aborting."
-  fi
-  error "Another Mihomo update is already running. Aborting."
+  ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no update started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 }
-
-# A config import also needs exclusive access to the Mihomo service lifecycle.
-# If it already owns its lock and the recorded pid is still alive, do not start
-# a binary update. The reciprocal check in config-import.sh covers the opposite
-# race (updater starts first).
-CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"
-config_import_active() {
-  [ -d "$CONFIG_IMPORT_LOCK" ] || return 1
-  _ci_pid=$(cat "$CONFIG_IMPORT_LOCK/pid" 2>/dev/null || true)
-  case "$_ci_pid" in ''|*[!0-9]*) return 1 ;; esac
-  [ -d "/proc/$_ci_pid" ]
-}
-
-if config_import_active; then
-  error "A Mihomo config import is already running (pid $_ci_pid). Finish it before updating the binary."
-fi
-
 acquire_lock
-
-# Maintenance coordination: while this transaction runs, the watchdog
-# skips its checks entirely (see mihomo-watchdog.sh) so a cron tick cannot
-# resurrect Mihomo during the planned downtime. The marker lives in /tmp,
-# so a crashed run self-heals at the next reboot; the watchdog additionally
-# ignores markers older than one hour.
-echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT

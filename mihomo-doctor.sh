@@ -1,5 +1,174 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+# Only temporary coordination state is written; no service/config mutation.
+trap 'ml_lifecycle_release || true' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+
 # =========================================================
 # mihomo-doctor.sh v1.2.16 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
@@ -398,6 +567,21 @@ run_with_timeout() {
     RUN_RC=$?
 }
 
+# Reserve lifecycle only for executable diagnostics; re-observe under the lock.
+# 125 is SKIPPED / UNVERIFIED, never a binary/config failure.
+doctor_mihomo_probe() {
+    RUN_OUT=""
+    RUN_RC=125
+    PROBE_SKIPPED=1
+    ml_lifecycle_acquire || return 0
+    observe_mihomo_procs
+    if [ "$MIHOMO_PROCS" -eq 0 ]; then
+        PROBE_SKIPPED=0
+        run_with_timeout "$@"
+    fi
+    ml_lifecycle_release || true
+}
+
 # port_listening N -> PL_RC: 0 listening, 1 not listening,
 # 2 cannot determine. netstat -> ss -> /proc/net/tcp(6) hex
 # compare (no strtonum: the decimal port is converted to hex).
@@ -452,8 +636,8 @@ udp_listening() {
 # observe_mihomo_procs -> MIHOMO_PROCS + MIHOMO_PIDS. pidof
 # preferred; without it, scan /proc cmdlines for argv0 basename ==
 # "mihomo" (the watchdog and this doctor have different basenames
-# and are not counted). Observed ONCE near the start and reused by
-# the later sections: the report is an interval observation, not an
+# and are not counted). Observed near the start and again under lifecycle
+# ownership before executable probes: the report is an interval observation, not an
 # atomic snapshot.
 observe_mihomo_procs() {
     MIHOMO_PROCS=0
@@ -1252,10 +1436,19 @@ if [ -n "$BIN" ]; then
         fi
         probe_controller_version
     else
-        run_with_timeout 15 "$BIN" -v
+        doctor_mihomo_probe 15 "$BIN" -v
         MV_RC=$RUN_RC
         MV_OUT=$RUN_OUT
         case "$MV_RC" in
+            125)
+                if [ "$PROBE_SKIPPED" -eq 1 ]; then
+                    BIN_STATE="unverified"
+                    info "Mihomo executable probe SKIPPED / UNVERIFIED: lifecycle busy, or daemon appeared since the initial observation."
+                else
+                    BIN_STATE="execfail"
+                    fail "Mihomo binary execution failed (exit 125)"
+                fi
+                ;;
             0)
                 BIN_STATE="ok"
                 BIN_VER=$(first_line "$MV_OUT" | awk '{print $3}')
@@ -1487,8 +1680,10 @@ else
     if [ "$DAEMON_RUNNING" -eq 1 ]; then
         info "Config validation SKIPPED / UNVERIFIED: Mihomo is running and 'mihomo -t' would execute a second Mihomo (the established SIGSEGV pattern on constrained hardware) - the one-Mihomo invariant wins. The running config is NOT judged by this test; stop the service to enable the executable validation."
     elif [ "$BIN_STATE" = "ok" ]; then
-        run_with_timeout 30 "$BIN" -d "$CONFIG_DIR" -t
-        if [ "$RUN_RC" -eq 0 ]; then
+        doctor_mihomo_probe 30 "$BIN" -d "$CONFIG_DIR" -t
+        if [ "$PROBE_SKIPPED" -eq 1 ]; then
+            info "Config test SKIPPED / UNVERIFIED: lifecycle busy, or daemon appeared since the initial observation."
+        elif [ "$RUN_RC" -eq 0 ]; then
             ok "Config test passed ($BIN -d $CONFIG_DIR -t)"
         else
             fail "Config test FAILED (exit $RUN_RC) - the running config is rejected by this Mihomo version"
