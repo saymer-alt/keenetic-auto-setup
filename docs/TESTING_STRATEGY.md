@@ -1,5 +1,23 @@
 # Testing Strategy
 
+## B6/C1: process discovery and swap identity
+
+Run `python3 tests/process-regression.py` and `python3 tests/swap-regression.py`.
+Both require dash-compatible sh and BusyBox ash. Process tests use copied BusyBox
+ELFs running the sleep applet, real `/proc/<pid>/exe`, deleted/replaced inodes,
+restricted observation fixtures and extracted production stop/restore/Doctor
+functions. Unknown cannot satisfy stop or start confirmation; a live daemon
+prevents a second restore-start and Doctor ELF probe. The rollback suite also
+runs MIPS/updater transactions with pidof masked and `/proc` observations supplied
+by the existing recorded service fixture, retaining all B3/B4 assertions.
+
+Swap tests run all three production scanners against the same inputs, plus the
+installer policy. Block-device stat metadata and sysfs are fixtures; no swap is
+created/enabled. They cover numeric zram devices, fake filenames, >2 GiB files,
+128/256/512 MB classes, coexistence, escaped paths, deleted sources and conflicting
+sysfs. These tests do not constitute hardware/live-network acceptance.
+See [process and backend contracts (RU)](20-process-swap-detection.md).
+
 ## B5: partial transport regression
 
 Run `python3 tests/download-regression.py` with Python 3, dash-compatible `sh`

@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 
 # Safe Mihomo configuration importer for keenetic-auto-setup.
 #
@@ -247,14 +335,14 @@ cleanup() {
 
 
 mihomo_running() {
-    pidof mihomo >/dev/null 2>&1
+    mp_running
 }
 
 stop_mihomo_confirmed() {
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     _ci_try=0
     while [ "$_ci_try" -lt 10 ]; do
-        if ! mihomo_running; then
+        if mp_stopped; then
             SERVICE_STOPPED_BY_US=1
             return 0
         fi
@@ -265,6 +353,7 @@ stop_mihomo_confirmed() {
 }
 
 start_mihomo_confirmed() {
+    mp_stopped || return 1
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     _ci_try=0
     while [ "$_ci_try" -lt 8 ]; do
@@ -308,10 +397,12 @@ restore_old_service() {
         return 0
     fi
 
-    if ! mihomo_running; then
+    mp_known || return 1
+    if mp_stopped; then
         log "Restoring previous Mihomo service state..."
         start_mihomo_confirmed || return 1
     fi
+    mihomo_running || return 1
 
     if wait_for_contract_port; then
         log "Previous Mihomo service restored; port 7890 is listening."
@@ -331,15 +422,11 @@ rollback_config() {
     _ci_reason="$1"
     log "Rolling back config.yaml..."
 
+    mp_known || error "Runtime UNKNOWN; rollback backup retained at $BACKUP_PATH"
     if mihomo_running; then
-        "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
-        _ci_try=0
-        while [ "$_ci_try" -lt 10 ]; do
-            mihomo_running || break
-            sleep 1
-            _ci_try=$((_ci_try + 1))
-        done
+        stop_mihomo_confirmed || error "Cannot confirm stop; rollback backup retained at $BACKUP_PATH"
     fi
+    mp_stopped || error "Cannot prove stop before config rollback; backup: $BACKUP_PATH"
 
     [ -s "$BACKUP_PATH" ] ||
         error "$_ci_reason — rollback backup is missing or empty: $BACKUP_PATH"
@@ -384,8 +471,6 @@ trap 'signal_handler HUP' HUP
 
 echo "=== Mihomo Config Import ==="
 
-command -v pidof >/dev/null 2>&1 ||
-    error "pidof is required for the one-Mihomo safety check."
 [ -x "$INIT_SCRIPT" ] || error "Mihomo init script not found: $INIT_SCRIPT"
 [ -d "$CONFIG_DIR" ] || error "Mihomo config directory not found: $CONFIG_DIR. Run setup.sh first."
 [ -s "$CONFIG_PATH" ] || error "Current config.yaml is missing or empty. Run setup.sh first."
@@ -446,6 +531,7 @@ log "Project contract found: mixed-port 7890."
 ml_lifecycle_acquire ||
     error "Mihomo lifecycle is busy or unverifiable; config not changed. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 
+mp_known || error "Mihomo runtime UNKNOWN; import aborted."
 if mihomo_running; then
     SERVICE_WAS_RUNNING=1
     log "Mihomo is running. Stopping it for one-instance config validation..."
@@ -460,6 +546,7 @@ if updater_in_progress; then
     error "Mihomo updater became active during config import. Candidate was not installed."
 fi
 
+mp_stopped || error "Cannot prove Mihomo stopped before validation."
 log "Validating candidate with Mihomo..."
 if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t >"$TEST_LOG" 2>&1; then
     echo
@@ -494,6 +581,7 @@ if updater_in_progress; then
     error "Mihomo updater became active before config commit. Candidate was not installed."
 fi
 
+mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Installing config atomically..."
 chmod 600 "$STAGE_CONFIG" 2>/dev/null || true
 CONFIG_COMMIT_STARTED=1

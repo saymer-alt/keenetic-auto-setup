@@ -14,7 +14,7 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 mkdir -p "$TMP/sys-empty"
 
 awk '
-    /^# classify_mount SOURCE FSTYPE/ { copy=1 }
+    /^# BEGIN ZRAM IDENTITY v1/ { copy=1 }
     /^MEM_TOTAL_KB=/ { copy=0 }
     copy { print }
 ' "$INSTALL" > "$TMP/scanner.sh"

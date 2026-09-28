@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 
 # =========================================================
 # MIHOMO TUN BOOTSTRAP MIGRATION
@@ -272,8 +360,8 @@ has_top_level_tun() {
 }
 
 resolve_mihomo_binary() {
-    if command -v pidof >/dev/null 2>&1; then
-        for _p in $(pidof mihomo 2>/dev/null); do
+    if mp_known; then
+        for _p in $(mp_pids); do
             _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
             case "$_exe" in
                 /opt/sbin/mihomo|/opt/bin/mihomo)
@@ -346,7 +434,7 @@ stop_mihomo_confirmed() {
     SERVICE_WAS_STOPPED=1
     _i=0
     while [ "$_i" -lt 10 ]; do
-        pidof mihomo >/dev/null 2>&1 || return 0
+        mp_stopped && return 0
         sleep 1
         _i=$((_i + 1))
     done
@@ -356,13 +444,14 @@ stop_mihomo_confirmed() {
 restore_service_if_needed() {
     [ "$SERVICE_WAS_RUNNING" -eq 1 ] || return 0
     [ -n "$INIT_SCRIPT" ] || return 0
-    if pidof mihomo >/dev/null 2>&1; then
+    if mp_running; then
         return 0
     fi
+    mp_stopped || return 1
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     _i=0
     while [ "$_i" -lt 10 ]; do
-        pidof mihomo >/dev/null 2>&1 && return 0
+        mp_running && return 0
         sleep 1
         _i=$((_i + 1))
     done
@@ -371,6 +460,9 @@ restore_service_if_needed() {
 
 rollback_config() {
     [ -f "$RUN_BACKUP" ] || return 1
+    mp_known || return 1
+    if mp_running; then stop_mihomo_confirmed || return 1; fi
+    mp_stopped || return 1
     cp -f "$RUN_BACKUP" "$CONFIG" || return 1
     [ -n "$CFG_MODE" ] && chmod "$CFG_MODE" "$CONFIG" 2>/dev/null || true
     return 0
@@ -441,7 +533,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     trap 'exit 130' INT
     trap 'exit 143' TERM
     trap 'exit 129' HUP
-    if command -v pidof >/dev/null 2>&1 && ml_lifecycle_acquire && ! pidof mihomo >/dev/null 2>&1; then
+    if ml_lifecycle_acquire && mp_stopped; then
         if read_current_ver; then
             choose_stack_from_version
             if [ "$SELECTED_STACK" = "mips" ]; then
@@ -458,8 +550,6 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-command -v pidof >/dev/null 2>&1 || error "pidof is required for safe apply mode (one-Mihomo invariant)."
-
 ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no migration started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 trap cleanup EXIT
 trap "signal_handler INT" INT
@@ -473,7 +563,8 @@ if has_top_level_tun; then
 fi
 
 # Observe the previous service state only after exclusive ownership.
-if pidof mihomo >/dev/null 2>&1; then
+mp_known || error "Mihomo runtime UNKNOWN; migration aborted."
+if mp_running; then
     SERVICE_WAS_RUNNING=1
     [ -n "$INIT_SCRIPT" ] || error "Mihomo is running but no init script was found; refusing an unmanaged stop."
 fi
@@ -487,7 +578,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     stop_mihomo_confirmed || error "Mihomo did not stop; config untouched."
 fi
 
-pidof mihomo >/dev/null 2>&1 && error "Mihomo is still running; refusing to execute a second instance."
+mp_stopped || error "Mihomo is running or UNKNOWN; refusing to execute a second instance."
 
 if ! read_current_ver; then
     restore_service_if_needed || true
@@ -533,6 +624,7 @@ else
     info "Persistent pre-TUN backup already exists and is kept unchanged: $PERSIST_BACKUP"
 fi
 
+mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Committing TUN block atomically..."
 if ! mv -f "$TMP_NEW" "$CONFIG"; then
     restore_service_if_needed || true
@@ -549,7 +641,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     _port_rc=1
     _i=0
     while [ "$_i" -lt 15 ]; do
-        pidof mihomo >/dev/null 2>&1 && _process_ok=1 || _process_ok=0
+        mp_running && _process_ok=1 || _process_ok=0
         [ -d /sys/class/net/mitun0 ] && _tun_ok=1 || _tun_ok=0
         _port_rc=0
         port_ok || _port_rc=$?

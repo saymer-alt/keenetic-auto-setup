@@ -29,6 +29,11 @@ def block(name):
     return t[t.index(BEGIN):t.index(END) + len(END)] + "\n"
 
 
+def process_block(name):
+    t = source(name)
+    return t[t.index("# BEGIN MIHOMO PROCESS STATE v1"):t.index("# END MIHOMO PROCESS STATE v1")] + "\n"
+
+
 def function(name, fn):
     t = source(name)
     a = t.index(fn + "() {")
@@ -77,13 +82,13 @@ case "$1" in stop) rm -f "$LAB/running" ;; start|restart) touch "$LAB/running" ;
         return text.replace("/tmp/", str(self.path) + "/").replace("/opt/", str(self.path / "opt") + "/")
 
     def script(self, name, body):
-        return "#!/bin/sh\nset -e\n" + self.redirect(block(name)) + f'''
+        return "#!/bin/sh\nset -e\n" + self.redirect(block(name)) + process_block(name) + f'''
 LAB={shlex.quote(str(self.path))}; export LAB
 cd "$LAB"
 log() {{ :; }}
 warn() {{ :; }}
 error() {{ echo "$1" >&2; exit 1; }}
-pidof() {{ [ -f "$LAB/running" ]; }}
+pidof() {{ [ -f "$LAB/running" ] || return 1; echo 4242; }}
 sleep() {{ :; }}
 INIT_SCRIPT="$LAB/init"
 TMP_DIR="$LAB"; MIHOMO_DIR="$LAB/opt/bin"; STAGE_BIN="$LAB/stage"

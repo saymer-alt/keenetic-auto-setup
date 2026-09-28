@@ -442,7 +442,7 @@ grep -q '^resolve_installed_mihomo()' "$ROOT/install.sh" || fail "installer must
 grep -q 'Existing Mihomo binary found at .*package install/upgrade skipped' "$ROOT/install.sh" || fail "repeat install must leave an existing Mihomo binary untouched"
 grep -q 'Use update-mihomo.sh to update an installed Mihomo transactionally' "$ROOT/install.sh" || fail "installer must direct existing-binary updates to update-mihomo.sh"
 [ "$(grep -c '^mihomo_running()' "$ROOT/install.sh")" -eq 1 ] || fail "installer must have exactly one shared one-Mihomo daemon guard"
-grep -q 'Mihomo version probe skipped - daemon is running (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
+grep -q 'Mihomo version probe skipped - daemon is running or state is unknown (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
 pass "repeat install does not replace live Mihomo and all installer probes share one-Mihomo guard"
 
 grep -Fq 'MIHOMO_RESTART_NEEDED=0' "$ROOT/install.sh" || fail "installer must track whether Mihomo actually needs a reload"

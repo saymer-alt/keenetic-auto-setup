@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 # Only temporary coordination state is written; no service/config mutation.
 trap 'ml_lifecycle_release || true' EXIT
 trap 'exit 130' INT
@@ -633,28 +721,21 @@ udp_listening() {
     fi
 }
 
-# observe_mihomo_procs -> MIHOMO_PROCS + MIHOMO_PIDS. pidof
-# preferred; without it, scan /proc cmdlines for argv0 basename ==
-# "mihomo" (the watchdog and this doctor have different basenames
-# and are not counted). Observed near the start and again under lifecycle
-# ownership before executable probes: the report is an interval observation, not an
-# atomic snapshot.
+# Interval observation: -1 means unknown, 0 proven stopped, positive running.
+# The shared detector prefers pidof and falls back to executable identity in /proc.
+# Executable diagnostics re-observe under lifecycle ownership.
 observe_mihomo_procs() {
-    MIHOMO_PROCS=0
-    MIHOMO_PIDS=""
-    if command -v pidof >/dev/null 2>&1; then
-        MIHOMO_PIDS=$(pidof mihomo 2>/dev/null)
+    if mp_state; then
+        MIHOMO_STATE=running
+        MIHOMO_PIDS=$MP_PIDS
         set -- $MIHOMO_PIDS
         MIHOMO_PROCS=$#
     else
-        for _p in /proc/[0-9]*/cmdline; do
-            _pid=${_p%/cmdline}; _pid=${_pid#/proc/}
-            [ "$_pid" = "$$" ] && continue
-            _a0=$(tr '\000' '\n' < "$_p" 2>/dev/null | head -n 1)
-            [ "$(basename "$_a0" 2>/dev/null)" = "mihomo" ] || continue
-            MIHOMO_PIDS="$MIHOMO_PIDS $_pid"
-            MIHOMO_PROCS=$((MIHOMO_PROCS+1))
-        done
+        _mp_rc=$?
+        MIHOMO_PIDS=""
+        MIHOMO_PROCS=-1
+        MIHOMO_STATE=unknown
+        if [ "$_mp_rc" -eq 1 ]; then MIHOMO_PROCS=0; MIHOMO_STATE=stopped; fi
     fi
 }
 
@@ -1051,6 +1132,26 @@ DOC_SYS_CLASS_BLOCK="${DOCTOR_SYS_CLASS_BLOCK:-/sys/class/block}"
 # nodes, cannot host swap); USB/NVMe disks appear as /dev/sd*|/dev/nvme*
 # with partitions mounted under /tmp/mnt/*. Sources are overridable
 # (DOCTOR_MEMINFO, DOCTOR_SWAPS, DOCTOR_MOUNTS) for read-only testing.
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number device major minor expected
+    [ "$2" = partition ] || return 1
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
+    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
+    major=${device%:*}; minor=${device#*:}
+    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
+    [ -n "$major" ] && [ -n "$minor" ] || return 1
+    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
+    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
+
 _doc_classify_mount() {
     case "$2" in
         ubifs|squashfs) echo internal; return 0 ;;
@@ -1140,8 +1241,10 @@ _doc_scan_swap() {
                 _doc_deleted_count=$((_doc_deleted_count + 1))
                 continue
                 ;;
-            *zram*) _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue ;;
         esac
+        if swap_is_zram "$_doc_sw_file" "$_doc_sw_type" "$DOC_SYS_CLASS_BLOCK"; then
+            _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue
+        fi
         case "$_doc_sw_type" in
             partition)
                 case "$_doc_sw_file" in
@@ -1353,8 +1456,8 @@ hdr "3. Mihomo binary"
 RUNTIME_EXE=""
 _RUNTIME_SEEN=""
 _READLINK_FAILED=0
-if command -v pidof >/dev/null 2>&1; then
-    for _p in $(pidof mihomo 2>/dev/null); do
+if mp_known; then
+    for _p in $(mp_pids); do
         _exe=$(readlink "/proc/$_p/exe" 2>/dev/null)
         if [ -z "$_exe" ]; then
             _READLINK_FAILED=1
@@ -1443,7 +1546,7 @@ if [ -n "$BIN" ]; then
             125)
                 if [ "$PROBE_SKIPPED" -eq 1 ]; then
                     BIN_STATE="unverified"
-                    info "Mihomo executable probe SKIPPED / UNVERIFIED: lifecycle busy, or daemon appeared since the initial observation."
+                    info "Mihomo executable probe SKIPPED / UNVERIFIED: lifecycle busy, runtime unknown, or daemon appeared since the initial observation."
                 else
                     BIN_STATE="execfail"
                     fail "Mihomo binary execution failed (exit 125)"
@@ -1682,7 +1785,7 @@ else
     elif [ "$BIN_STATE" = "ok" ]; then
         doctor_mihomo_probe 30 "$BIN" -d "$CONFIG_DIR" -t
         if [ "$PROBE_SKIPPED" -eq 1 ]; then
-            info "Config test SKIPPED / UNVERIFIED: lifecycle busy, or daemon appeared since the initial observation."
+            info "Config test SKIPPED / UNVERIFIED: lifecycle busy, runtime unknown, or daemon appeared since the initial observation."
         elif [ "$RUN_RC" -eq 0 ]; then
             ok "Config test passed ($BIN -d $CONFIG_DIR -t)"
         else
@@ -1716,7 +1819,9 @@ fi
 
 # Process state was observed once at the top of section 3 and is
 # reused here (interval observation, not an atomic snapshot).
-if [ "$MIHOMO_PROCS" -gt 0 ]; then
+if [ "$MIHOMO_PROCS" -lt 0 ]; then
+    warn "Mihomo runtime UNKNOWN: process visibility is incomplete; no executable probe is allowed."
+elif [ "$MIHOMO_PROCS" -gt 0 ]; then
     if [ -n "$INIT_SCRIPT" ]; then
         ok "Mihomo is running ($MIHOMO_PROCS process(es)), managed by $INIT_SCRIPT"
     else
@@ -1733,14 +1838,16 @@ else
     fi
 fi
 if ! command -v pidof >/dev/null 2>&1; then
-    info "pidof unavailable - process count done via /proc scan"
+    info "pidof unavailable - process state evaluated via /proc; incomplete visibility remains UNKNOWN"
 fi
 
 # =========================================================
 hdr "6. Ports"
 # =========================================================
 
-if [ "$MIHOMO_PROCS" -eq 0 ]; then
+if [ "$MIHOMO_PROCS" -lt 0 ]; then
+    info "Runtime UNKNOWN; listener availability cannot prove Mihomo identity."
+elif [ "$MIHOMO_PROCS" -eq 0 ]; then
     info "Mihomo is not running - listener checks are informational only"
     port_listening "$CONTRACT_PORT"
     if [ "$PL_RC" -eq 0 ]; then
@@ -2564,15 +2671,15 @@ _WDEOF
             if [ "$MIHOMO_PROCS" -gt 0 ]; then
                 warn "Historical stability: WARN - Mihomo is running now, but there was $WD_STAB_WHY; the current running state does not by itself prove stability"
             else
-                warn "Historical stability: WARN - $WD_STAB_WHY (and the service is currently stopped)"
+                warn "Historical stability: WARN - $WD_STAB_WHY (service state: ${MIHOMO_STATE:-unknown})"
             fi
         else
             if [ "$WD_RECENT" -eq 1 ] && [ "$WD_RECOVERY_CONFIRMED" -eq 1 ]; then
                 ok "Historical stability: OK - one isolated watchdog restart in the last 24h was followed by a healthy check; no repeated/rate-limited pattern is present"
             elif [ "$WD_PEN" -gt 0 ]; then
-                ok "Historical stability: OK - no warning-level recent intervention pattern (older or isolated events may be on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
+                ok "Historical stability: OK - no warning-level recent intervention pattern (older or isolated events may be on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo "${MIHOMO_STATE:-unknown}"))"
             else
-                ok "Historical stability: OK - no watchdog interventions on record (service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
+                ok "Historical stability: OK - no watchdog interventions on record (service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo "${MIHOMO_STATE:-unknown}"))"
             fi
         fi
 

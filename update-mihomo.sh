@@ -162,6 +162,94 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
 
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
@@ -222,7 +310,7 @@ ml_lifecycle_release() {
 #     service state is restored afterwards. A running Mihomo without an
 #     init script is an abort, never a second instance. The rule covers
 #     the INSTALLED binary as well: while a Mihomo daemon may be running
-#     (pidof reports it, or pidof is unavailable so the state is unknown),
+#     (process discovery reports running or cannot establish absence),
 #     the installed-version probe (`mihomo -v` on the installed ELF) is
 #     deferred until after the controlled stop — a second execution at
 #     that moment is the documented SIGSEGV pattern (rc=139) on 256 MB
@@ -480,13 +568,13 @@ rollback_failed() {
 # Rollback must not call the Phase-A stop helper: its error path may restart
 # the failed new binary. Confirm quiescence before copying/probing/restoring.
 rollback_stop_confirmed() {
-  command -v pidof >/dev/null 2>&1 || return 1
-  if pidof mihomo >/dev/null 2>&1; then
+  mp_known || return 1
+  if mp_running; then
     [ -n "$INIT_SCRIPT" ] || return 1
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
   fi
   for _rs_i in 1 2 3 4 5 6 7 8 9 10; do
-    pidof mihomo >/dev/null 2>&1 || return 0
+    mp_stopped && return 0
     sleep 1
   done
   return 1
@@ -495,7 +583,7 @@ rollback_stop_confirmed() {
 # No ELF probe beside the restored daemon. Its /proc executable must be the
 # exact canonical inode we just restored, not merely some process named mihomo.
 restored_runtime_ok() {
-  _rr_pids=$(pidof mihomo 2>/dev/null) || return 1
+  _rr_pids=$(mp_pids) || return 1
   set -- $_rr_pids
   [ "$#" -eq 1 ] || return 1
   _rr_file=$(stat -L -c '%d:%i' "$MIHOMO_PATH" 2>/dev/null) || return 1
@@ -542,6 +630,7 @@ rollback_and_exit() {
 
   if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     [ -n "$INIT_SCRIPT" ] || rollback_failed "No init script to restore previous service"
+    mp_stopped || rollback_failed "Cannot prove stop before restored service start"
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     sleep 2
     if ! restored_runtime_ok; then
@@ -565,16 +654,17 @@ restore_stopped_service() {
   if [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
     return 0
   fi
-  if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  if mp_running; then
     log "Mihomo is already running again; nothing to restore."
     return 0
   fi
+  mp_stopped || return 1
   log "Update aborted before replacement: restarting Mihomo stopped by this updater..."
   "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-  if command -v pidof >/dev/null 2>&1; then
+  if mp_known; then
     _i=0
     while [ "$_i" -lt 5 ]; do
-      if pidof mihomo >/dev/null 2>&1; then
+      if mp_running; then
         log "Old Mihomo is running again."
         return 0
       fi
@@ -583,9 +673,10 @@ restore_stopped_service() {
     done
     log "WARNING: could not confirm Mihomo is running after restore."
   else
-    log "pidof not available, skipping restore verification."
+    warn "Mihomo runtime UNKNOWN; restore not confirmed."
+    return 1
   fi
-  return 0
+  return 1
 }
 
 # Pre-flight failure: nothing on the system has been modified, but this
@@ -610,11 +701,11 @@ stop_mihomo_confirmed() {
   SERVICE_WAS_STOPPED=1
   _i=0
   while [ "$_i" -lt 10 ]; do
-    pidof mihomo >/dev/null 2>&1 || break
+    mp_stopped && break
     sleep 1
     _i=$((_i + 1))
   done
-  if pidof mihomo >/dev/null 2>&1; then
+  if ! mp_stopped; then
     preflight_fail "Old Mihomo did not stop — refusing to run a second Mihomo instance. Update aborted, installed binary untouched."
   fi
   sleep 1
@@ -676,6 +767,7 @@ trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT
 trap 'signal_handler TERM' TERM
 trap 'signal_handler HUP' HUP
+mp_known || error "Mihomo runtime UNKNOWN; update aborted."
 
 
 
@@ -714,10 +806,31 @@ command -v tar >/dev/null || error "tar is required but not installed (busybox a
 RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
+UP_SYS_CLASS_BLOCK="${UPDATE_SYS_CLASS_BLOCK:-/sys/class/block}"
 UP_SWAP128_MIN_KB=393216
 UP_RAM256_MAX_KB=450000
 UP_RAM512_MAX_KB=786432
 UP_SWAP_MAX_KB=2097152
+
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number device major minor expected
+    [ "$2" = partition ] || return 1
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
+    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
+    major=${device%:*}; minor=${device#*:}
+    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
+    [ -n "$major" ] && [ -n "$minor" ] || return 1
+    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
+    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
 
 _up_classify_mount() {
   case "$2" in ubifs|squashfs) echo internal; return 0 ;; tmpfs|ramfs) echo ram; return 0 ;; esac
@@ -758,8 +871,10 @@ _up_scan_swap() {
         UP_DELETED_COUNT=$((UP_DELETED_COUNT + 1))
         continue
         ;;
-      *zram*) UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue ;;
     esac
+    if swap_is_zram "$_up_sw_file" "$_up_sw_type" "$UP_SYS_CLASS_BLOCK"; then
+      UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue
+    fi
     case "$_up_sw_type" in
       partition) case "$_up_sw_file" in /dev/sd*|/dev/nvme*) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
       file) case "$(_up_storage_class "$(dirname "$_up_sw_file")")" in external) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
@@ -881,8 +996,8 @@ fi
 # considered.
 # -----------------------------
 resolve_mihomo_binary() {
-  if command -v pidof >/dev/null 2>&1; then
-    for _p in $(pidof mihomo 2>/dev/null); do
+  if mp_known; then
+    for _p in $(mp_pids); do
       _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
       if [ "$_exe" = "/opt/sbin/mihomo" ] || [ "$_exe" = "/opt/bin/mihomo" ]; then
         if [ -x "$_exe" ]; then
@@ -910,13 +1025,12 @@ MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
 # One-instance rule for the INSTALLED binary too: while a daemon may be
-# running (pidof reports mihomo, or pidof is unavailable so the state is
-# unknown), executing a second Mihomo ELF is the documented SIGSEGV
+# running (process discovery reports running or unknown), executing a second Mihomo ELF is the documented SIGSEGV
 # pattern on memory-constrained devices. Defer the version probe until
 # after the controlled stop; only a confirmed-down daemon allows the
 # early probe (the fast, zero-downtime "already up to date" path).
 DEFER_VERSION_DECISION=1
-if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+if mp_stopped; then
   DEFER_VERSION_DECISION=0
 fi
 CURRENT_VER=""
@@ -1037,7 +1151,8 @@ else
 fi
 
 # Remember whether Mihomo was running before the update
-if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+mp_known || error "Mihomo runtime UNKNOWN; update aborted."
+if mp_running; then
   SERVICE_WAS_RUNNING=1
 fi
 
@@ -1213,7 +1328,7 @@ fi
 # be stopped — abort instead of risking a second instance. The stop is
 # confirmed before anything executes the new binary.
 # -----------------------------
-if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+if mp_running; then
   SERVICE_WAS_RUNNING=1
 fi
 
@@ -1225,6 +1340,8 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
 fi
 
 # -----------------------------
+mp_stopped || preflight_fail "Cannot prove Mihomo stopped before executable probes"
+
 # 12b. Deferred installed-version decision (one-instance path). The old
 # daemon is confirmed down (or was never running), so probing the
 # installed binary is safe here. Same decision rules as the early
@@ -1244,7 +1361,7 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
       if [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
         log "Already up to date ($INSTALLED_VER) — verified after the controlled stop."
       else
-        log "Already up to date ($INSTALLED_VER) — verified without pidof; the service state could not be confirmed."
+        log "Already up to date ($INSTALLED_VER) — verified with Mihomo confirmed stopped."
       fi
       restore_stopped_service
       exit 0
@@ -1300,11 +1417,12 @@ fi
 # canonical target never exists in a missing or partially copied state,
 # and a failed rename leaves the old binary untouched.
 # -----------------------------
-if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && mp_running; then
   log "Mihomo is running again (watchdog restart?) - stopping before the commit..."
   stop_mihomo_confirmed
 fi
 
+mp_stopped || preflight_fail "Cannot prove Mihomo stopped before binary commit"
 REPLACEMENT_STARTED=1
 log "Committing: rename $STAGE_BIN -> $MIHOMO_PATH ..."
 if ! mv -f "$STAGE_BIN" "$MIHOMO_PATH"; then
@@ -1371,15 +1489,16 @@ log "Project binary state updated: $BINARY_STATE"
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   if [ -n "$INIT_SCRIPT" ]; then
+    mp_stopped || rollback_and_exit "Cannot prove stop before service start"
     log "Starting mihomo service..."
     if ! "$INIT_SCRIPT" start >/dev/null 2>&1; then
       log "WARNING: Mihomo init script reported start failure. Checking process..."
     fi
 
-    if command -v pidof >/dev/null 2>&1; then
+    if mp_known; then
       SERVICE_OK=0
       for i in 1 2 3 4 5; do
-        if pidof mihomo >/dev/null 2>&1; then
+        if mp_running; then
           SERVICE_OK=1
           break
         fi
@@ -1390,7 +1509,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
         rollback_and_exit "Service start failed — rolled back to previous version"
       fi
     else
-      log "pidof not available, skipping strict process verification."
+      rollback_and_exit "Mihomo runtime UNKNOWN after start"
     fi
   else
     log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
@@ -1403,15 +1522,8 @@ fi
 # 18. Final process verification
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
-  if command -v pidof >/dev/null 2>&1; then
-    if pidof mihomo >/dev/null 2>&1; then
-      log "Process is running."
-    else
-      log "WARNING: Binary works, but mihomo process is not detected."
-    fi
-  else
-    log "pidof not available, skipping process check"
-  fi
+  mp_running || rollback_and_exit "Final Mihomo process verification failed or UNKNOWN"
+  log "Process is running."
 fi
 
 # -----------------------------
