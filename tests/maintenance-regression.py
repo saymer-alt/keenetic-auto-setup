@@ -148,7 +148,7 @@ ls() {
    if [ -f "$LAB/wrong-owner" ]; then
      printf '%s\n' "$out" | awk '{$3=1; $4=1; print}'
    else
-     printf '%s\n' "$out"
+     printf '%s\n' "$out" | awk '{$3=0; $4=0; print}'
    fi
  else
    command ls "$@"
