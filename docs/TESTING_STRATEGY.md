@@ -1,5 +1,16 @@
 # Testing Strategy
 
+## B5: partial transport regression
+
+Run `python3 tests/download-regression.py` with Python 3, dash-compatible `sh`
+and BusyBox. The extracted production installer downloader runs with real temp
+files, validation and rename, plus recorded curl/wget stubs that write a valid
+shell prefix and return non-zero. Fifteen cases per shell cover raw/API failure,
+successful fallback and retry, invalid content, stale/no-output retries, cleanup,
+and validation before same-directory commit. API fixtures exercise the existing
+raw-media path and headers; there is no JSON/base64 decoding in this path.
+This is transport fault injection, not hardware or live GitHub availability testing.
+
 ## B3/B4: rollback fault regression
 
 Run `python3 tests/rollback-regression.py`. It runs the full MIPS migration and

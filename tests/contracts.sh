@@ -470,8 +470,8 @@ pass "MagiTrickle helper avoids duplicate opkg update when repository configurat
 # a real fresh install reached the watchdog step and raw.githubusercontent.com reset
 # all three curl attempts while the rest of the stack had already installed.
 grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must centralize project-script delivery"
-grep -Fq 'if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with quiet curl retries first"
-grep -Fq 'retry_silent wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
+grep -Fq 'if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with quiet curl retries first"
+grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
