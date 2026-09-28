@@ -44,7 +44,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - не перезаписывает пользовательский `config.yaml`; updater меняет бинарник Mihomo, а не пользовательскую конфигурацию;
 - не делает автоматический downgrade.
 
-Development C7 проверяет version string целиком до сравнения и требует успешного
+C7 проверяет version string целиком до сравнения и требует успешного
 exit code candidate `-v`. Malformed/non-orderable версии не разрешают замену;
 `--force` допускает повторную установку той же версии, но не downgrade.
 Нечитаемая версия после безопасного stop остаётся прежним repair-сценарием;
