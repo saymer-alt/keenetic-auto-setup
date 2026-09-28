@@ -142,11 +142,17 @@ def watchdog(shell):
             # Simulated owner drift with real file mode; chown failures remain fatal.
             if case=='drift': (lab/'wrong-owner').touch()
             prefix='''id() { echo 0; }
-stat() {
- if [ "$1" = -c ] && [ "$2" = '%u:%g:%a' ]; then
-   mode=$(command stat -c '%a' "$3")
-   if [ -f "$LAB/wrong-owner" ]; then echo "1:1:$mode"; else echo "0:0:$mode"; fi
- else command stat "$@"; fi
+ls() {
+ if [ "$1" = -ldn ]; then
+   out=$(command ls "$@") || return
+   if [ -f "$LAB/wrong-owner" ]; then
+     printf '%s\n' "$out" | awk '{$3=1; $4=1; print}'
+   else
+     printf '%s\n' "$out"
+   fi
+ else
+   command ls "$@"
+ fi
 }
 chown() { [ "$CASE" != chown-fail ] || return 1; rm -f "$LAB/wrong-owner"; }
 chmod() { [ "$CASE" != chmod-fail ] || return 1; command chmod "$@"; }

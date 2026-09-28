@@ -411,21 +411,27 @@ PROC_SWAPS="${INSTALL_SWAPS:-/proc/swaps}"
 
 # BEGIN ZRAM IDENTITY v1
 # Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
 # Missing/contradictory evidence is unverified, never native zRAM.
 swap_is_zram() {
-    local path name number device major minor expected
+    local path name number listing perms major minor expected sys_class
     [ "$2" = partition ] || return 1
+    sys_class="$3"
     path=$(readlink -f "$1" 2>/dev/null) || return 1
     name=${path##*/}
     case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
     case "$number" in ''|*[!0-9]*) return 1 ;; esac
-    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
-    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
-    major=${device%:*}; minor=${device#*:}
-    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
-    [ -n "$major" ] && [ -n "$minor" ] || return 1
-    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
-    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
 }
 # END ZRAM IDENTITY v1
 
@@ -1744,12 +1750,28 @@ CRON_CANDIDATE="/tmp/mihomo-crontab.new.$$"
 BACKUP_STAGE="/opt/etc/.mihomo-watchdog-backup.new.$$"
 # BEGIN WATCHDOG MANAGED FILES v1
 # Shared by installer and updater, both under the existing lifecycle lock.
-wd_permissions() {
+# Keenetic BusyBox stat does not provide GNU -c formatting.
+wd_file_state() {
+    local listing perms uid gid
     [ -f "$1" ] && [ ! -L "$1" ] || return 1
-    if [ "$(stat -c '%u:%g:%a' "$1" 2>/dev/null)" != "0:0:$2" ]; then
+    listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 4 ] || return 1
+    perms="$1"; uid="$3"; gid="$4"
+    printf '%s:%s:%s\n' "$uid" "$gid" "$perms"
+}
+
+wd_permissions() {
+    local expected
+    case "$2" in
+        755) expected='-rwxr-xr-x' ;;
+        600) expected='-rw-------' ;;
+        *) return 1 ;;
+    esac
+    if [ "$(wd_file_state "$1")" != "0:0:$expected" ]; then
         chown 0:0 "$1" && chmod "$2" "$1" || return 1
     fi
-    [ "$(stat -c '%u:%g:%a' "$1" 2>/dev/null)" = "0:0:$2" ]
+    [ "$(wd_file_state "$1")" = "0:0:$expected" ]
 }
 
 wd_wrapper_install() {

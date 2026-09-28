@@ -99,6 +99,11 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
 pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk warning, and 1x/3x swap severity"
+for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
+    ! grep -Fq "stat -L -c '%F:%t:%T'" "$ROOT/$_f" || fail "$_f zRAM identity must not require GNU stat -c"
+    grep -Fq 'listing=$(LC_ALL=C ls -ln "$path"' "$ROOT/$_f" || fail "$_f zRAM identity must use BusyBox-compatible device metadata"
+done
+pass "all zRAM identity scanners are BusyBox-compatible"
 
 grep -Fq -- '--allow-internal-disk' "$ROOT/install.sh" || fail "installer must expose the narrow internal-disk override"
 grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage' "$ROOT/install.sh" || fail "installer must hard-stop accidental disk mode on internal /opt"
@@ -169,6 +174,10 @@ grep -q 'CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"' "
 grep -Fq 'wd_permissions "$BACKUP_STAGE" 600' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
 grep -Fq 'chmod 600 "$CRON_LEGACY_BAK_OLD"' "$ROOT/update-watchdog.sh" || fail "old cron backup must be disabled before migration"
 pass "watchdog updater cannot leave an executable legacy backup in cron.5mins"
+! grep -Fq "stat -c" "$ROOT/update-watchdog.sh" || fail "watchdog updater must not require GNU stat -c on Keenetic BusyBox"
+! grep -Fq "stat -c '%u:%g:%a'" "$ROOT/install.sh" || fail "installer watchdog path must not require GNU stat -c"
+grep -q '^wd_file_state()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must use BusyBox-compatible managed-file metadata"
+pass "watchdog managed-file ownership/mode checks are BusyBox-compatible"
 
 grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must know the historical in-cron watchdog backup path"
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
@@ -570,6 +579,10 @@ grep -Fq 'restore_binary_state()' "$ROOT/update-mihomo.sh" || fail "updater roll
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must read project-owned Mihomo binary state"
 grep -Fq 'core changed outside update-mihomo.sh or metadata is stale' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish external core replacement from package metadata"
 pass "project-owned Mihomo binary-state contract remains pinned"
+! grep -Fq "stat -L -c '%d:%i'" "$ROOT/update-mihomo.sh" || fail "updater runtime identity must not require GNU stat -c"
+grep -Fq 'test "$MIHOMO_PATH" -ef "/proc/$1/exe"' "$ROOT/update-mihomo.sh" || fail "updater must verify restored runtime with device+inode file identity"
+! grep -Fq "stat -c '%a'" "$ROOT/update-mihomo.sh" || fail "updater rollback mode preservation must be BusyBox-compatible"
+pass "updater rollback identity and mode checks are BusyBox-compatible"
 
 # User-facing HOWTOs must mirror the storage-mode guard and current ProxyN behavior.
 for _f in docs/HOWTO_RU.md docs/HOWTO.md; do

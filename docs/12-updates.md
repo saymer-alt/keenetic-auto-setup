@@ -2,7 +2,7 @@
 
 В development B6/C1 process detection работает без `pidof` через `/proc`;
 неизвестное состояние запрещает probe/commit/start. После rollback updater
-по-прежнему проверяет точный inode восстановленного executable. Ошибки resource
+по-прежнему проверяет, что восстановленный canonical executable и `/proc/<pid>/exe` — один и тот же device+inode через `test -ef`, без GNU `stat -c`. Ошибки resource
 profile остаются advisory для updater; имя `zram.swap` не делает файл native zRAM.
 Подробности и ограничения: [process/swap contract](20-process-swap-detection.md).
 
@@ -67,7 +67,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 версию и возвращает binary через atomic rename. Только затем восстанавливается
 project binary-state (или его исходное отсутствие), без изменений opkg database.
 Ранее работающий сервис запускается после восстановления обоих файлов; его
-`/proc/<pid>/exe` должен совпасть с inode восстановленного binary. INT/TERM/HUP
+`/proc/<pid>/exe` должен ссылаться на тот же device+inode, что и восстановленный binary (`test -ef`). INT/TERM/HUP
 после commit/start проходят тот же recovery; повторные сигналы во время него
 игнорируются. При ошибке recovery автоматический start не выполняется либо
 неверифицированный runtime повторно останавливается; результат — ERROR, backups

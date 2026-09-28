@@ -50,6 +50,7 @@ def test_updater() -> None:
     forbid(text, 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"', label)
     ordered(text, label, 'rollback_stop_confirmed || rollback_failed',
             'cp -p "$TMP_BACKUP" "$ROLLBACK_STAGE"',
+            '_rb_mode=$(file_mode_octal "$TMP_BACKUP")',
             'chmod "$_rb_mode" "$ROLLBACK_STAGE"',
             '_rb_output=$("$ROLLBACK_STAGE" -v',
             'mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"',

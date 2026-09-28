@@ -1140,21 +1140,27 @@ DOC_SYS_CLASS_BLOCK="${DOCTOR_SYS_CLASS_BLOCK:-/sys/class/block}"
 # (DOCTOR_MEMINFO, DOCTOR_SWAPS, DOCTOR_MOUNTS) for read-only testing.
 # BEGIN ZRAM IDENTITY v1
 # Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
 # Missing/contradictory evidence is unverified, never native zRAM.
 swap_is_zram() {
-    local path name number device major minor expected
+    local path name number listing perms major minor expected sys_class
     [ "$2" = partition ] || return 1
+    sys_class="$3"
     path=$(readlink -f "$1" 2>/dev/null) || return 1
     name=${path##*/}
     case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
     case "$number" in ''|*[!0-9]*) return 1 ;; esac
-    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
-    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
-    major=${device%:*}; minor=${device#*:}
-    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
-    [ -n "$major" ] && [ -n "$minor" ] || return 1
-    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
-    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
 }
 # END ZRAM IDENTITY v1
 
