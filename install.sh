@@ -291,6 +291,7 @@ TMP_DIR="/tmp"
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
+ASSET_DOWNLOAD_MAX_TIME=180
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -1079,11 +1080,11 @@ download_url_file() {
     rm -f "$_duf_dst" 2>/dev/null || true
 
     if command -v curl >/dev/null 2>&1; then
-        if retry_silent curl -fL --connect-timeout 5 --max-time 20 "$_duf_url" -o "$_duf_dst"; then
+        if retry_silent curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
-        if curl -fL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
+        if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
@@ -1091,7 +1092,7 @@ download_url_file() {
 
     if command -v wget >/dev/null 2>&1; then
         warn "curl download failed after 3 attempts; trying wget fallback"
-        if retry_silent wget -qO "$_duf_dst" "$_duf_url"; then
+        if retry_silent wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true

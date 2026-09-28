@@ -67,7 +67,7 @@ Development C6: каждый parser выбирает ровно один URL с 
 
 1. GitHub API;
 2. резервный разбор ответа/страницы release;
-3. скачивание найденного asset;
+3. скачивание найденного asset; большие `.ipk` используют отдельный bounded transfer window 180 секунд на попытку, тогда как metadata/project scripts сохраняют короткий 20-секундный лимит;
 4. `opkg install <downloaded.ipk>`;
 5. если весь GitHub-путь не дал успешной установки — last resort
    `opkg install mihomo` из настроенного Entware feed.
