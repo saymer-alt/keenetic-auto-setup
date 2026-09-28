@@ -88,6 +88,9 @@ For normal development, test in this order:
    repository-local Markdown-link validation and whitespace checks automatically on pushes/pull
    requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
 4. **Static/syntax review.** Run `sh -n` for changed shell scripts and review BusyBox/POSIX compatibility.
+   Treat the router runtime as BusyBox/Entware, not as the Linux CI host: a command or option existing on
+   Ubuntu is not proof it exists on Keenetic. Prefer already field-proven primitives; any new runtime
+   dependency/option needs target evidence or a guarded fallback.
 5. **Focused synthetic failure injection** only when the change touches a high-consequence invariant.
 
 A green synthetic harness does not prove a clean installation on every Keenetic configuration. Conversely, a real device failure should not trigger a full-system Keenetic emulator when a narrow contract test can preserve the lesson.
@@ -178,6 +181,206 @@ When Keenetic MCP access is available, use it as a **second read-only observatio
 Current MCP and Doctor observations agree on the facts they both expose. The major historical disagreement on KN-3811 was the already-fixed Doctor line-oriented `show version` parser, not a real router-state mismatch. A fresh current Doctor run on KN-3811 remains a useful live closure check after the parser fix, but the MCP component list already independently confirms that the required IDs are present.
 
 MCP must not be used to weaken Doctor checks. In particular, `show system swaptotal` does not tell whether swap is zRAM or storage-backed, and an installed `opkg-kmod-netfilter` ID does not prove that `xt_multiport` and the project MARK/CONNMARK/RETURN rules are actually loaded.
+## BusyBox / runtime portability gate
+
+The project deliberately does not build a full KeeneticOS emulator. That makes portability review a
+first-class release gate rather than an assumption hidden inside normal Linux CI.
+
+- CI under BusyBox ash validates shell dialect, but external commands can still resolve to host GNU
+  tools. Passing CI therefore does not prove a GNU option exists on the router.
+- Before adding a new runtime command/flag, check whether the project already has a field-proven way to
+  obtain the same fact. Prefer `/proc`, `/sys`, shell builtins and basic BusyBox-compatible text tools.
+- Known negative evidence is permanent: Keenetic BusyBox 1.37 lacks GNU `stat -c`; some field devices
+  also lack helpers such as `ss`, `ndmq` or `timeout`, and `pidof` is not a universal safety primitive.
+  Optional helpers must be detected explicitly and cannot be used as proof when absent.
+- Temporary/staging names are part of concurrency safety. Use real `$` or an established
+  lifecycle-owned adjacent stage; a syntactically valid literal `# Testing Strategy
+
+## C2–C7 maintenance regressions
+
+`python3 tests/maintenance-regression.py` runs production watchdog updater,
+cron normalization, S00ubifs dispatcher, installer asset selector and updater
+version decisions under dash and BusyBox ash. Kernel mounts, ownership and
+downloads are controlled fixtures; file modes, bytes and renames are real.
+Asset names/URLs were recorded from entware-go:latest on 2026-09-28; ambiguity,
+wrong-package and missing-asset variants are derived fixtures. Coverage includes
+permission/rename failures, foreign schedules, comments, duplicate routes,
+idempotence, lock exclusion, partial mount setup and malformed/older versions.
+The rollback suite adds full TUN migration INT/TERM/HUP cases around stop,
+backup, commit and start, plus failed recovery with retained per-run backups.
+No router, privileged mount or live-network acceptance is implied.
+
+## B6/C1: process discovery and swap identity
+
+Run `python3 tests/process-regression.py` and `python3 tests/swap-regression.py`.
+Both require dash-compatible sh and BusyBox ash. Process tests use copied BusyBox
+ELFs running the sleep applet, real `/proc/<pid>/exe`, deleted/replaced inodes,
+restricted observation fixtures and extracted production stop/restore/Doctor
+functions. Unknown cannot satisfy stop or start confirmation; a live daemon
+prevents a second restore-start and Doctor ELF probe. The rollback suite also
+runs MIPS/updater transactions with pidof masked and `/proc` observations supplied
+by the existing recorded service fixture, retaining all B3/B4 assertions.
+
+Swap tests run all three production scanners against the same inputs, plus the
+installer policy. Block-device stat metadata and sysfs are fixtures; no swap is
+created/enabled. They cover numeric zram devices, fake filenames, >2 GiB files,
+128/256/512 MB classes, coexistence, escaped paths, deleted sources and conflicting
+sysfs. These tests do not constitute hardware/live-network acceptance.
+See [process and backend contracts (RU)](20-process-swap-detection.md).
+
+## B5: partial transport regression
+
+Run `python3 tests/download-regression.py` with Python 3, dash-compatible `sh`
+and BusyBox. The extracted production installer downloader runs with real temp
+files, validation and rename, plus recorded curl/wget stubs that write a valid
+shell prefix and return non-zero. Fifteen cases per shell cover raw/API failure,
+successful fallback and retry, invalid content, stale/no-output retries, cleanup,
+and validation before same-directory commit. API fixtures exercise the existing
+raw-media path and headers; there is no JSON/base64 decoding in this path.
+This is transport fault injection, not hardware or live GitHub availability testing.
+
+## B3/B4: rollback fault regression
+
+Run `python3 tests/rollback-regression.py`. It runs the full MIPS migration and
+the updater's production transaction from staging onward against real temporary
+files, with recorded init/process/ELF stubs. Both dash and BusyBox ash exercise
+historical A/current B/candidate C, failed commit, permissions, running/stopped
+service, INT/TERM/HUP after commit/start, repeated recovery signals, rollback
+copy/chmod/rename/state failures, stop failure, failed restored start and wrong
+runtime identity. A separate real Linux process checks `/proc` inode identity.
+The fixtures assert action ordering and absence of concurrent ELF probes;
+they do not replace real Keenetic/Entware hardware acceptance.
+
+## B1/B2: process-based lifecycle regression
+
+Run `python3 tests/lifecycle-regression.py` with host `sh` and BusyBox installed.
+The same production helper blocks are exercised with real file/stdin processes,
+PID/starttime identity, stale recovery, signal cleanup and deterministic barriers.
+Init/ELF calls are recorded stubs; the full watchdog also runs with failed WAN
+transports. This complements structural assertions, not hardware acceptance.
+See the [protocol and failure boundaries (RU)](19-lifecycle-lock.md).
+
+This document records the testing policy that emerged from development of this project. The target is KeeneticOS + Entware on real routers, so a larger synthetic test matrix is not automatically a better test.
+
+## What we learned
+
+Extensive synthetic testing successfully hardened known high-risk invariants, especially locking, transactional replacement, rollback, recovery, and the one-Mihomo rule. The large temporary adversarial harness used during that work is not a permanent project artifact; preserve the resulting production invariants and add only small committed regressions/contracts when they are cheap and useful.
+
+They did not adequately cover the diversity of real installation prerequisites and cross-repository bootstrap state. The first external clean installation exposed two ordinary integration failures that the synthetic campaigns had not modeled:
+
+- the KeeneticOS Proxy Client component was absent, so ProxyN creation did not take effect;
+- the Mihomo package from the sibling `entware-go` repository shipped a bootstrap config without the project's required `mixed-port: 7890` endpoint.
+
+Both failures were converted into permanent production checks, and the repository now keeps a small committed contract smoke test in `tests/contracts.sh` for the cross-component assumptions that can be checked without emulating KeeneticOS. This is the model to follow: a real failure should leave behind the smallest useful permanent check.
+
+## Priority order
+
+For normal development, test in this order:
+
+1. **Real installation states and real bug reports.** Reproduce the smallest relevant state instead of inventing a broad failure matrix.
+2. **Cross-component contracts.** Check boundaries that can drift independently: KeeneticOS component/capability → installer, `entware-go` package → bootstrap config, ProxyN → `127.0.0.1:7890`, watchdog → canonical runtime layout.
+3. **Committed contract/regression checks.** Run `sh tests/contracts.sh` and extend it only when a real bug can be represented cheaply. High-consequence maintenance ordering is additionally pinned by `python3 tests/transaction-invariants.py`: it checks the real updater/watchdog-updater/migrator source for stage → backup/validation → controlled stop → atomic commit → rollback/preservation invariants without pretending to emulate KeeneticOS. Temporary adversarial harnesses used during development are not a permanent KeeneticOS emulator.
+   Minimal GitHub Actions CI runs these committed contract/regression checks plus shell syntax,
+   repository-local Markdown-link validation and whitespace checks automatically on pushes/pull
+   requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
+4. **Static/syntax review.** Run `sh -n` for changed shell scripts and review BusyBox/POSIX compatibility.
+   Treat the router runtime as BusyBox/Entware, not as the Linux CI host: a command or option existing on
+   Ubuntu is not proof it exists on Keenetic. Prefer already field-proven primitives; any new runtime
+   dependency/option needs target evidence or a guarded fallback.
+5. **Focused synthetic failure injection** only when the change touches a high-consequence invariant.
+
+A green synthetic harness does not prove a clean installation on every Keenetic configuration. Conversely, a real device failure should not trigger a full-system Keenetic emulator when a narrow contract test can preserve the lesson.
+
+## External command output is an input protocol
+
+Text printed by KeeneticOS/Entware commands is external input, not a shell-native data structure. Parser assumptions must be based on the producer's real record grammar, not on one visually convenient sample.
+
+Three output classes are intentionally treated differently:
+
+- **Structured output** (for example RCI/JSON): parse structurally when available and practical.
+- **Configuration command streams** such as `show running-config`: physical lines are commands/block structure. Do not globally concatenate or unwrap them.
+- **Human-readable/display output** such as `show version`: one logical field may be wrapped across physical lines for presentation. Line-by-line token matching is unsafe when the field grammar allows continuation.
+
+The wrapped-component incident established a concrete rule. On 2026-09-19 the operator's Netcraze Ultra **NC-1812 / KeeneticOS 5.1.5** already showed a component ID split inside the token (for example `ike-` / `client`). No regression was created then. On 2026-09-25 KN-3811 / 5.1.5 and 5.1.6 reproduced the same formatting class with required IDs (`dns-` / `filter`, `opkg-kmod-` / `netfilter`), and the old line-oriented matcher produced false missing-component evidence.
+
+Permanent rules from that failure:
+
+1. Normalize only the logical field whose continuation grammar is understood; never strip arbitrary newlines from an entire command dump.
+2. Stop normalization at the next known field/block boundary.
+3. Match identifiers exactly after normalization; related names such as `opkg-kmod-netfilter-addons` must not satisfy `opkg-kmod-netfilter`.
+4. Treat unreadable/truncated/unconvincing observations as UNKNOWN/UNVERIFIED, not as proof of absence.
+5. Read back critical persistent mutations from a fresh observation; command success alone is not proof that KeeneticOS applied the state.
+6. When Installer and Doctor implement the same interpretation independently, regressions must execute both implementations.
+7. Preserve real producer **shape** in small sanitized fixtures. Never publish private addresses, credentials, secrets or full private router configuration as fixtures.
+8. For finite required IDs, generic formatting coverage is preferable to memorizing only previously observed split points. The component regression now tests every required component ID at every possible internal wrap position.
+9. Green CI means all modeled shapes and known invariants passed; it does not mean every firmware/model presentation format has been proven.
+
+## High-consequence invariants
+
+Deeper adversarial testing is justified for changes to atomic update/replacement and rollback, locking and stale-lock takeover, one-Mihomo execution discipline, service-state restoration, watchdog recovery decisions, and destructive or persistent router mutations.
+
+For documentation, diagnostics, read-only helpers, and narrow presentation changes, prefer focused verification. Do not automatically rerun the largest failure matrix.
+
+## Test-budget rule
+
+Before building a temporary harness, ask whether an existing permanent test can express the scenario.
+
+For a normal task:
+
+- prefer roughly 5–10 focused scenarios over a new exhaustive matrix;
+- if temporary scaffolding is unavoidable, keep it small (roughly <=100 lines) and disposable;
+- allow at most two iterations spent repairing the test harness itself;
+- if the harness fails twice because of harness defects, or maintaining the model costs more than validating the production change, stop and report the limitation;
+- do not build a full KeeneticOS emulator for a narrow change.
+
+Partial but truthful verification of the production diff is better than a large synthetic environment whose own behavior is uncertain.
+
+## Real-hardware testing
+
+Live hardware is most useful for contract and integration checks that mocks cannot reliably reproduce: component availability, `ndmc` behavior, package/conffile semantics, memory pressure, filesystem behavior, process lifecycle, and actual routing.
+
+Live tests must remain conservative:
+
+- no destructive experiment on a production router merely to improve coverage;
+- preserve the user's current service state;
+- prefer read-only observation first;
+- use a short planned outage when executable Mihomo validation is required rather than running a second Mihomo beside the daemon;
+- never publish private addresses, credentials, configuration secrets, or raw diagnostics from a user's router as test fixtures.
+
+## MCP cross-validation as an independent live oracle
+
+When Keenetic MCP access is available, use it as a **second read-only observation path** for Doctor acceptance. It is not a Doctor runtime dependency and must never become required for normal users; it is a fleet/test oracle that helps catch parser or interpretation drift.
+
+| Fact | MCP source | Doctor source | Interpretation |
+|---|---|---|---|
+| exact model / firmware | device metadata / live router | `show version` | should agree exactly |
+| installed KeeneticOS component IDs | `list_installed_components` (normalized from `show version`) | Doctor's independent `show version` parser | excellent parser cross-check, especially wrapped IDs |
+| nominal physical RAM | `show system memtotal` | `/proc/meminfo MemTotal` | values can differ because Linux excludes reserved memory; Doctor's Linux value remains authoritative for project resource gates |
+| total active swap | `show system swaptotal/swapfree` | `/proc/swaps` + `/proc/meminfo` | totals should approximately agree |
+| swap backend type | not exposed by current MCP tools | `/proc/swaps` plus mount topology | Doctor is authoritative for zRAM vs storage-backed classification |
+| DNS transit interception | redacted live running-config | live `show running-config` | should agree |
+| ProxyN live state | live interface state | `show interface ProxyN` / project markers | should agree |
+| physical USB media | `show usb` | indirect via `/proc/mounts`/storage checks | MCP enriches physical-device context; Doctor remains authoritative for actual `/opt` filesystem/class |
+| live Netfilter rules / xt_multiport | component presence only | `lsmod` + `iptables` runtime rules | Doctor is stronger; a component ID alone is not runtime proof |
+| Mihomo runtime binary/version/opkg metadata | not exposed by current Keenetic MCP tools | `/proc/PID/exe`, Controller `/version`, Entware `opkg list-installed` | Doctor is authoritative |
+
+### 2026-09-25 MCP ↔ Doctor comparison
+
+| Profile | MCP nominal RAM | MCP swap total | MCP DNS intercept | MCP required components | Doctor evidence |
+|---|---:|---:|---|---|---|
+| dača NC-1012 external EXT4 | 512 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | post-maintenance **37 OK / 0 WARN / 0 FAIL**; external storage-backed swap |
+| home NC-1812 external EXT4 | 1024 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | **36 OK / 0 WARN / 0 FAIL**; raw per-line resource numbers were not retained in the summary |
+| work KN-1012 SE external EXT4 | 512 MiB | 1,047,548 KB (~1023 MiB) | enabled | required set + `ext`/`ext-utils` present | Linux RAM ~486 MB, external storage-backed swap ~1022 MB, **38 OK / 0 WARN / 0 FAIL** |
+| dača KN-1012 GSM internal UBIFS | 512 MiB | 524,284 KB (~512 MiB) | enabled | required set present; `ext`/`ext-utils` absent as expected for internal `/opt` | Linux RAM ~486 MB, zRAM ~511 MB, **33 OK / 0 WARN / 0 FAIL** |
+| KN-3811 "126 security" internal storage | 512 MiB | 524,284 KB (~512 MiB) | enabled | required component IDs present; `ext-utils` absent and not required for internal `/opt` | earlier old-parser run falsely reported component FAILs; Linux runtime showed zRAM ~511 MB and healthy Netfilter rules |
+
+Current MCP and Doctor observations agree on the facts they both expose. The major historical disagreement on KN-3811 was the already-fixed Doctor line-oriented `show version` parser, not a real router-state mismatch. A fresh current Doctor run on KN-3811 remains a useful live closure check after the parser fix, but the MCP component list already independently confirms that the required IDs are present.
+
+MCP must not be used to weaken Doctor checks. In particular, `show system swaptotal` does not tell whether swap is zRAM or storage-backed, and an installed `opkg-kmod-netfilter` ID does not prove that `xt_multiport` and the project MARK/CONNMARK/RETURN rules are actually loaded.
+ suffix is unsafe because separate
+  runs collide.
+- Every real portability failure should produce the smallest durable sentinel/regression that can catch
+  that exact bad assumption without pretending to emulate all of KeeneticOS.
 ## Current hardware evidence
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
@@ -295,7 +498,7 @@ for this above-512 MB memory class.
 An earlier Doctor run on this same router reported **25 OK / 3 WARN / 2 FAIL**. The two
 FAIL findings were false missing-component results for `dns-filter` and
 `opkg-kmod-netfilter`, caused by the old line-oriented interpretation of wrapped
-`show version` output. The current stable Doctor **v1.2.9** now reconstructs the logical
+`show version` output. The retained rerun used Doctor **v1.2.9**, which reconstructs the logical
 component field correctly, reports both required components present, verifies the executable
 `bypass_wa` hook plus live PREROUTING/UDP multiport MARK/CONNMARK/RETURN rules, and finishes
 with **29 OK / 2 WARN / 0 FAIL / 53 INFO**. This is external field validation that the
@@ -348,11 +551,35 @@ Primary 512 MB-class routers showed materially different pressure. Accessible **
 
 A same-day read-only snapshot of the operator's **NC-1812 1 GiB-class** router showed about **58% non-cache RAM use**, roughly **279 MB raw memfree**, and an approximately **1 GiB active swap backend with 0 used at the snapshot**. That single 1 GiB data point has materially more headroom than the pressured 512 MB gateways, so the project does **not** promote the 1 GiB class to a hard gate in this release. It remains under observation; >512 MB swap/zRAM stays optional until fleet evidence justifies a separate contract change.
 
-## Next focused acceptance
+### 2026-09-28 release-candidate portability and storage acceptance
 
-The next useful work is evidence collection and integration acceptance, not a larger synthetic KeeneticOS emulator.
+The v1.8.0 release-candidate cycle added four complementary live checks:
 
-1. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. NC-1812 has now completed its 2026-09-25 read-only Doctor re-check with **36 OK / 0 WARN / 0 FAIL**.
+- **KN-1010 / mipsel / 256 MB:** Doctor correctly distinguished external storage-backed
+  `/dev/sda1` swap from merely present but inactive `/dev/zram*` nodes, then correctly identified
+  active native `/dev/zram0` by block-device metadata plus matching sysfs major:minor. The same router
+  completed a forced same-version `update-mihomo.sh` transaction after the large-asset transfer window
+  was separated from the short metadata timeout.
+- **NC-1812 / aarch64 / >512 MB:** live BusyBox 1.37 exposed the missing GNU `stat -c` support;
+  the portable owner/mode, executable-identity and zRAM alternatives were then accepted on hardware.
+  The same device also proved the IPv4 + X25519 TLS compatibility fallback and watchdog updater
+  idempotency/permissions/cron behavior.
+- **KN-3811 / aarch64 / internal UBIFS:** Doctor v1.2.17 reported the real `/opt` mount as internal
+  UBIFS and verified that `S00ubifs` is enabled/executable and all three volatile paths
+  (`/opt/tmp`, `/opt/var/log`, `/opt/var/run`) are active tmpfs mounts.
+- **work KN-1012 / aarch64 / external EXT4:** the production gateway passed Doctor v1.2.17 with
+  **36 OK / 0 WARN / 0 FAIL**, including external EXT4 + `ext`/`ext-utils`, ~1 GiB external swap,
+  Mihomo 1.19.31, canonical Proxy0, MagiTrickle, watchdog and project delivery.
+
+These runs close the release-specific C1 and normal C6/C7 transaction acceptance claimed in the
+current CHANGELOG. They do **not** claim destructive hard-power/SIGKILL rollback fault injection.
+
+## Next optional evidence
+
+The next useful work is evidence collection, not a blocker for the current release and not a reason
+to build a larger synthetic KeeneticOS emulator.
+
+1. **KN-3812, optional read-only refresh.** A fresh sanitized `components:` block plus current Doctor summary would improve recency, but retained KN-3812 evidence already covers the architecture family and this is not a v1.8.0 release blocker.
 2. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware; its current 5.1.6/internal-storage shape is now preserved as live evidence.
 3. **Keep KN-1012 profiles distinct.** The accepted family now includes at least three materially different 1012-class operating profiles: dača NC-1012 external EXT4/NVMe, work KN-1012 SE external EXT4/USB flash, and dača KN-1012 GSM internal UBIFS/zRAM.
 4. **Per-device evidence record.** Store exact model/hw_id, firmware title/release, architecture, `/opt` class/filesystem, sanitized raw `components:` shape, normalized required-component result, Doctor summary, and whether any reboot-dependent capability was actually checked.
