@@ -616,13 +616,19 @@ proxy_profile_class() {
 }
 
 # fetch_url URL -> globals FETCH_OUT (body) and FETCH_RC.
-# curl is tried first; an actual curl failure falls back to wget rather than
-# using wget only when curl is absent. Nothing is written to disk.
+# curl is tried first; after a bounded normal-TLS failure one X25519
+# compatibility retry is allowed before wget. Nothing is written to disk.
 fetch_url() {
     FETCH_OUT=""
     FETCH_RC=1
     if command -v curl >/dev/null 2>&1; then
         FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 "$1" 2>/dev/null)
+        FETCH_RC=$?
+        if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
+            return 0
+        fi
+        FETCH_OUT=""
+        FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 -4 --curves X25519 "$1" 2>/dev/null)
         FETCH_RC=$?
         if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
             return 0

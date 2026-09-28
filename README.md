@@ -28,6 +28,14 @@ opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
 ```
 
+Если `curl` зависает **до первого вывода setup/Doctor** на TLS handshake с `raw.githubusercontent.com`, используйте совместимый повтор (сертификат по-прежнему проверяется):
+
+```bash
+curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+```
+
+Обычный TLS остаётся основным путём. `X25519` — только compatibility fallback для сетей, где увеличенный TLS ClientHello от OpenSSL 3.5 не проходит; после запуска project downloader сам пробует normal TLS → X25519 → wget/API fallback.
+
 Во время установки мастер проверяет storage, RAM/swap и обязательные компоненты KeeneticOS. Если состояние нельзя определить безопасно, установка останавливается вместо угадывания.
 
 > **Важно для 512 МБ-класса:** 512 МБ физической RAM без memory-pressure backend проект больше не считает поддерживаемой базой. Для новой установки обязателен активный KeeneticOS zRAM **или** проверенный внешний storage-backed swap; если нет обоих, installer останавливается с ERROR, а Doctor показывает FAIL. Исключений для режима точки доступа нет.

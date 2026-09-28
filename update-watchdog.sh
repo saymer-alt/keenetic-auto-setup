@@ -407,14 +407,19 @@ download_watchdog_candidate() {
     if command -v curl >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if curl -fSsL "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
+            if curl -fSsL --connect-timeout 5 --max-time 20 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
             sleep 2
         done
+        rm -f "$TMP_FILE" 2>/dev/null || true
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$TMP_FILE" 2>/dev/null || true
         if command -v wget >/dev/null 2>&1; then
-            status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; trying wget fallback"
+            status_out "$COLOR_YELLOW" "[WARN] curl download failed after bounded retries; trying wget fallback"
         elif [ -z "${WATCHDOG_URL:-}" ]; then
             status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; wget unavailable, trying GitHub Contents API fallback"
         fi
@@ -442,7 +447,7 @@ download_watchdog_candidate() {
     if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if curl -fSsL \
+            if curl -fSsL --connect-timeout 5 --max-time 20 \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then
@@ -451,6 +456,14 @@ download_watchdog_candidate() {
             rm -f "$TMP_FILE" 2>/dev/null || true
             sleep 2
         done
+        rm -f "$TMP_FILE" 2>/dev/null || true
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$TMP_FILE" 2>/dev/null || true
     fi
 
     return 1
