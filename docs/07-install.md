@@ -59,6 +59,11 @@ Mihomo**. Замена существующего binary принадлежит 
 готовый архитектурный `.ipk` из release `latest` репозитория
 `saymer-alt/entware-go`.
 
+Development C6: каждый parser выбирает ровно один URL с точным package basename
+и architecture suffix; nohf и чужие packages исключены. Несколько различных
+подходящих assets — ERROR без перехода к feed. Отсутствие подходящего asset
+сохраняет существующую fallback chain.
+
 Порядок initial-install path:
 
 1. GitHub API;

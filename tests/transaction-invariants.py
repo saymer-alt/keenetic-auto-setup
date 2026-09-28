@@ -88,8 +88,10 @@ def test_watchdog_updater() -> None:
     )
     require(text, 'preserved, nothing migrated', label)
     require(text, 'contains unrecognized content - preserved, nothing changed', label)
-    require(text, 'if cp -f "$WATCHDOG_CRON" "$CRON_LEGACY_BAK"', label)
-    require(text, 'chmod -x "$CRON_LEGACY_BAK"', label)
+    ordered(text, label, 'cp -f "$WATCHDOG_CRON" "$BACKUP_STAGE"',
+            'wd_permissions "$BACKUP_STAGE" 600', 'mv -f "$BACKUP_STAGE" "$CRON_LEGACY_BAK"')
+    ordered(text, label, 'ml_lifecycle_acquire ||', 'rm -f /opt/bin/.mihomo_watchdog.sh.new.*')
+    require(text, 'wd_permissions "$STAGE_FILE" 755', label)
     forbid(text, 'rm -f "$WATCHDOG_CRON"', label)
     forbid(text, 'mv -f "$TMP_FILE" "$WATCHDOG_BIN"', label)
     print("[OK] update-watchdog no-op/validation/atomic-commit and preservation are pinned")

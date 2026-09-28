@@ -58,6 +58,12 @@ Entware активно пишет:
 
 ### При старте
 
+Development C4: уже существующий tmpfs пропускается; non-tmpfs mount на целевом
+пути — ошибка без unmount/remount. Failed mount возвращает non-zero и прекращает
+setup; уже успешно смонтированные каталоги сохраняются. Повторный start пропускает
+их и продолжает оставшиеся. Status возвращает non-zero при неполном наборе tmpfs.
+RAM installer останавливается при ошибке S00ubifs; disabled service остаётся no-op.
+
 Размеры подбираются автоматически по свободной RAM (профили):
 
 | Профиль | Свободная RAM | /opt/tmp | /opt/var/log | /opt/var/run |

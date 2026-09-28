@@ -155,6 +155,7 @@ If a change in these areas is required, first understand the dependency
 for the operator.
 
 Risk-zone specifics:
+- Watchdog installer/updater share the existing lifecycle lock and identical managed-file helpers. Successful managed executables require root:root/0755; legacy backups remain 0600 outside cron. Normalize only recognized active five-minute routes; preserve unknown schedules for manual review. Correct repeat runs preserve managed content/inode/mtime.
 - Absence of `pidof` is not evidence that Mihomo is stopped. The identical standalone `mp_state` contract returns 0 running / 1 stopped / 2 unknown, with executable-identity `/proc` fallback. Safety-critical stop/probe/commit/start decisions fail closed on unknown; lifecycle ownership is still required. The B4 canonical inode verifier remains a separate, stricter check.
 - Native zRAM is identified by actual zram block-device identity, not substring matching in swap source names. All three scanners share `swap_is_zram`: active partition, numeric zramN device name, block-device metadata and matching sysfs major/minor. Missing/conflicting evidence is unverified. Resource thresholds are unchanged.
 - MIPS migration rollback must use the current run's config snapshot, never the historical `.pre-mips` artifact. Restore through a same-filesystem stage/rename with permissions preserved; retain the snapshot on recovery failure.
@@ -307,16 +308,16 @@ a live run.
 
 ## 11. Known pitfalls
 
-- Duplicate lines in /opt/etc/crontab → watchdog runs twice (docs/08/09);
-  install.sh adds an entry only if absent, but manual crontab editing can easily create
-  duplicates.
+- Duplicate lines in /opt/etc/crontab → watchdog runs twice (docs/08/09).
+  Installer/updater normalize recognized five-minute routes; unknown custom routes
+  require manual review.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
 - External Entware storage: supported new-install profile is EXT4 only. NTFS/exFAT/FAT or an unverified external `/opt` must not be silently accepted; external `/opt` requires `ext` + `ext-utils`. Do not make installer formatting/repair automatic.
 - 128 MB RAM: known low-headroom risk (docs/06). New installation is allowed only as best-effort/experimental with verified external /opt + >=384 MB external storage-backed active swap (project-specific floor; zRAM does not count). 256 MB-class devices should have zRAM OR verified external storage-backed swap; missing both remains WARN. **512 MB-class is explicitly unsupported without one active backend:** native zRAM OR verified external storage-backed swap is mandatory, missing both is installer ERROR / Doctor FAIL, with no AP/extender or low-memory override. External swap below 1x detected RAM is WARN; 1x..3x is INFO with 3x as the preferred target, capped at 2 GiB; >2 GiB is invalid for new installs. Above the 512 MB-class, swap/zRAM is optional under the current contract. If zRAM and disk/file swap are both active, warn per vendor guidance; never auto-toggle either backend. Do not weaken these profile rules or try to "make it work" by silently bypassing them.
 - Nested-tunnel MTU is topology-specific. In the documented Keenetic WARP-over-ProxyN/Mihomo chain, MTU 1200 is live-working; 1200–1300 is only a troubleshooting range, not a universal default. Do not confuse the router WireGuard MTU with Mihomo `tun.mtu` (docs/09, encyclopedia/34).
 - DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
 - Incorrect system time → SSL errors → "opkg update failed"; start diagnosis with `date`.
-- Re-running install.sh does not clean an existing crontab or remove old components.
+- Re-running install.sh normalizes managed watchdog cron routes, but does not remove unrelated old components.
 - update-mihomo.sh, migrate-mihomo-mips.sh and migrate-mihomo-tun.sh determine the binary deterministically:
   /proc/<pid>/exe of the running daemon if it points to /opt/sbin/mihomo or
   /opt/bin/mihomo, otherwise /opt/sbin/mihomo, otherwise /opt/bin/mihomo (mirrors the

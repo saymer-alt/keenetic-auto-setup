@@ -166,7 +166,8 @@ pass "migrator --check obeys the one-Mihomo invariant"
 
 grep -q 'CRON_LEGACY_BAK="/opt/etc/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must live outside cron.5mins"
 grep -q 'CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must recognize the old in-cron backup path"
-grep -q 'chmod -x "$CRON_LEGACY_BAK"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
+grep -Fq 'wd_permissions "$BACKUP_STAGE" 600' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
+grep -Fq 'chmod 600 "$CRON_LEGACY_BAK_OLD"' "$ROOT/update-watchdog.sh" || fail "old cron backup must be disabled before migration"
 pass "watchdog updater cannot leave an executable legacy backup in cron.5mins"
 
 grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must know the historical in-cron watchdog backup path"

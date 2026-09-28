@@ -66,6 +66,9 @@ jobs:
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 
+      - name: Maintenance audit regressions (dash and BusyBox ash)
+        run: python3 tests/maintenance-regression.py
+
       - name: Whitespace
         shell: bash
         run: |
