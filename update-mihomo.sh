@@ -357,6 +357,7 @@ WORK_DIR=""
 STAGE_BIN=""
 ROLLBACK_STAGE=""
 MIHOMO_STAGE_MARGIN_KB=4096
+ASSET_DOWNLOAD_MAX_TIME=180
 RECOVERY_FAILED=0
 BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
 TMP_STATE_BACKUP=""
@@ -450,18 +451,18 @@ download_file_with_fallback() {
   _df_dst="$2"
   rm -f "$_df_dst" 2>/dev/null || true
   if command -v curl >/dev/null 2>&1; then
-    if retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_df_url" -o "$_df_dst"; then
+    if retry_silent curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url" -o "$_df_dst"; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
-    if curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
+    if curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
   fi
   if command -v wget >/dev/null 2>&1; then
     warn "curl download failed after bounded retries; trying wget fallback"
-    if retry_silent wget -qO "$_df_dst" "$_df_url"; then
+    if retry_silent wget -qO "$_df_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url"; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
