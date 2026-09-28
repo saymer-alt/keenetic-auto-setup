@@ -14,8 +14,8 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 mkdir -p "$TMP/sys-empty/zram0"
 echo '252:0' > "$TMP/sys-empty/zram0/dev"
 # Simulate the kernel device observation only; scanner/policy remain production.
-stat() {
-    case "$*" in *'/dev/zram0') echo 'block special file:fc:0' ;; *) command stat "$@" ;; esac
+ls() {
+    case "$*" in *'/dev/zram0') echo 'brw------- 1 0 0 252, 0 Jan 1 00:00 /dev/zram0' ;; *) command ls "$@" ;; esac
 }
 readlink() {
     case "$*" in '-f /dev/zram0') echo /dev/zram0 ;; *) command readlink "$@" ;; esac

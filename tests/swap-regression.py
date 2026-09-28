@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """C1: exercise all three production scanners with identical kernel fixtures.
 
-stat supplies block-device metadata (no privileged mknod or active swap needed).
+ls supplies block-device metadata (no privileged mknod or active swap needed).
 The real identity helper, mount classifiers, scanners and installer policy run
 under both shells. No swap is created or enabled.
 """
@@ -48,14 +48,14 @@ def main():
             mounts=lab/'mounts';mounts.write_text('/dev/sda2 /opt ext4 rw 0 0\n/dev/sdb1 /tmp/mnt/disk ext4 rw 0 0\n/dev/sdc1 /tmp/mnt/zram\\040disk ext4 rw 0 0\n')
             swaps=lab/'swaps';mem=lab/'mem';mem.write_text('MemTotal: 524288 kB\nSwapTotal: 524288 kB\n')
             pre=f'''set -e
-stat() {{
+ls() {{
     case "$*" in
-        *'/dev/zram4') echo 'regular file:0:0' ;;
-        *'/dev/zram0') echo 'block special file:fc:0' ;;
-        *'/dev/zram1') echo 'block special file:fc:1' ;;
-        *'/dev/zram2') echo 'block special file:fc:2' ;;
-        *'/dev/zram3') echo 'block special file:fc:3' ;;
-        *) command stat "$@" ;;
+        *'/dev/zram4') echo '-rw------- 1 0 0 0 Jan 1 00:00 /dev/zram4' ;;
+        *'/dev/zram0') echo 'brw------- 1 0 0 252, 0 Jan 1 00:00 /dev/zram0' ;;
+        *'/dev/zram1') echo 'brw------- 1 0 0 252, 1 Jan 1 00:00 /dev/zram1' ;;
+        *'/dev/zram2') echo 'brw------- 1 0 0 252, 2 Jan 1 00:00 /dev/zram2' ;;
+        *'/dev/zram3') echo 'brw------- 1 0 0 252, 3 Jan 1 00:00 /dev/zram3' ;;
+        *) command ls "$@" ;;
     esac
 }}
 SYS_CLASS_BLOCK={shlex.quote(str(sys))}; DOC_SYS_CLASS_BLOCK=$SYS_CLASS_BLOCK; UP_SYS_CLASS_BLOCK=$SYS_CLASS_BLOCK

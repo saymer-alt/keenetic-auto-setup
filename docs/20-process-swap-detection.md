@@ -63,7 +63,7 @@ tests pin stop/restore, lifecycle exclusion и B4 inode verification; их asser
 совпадающий major:minor в `/sys/class/block/zramN/dev`.
 Symlink допускается, если canonical target удовлетворяет этим требованиям.
 Недоступный/противоречивый sysfs или device metadata означает unverified,
-а не native zRAM. В частности, один лишь путь `/dev/zram0` недостаточен.
+а не native zRAM. В частности, один лишь путь `/dev/zram0` недостаточен. На Keenetic block metadata читается через BusyBox-compatible `ls -ln`, а major:minor сверяется с `/sys/class/block/zramN/dev`; GNU `stat -c` не требуется.
 
 `/tmp/mnt/disk/zram.swap`, `/opt/my-zram-file` и mountpoint с `zram` остаются
 storage-backed, если mount классифицирован как external. Размер >2 ГиБ не

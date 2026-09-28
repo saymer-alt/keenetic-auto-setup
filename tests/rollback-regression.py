@@ -30,11 +30,14 @@ pidof() {
   [ -f "$LAB/running" ] || return 1
   echo 4242
 }
-stat() {
-  case "$*" in
-    *'/proc/4242/exe'*) cat "$LAB/running"; return ;;
-  esac
-  command stat "$@"
+test() {
+  if [ "$2" = -ef ] && [ "$3" = /proc/4242/exe ]; then
+    [ -f "$LAB/running" ] || return 1
+    current=$(command stat -L -c '%d:%i' "$1") || return 1
+    [ "$current" = "$(cat "$LAB/running")" ]
+    return
+  fi
+  command test "$@"
 }
 curl() {
   case "$CASE" in runtime-fail) return 1 ;; esac

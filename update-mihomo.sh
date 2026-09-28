@@ -602,9 +602,34 @@ restored_runtime_ok() {
   _rr_pids=$(mp_pids) || return 1
   set -- $_rr_pids
   [ "$#" -eq 1 ] || return 1
-  _rr_file=$(stat -L -c '%d:%i' "$MIHOMO_PATH" 2>/dev/null) || return 1
-  _rr_exe=$(stat -L -c '%d:%i' "/proc/$1/exe" 2>/dev/null) || return 1
-  [ -n "$_rr_file" ] && [ "$_rr_file" = "$_rr_exe" ]
+  # BusyBox/POSIX test -ef compares device+inode without GNU stat -c.
+  test "$MIHOMO_PATH" -ef "/proc/$1/exe"
+}
+
+file_mode_octal() {
+  local listing perms
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+  set -- $listing
+  [ "$#" -ge 4 ] || return 1
+  perms="$1"
+  printf '%s\n' "$perms" | awk '
+    length($0) == 10 && substr($0,1,1) == "-" {
+      u=g=o=0
+      c=substr($0,2,1); if (c=="r") u+=4; else if (c!="-") exit 1
+      c=substr($0,3,1); if (c=="w") u+=2; else if (c!="-") exit 1
+      c=substr($0,4,1); if (c=="x") u+=1; else if (c!="-") exit 1
+      c=substr($0,5,1); if (c=="r") g+=4; else if (c!="-") exit 1
+      c=substr($0,6,1); if (c=="w") g+=2; else if (c!="-") exit 1
+      c=substr($0,7,1); if (c=="x") g+=1; else if (c!="-") exit 1
+      c=substr($0,8,1); if (c=="r") o+=4; else if (c!="-") exit 1
+      c=substr($0,9,1); if (c=="w") o+=2; else if (c!="-") exit 1
+      c=substr($0,10,1); if (c=="x") o+=1; else if (c!="-") exit 1
+      printf "%d%d%d\n", u, g, o
+      next
+    }
+    { exit 1 }
+  '
 }
 
 rollback_and_exit() {
@@ -619,7 +644,7 @@ rollback_and_exit() {
   if ! cp -p "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
     rollback_failed "Could not stage rollback binary"
   fi
-  _rb_mode=$(stat -c '%a' "$TMP_BACKUP" 2>/dev/null) || rollback_failed "Cannot read backup permissions"
+  _rb_mode=$(file_mode_octal "$TMP_BACKUP") || rollback_failed "Cannot read backup permissions"
   chmod "$_rb_mode" "$ROLLBACK_STAGE" || rollback_failed "Could not set rollback permissions"
   if [ ! -s "$ROLLBACK_STAGE" ] || [ ! -x "$ROLLBACK_STAGE" ] ||
      ! cmp -s "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
@@ -830,21 +855,27 @@ UP_SWAP_MAX_KB=2097152
 
 # BEGIN ZRAM IDENTITY v1
 # Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
 # Missing/contradictory evidence is unverified, never native zRAM.
 swap_is_zram() {
-    local path name number device major minor expected
+    local path name number listing perms major minor expected sys_class
     [ "$2" = partition ] || return 1
+    sys_class="$3"
     path=$(readlink -f "$1" 2>/dev/null) || return 1
     name=${path##*/}
     case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
     case "$number" in ''|*[!0-9]*) return 1 ;; esac
-    device=$(LC_ALL=C stat -L -c '%F:%t:%T' "$path" 2>/dev/null) || return 1
-    case "$device" in 'block special file:'*) device=${device#block special file:} ;; *) return 1 ;; esac
-    major=${device%:*}; minor=${device#*:}
-    case "$major:$minor" in *[!0-9a-fA-F:]*) return 1 ;; esac
-    [ -n "$major" ] && [ -n "$minor" ] || return 1
-    expected=$(printf '%d:%d' "0x$major" "0x$minor") || return 1
-    [ "$(cat "$3/$name/dev" 2>/dev/null)" = "$expected" ]
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
 }
 # END ZRAM IDENTITY v1
 
