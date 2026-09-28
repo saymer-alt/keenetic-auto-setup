@@ -924,6 +924,36 @@ project_script_transfer() {
     return 1
 }
 
+project_script_curl_retry() {
+    _pc_url="$1"
+    _pc_dest="$2"
+    _pc_api="${3:-0}"
+
+    if [ "$_pc_api" -eq 1 ]; then
+        if retry_silent project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_pc_url" -o "$_pc_dest"; then
+            return 0
+        fi
+        project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 --curves X25519 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_pc_url" -o "$_pc_dest"
+    else
+        if retry_silent project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 \
+            "$_pc_url" -o "$_pc_dest"; then
+            return 0
+        fi
+        project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 --curves X25519 \
+            "$_pc_url" -o "$_pc_dest"
+    fi
+}
+
 project_script_download() {
     _psd_rel="$1"
     _psd_dest="$2"
@@ -934,7 +964,7 @@ project_script_download() {
 
     rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || return 1
 
-    if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
+    if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then
         if project_script_candidate_ok "$_psd_tmp"; then
             :
         else
@@ -950,9 +980,9 @@ project_script_download() {
         # suppress the next transport.
         rm -f "$_psd_tmp" || return 1
         if command -v wget >/dev/null 2>&1; then
-            warn "raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback"
+            warn "raw/curl failed after bounded retries for $_psd_rel; trying wget fallback"
         else
-            warn "raw/curl failed after 3 attempts for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
+            warn "raw/curl failed after bounded retries for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
         fi
     fi
 
@@ -973,10 +1003,7 @@ project_script_download() {
 
     if [ ! -s "$_psd_tmp" ]; then
         rm -f "$_psd_tmp" || return 1
-        if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL \
-            -H "Accept: application/vnd.github.raw+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$_psd_api" -o "$_psd_tmp"; then
+        if project_script_curl_retry "$_psd_api" "$_psd_tmp" 1; then
             if ! project_script_candidate_ok "$_psd_tmp"; then
                 warn "GitHub Contents API returned an invalid script candidate for $_psd_rel"
                 rm -f "$_psd_tmp" || return 1
@@ -1018,7 +1045,10 @@ fetch_url_text() {
     _fut_out=""
 
     if command -v curl >/dev/null 2>&1; then
-        _fut_out=$(retry_silent curl -fsSL "$_fut_url") || _fut_out=""
+        _fut_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_fut_url") || _fut_out=""
+        if [ -z "$_fut_out" ]; then
+            _fut_out=$(curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_fut_url" 2>/dev/null) || _fut_out=""
+        fi
         if [ -n "$_fut_out" ]; then
             printf '%s' "$_fut_out"
             return 0
@@ -1043,7 +1073,11 @@ download_url_file() {
     rm -f "$_duf_dst" 2>/dev/null || true
 
     if command -v curl >/dev/null 2>&1; then
-        if retry_silent curl -fL "$_duf_url" -o "$_duf_dst"; then
+        if retry_silent curl -fL --connect-timeout 5 --max-time 20 "$_duf_url" -o "$_duf_dst"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+        if curl -fL --connect-timeout 5 --max-time 20 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true

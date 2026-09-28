@@ -471,7 +471,9 @@ pass "MagiTrickle helper avoids duplicate opkg update when repository configurat
 # a real fresh install reached the watchdog step and raw.githubusercontent.com reset
 # all three curl attempts while the rest of the stack had already installed.
 grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must centralize project-script delivery"
-grep -Fq 'if retry_silent project_script_transfer "$_psd_tmp" curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with quiet curl retries first"
+grep -q '^project_script_curl_retry()' "$ROOT/install.sh" || fail "project-script delivery must centralize bounded curl compatibility retries"
+grep -Fq 'if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with bounded curl retries first"
+grep -Fq -- '--connect-timeout 5 --max-time 20 --curves X25519' "$ROOT/install.sh" || fail "installer must retain the bounded X25519 TLS compatibility retry"
 grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
@@ -504,28 +506,33 @@ grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog update
 pass "watchdog updater download path is resilient and preserves source override semantics"
 
 # Managed network retries must not flood a router console with one raw error and
-# one project WARN per attempt. Keep the three-attempt resilience, summarize a
-# failed transport once, and preserve the next fallback.
+# one project WARN per attempt. Keep the three normal curl attempts, add only one
+# bounded X25519 compatibility retry, summarize exhaustion once, and preserve the next fallback.
 grep -q '^retry_silent()' "$ROOT/install.sh" || fail "installer must have a quiet managed-download retry helper"
 grep -Fq '"$@" 2>/dev/null && return 0' "$ROOT/install.sh" || fail "installer quiet retry must suppress per-attempt transport stderr"
-grep -Fq 'raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
+grep -Fq 'raw/curl failed after bounded retries for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
 grep -Fq 'raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/wget once"
-grep -Fq 'retry_silent curl -fsSL "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use quiet retries"
-grep -Fq 'retry_silent curl -fsSL "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use quiet retries"
+grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use bounded quiet retries"
+grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use bounded quiet retries"
+grep -Fq -- '--curves X25519' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must retain the X25519 TLS compatibility retry"
 ! grep -Fq 'curl download attempt $_rc_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every curl retry"
 ! grep -Fq 'wget download attempt $_rw_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every wget retry"
-grep -Fq 'raw/curl failed after 3 attempts for $_dps_rel; trying wget fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/curl once"
+grep -Fq 'raw/curl failed after bounded retries for $_dps_rel; trying wget fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/curl once"
+grep -q '^curl_to_file_once()' "$ROOT/setup.sh" || fail "setup must centralize bounded curl invocation"
+grep -Fq -- '--connect-timeout 5 --max-time 20 --curves "$_rc_curve"' "$ROOT/setup.sh" || fail "setup must retain the X25519 TLS compatibility retry"
 grep -Fq 'raw/wget failed after 3 attempts for $_dps_rel; trying GitHub Contents API fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/wget once"
 ! grep -Fq 'curl download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every curl retry"
 ! grep -Fq 'wget download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every wget retry"
 ! grep -Fq 'GitHub API download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every API retry"
-grep -Fq 'curl download failed after 3 attempts; trying wget fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted curl once"
+grep -Fq 'curl download failed after bounded retries; trying wget fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted curl once"
+grep -Fq -- '--connect-timeout 5 --max-time 20 --curves X25519' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain the bounded X25519 TLS compatibility retry"
 grep -Fq 'wget download failed after 3 attempts; trying GitHub Contents API fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted wget once"
 grep -Fq 'quiet per attempt' "$ROOT/AGENTS.md" || fail "AGENTS must preserve the quiet managed-download retry contract"
 grep -Fq 'не печатают каждую внутреннюю попытку' "$ROOT/docs/18-output-colors.md" || fail "RU output contract must document quiet retry presentation"
 pass "managed download retries stay resilient without per-attempt console spam"
 
-grep -Fq 'curl is tried first; an actual curl failure falls back to wget' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must fall back after a real curl failure"
+grep -Fq 'after a bounded normal-TLS failure one X25519' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must document the bounded X25519 retry before wget"
+grep -Fq -- '--connect-timeout 5 --max-time 15 --curves X25519' "$ROOT/mihomo-doctor.sh" || fail "Doctor must retain the bounded X25519 TLS compatibility retry"
 grep -Fq 'PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must know the project API delivery fallback"
 grep -Fq 'GitHub Contents API fallback is reachable - hardened project downloads can continue' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish raw-host failure from total project-delivery failure"
 pass "Doctor reports the hardened project delivery paths accurately"

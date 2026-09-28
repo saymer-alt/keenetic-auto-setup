@@ -119,7 +119,7 @@ delivery branch. Production project fetches default to `stable`; development/tes
 override the project ref explicitly. Remote delivery is a reliability contract learned from
 a real `raw.githubusercontent.com` reset during installation:
 - project-managed script acquisition must use bounded fallbacks where applicable:
-  raw GitHub via `curl` → the same raw URL via `wget` → GitHub Contents API raw media;
+  raw GitHub via bounded normal `curl` → one bounded `curl --curves X25519` compatibility retry → the same raw URL via `wget` → GitHub Contents API raw media;
 - failed file transfers must remove partial/non-empty candidates before the next transport;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
@@ -127,8 +127,7 @@ a real `raw.githubusercontent.com` reset during installation:
   `opkg update && opkg install curl && curl .../stable/setup.sh | sh`. Do not inline a
   long temp-file/API fallback transaction into README, Quick Start, HOWTO, Entware guides,
   or the normal setup command. The hardened multi-transport/validation contract begins once
-  `setup.sh` is running. If the initial raw fetch itself is unavailable, point users to the
-  documented offline/SCP recovery path instead of making the primary command unreadable;
+  `setup.sh` is running. If the initial raw fetch stalls during TLS before script output, document the short `--connect-timeout 5 --max-time 20 --curves X25519` recovery command; if it still fails, point users to the documented offline/SCP recovery path instead of making the primary command unreadable;
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the
@@ -267,6 +266,8 @@ The agent must clearly separate what was verified by sh -n/review from what requ
 a live run.
 
 ## 10. Historical context (why it is this way)
+
+- 2026-09-28 live NC-1812 evidence isolated a TLS bootstrap compatibility failure before Doctor execution: Entware `curl 8.15.0 + OpenSSL 3.5.5` sent a default TLS 1.3 ClientHello of about 1578 bytes to `raw.githubusercontent.com` and received no ServerHello; `--curves X25519` reduced it to about 512 bytes and completed TLS/HTTP2 immediately. OpenSSL 3.5 changed default keyshares toward hybrid PQC groups, but the project does not claim OpenSSL itself is universally broken: treat this as a path/middlebox/MTU compatibility case. Normal TLS stays first; X25519 is a bounded fallback, never `--insecure`.
 
 - 2026-09-19 the operator's **NC-1812 / KeeneticOS 5.1.5** already showed the same `show version` presentation class: a component ID could be split across adjacent physical lines (for example `ike-` / `client`). That observation was treated as harmless display wrapping and no parser regression was created. This was an early warning we failed to promote into a general rule.
 - 2026-09-25 KN-3811 before/after 5.1.5 -> 5.1.6 made the consequence explicit: `ndmc -c "show version"` hard-wrapped required IDs (`dns-` / `filter`, `opkg-kmod-` / `netfilter`), so line-oriented matching produced false missing-component evidence. Never test required component IDs line-by-line against the raw dump. Normalize only the understood `components:` continuation field, then exact-match comma-delimited IDs. This applies to both Doctor and installer; `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`. The permanent regression now splits every required component ID at every possible internal position.

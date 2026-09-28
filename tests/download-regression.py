@@ -20,23 +20,29 @@ import json, os, sys
 from pathlib import Path
 lab=Path(os.environ['LAB']); args=sys.argv[2:]; method=sys.argv[1]
 url=next(a for a in args if a.startswith('https://'))
+base_method=method
 if 'api.github.com' in url:
-    method='api'
+    base_method='api'
     assert 'Accept: application/vnd.github.raw+json' in args
     assert 'X-GitHub-Api-Version: 2022-11-28' in args
     assert url.endswith('?ref=fixture-ref')
 else:
     assert '/fixture-ref/helper.sh' in url
-dest=Path(args[args.index('-o' if method != 'wget' else '-qO')+1])
+method=base_method + ('-x25519' if '--curves' in args else '')
+if '--curves' in args:
+    assert args[args.index('--curves')+1] == 'X25519'
+    assert '--connect-timeout' in args and '--max-time' in args
+dest=Path(args[args.index('-o' if base_method != 'wget' else '-qO')+1])
 plan=json.loads((lab/'plan').read_text())
 counter=lab/('count-'+method)
 n=int(counter.read_text()) if counter.exists() else 0
 counter.write_text(str(n+1))
-actions=plan[method]; action=actions[min(n,len(actions)-1)]
+actions=plan.get(method, plan.get(base_method, ['fail']))
+action=actions[min(n,len(actions)-1)]
 with (lab/'events').open('a') as f:
     f.write(json.dumps(dict(method=method,action=action,existed=dest.exists()))+'\n')
 if action=='partial':
-    dest.write_text('#!/bin/sh\necho truncated\n'); sys.exit(18 if method!='wget' else 4)
+    dest.write_text('#!/bin/sh\necho truncated\n'); sys.exit(18 if base_method!='wget' else 4)
 if action=='fail': sys.exit(18)
 if action=='complete': dest.write_text('#!/bin/sh\necho complete\necho end\n')
 if action=='invalid': dest.write_text('#!/bin/sh\nif then\n')
@@ -56,6 +62,8 @@ def run(shell, name, plan, success, baseline=False):
     names=['retry_silent','project_script_candidate_ok','project_script_download']
     if 'project_script_transfer() {' in text:
         names.insert(1,'project_script_transfer')
+    if 'project_script_curl_retry() {' in text:
+        names.insert(2,'project_script_curl_retry')
     functions=''.join(function(text,n) for n in names)
     with tempfile.TemporaryDirectory(prefix='mihomo-download-') as directory:
         lab=Path(directory)
@@ -106,13 +114,18 @@ project_script_download helper.sh "$LAB/canonical"
         else:
             assert not any(event.startswith('commit:') for event in order),detail
             assert (lab/'canonical').stat().st_ino==inode,detail
-        # Every exhausted transport retains three attempts and source ordering.
+        # Normal transports retain three attempts. The X25519 compatibility
+        # retry is a single bounded attempt before advancing to wget/API.
         methods=[e['method'] for e in events]
-        assert methods==sorted(methods,key=['curl','wget','api'].index),detail
+        order_methods=['curl','curl-x25519','wget','api','api-x25519']
+        assert methods==sorted(methods,key=order_methods.index),detail
         for method in ['curl','wget','api']:
             used=[e for e in events if e['method']==method]
             if used and used[-1]['action'] in {'partial','fail'}:
                 assert len(used)==3,detail
+        for method in ['curl-x25519','api-x25519']:
+            used=[e for e in events if e['method']==method]
+            assert len(used)<=1,detail
         assert p.stderr=='',detail
         print('PASS','/'.join(shell),name,flush=True)
 
@@ -141,6 +154,11 @@ def main():
         ]
         for name,curl,wget,api,success in cases:
             run(shell,name,dict(curl=curl,wget=wget,api=api),success)
+        run(shell,'curl X25519 compatibility',
+            dict(curl=['fail'], **{'curl-x25519':['complete']}, wget=['fail'], api=['fail']), True)
+        run(shell,'API X25519 compatibility',
+            dict(curl=['fail'], **{'curl-x25519':['fail']}, wget=['fail'],
+                 api=['fail'], **{'api-x25519':['complete']}), True)
 
 
 if __name__=='__main__':

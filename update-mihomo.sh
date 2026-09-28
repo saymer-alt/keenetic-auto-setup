@@ -419,13 +419,17 @@ retry_silent() {
   done
   return 1
 }
-# Network acquisition helpers: curl first, wget fallback. Failed transfers
-# always remove partial destination files before the next transport.
+# Network acquisition helpers: normal TLS first, then one bounded X25519
+# compatibility retry, then wget. OpenSSL 3.5+ can emit a larger hybrid-PQ
+# ClientHello that some middleboxes/path-MTU combinations drop.
 fetch_text_with_fallback() {
   _ft_url="$1"
   _ft_out=""
   if command -v curl >/dev/null 2>&1; then
-    _ft_out=$(retry_silent curl -fsSL "$_ft_url") || _ft_out=""
+    _ft_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url") || _ft_out=""
+    if [ -z "$_ft_out" ]; then
+      _ft_out=$(curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_ft_url" 2>/dev/null) || _ft_out=""
+    fi
     if [ -n "$_ft_out" ]; then
       printf "%s" "$_ft_out"
       return 0
@@ -446,13 +450,17 @@ download_file_with_fallback() {
   _df_dst="$2"
   rm -f "$_df_dst" 2>/dev/null || true
   if command -v curl >/dev/null 2>&1; then
-    if retry_silent curl -fsSL "$_df_url" -o "$_df_dst"; then
+    if retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_df_url" -o "$_df_dst"; then
+      [ -s "$_df_dst" ] && return 0
+    fi
+    rm -f "$_df_dst" 2>/dev/null || true
+    if curl -fsSL --connect-timeout 5 --max-time 20 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
   fi
   if command -v wget >/dev/null 2>&1; then
-    warn "curl download failed after 3 attempts; trying wget fallback"
+    warn "curl download failed after bounded retries; trying wget fallback"
     if retry_silent wget -qO "$_df_dst" "$_df_url"; then
       [ -s "$_df_dst" ] && return 0
     fi

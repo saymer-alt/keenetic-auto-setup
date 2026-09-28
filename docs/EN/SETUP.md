@@ -22,7 +22,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 7. Download and start `config-import.sh` through the same resilient chain when an interactive TTY is available.
 8. Print the Doctor command.
 
-The normal launch command intentionally stays short and readable. The resilient multi-transport downloader starts **after `setup.sh` is running**: `install.sh`, `config-import.sh`, and other project-managed files use raw/curl → raw/wget → GitHub Contents API fallback with partial-file cleanup and shell-candidate validation. If the initial `setup.sh` fetch from `raw.githubusercontent.com` itself is unavailable, use the documented offline/SCP path from the [advanced installation guide](../03-install.md) instead of pasting a long bootstrap transaction from the README.
+The normal launch command intentionally stays short and readable. If the initial curl stalls during the TLS handshake before any script output, retry it with `--connect-timeout 5 --max-time 20 --curves X25519`; this keeps certificate verification enabled and changes only the key-exchange group. The resilient multi-transport downloader starts **after `setup.sh` is running**: project-managed downloads try bounded normal curl, one X25519 compatibility retry, raw wget, then GitHub Contents API with partial-file cleanup and shell-candidate validation. If the initial `setup.sh` fetch still fails, use the documented offline/SCP path from the [advanced installation guide](../03-install.md) instead of pasting a long bootstrap transaction from the README.
 
 The wrapper never bypasses installer contracts for components, RAM/swap, EXT4, ProxyN, DNS interception, or other safety checks.
 

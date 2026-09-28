@@ -20,13 +20,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 3. Выбирает профиль:
    - внутреннее хранилище Keenetic → `ram`;
    - внешний persistent-накопитель → `disk`.
-4. Скачивает `install.sh` из той же ветки проекта. Для дочерних project-скриптов используется цепочка доставки: raw GitHub через `curl` → raw GitHub через `wget` → GitHub Contents API.
+4. Скачивает `install.sh` из той же ветки проекта. Для дочерних project-скриптов используется цепочка доставки: raw GitHub через bounded normal `curl` → один compatibility retry `curl --curves X25519` → raw GitHub через `wget` → GitHub Contents API.
 5. Каждый скачанный script-кандидат должен быть непустым, начинаться с `#!/bin/sh` и пройти `sh -n`.
 6. Запускает `install.sh` с выбранным профилем.
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают raw/curl → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если именно первая загрузка `setup.sh` с `raw.githubusercontent.com` недоступна, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
+Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если первая загрузка `setup.sh` зависает на TLS handshake до вывода скрипта, повторите команду с `--connect-timeout 5 --max-time 20 --curves X25519`. Если raw-хост всё равно недоступен, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
 
 ## Почему setup.sh не выбирает режим «на глаз»
 
