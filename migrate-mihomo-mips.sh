@@ -183,8 +183,8 @@ ml_lifecycle_release() {
 #   service stays stopped
 # - backup: /opt/etc/mihomo/config.yaml.pre-mips, kept after
 #   success as a persistent revert artifact, never overwritten
-# - automatic rollback to the backup on any post-replacement
-#   failure
+# - per-run snapshot of the current config for atomic rollback;
+#   the historical .pre-mips file is never a transaction rollback source
 # - at most one Mihomo instance runs at any moment: the
 #   service is stopped (and the stop confirmed) before any
 #   probe or validation executes the binary; a watchdog-revived
@@ -216,6 +216,9 @@ CONFIG_DIR="/opt/etc/mihomo"
 CONFIG="$CONFIG_DIR/config.yaml"
 BACKUP="$CONFIG_DIR/config.yaml.pre-mips"
 TMP_NEW="$CONFIG_DIR/.config.yaml.mips-tmp"
+RUN_BACKUP="$CONFIG_DIR/.config.yaml.mips-backup.$$"
+ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.mips-rollback.$$"
+RECOVERY_FAILED=0
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -379,7 +382,7 @@ ensure_stopped_before_exec() {
 # Bring back a service that THIS script stopped. A user-stopped
 # service is never started.
 restore_stopped_service() {
-  if [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
+  if [ "$SERVICE_WAS_RUNNING" -ne 1 ] || [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
     return 0
   fi
   if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
@@ -398,7 +401,8 @@ restore_stopped_service() {
       sleep 1
       _i=$((_i + 1))
     done
-    log "WARNING: could not confirm Mihomo is running after restore."
+    warn "Could not confirm Mihomo is running after restore."
+    return 1
   else
     log "pidof not available, skipping restore verification."
   fi
@@ -407,12 +411,17 @@ restore_stopped_service() {
 
 # Restore the pre-migration config from the backup.
 rollback_config() {
-  if [ -f "$BACKUP" ]; then
-    cp -f "$BACKUP" "$CONFIG" || return 1
-    log "Pre-migration config restored from $BACKUP."
-    return 0
+  [ -f "$RUN_BACKUP" ] || return 1
+  # Never restart an already-running candidate after restoring only its file.
+  command -v pidof >/dev/null 2>&1 || return 1
+  if pidof mihomo >/dev/null 2>&1; then
+    [ -n "$INIT_SCRIPT" ] && stop_mihomo_confirmed || return 1
   fi
-  return 1
+  cp -p "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
+  cmp -s "$RUN_BACKUP" "$ROLLBACK_STAGE" || return 1
+  mv -f "$ROLLBACK_STAGE" "$CONFIG" || return 1
+  REPLACEMENT_DONE=0
+  log "Current-run config restored from $RUN_BACKUP."
 }
 
 # Contract port check (mixed-port 7890). Returns 2 when no HTTP
@@ -430,26 +439,43 @@ port_ok() {
 }
 
 cleanup_tmp() {
-  rm -f "$TMP_NEW" 2>/dev/null || true
+  [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+  [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
+  rm -f "$TMP_NEW" "${ROLLBACK_STAGE:-}" 2>/dev/null || true
+  if [ "${RECOVERY_FAILED:-0}" -eq 0 ]; then
+    rm -f "${RUN_BACKUP:-}" 2>/dev/null || true
+  fi
   rm -rf "$GATE_HOME" 2>/dev/null || true
   ml_lifecycle_release || true
 }
 
-signal_handler() {
-  trap '' INT TERM
-  log "Received $1 — aborting migration."
+# EXIT also handles unexpected command failures under set -e. Recovery runs
+# once, under the lifecycle lock; failed recovery preserves this run's snapshot.
+finish_transaction() {
+  _finish_rc=$?
+  trap - EXIT
+  trap '' INT TERM HUP
   if [ "$REPLACEMENT_DONE" -eq 1 ]; then
-    log "Config already replaced — rolling back from backup..."
-    if rollback_config; then
-      log "Pre-migration config restored."
-    else
-      log "WARNING: rollback failed — backup kept at $BACKUP, restore it manually."
+    if ! rollback_config; then
+      RECOVERY_FAILED=1
+      _finish_rc=1
+      status_out "$COLOR_RED" "[ERROR] Config rollback FAILED. Service not restarted; restore $RUN_BACKUP manually. Historical $BACKUP is not this transaction's snapshot."
     fi
-  else
-    log "No changes were made."
   fi
-  restore_stopped_service
+  if [ "$RECOVERY_FAILED" -eq 0 ]; then
+    if ! restore_stopped_service; then
+      RECOVERY_FAILED=1
+      _finish_rc=1
+      status_out "$COLOR_RED" "[ERROR] Service restoration FAILED; current-run backup kept at $RUN_BACKUP."
+    fi
+  fi
   cleanup_tmp
+  exit "$_finish_rc"
+}
+
+signal_handler() {
+  trap '' INT TERM HUP
+  log "Received $1 — aborting migration; EXIT will restore the current transaction."
   exit 1
 }
 
@@ -602,7 +628,7 @@ echo "=== Mihomo MIPS stack migration ==="
 # Serialize the entire apply transaction, including restoration.
 acquire_lock
 
-trap cleanup_tmp EXIT
+trap finish_transaction EXIT
 trap 'signal_handler INT' INT
 trap 'signal_handler TERM' TERM
 trap 'signal_handler HUP' HUP
@@ -704,23 +730,22 @@ if ! support_gate "$GATE_HOME"; then
 fi
 log "tun.stack: mips is supported by this binary."
 
-# 8. Backup (the first original is never overwritten). The
-# config holds secrets (external-controller secret, proxy
-# credentials), so the original file mode is preserved on the
-# backup and on the replacement instead of relying on umask.
-CFG_MODE=""
-if command -v stat >/dev/null 2>&1; then
-  CFG_MODE=$(stat -c '%a' "$CONFIG" 2>/dev/null) || true
+# 8. Snapshot the CURRENT config for this run, preserving permissions.
+# The historical pre-first-migration copy is for operator recovery only.
+if [ -e "$RUN_BACKUP" ] || [ -L "$RUN_BACKUP" ]; then
+  RECOVERY_FAILED=1
+  error "Existing recovery snapshot at $RUN_BACKUP — preserve it and resolve manually before retrying"
 fi
+cp -p "$CONFIG" "$RUN_BACKUP" || error "Failed to create per-run config backup"
+cmp -s "$CONFIG" "$RUN_BACKUP" || error "Per-run config backup verification failed"
 if [ ! -f "$BACKUP" ]; then
-  cp -f "$CONFIG" "$BACKUP" || { restore_stopped_service; error "Failed to create backup $BACKUP"; }
-  if [ -n "$CFG_MODE" ]; then
-    chmod "$CFG_MODE" "$BACKUP" 2>/dev/null || true
-  fi
+  cp -p "$RUN_BACKUP" "$BACKUP" || error "Failed to create historical backup $BACKUP"
   log "Backup saved: $BACKUP"
 else
   log "Backup already exists, kept: $BACKUP"
 fi
+# Seed candidate mode/ownership before rewriting its contents.
+cp -p "$RUN_BACKUP" "$TMP_NEW" || error "Failed to prepare config candidate"
 
 # 9. Write the migrated config to a same-filesystem temp file
 #    (the final mv stays atomic; /tmp -> /opt would not be)
@@ -734,9 +759,6 @@ if [ "$NEW_GVISOR_N" -ne 0 ]; then
   rm -f "$TMP_NEW"
   restore_stopped_service
   error "Internal error: gvisor lines remain after the rewrite — config untouched"
-fi
-if [ -n "$CFG_MODE" ]; then
-  chmod "$CFG_MODE" "$TMP_NEW" 2>/dev/null || true
 fi
 
 # 10. Validate the migrated config BEFORE replacing anything
@@ -752,9 +774,7 @@ fi
 REPLACEMENT_DONE=1
 log "Replacing config..."
 if ! mv -f "$TMP_NEW" "$CONFIG"; then
-  rollback_config || log "WARNING: rollback failed — backup kept at $BACKUP"
-  restore_stopped_service
-  error "Failed to replace the config — rolled back"
+  error "Failed to replace the config — restoring current-run snapshot"
 fi
 
 # 12. Restore the service and verify
@@ -804,16 +824,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   fi
   if [ "$SERVICE_OK" -ne 1 ]; then
     log "Verification failed — rolling back to the pre-migration config..."
-    if rollback_config; then
-      "$INIT_SCRIPT" restart >/dev/null 2>&1 || true
-      if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-        error "Rolled back: pre-migration config restored and Mihomo is running."
-      else
-        error "Rolled back: pre-migration config restored, but Mihomo is not detected — check manually."
-      fi
-    else
-      error "Migration failed AND rollback failed — backup kept at $BACKUP, restore it manually."
-    fi
+    error "Migration verification failed — restoring current-run snapshot"
   fi
   log "Process is running, contract port 7890 answers."
 else
@@ -823,5 +834,7 @@ fi
 # -----------------------------
 # Done (cleanup runs via the exit trap)
 # -----------------------------
+REPLACEMENT_DONE=0
+SERVICE_WAS_STOPPED=0
 log "[OK] Migrated $GVISOR_N TUN stack line(s) to mips. Pre-migration config kept at $BACKUP."
 exit 0

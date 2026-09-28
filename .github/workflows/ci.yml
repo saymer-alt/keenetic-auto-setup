@@ -52,6 +52,9 @@ jobs:
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
+      - name: Rollback fault regression (dash and BusyBox ash)
+        run: python3 tests/rollback-regression.py
+
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 

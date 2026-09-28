@@ -48,6 +48,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Подробная модель rollback и one-Mihomo invariant описана в
 [HOWTO → Обновление Mihomo](HOWTO_RU.md#8-обновление-mihomo).
 
+В development-версии после B3/B4 rollback сначала подтверждает остановку daemon,
+копирует backup в stage рядом с canonical binary, проверяет содержимое, права и
+версию и возвращает binary через atomic rename. Только затем восстанавливается
+project binary-state (или его исходное отсутствие), без изменений opkg database.
+Ранее работающий сервис запускается после восстановления обоих файлов; его
+`/proc/<pid>/exe` должен совпасть с inode восстановленного binary. INT/TERM/HUP
+после commit/start проходят тот же recovery; повторные сигналы во время него
+игнорируются. При ошибке recovery автоматический start не выполняется либо
+неверифицированный runtime повторно останавливается; результат — ERROR, backups
+сохраняются для ручного восстановления. Если stop невозможен, процесс может
+остаться работающим: успех rollback не объявляется. `/tmp` backups исчезают при
+reboot; следующий updater не удаляет чужие recovery backups.
+
 ## Обновление MagiTrickle
 
 MagiTrickle обновляется штатным Entware/opkg-путём из уже подключённого пакета
@@ -152,10 +165,18 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - меняет только значения `stack:`, не переписывая остальной YAML;
 - проверяет поддержку фактическим `mihomo -t`, а не только номером версии;
 - соблюдает one-Mihomo invariant и при необходимости делает контролируемую остановку;
-- сохраняет `config.yaml.pre-mips` как backup для возврата;
+- сохраняет `config.yaml.pre-mips` как исторический backup первой миграции;
+- для текущей транзакции сохраняет отдельный `.config.yaml.mips-backup.<pid>` рядом
+  с config; rollback возвращает именно этот snapshot через stage + atomic rename
+  с сохранением permissions, даже если commit candidate не состоялся;
 - автоматически откатывается при провале проверки, запуска или contract-port;
 - повторный запуск идемпотентен;
 - WireGuard `ip-stack` не затрагивает.
+
+Per-run snapshot удаляется после успеха или успешного восстановления; при ошибке
+recovery сохраняется, а скрипт печатает его путь. Historical `.pre-mips` никогда
+не подменяет snapshot текущего запуска. Эти изменения ещё требуют hardware acceptance
+и не означают продвижение development-ветки в `stable`.
 
 Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.16 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
 
