@@ -1,5 +1,168 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+
 # =========================================================
 # MIHOMO TUN BOOTSTRAP MIGRATION
 # ---------------------------------------------------------
@@ -28,7 +191,7 @@
 # - controlled stop before version/config probes
 # - per-run rollback copy + persistent config.yaml.pre-tun backup
 # - same-filesystem candidate + atomic config replace
-# - maintenance marker prevents watchdog resurrection mid-transaction
+# - shared lifecycle lock excludes watchdog restart during the transaction
 # - running service is restored and mitun0 + port 7890 are verified
 # - a user-stopped service stays stopped
 # - --check is strictly read-only
@@ -42,9 +205,6 @@ PERSIST_BACKUP="$CONFIG_DIR/config.yaml.pre-tun"
 TMP_NEW="$CONFIG_DIR/.config.yaml.tun-tmp.$$"
 RUN_BACKUP="/tmp/mihomo-tun-config.backup.$$"
 VALIDATE_ERR="/tmp/mihomo-tun-validate.$$"
-LOCK_DIR="/tmp/mihomo-tun-migrate.lock.d"
-LOCK_TOOL_MARKER="migrate-mihomo-tun"
-MAINT_MARKER="/tmp/mihomo.maintenance"
 MIN_MIPS_VERSION="1.19.31"
 
 COLOR_RESET=""
@@ -80,7 +240,6 @@ CHECK_ONLY=0
 SERVICE_WAS_RUNNING=0
 SERVICE_WAS_STOPPED=0
 REPLACEMENT_DONE=0
-LOCK_HELD=0
 MIHOMO_BIN=""
 INIT_SCRIPT=""
 CURRENT_VER=""
@@ -217,51 +376,13 @@ rollback_config() {
     return 0
 }
 
-lock_tool_alive() {
-    for _d in /proc/[0-9]*; do
-        [ "$_d" = "/proc/$$" ] && continue
-        [ "$_d" = "/proc/$PPID" ] && continue
-        grep -q "$LOCK_TOOL_MARKER" "$_d/cmdline" 2>/dev/null && return 0
-    done
-    return 1
-}
 
-acquire_lock() {
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-        echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-        date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
-        LOCK_HELD=1
-        return 0
-    fi
-    [ -d "$LOCK_DIR" ] || error "Migration lock path is not a directory: $LOCK_DIR"
-    _lp=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-    case "$_lp" in
-        ""|*[!0-9]*) : ;;
-        *)
-            if [ -d "/proc/$_lp" ] && grep -q "$LOCK_TOOL_MARKER" "/proc/$_lp/cmdline" 2>/dev/null; then
-                error "Another TUN migration is already running (pid $_lp)."
-            fi
-            ;;
-    esac
-    lock_tool_alive && error "Another TUN migration process is already running."
-    _stale="$LOCK_DIR.stale.$$"
-    if mv "$LOCK_DIR" "$_stale" 2>/dev/null; then
-        rm -rf "$_stale"
-        mkdir "$LOCK_DIR" 2>/dev/null || error "Could not acquire migration lock."
-        echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-        date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
-        LOCK_HELD=1
-        return 0
-    fi
-    error "Could not acquire migration lock."
-}
+
+
 
 cleanup() {
     rm -f "$TMP_NEW" "$RUN_BACKUP" "$VALIDATE_ERR" 2>/dev/null || true
-    rm -f "$MAINT_MARKER" 2>/dev/null || true
-    if [ "$LOCK_HELD" -eq 1 ]; then
-        rm -rf "$LOCK_DIR" 2>/dev/null || true
-    fi
+    ml_lifecycle_release || true
 }
 
 signal_handler() {
@@ -316,7 +437,11 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     echo "=== Mihomo TUN bootstrap migration check (read-only) ==="
     info "Top-level tun: is absent; this legacy config is eligible for TUN bootstrap migration."
     info "The migrator would add device mitun0, auto-route:false and auto-detect-interface:true."
-    if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+    trap 'ml_lifecycle_release || true' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    if command -v pidof >/dev/null 2>&1 && ml_lifecycle_acquire && ! pidof mihomo >/dev/null 2>&1; then
         if read_current_ver; then
             choose_stack_from_version
             if [ "$SELECTED_STACK" = "mips" ]; then
@@ -328,24 +453,30 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
             warn "Could not execute Mihomo version probe; apply mode would abort rather than modify the config."
         fi
     else
-        info "Runtime version probe skipped while Mihomo is running (one-Mihomo invariant). Apply mode determines the version after a controlled stop."
+        info "Runtime version probe skipped: daemon running or lifecycle unavailable (one-Mihomo invariant). Apply mode determines the version after a controlled stop."
     fi
     exit 0
 fi
 
 command -v pidof >/dev/null 2>&1 || error "pidof is required for safe apply mode (one-Mihomo invariant)."
 
-if pidof mihomo >/dev/null 2>&1; then
-    SERVICE_WAS_RUNNING=1
-    [ -n "$INIT_SCRIPT" ] || error "Mihomo is running but no init script was found; refusing an unmanaged stop."
-fi
-
-acquire_lock
-echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
+ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no migration started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 trap cleanup EXIT
 trap "signal_handler INT" INT
 trap "signal_handler TERM" TERM
 trap "signal_handler HUP" HUP
+
+# The config may have changed while this invocation was waiting to acquire.
+if has_top_level_tun; then
+    info "Top-level tun: now exists; existing TUN settings are preserved."
+    exit 0
+fi
+
+# Observe the previous service state only after exclusive ownership.
+if pidof mihomo >/dev/null 2>&1; then
+    SERVICE_WAS_RUNNING=1
+    [ -n "$INIT_SCRIPT" ] || error "Mihomo is running but no init script was found; refusing an unmanaged stop."
+fi
 
 if command -v stat >/dev/null 2>&1; then
     CFG_MODE=$(stat -c "%a" "$CONFIG" 2>/dev/null) || true

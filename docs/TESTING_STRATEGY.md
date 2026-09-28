@@ -1,5 +1,14 @@
 # Testing Strategy
 
+## B1/B2: process-based lifecycle regression
+
+Run `python3 tests/lifecycle-regression.py` with host `sh` and BusyBox installed.
+The same production helper blocks are exercised with real file/stdin processes,
+PID/starttime identity, stale recovery, signal cleanup and deterministic barriers.
+Init/ELF calls are recorded stubs; the full watchdog also runs with failed WAN
+transports. This complements structural assertions, not hardware acceptance.
+See the [protocol and failure boundaries (RU)](19-lifecycle-lock.md).
+
 This document records the testing policy that emerged from development of this project. The target is KeeneticOS + Entware on real routers, so a larger synthetic test matrix is not automatically a better test.
 
 ## What we learned

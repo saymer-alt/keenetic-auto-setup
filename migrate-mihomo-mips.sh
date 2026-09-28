@@ -1,5 +1,168 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+
 # =========================================================
 # MIHOMO MIPS STACK MIGRATION
 # ---------------------------------------------------------
@@ -53,11 +216,6 @@ CONFIG_DIR="/opt/etc/mihomo"
 CONFIG="$CONFIG_DIR/config.yaml"
 BACKUP="$CONFIG_DIR/config.yaml.pre-mips"
 TMP_NEW="$CONFIG_DIR/.config.yaml.mips-tmp"
-LOCK_DIR="/tmp/mihomo-migrate.lock.d"
-LOCK_LEGACY="/tmp/mihomo-migrate.lock"
-LOCK_TOOL_MARKER="migrate-mihomo"
-LOCK_HINT="If no migration is actually running, remove it manually: rm -rf /tmp/mihomo-migrate.lock.d /tmp/mihomo-migrate.lock"
-MAINT_MARKER="/tmp/mihomo.maintenance"
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -87,111 +245,9 @@ fi
 status_out() { printf '%s%s%s\n' "$1" "$2" "$COLOR_RESET"; }
 status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
 
-# Lock helpers (used by apply mode only; --check is read-only and never
-# locks). Same contract as update-mihomo.sh: the directory IS the lock
-# (atomic mkdir test-and-set), pid/ts inside serve liveness and stale
-# recovery, takeover claims the directory with an atomic mv and never
-# runs without the independent live-process backstop staying negative,
-# and the legacy plain-file lock form is still honored.
-lock_pid_is_ours() {
-  case "$1" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ -d "/proc/$1" ] || return 1
-  grep -q "$LOCK_TOOL_MARKER" "/proc/$1/cmdline" 2>/dev/null
-}
-
-LOCK_TOOL_PIDS=""
-lock_tool_alive() {
-  LOCK_TOOL_PIDS=""
-  for _lock_d in /proc/[0-9]*; do
-    [ "$_lock_d" = "/proc/$$" ] && continue
-    [ "$_lock_d" = "/proc/$PPID" ] && continue
-    if grep -q "$LOCK_TOOL_MARKER" "$_lock_d/cmdline" 2>/dev/null; then
-      LOCK_TOOL_PIDS="$LOCK_TOOL_PIDS ${_lock_d#/proc/}"
-    fi
-  done
-  [ -n "$LOCK_TOOL_PIDS" ]
-}
-
-lock_write_owner() {
-  # The claim symlink is the ownership decider: creating it is an atomic
-  # create-if-absent, so on a filesystem/kernel where directory creation
-  # itself is not a reliable test-and-set (observed on a WSL2 kernel), two
-  # concurrent starters still cannot both hold the lock - exactly one
-  # claim lands, the loser backs off without touching anything. On normal
-  # kernels the ln cannot fail after our own mkdir and this is a no-op
-  # guarantee. Written before pid/ts so a lost claim never corrupts the
-  # winner's metadata.
-  ln -s "pid=$$;ts=$(date +%s)" "$LOCK_DIR/claim" 2>/dev/null || return 1
-  echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-  date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
-  # Best-effort legacy companion: old-version updaters only check that
-  # the plain file exists; new runs read our pid from it.
-  echo "$$" > "$LOCK_LEGACY" 2>/dev/null || true
-}
-
+# Runtime probes and apply join lifecycle; --check never changes config/service.
 acquire_lock() {
-  if [ -e "$LOCK_LEGACY" ]; then
-    if [ ! -f "$LOCK_LEGACY" ] || [ -L "$LOCK_LEGACY" ]; then
-      error "Migration lock has an unexpected form: $LOCK_LEGACY is not a regular file. Will not remove an unknown object. $LOCK_HINT"
-    fi
-    _lp=$(head -n 1 "$LOCK_LEGACY" 2>/dev/null | awk '{print $1}' || true)
-    if lock_pid_is_ours "$_lp"; then
-      error "Another Mihomo migration is already running (pid $_lp). Aborting."
-    fi
-    if lock_tool_alive; then
-      error "Another Mihomo migration is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-    fi
-    log "Removing stale legacy migration lock (no live migration process behind it)..."
-    rm -f "$LOCK_LEGACY"
-  fi
-
-  if mkdir "$LOCK_DIR" 2>/dev/null; then
-    if ! lock_write_owner; then
-      # The claim was lost to a concurrent starter (or the write failed):
-      # back off WITHOUT cleanup - the visible lock belongs to the winner.
-      error "Another Mihomo migration is already running (lock claim lost). Aborting."
-    fi
-    return 0
-  fi
-
-  if [ ! -d "$LOCK_DIR" ]; then
-    error "Migration lock has an unexpected form: $LOCK_DIR is not a directory. Will not remove an unknown object. $LOCK_HINT"
-  fi
-
-  _lp=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-  _lock_busy=0
-  case "$_lp" in
-    ''|*[!0-9]*)
-      _now=$(date +%s)
-      _ts=$(cat "$LOCK_DIR/ts" 2>/dev/null || true)
-      case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
-      [ $((_now - _ts)) -lt 60 ] && _lock_busy=1
-      ;;
-    *)
-      lock_pid_is_ours "$_lp" && _lock_busy=1
-      ;;
-  esac
-  if [ "$_lock_busy" -eq 1 ]; then
-    error "Another Mihomo migration is already running. Aborting."
-  fi
-
-  if lock_tool_alive; then
-    error "Another Mihomo migration is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-  fi
-
-  log "Taking over a stale migration lock (owner pid ${_lp:-unknown} is gone)..."
-  _claim="$LOCK_DIR.stale.$$"
-  if mv "$LOCK_DIR" "$_claim" 2>/dev/null; then
-    rm -rf "$_claim"
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-      lock_write_owner
-      return 0
-    fi
-    error "Another Mihomo migration is already running. Aborting."
-  fi
-  error "Another Mihomo migration is already running. Aborting."
+  ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no migration started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 }
 GATE_HOME="/tmp/mihomo-migrate-gate.$$"
 MIN_VERSION="1.19.31"
@@ -374,11 +430,9 @@ port_ok() {
 }
 
 cleanup_tmp() {
-  rm -f "$LOCK_LEGACY" 2>/dev/null || true
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
-  rm -f "$MAINT_MARKER" 2>/dev/null || true
   rm -f "$TMP_NEW" 2>/dev/null || true
   rm -rf "$GATE_HOME" 2>/dev/null || true
+  ml_lifecycle_release || true
 }
 
 signal_handler() {
@@ -454,7 +508,10 @@ INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -
 # -----------------------------
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo "=== Mihomo MIPS stack migration check (read-only) ==="
-  trap 'rm -rf "$GATE_HOME" 2>/dev/null || true' EXIT
+  trap 'rm -rf "$GATE_HOME" 2>/dev/null || true; ml_lifecycle_release || true' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
   if [ -z "$MIHOMO_BIN" ]; then
     echo "[SKIP] mihomo binary not found — nothing to migrate"
     exit 0
@@ -469,8 +526,10 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   if command -v pidof >/dev/null 2>&1; then
     if pidof mihomo >/dev/null 2>&1; then
       log "Mihomo daemon is running - executable version/support probes skipped (one-Mihomo invariant)"
+    elif ml_lifecycle_acquire; then
+      if ! pidof mihomo >/dev/null 2>&1; then CHECK_CAN_EXEC=1; fi
     else
-      CHECK_CAN_EXEC=1
+      log "Mihomo lifecycle busy or unverifiable - executable probes skipped"
     fi
   else
     warn "pidof unavailable - executable version/support probes skipped conservatively (one-Mihomo invariant)"
@@ -507,6 +566,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
       esac
     fi
   fi
+  ml_lifecycle_release || true
   if [ -f "$CONFIG" ]; then
     _g=$(count_gvisor "$CONFIG")
     _m=$(count_mips "$CONFIG")
@@ -539,15 +599,8 @@ fi
 
 echo "=== Mihomo MIPS stack migration ==="
 
-# 0. Prevent parallel migrations (same atomic mkdir lock contract as the
-# updater; see the lock helpers above for the stale-recovery rules and
-# the legacy plain-file compatibility)
+# Serialize the entire apply transaction, including restoration.
 acquire_lock
-
-# Maintenance coordination (same contract as update-mihomo.sh): while
-# this migration runs, the watchdog skips its checks entirely so a cron
-# tick cannot resurrect Mihomo during the planned downtime.
-echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT

@@ -1,5 +1,9 @@
 # Updates and maintenance
 
+Maintenance tools share a PID/starttime lifecycle lock. Do not run old and new
+tool copies concurrently; retry a busy operation after its owner finishes, without
+deleting live ownership state. See the [lock and recovery protocol (RU)](../19-lifecycle-lock.md).
+
 This is the short user-facing path for updating Mihomo, MagiTrickle and the watchdog,
 plus migrating the TUN stack. Deeper implementation details remain in the
 [full HOWTO](../HOWTO.md).

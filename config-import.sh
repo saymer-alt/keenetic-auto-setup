@@ -1,5 +1,168 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+
 # Safe Mihomo configuration importer for keenetic-auto-setup.
 #
 # Usage:
@@ -23,14 +186,8 @@ STAGE_CONFIG="$CONFIG_DIR/.config.yaml.new.$$"
 BACKUP_STAGE="$CONFIG_DIR/.config.yaml.bak.new.$$"
 ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.rollback.$$"
 TEST_LOG="/tmp/mihomo-config-test.$$"
-LOCK_DIR="/tmp/mihomo-config-import.lock.d"
-MAINT_MARKER="/tmp/mihomo.maintenance"
-UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"
-UPDATER_LOCK_LEGACY="/tmp/mihomo-update.lock"
 INIT_SCRIPT="/opt/etc/init.d/S99mihomo"
 
-LOCK_OWNED=0
-MARKER_OWNED=0
 SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
@@ -80,51 +237,14 @@ resolve_mihomo() {
 
 cleanup() {
     rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
-    if [ "$MARKER_OWNED" -eq 1 ]; then
-        rm -f "$MAINT_MARKER" 2>/dev/null || true
-    fi
-    if [ "$LOCK_OWNED" -eq 1 ]; then
-        rm -rf "$LOCK_DIR" 2>/dev/null || true
-    fi
+    ml_lifecycle_release || true
 }
 
-config_import_process_alive() {
-    _ci_pid="$1"
-    case "$_ci_pid" in ''|*[!0-9]*) return 1 ;; esac
-    [ -d "/proc/$_ci_pid" ] || return 1
-    grep -q "config-import" "/proc/$_ci_pid/cmdline" 2>/dev/null
-}
 
-acquire_lock() {
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-        LOCK_OWNED=1
-        echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-        return 0
-    fi
 
-    [ -d "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] ||
-        error "Config-import lock has an unexpected form: $LOCK_DIR"
 
-    _ci_owner=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-    if config_import_process_alive "$_ci_owner"; then
-        error "Another config import is already running (pid $_ci_owner)."
-    fi
 
-    log "Removing stale config-import lock..."
-    rm -rf "$LOCK_DIR" || error "Cannot remove stale lock: $LOCK_DIR"
-    mkdir "$LOCK_DIR" || error "Another config import started at the same time."
-    LOCK_OWNED=1
-    echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-}
 
-updater_in_progress() {
-    [ -e "$UPDATER_LOCK_DIR" ] && return 0
-    [ -e "$UPDATER_LOCK_LEGACY" ] && return 0
-    for _ci_proc in /proc/[0-9]*; do
-        grep -q "update-mihomo" "$_ci_proc/cmdline" 2>/dev/null && return 0
-    done
-    return 1
-}
 
 mihomo_running() {
     pidof mihomo >/dev/null 2>&1
@@ -323,19 +443,8 @@ if ! grep -Eq '^[[:space:]]*mixed-port:[[:space:]]*7890([[:space:]]*(#.*)?)?$' "
 fi
 log "Project contract found: mixed-port 7890."
 
-acquire_lock
-
-if updater_in_progress; then
-    error "Mihomo binary update appears to be running or locked. Finish/recover update-mihomo.sh before importing a config."
-fi
-
-if [ -e "$MAINT_MARKER" ]; then
-    error "Another Mihomo maintenance operation is active (or left a marker): $MAINT_MARKER"
-fi
-
-echo "$$ $(date +%s)" > "$MAINT_MARKER" ||
-    error "Cannot create watchdog maintenance marker."
-MARKER_OWNED=1
+ml_lifecycle_acquire ||
+    error "Mihomo lifecycle is busy or unverifiable; config not changed. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 
 if mihomo_running; then
     SERVICE_WAS_RUNNING=1
