@@ -6,33 +6,44 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Исправлено
-- Pre-release portability audit: `install.sh` used a literal `magitrickle-add-repo.# Changelog
-
-All notable changes to this project will be documented in this file.
-
 ---
 
-## [Unreleased]
+## [1.8.0] - 2026-09-29
 
- staging path for the upstream MagiTrickle repository helper. It is now process-unique via shell PID `$`, and contract tests pin both the correct form and the absence of the single-dollar regression.
-- Agent/runtime hardening: AGENTS.md and TESTING_STRATEGY now treat KeeneticOS + BusyBox/Entware portability as an explicit release gate. Linux CI is not accepted as proof that GNU/coreutils options exist on the router; known bad assumptions (`stat -c`, bash `[[...]]`, `$RANDOM`) and staging uniqueness are guarded by permanent sentinels.
-- Release-documentation hygiene: current maintenance/process docs were aligned with Doctor v1.2.17 and the 2026-09-28 hardware acceptance; stale wording that still described B6/C1/C7 or normal gvisor→mips behavior as unpromoted development was removed. Deliberate hard-power/SIGKILL rollback injection remains explicitly unclaimed.
-- Doctor v1.2.17 теперь явно показывает фактическое размещение Entware `/opt` (source, mountpoint, filesystem, internal/external class). Для внутреннего `/opt` добавлен обязательный health-check защиты NAND: `S00ubifs` должен существовать, быть executable и `ENABLED=yes`, а `/opt/tmp`, `/opt/var/log`, `/opt/var/run` должны реально быть отдельными `tmpfs`. Любое нарушение — FAIL; для внешнего persistent `/opt` эта проверка INFO/N/A. Добавлены fixture-regressions для protected/internal-broken/external сценариев.
-- Large GitHub asset timeout после live KN-1010 acceptance: `update-mihomo.sh --force` правильно выбрал `mihomo_1.19.31-2_mipsel-3.4.ipk`, но 12.8 MB package download был ошибочно ограничен теми же 20 секундами, что и metadata/TLS bootstrap, и завершился до transaction stop. Metadata/project-script fetches сохраняют 20 s; installer/updater large-file helpers теперь используют отдельное bounded window 180 s на curl attempt и bounded wget fallback. Старый binary/service при таком download failure остаётся нетронутым.
-- BusyBox compatibility после live acceptance NC-1812: штатный Keenetic BusyBox `stat` не поддерживает GNU `-c`, из-за чего development `update-watchdog.sh` завершался с rc=1 при C2/C3 acceptance. Watchdog ownership/mode теперь читаются через `ls -ldn`, B4 runtime identity — через `test -ef`, rollback mode — через portable `ls -ldn` parser, а C1 zRAM identity — через `ls -ln` + sysfs major:minor. Добавлены regressions, запрещающие возврат GNU-only `stat -c` в этих runtime-путях.
-- TLS delivery compatibility: после live-кейса NC-1812 с Entware `curl 8.15.0 + OpenSSL 3.5.5`, где default TLS ClientHello к `raw.githubusercontent.com` зависал до ServerHello, project downloaders теперь ограничивают curl handshake/time и после обычных retries делают один `-4 --curves X25519` compatibility retry перед wget/API. Public bootstrap остаётся коротким; README/installation docs дают точную recovery-команду без `--insecure`. Добавлен regression для raw/API X25519 fallback.
-- C2/C3: watchdog updater использует существующий lifecycle lock; stages очищаются под ownership, executable files получают root:root/0755, backups — 0600 вне cron. Wrapper и crontab заменяются атомарно; нормализуются только распознанные активные пяти-минутные маршруты, комментарии не считаются расписанием. Корректный повторный запуск не переписывает managed files.
-- C4/C5: S00ubifs возвращает ошибку при failed/conflicting mount, не откатывая уже смонтированные tmpfs; RAM installer прекращает работу. TUN migration вооружает rollback до rename, восстанавливает config/service через EXIT при INT/TERM/HUP и сохраняет per-run backup при failed recovery.
-- C6/C7: installer выбирает единственный точный architecture asset во всех fallback parsers, не принимает nohf/foreign и отклоняет неоднозначность. Updater проверяет всю version string и exit code candidate `-v`; запрет downgrade (включая --force) и существующий repair contract сохранены. Добавлены dash/BusyBox regressions. Hardware acceptance на KN-1010/mipsel подтвердил точный выбор `mihomo_1.19.31-2_mipsel-3.4.ipk`, разрешённую same-version переустановку только с `--force`, успешный controlled stop/atomic commit/start и совпадение canonical runtime inode после обновления. Installer-selector остаётся покрыт CI/fixtures, без отдельной чистой переустановки на железе в этом цикле.
-- Config importer: удалены два оставшихся вызова неопределённого `updater_in_progress`; взаимное исключение сохраняется общим lifecycle lock. Узкий regression исполняет полный importer под dash/BusyBox ash и проверяет helpers, lock, stop/probe/commit и отсутствие второго ELF.
-- B6: отсутствие `pidof` больше не означает остановленный Mihomo. Общий process-state contract использует `/proc` fallback; unknown запрещает executable probes, commit и start. Строгий B4 device/inode verifier и lifecycle lock сохранены. Добавлены process/barrier и rollback regressions без pidof под dash/BusyBox ash.
-- C1: native zRAM определяется по block-device identity и sysfs major/minor. Файлы `zram.swap` остаются storage-backed и не обходят size cap; resource policy не меняется. Три scanner implementation проверяются одинаковыми fixtures. [Контракт и ограничения B6/C1](docs/20-process-swap-detection.md). Hardware acceptance выполнен на KN-1010 в обоих профилях: внешний storage-backed `/dev/sda1` ~468 MB при неактивных `/dev/zram*` корректно классифицирован как disk/file backend, затем активный `/dev/zram0` 255 MB с совпадающим sysfs major:minor корректно классифицирован как native zRAM; оба Doctor-run завершились без WARN/FAIL.
-- B5 аудита: installer больше не принимает синтаксически валидный partial script после transport failure Contents API. Каждый retry project-script download очищает candidate; только успешный transport допускается к validation и atomic commit. Добавлены fault regressions для curl/wget/API под dash и BusyBox ash.
-- B3/B4 аудита: MIPS migration откатывает текущий per-run config через atomic rename, не historical `.pre-mips`; binary updater подтверждает остановку, валидирует rollback stage, атомарно возвращает binary и только затем project state. Успех восстановления runtime требует совпадения canonical inode с `/proc/<pid>/exe`; неуспешный recovery сохраняет backup и завершается ошибкой. Добавлены fault regressions для dash/BusyBox ash. Нормальный updater commit/start path прошёл live KN-1010 acceptance; намеренный rollback-failure / hard-power / SIGKILL fault-path на production-роутере не инжектировался и не заявляется hardware-tested.
-- B1/B2 независимого аудита: общий PID/starttime lifecycle lock для installer, updater, import, migrators и watchdog restart. Запуск через `curl | sh` больше не определяется по имени скрипта в cmdline; cleanup проверяет владельца, stale recovery сериализована.
-- Watchdog получает общий lock непосредственно перед restart; maintenance, начавшийся во время WAN/proxy checks, не допускает вмешательства. Doctor и read-only migration probes повторно проверяют процессы под временным lock.
-- Добавлены поведенческие process/barrier/fault regressions для dash и BusyBox ash; [границы и recovery протокола](docs/19-lifecycle-lock.md) описаны отдельно. Остальные находки аудита не входят в это изменение.
+### Исправлено
+- Добавлен единый PID/starttime lifecycle lock для installer, Mihomo updater, Config Import, TUN migrators и watchdog restart. Параллельные project-maintenance операции теперь сериализованы; stale ownership проверяется по PID/starttime, а отсутствие `pidof` больше не считается доказательством остановленного Mihomo.
+- Усилен rollback B3/B4: MIPS migration восстанавливает snapshot именно текущего запуска, а binary updater подтверждает stop, валидирует rollback-stage, возвращает binary atomic rename и только затем project binary state. После recovery runtime считается восстановленным только при совпадении canonical executable с `/proc/<pid>/exe`.
+- Project-script download B5 больше не принимает partial candidate после transport failure: каждый retry начинает с чистого stage, а к validation/commit допускается только файл от успешного transport.
+- Config Import больше не обращается к удалённому helper `updater_in_progress`; взаимное исключение полностью обеспечивается общим lifecycle lock.
+- Native zRAM C1 определяется по реальной block-device identity и совпадению sysfs major:minor, а не по имени пути. Файлы с `zram` в имени остаются storage-backed и не обходят resource policy.
+- Watchdog updater C2/C3 использует общий lifecycle lock, root:root/0755 для managed executable, 0600 для backup, same-filesystem atomic replacement и нормализует только распознанные активные пяти-минутные cron routes. Повторный корректный запуск сохраняет content/inode/mtime.
+- S00ubifs C4 теперь возвращает ошибку при failed/conflicting tmpfs mount; RAM install прекращается вместо продолжения с неполной защитой. TUN migration C5 вооружает recovery до commit и восстанавливает config/service через EXIT при INT/TERM/HUP.
+- Installer/updater C6/C7 выбирают только один точный architecture asset, отвергают nohf/foreign/ambiguous варианты, строго проверяют version string и candidate `-v`; `--force` разрешает same-version reinstall, но не downgrade.
+- Добавлен GitHub TLS compatibility fallback после live-кейса NC-1812: bounded normal curl → один bounded IPv4 + X25519 retry → wget/API. Сертификат по-прежнему проверяется; `--insecure` не используется.
+- Большие Mihomo assets больше не ограничены коротким 20-секундным metadata timeout: installer/updater используют отдельное bounded transfer window 180 секунд на попытку, сохраняя короткий connect/TLS gate и fallback chain.
+- Удалена зависимость Keenetic runtime от GNU `stat -c`. Owner/mode читаются BusyBox-compatible `ls -ldn`, executable identity — `test -ef`, zRAM identity — `ls -ln` + sysfs major:minor.
+- Исправлен staging helper MagiTrickle: вместо литерального `magitrickle-add-repo.$` используется process-unique shell PID `$$`; contract test запрещает возврат single-dollar regression.
+- Doctor v1.2.17 явно показывает фактический mount Entware `/opt`: source, mountpoint, filesystem и internal/external class. Для internal `/opt` обязательны executable/enabled `S00ubifs` и реальные tmpfs на `/opt/tmp`, `/opt/var/log`, `/opt/var/run`; нарушение даёт FAIL. Для external persistent `/opt` проверка internal-flash protection — INFO/N/A.
+
+### Изменено
+- KeeneticOS + BusyBox ash + Entware закреплены как отдельный runtime contract для агентов и тестирования. Linux/Ubuntu CI больше не считается доказательством доступности GNU/coreutils options на роутере; новые runtime dependencies должны быть field-proven либо иметь safe detection/fallback.
+- Постоянные CI-sentinels запрещают известные опасные assumptions: GNU `stat -c`, bash-style `[[ ... ]]`, `$RANDOM` и неуникальный MagiTrickle stage.
+- Markdown CI теперь дополнительно отвергает случайно вставленные chat/tool artifacts: `sandbox:/`, filecite/turn-file tokens, message wrappers, uploaded-file wrappers и writing-block fences.
+- RU/EN maintenance/process documentation синхронизирована с Doctor v1.2.17 и фактическим состоянием B1–B6/C1–C7; устаревшие пометки «development / hardware acceptance pending» удалены там, где live acceptance уже выполнен.
+- Roadmap больше не содержит устаревших v1.4.x release-number examples для будущего opt-in auto-updater.
+- `saymer-alt/entware-go:latest` перед release-prep проверен на все четыре поддерживаемые package suffix: `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4`; nohf остаётся отдельным и selector его не принимает.
+
+### Тестирование
+- KN-1010 / mipsel / 256 MB: C1 проверен в двух реальных профилях — external storage-backed swap при неактивных `/dev/zram*` и native-zRAM-only `/dev/zram0` с совпадающим sysfs major:minor. Оба Doctor-run завершились без WARN/FAIL.
+- На том же KN-1010 `update-mihomo.sh --force` подтвердил exact `mihomo_1.19.31-2_mipsel-3.4.ipk`, same-version transaction, controlled stop, atomic commit/start, project binary state и canonical runtime identity. Первый запуск обнаружил слишком короткий 20 s asset timeout; после исправления 12.8 MB IPK загрузился и transaction прошёл.
+- NC-1812 / AArch64 / >512 MB: live BusyBox 1.37 подтвердил отсутствие GNU `stat -c`, portability fix, watchdog updater idempotency/permissions/cron, IPv4+X25519 TLS recovery и inactive-zram negative path.
+- KN-3811 / AArch64 / internal UBIFS: Doctor v1.2.17 подтвердил internal `/opt`, enabled/executable S00ubifs и активные tmpfs для `/opt/tmp`, `/opt/var/log`, `/opt/var/run`.
+- Рабочий KN-1012 gateway / AArch64 / external EXT4: Doctor v1.2.17 завершился **36 OK / 0 WARN / 0 FAIL**; прошли EXT4 + `ext`/`ext-utils`, 512 MB resource profile с external swap, Mihomo 1.19.31, MagiTrickle, canonical Proxy0, watchdog и delivery checks.
+- Текущий pre-release `main` после hygiene changes прошёл полный CI: shell syntax, BusyBox ash, lifecycle behavior, contract smoke, transaction invariants, rollback/downloader/process/swap regressions, Markdown links/hygiene, maintenance regressions и whitespace.
+
+### Границы
+- Преднамеренный hard-power/SIGKILL в момент updater/migrator commit не инжектировался на production-router и не заявляется hardware-tested; recovery model остаётся покрыт архитектурой и fault regressions.
+- `armv7` и big-endian `mips` имеют package/selector/CI support и актуальные entware-go assets, но не имеют столь же свежего физического acceptance, как mipsel/AArch64 release devices.
 
 ---
 
@@ -40,7 +51,7 @@ All notable changes to this project will be documented in this file.
 
 ### Изменено
 - Контракт ресурсов обновлён до `20260927_1`: **«голые» 512 МБ RAM больше не являются поддерживаемой базой для новой установки**. На 512 МБ-классе обязателен хотя бы один активный memory-pressure backend: штатный KeeneticOS zRAM **или** проверенный внешний storage-backed swap.
-- Если на 512 МБ-классе нет ни zRAM, ни проверенного внешнего swap, `install.sh` теперь останавливается с **ERROR до package installation/project mutations**, а текущий Doctor показывает **FAIL**. Исключений для точки доступа/extender и отдельного low-memory override нет.
+- Если на 512 МБ-классе нет ни zRAM, ни проверенного внешнего swap, `install.sh` теперь останавливается с **ERROR до package installation/project mutations**, а Doctor v1.2.16 показывает **FAIL**. Исключений для точки доступа/extender и отдельного low-memory override нет.
 - Для уже существующих legacy-инсталляций `update-mihomo.sh` остаётся non-blocking: он выдаёт сильный WARN, но не лишает работающий роутер возможности безопасно обновить Mihomo. 256 МБ-класс остаётся WARN-only; >512 МБ-класс в этом релизе не переводится на hard gate.
 - Пользовательская документация, AGENTS.md, Doctor, installer и contract/regression tests синхронизированы с одним и тем же правилом. В README явно добавлено предупреждение про 512 МБ-класс.
 
@@ -50,10 +61,6 @@ All notable changes to this project will be documented in this file.
 - Это project OOM-headroom policy, а не утверждение, что производитель требует zRAM на каждом 512 МБ устройстве. Один доступный 1 GiB-class NC-1812 в том же срезе имел заметно больший запас (~58% non-cache RAM use, ~279 МБ raw `memfree`, swap не использовался), поэтому 1 GiB-класс пока оставлен под наблюдением без нового hard gate.
 
 ### Тестирование
-- Live acceptance 2026-09-28: KN-1010 (mipsel, 256 MB) — C1 negative/positive swap identity, затем `update-mihomo.sh --force` same-version transaction; после исправления large-asset timeout updater скачал 12.8 MB IPK, выполнил controlled stop/atomic commit/start, записал project binary state и подтвердил runtime identity.
-- Live acceptance 2026-09-28: NC-1812 (AArch64, >512 MB) — BusyBox runtime compatibility, watchdog updater idempotency/permissions/cron, TLS IPv4+X25519 recovery path и C1 inactive-zram negative path.
-- Live acceptance 2026-09-28: KN-3811 (AArch64, internal UBIFS, zRAM) — Doctor v1.2.17 подтвердил internal `/opt`, enabled `S00ubifs` и активные tmpfs для `/opt/tmp`, `/opt/var/log`, `/opt/var/run`.
-- Live acceptance 2026-09-28: рабочий KN-1012 gateway (AArch64, external EXT4 `/opt`, external swap, canonical Proxy0) — Doctor v1.2.17: 36 OK / 0 WARN / 0 FAIL; EXT4/ext/ext-utils, 512 MB resource profile, Mihomo 1.19.31, MagiTrickle, Proxy0, watchdog и delivery checks прошли.
 - Добавлены fixture-тесты: 512 МБ без обоих backend → reject; 512 МБ + zRAM → accept; 512 МБ + verified external swap → accept.
 - Contract tests закрепляют installer ERROR / Doctor FAIL / updater WARN-only legacy behavior и явную формулировку, что bare 512 MB RAM не является поддерживаемой базой.
 - Полный CI release candidate должен быть зелёным: shell syntax, contract smoke tests, transaction invariants, local Markdown links и whitespace.
