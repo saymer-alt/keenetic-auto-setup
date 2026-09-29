@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 ### Изменено
 - KeeneticOS + BusyBox ash + Entware закреплены как отдельный runtime contract для агентов и тестирования. Linux/Ubuntu CI больше не считается доказательством доступности GNU/coreutils options на роутере; новые runtime dependencies должны быть field-proven либо иметь safe detection/fallback.
 - Постоянные CI-sentinels запрещают известные опасные assumptions: GNU `stat -c`, bash-style `[[ ... ]]`, `$RANDOM` и неуникальный MagiTrickle stage.
-- Markdown CI теперь дополнительно отвергает случайно вставленные chat/tool artifacts: `sandbox:/`, filecite/turn-file tokens, message wrappers, uploaded-file wrappers и writing-block fences.
+- Markdown CI теперь дополнительно отвергает случайно вставленные внутренние chat/tool artifacts: служебные download-path markers, citation tokens, message wrappers, uploaded-file wrappers и writing-block fences.
 - RU/EN maintenance/process documentation синхронизирована с Doctor v1.2.17 и фактическим состоянием B1–B6/C1–C7; устаревшие пометки «development / hardware acceptance pending» удалены там, где live acceptance уже выполнен.
 - Roadmap больше не содержит устаревших v1.4.x release-number examples для будущего opt-in auto-updater.
 - `saymer-alt/entware-go:latest` перед release-prep проверен на все четыре поддерживаемые package suffix: `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4`; nohf остаётся отдельным и selector его не принимает.
