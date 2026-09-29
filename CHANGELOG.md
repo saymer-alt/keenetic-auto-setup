@@ -40,7 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Изменено
 - Контракт ресурсов обновлён до `20260927_1`: **«голые» 512 МБ RAM больше не являются поддерживаемой базой для новой установки**. На 512 МБ-классе обязателен хотя бы один активный memory-pressure backend: штатный KeeneticOS zRAM **или** проверенный внешний storage-backed swap.
-- Если на 512 МБ-классе нет ни zRAM, ни проверенного внешнего swap, `install.sh` теперь останавливается с **ERROR до package installation/project mutations**, а Doctor v1.2.16 показывает **FAIL**. Исключений для точки доступа/extender и отдельного low-memory override нет.
+- Если на 512 МБ-классе нет ни zRAM, ни проверенного внешнего swap, `install.sh` теперь останавливается с **ERROR до package installation/project mutations**, а текущий Doctor показывает **FAIL**. Исключений для точки доступа/extender и отдельного low-memory override нет.
 - Для уже существующих legacy-инсталляций `update-mihomo.sh` остаётся non-blocking: он выдаёт сильный WARN, но не лишает работающий роутер возможности безопасно обновить Mihomo. 256 МБ-класс остаётся WARN-only; >512 МБ-класс в этом релизе не переводится на hard gate.
 - Пользовательская документация, AGENTS.md, Doctor, installer и contract/regression tests синхронизированы с одним и тем же правилом. В README явно добавлено предупреждение про 512 МБ-класс.
 
