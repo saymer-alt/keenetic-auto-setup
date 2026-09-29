@@ -1,6 +1,6 @@
 # Обновление и обслуживание
 
-В development B6/C1 process detection работает без `pidof` через `/proc`;
+B6/C1 process detection работает без обязательного `pidof` через `/proc`;
 неизвестное состояние запрещает probe/commit/start. После rollback updater
 по-прежнему проверяет, что восстановленный canonical executable и `/proc/<pid>/exe` — один и тот же device+inode через `test -ef`, без GNU `stat -c`. Ошибки resource
 profile остаются advisory для updater; имя `zram.swap` не делает файл native zRAM.
@@ -44,7 +44,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - не перезаписывает пользовательский `config.yaml`; updater меняет бинарник Mihomo, а не пользовательскую конфигурацию;
 - не делает автоматический downgrade.
 
-Development C7 проверяет version string целиком до сравнения и требует успешного
+C7 проверяет version string целиком до сравнения и требует успешного
 exit code candidate `-v`. Malformed/non-orderable версии не разрешают замену;
 `--force` допускает повторную установку той же версии, но не downgrade.
 Нечитаемая версия после безопасного stop остаётся прежним repair-сценарием;
@@ -63,7 +63,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Подробная модель rollback и one-Mihomo invariant описана в
 [HOWTO → Обновление Mihomo](HOWTO_RU.md#8-обновление-mihomo).
 
-В development-версии после B3/B4 rollback сначала подтверждает остановку daemon,
+Текущий B3/B4 rollback сначала подтверждает остановку daemon,
 копирует backup в stage рядом с canonical binary, проверяет содержимое, права и
 версию и возвращает binary через atomic rename. Только затем восстанавливается
 project binary-state (или его исходное отсутствие), без изменений opkg database.
@@ -170,7 +170,7 @@ EXIT возвращают per-run config через same-filesystem stage/rename
 Failed recovery сохраняет per-run backup и сообщает ошибку; historical `.pre-tun`
 не подменяет текущий snapshot. Power-loss/SIGKILL recovery не гарантируется.
 
-Doctor v1.2.16 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
+Doctor v1.2.17 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
 
 ## MIPS TUN migration
 
@@ -204,10 +204,11 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Per-run snapshot удаляется после успеха или успешного восстановления; при ошибке
 recovery сохраняется, а скрипт печатает его путь. Historical `.pre-mips` никогда
-не подменяет snapshot текущего запуска. Эти изменения ещё требуют hardware acceptance
-и не означают продвижение development-ветки в `stable`.
+не подменяет snapshot текущего запуска. Обычный gvisor → mips transaction уже проходил
+live-проверки на Keenetic; преднамеренный hard-power/SIGKILL в момент commit остаётся
+задокументированным residual fault-class и не симулируется на production-роутере.
 
-Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.16 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
+Если TUN в конфиге нет, `migrate-mihomo-mips.sh` ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Для legacy-конфига без `tun:` используется отдельный `migrate-mihomo-tun.sh`. Doctor v1.2.17 даёт INFO-подсказку для обоих legacy-состояний; окончательный feature-gate всё равно выполняет соответствующий migrator через реальный `mihomo -t`.
 
 ## После обслуживания
 

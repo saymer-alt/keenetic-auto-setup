@@ -105,6 +105,14 @@ for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
 done
 pass "all zRAM identity scanners are BusyBox-compatible"
 
+# Static sentinels for runtime assumptions that Linux CI can accidentally satisfy with GNU tools.
+for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-tun.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-watchdog.sh mihomo-route-check.sh mihomo-interface-check.sh mihomo-proxy-selection-watch.sh 020-bypass-wa.sh S00ubifs; do
+    ! grep -Eq '(^|[[:space:]])stat[[:space:]]+(-[^[:space:]]*)*c([[:space:]]|$)' "$ROOT/$_f" || fail "$_f must not depend on GNU stat -c at Keenetic runtime"
+    ! grep -Fq '$RANDOM' "$ROOT/$_f" || fail "$_f must not depend on bash-style RANDOM at Keenetic runtime"
+    ! grep -Eq '(^|[;&|()[:space:]])\[\[[[:space:]]' "$ROOT/$_f" || fail "$_f must stay BusyBox/POSIX-sh compatible and avoid shell [[ ... ]]"
+done
+pass "production runtime scripts keep known GNU/bash-only assumptions out"
+
 grep -Fq -- '--allow-internal-disk' "$ROOT/install.sh" || fail "installer must expose the narrow internal-disk override"
 grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage' "$ROOT/install.sh" || fail "installer must hard-stop accidental disk mode on internal /opt"
 grep -Fq 'Storage-mode mismatch: ram mode was selected while /opt is on external persistent storage' "$ROOT/install.sh" || fail "installer must warn on external /opt + ram mode"
@@ -236,6 +244,8 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
+grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper staging must be process-unique via shell PID $$"
+! grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must not use a literal single-dollar staging suffix"
 grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
 grep -Fq 'sh "$MAGITRICKLE_REPO_STAGE" >/dev/null' "$ROOT/install.sh" || fail "validated upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"

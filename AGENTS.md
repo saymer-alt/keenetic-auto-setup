@@ -241,6 +241,33 @@ The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer r
 Repository CI now provides shell syntax, contract/regression smoke tests, repository-local Markdown-link checks and whitespace checks, but it does not make a change automatically safe — do not invent results.
 The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
 
+### Keenetic runtime portability contract
+
+The target is **KeeneticOS + BusyBox ash + Entware**, not a normal GNU/Linux distribution.
+Linux CI hosts are useful syntax/regression runners, but the commands and options they expose are
+not evidence that the router runtime exposes the same applets or GNU extensions.
+
+- Before introducing a new runtime command or option, first prefer an already proven project primitive.
+  If a new dependency is genuinely needed, either verify it on the target BusyBox/Entware environment
+  or guard it with `command -v` plus a safe fallback/UNKNOWN path. Do not assume availability because
+  Ubuntu, Debian, macOS, WSL, shellcheck, or CI accepts it.
+- Prefer shell builtins, `/proc`, `/sys`, POSIX/basic `awk`/`sed`/`grep`, and already field-proven
+  BusyBox forms. Do not replace these with shorter GNU-only one-liners.
+- Known field boundary: Keenetic BusyBox 1.37 `stat` does **not** provide GNU `-c`. Runtime code must
+  not use `stat -c`; use the project-proven alternatives (`ls -ldn`, `ls -ln` + sysfs major:minor,
+  or `test -ef`) according to the fact being checked.
+- Treat `pidof`, `ss`, `ndmq`, `timeout`, checksum applets and similar helpers as optional unless the
+  installer explicitly guarantees them. A missing optional helper must not silently become proof of
+  a stopped service, missing capability, or failed identity check.
+- Process-unique temporary/staging names must use a real uniqueness source such as shell PID `$$`
+  (or an established lifecycle-owned adjacent stage). A literal single `$` in a staging suffix is a
+  bug, not an acceptable placeholder.
+- If a change depends on a command-output format or BusyBox option not already covered by retained
+  hardware evidence, call that out explicitly in the review and require the smallest focused live test
+  before production promotion. Never describe host-CI execution as Keenetic runtime proof.
+- When a real router exposes a portability failure, preserve both lessons: add the smallest permanent
+  regression/static sentinel that can catch the known bad assumption, and document the runtime boundary
+  here or in `docs/TESTING_STRATEGY.md`.
 ### Parsing external command output
 
 Treat every parsed Keenetic/Entware command as an **external input protocol**. A visually convenient CLI sample is not automatically a stable machine format.
@@ -270,6 +297,7 @@ a live run.
 ## 10. Historical context (why it is this way)
 
 - 2026-09-28 live NC-1812 C2/C3 acceptance exposed a platform boundary hidden by CI: built-in BusyBox 1.37.0 `stat` accepts only `-l/-t`, not GNU `-c`. Router runtime paths must not depend on `stat -c`. Managed-file owner/mode checks use `ls -ldn`; B4 exact executable identity uses `test -ef`; zRAM device identity uses `ls -ln` plus sysfs major:minor. Keep this pinned by regressions because Linux CI hosts normally provide GNU coreutils.
+- 2026-09-28 pre-release review found a second host-CI blind spot: `MAGITRICKLE_REPO_STAGE` had regressed to a literal `magitrickle-add-repo.$` path. It was syntactically valid and ordinary CI did not object, but concurrent installer runs would share one stage path. Staging-path uniqueness is therefore a runtime contract: use real `$$`/lifecycle-owned unique names and pin exact managed staging forms in contracts.
 - 2026-09-28 live NC-1812 evidence isolated a TLS bootstrap compatibility failure before Doctor execution: Entware `curl 8.15.0 + OpenSSL 3.5.5` sent a default TLS 1.3 ClientHello of about 1578 bytes to `raw.githubusercontent.com` and received no ServerHello; `--curves X25519` reduced it to about 512 bytes and completed TLS/HTTP2 immediately. OpenSSL 3.5 changed default keyshares toward hybrid PQC groups, but the project does not claim OpenSSL itself is universally broken: treat this as a path/middlebox/MTU compatibility case. Normal TLS stays first; the compatibility fallback is explicitly IPv4 + X25519 (`-4 --curves X25519`), never `--insecure`. Current field evidence proves that combination; it does not prove that either IPv4 forcing or X25519 alone is universally sufficient.
 
 - 2026-09-19 the operator's **NC-1812 / KeeneticOS 5.1.5** already showed the same `show version` presentation class: a component ID could be split across adjacent physical lines (for example `ike-` / `client`). That observation was treated as harmless display wrapping and no parser regression was created. This was an early warning we failed to promote into a general rule.

@@ -88,6 +88,9 @@ For normal development, test in this order:
    repository-local Markdown-link validation and whitespace checks automatically on pushes/pull
    requests to `main` and `stable`; green CI is a required cheap gate, not proof of router compatibility.
 4. **Static/syntax review.** Run `sh -n` for changed shell scripts and review BusyBox/POSIX compatibility.
+   Treat the router runtime as BusyBox/Entware, not as the Linux CI host: a command or option existing on
+   Ubuntu is not proof it exists on Keenetic. Prefer already field-proven primitives; any new runtime
+   dependency/option needs target evidence or a guarded fallback.
 5. **Focused synthetic failure injection** only when the change touches a high-consequence invariant.
 
 A green synthetic harness does not prove a clean installation on every Keenetic configuration. Conversely, a real device failure should not trigger a full-system Keenetic emulator when a narrow contract test can preserve the lesson.
@@ -178,6 +181,23 @@ When Keenetic MCP access is available, use it as a **second read-only observatio
 Current MCP and Doctor observations agree on the facts they both expose. The major historical disagreement on KN-3811 was the already-fixed Doctor line-oriented `show version` parser, not a real router-state mismatch. A fresh current Doctor run on KN-3811 remains a useful live closure check after the parser fix, but the MCP component list already independently confirms that the required IDs are present.
 
 MCP must not be used to weaken Doctor checks. In particular, `show system swaptotal` does not tell whether swap is zRAM or storage-backed, and an installed `opkg-kmod-netfilter` ID does not prove that `xt_multiport` and the project MARK/CONNMARK/RETURN rules are actually loaded.
+## BusyBox / runtime portability gate
+
+The project deliberately does not build a full KeeneticOS emulator. That makes portability review a
+first-class release gate rather than an assumption hidden inside normal Linux CI.
+
+- CI under BusyBox ash validates shell dialect, but external commands can still resolve to host GNU
+  tools. Passing CI therefore does not prove a GNU option exists on the router.
+- Before adding a new runtime command/flag, check whether the project already has a field-proven way to
+  obtain the same fact. Prefer `/proc`, `/sys`, shell builtins and basic BusyBox-compatible text tools.
+- Known negative evidence is permanent: Keenetic BusyBox 1.37 lacks GNU `stat -c`; some field devices
+  also lack helpers such as `ss`, `ndmq` or `timeout`, and `pidof` is not a universal safety primitive.
+  Optional helpers must be detected explicitly and cannot be used as proof when absent.
+- Temporary/staging names are part of concurrency safety. Use real `$$` or an established
+  lifecycle-owned adjacent stage; a syntactically valid literal `$` suffix is unsafe because separate
+  runs collide.
+- Every real portability failure should produce the smallest durable sentinel/regression that can catch
+  that exact bad assumption without pretending to emulate all of KeeneticOS.
 ## Current hardware evidence
 
 The support matrix distinguishes **code/package support** from fresh hardware acceptance.
@@ -295,7 +315,7 @@ for this above-512 MB memory class.
 An earlier Doctor run on this same router reported **25 OK / 3 WARN / 2 FAIL**. The two
 FAIL findings were false missing-component results for `dns-filter` and
 `opkg-kmod-netfilter`, caused by the old line-oriented interpretation of wrapped
-`show version` output. The current stable Doctor **v1.2.9** now reconstructs the logical
+`show version` output. The retained rerun used Doctor **v1.2.9**, which reconstructs the logical
 component field correctly, reports both required components present, verifies the executable
 `bypass_wa` hook plus live PREROUTING/UDP multiport MARK/CONNMARK/RETURN rules, and finishes
 with **29 OK / 2 WARN / 0 FAIL / 53 INFO**. This is external field validation that the
@@ -348,11 +368,35 @@ Primary 512 MB-class routers showed materially different pressure. Accessible **
 
 A same-day read-only snapshot of the operator's **NC-1812 1 GiB-class** router showed about **58% non-cache RAM use**, roughly **279 MB raw memfree**, and an approximately **1 GiB active swap backend with 0 used at the snapshot**. That single 1 GiB data point has materially more headroom than the pressured 512 MB gateways, so the project does **not** promote the 1 GiB class to a hard gate in this release. It remains under observation; >512 MB swap/zRAM stays optional until fleet evidence justifies a separate contract change.
 
-## Next focused acceptance
+### 2026-09-28 release-candidate portability and storage acceptance
 
-The next useful work is evidence collection and integration acceptance, not a larger synthetic KeeneticOS emulator.
+The v1.8.0 release-candidate cycle added four complementary live checks:
 
-1. **KN-3812, read-only shape capture.** Record a sanitized `components:` block plus Doctor summary on the current firmware. NC-1812 has now completed its 2026-09-25 read-only Doctor re-check with **36 OK / 0 WARN / 0 FAIL**.
+- **KN-1010 / mipsel / 256 MB:** Doctor correctly distinguished external storage-backed
+  `/dev/sda1` swap from merely present but inactive `/dev/zram*` nodes, then correctly identified
+  active native `/dev/zram0` by block-device metadata plus matching sysfs major:minor. The same router
+  completed a forced same-version `update-mihomo.sh` transaction after the large-asset transfer window
+  was separated from the short metadata timeout.
+- **NC-1812 / aarch64 / >512 MB:** live BusyBox 1.37 exposed the missing GNU `stat -c` support;
+  the portable owner/mode, executable-identity and zRAM alternatives were then accepted on hardware.
+  The same device also proved the IPv4 + X25519 TLS compatibility fallback and watchdog updater
+  idempotency/permissions/cron behavior.
+- **KN-3811 / aarch64 / internal UBIFS:** Doctor v1.2.17 reported the real `/opt` mount as internal
+  UBIFS and verified that `S00ubifs` is enabled/executable and all three volatile paths
+  (`/opt/tmp`, `/opt/var/log`, `/opt/var/run`) are active tmpfs mounts.
+- **work KN-1012 / aarch64 / external EXT4:** the production gateway passed Doctor v1.2.17 with
+  **36 OK / 0 WARN / 0 FAIL**, including external EXT4 + `ext`/`ext-utils`, ~1 GiB external swap,
+  Mihomo 1.19.31, canonical Proxy0, MagiTrickle, watchdog and project delivery.
+
+These runs close the release-specific C1 and normal C6/C7 transaction acceptance claimed in the
+current CHANGELOG. They do **not** claim destructive hard-power/SIGKILL rollback fault injection.
+
+## Next optional evidence
+
+The next useful work is evidence collection, not a blocker for the current release and not a reason
+to build a larger synthetic KeeneticOS emulator.
+
+1. **KN-3812, optional read-only refresh.** A fresh sanitized `components:` block plus current Doctor summary would improve recency, but retained KN-3812 evidence already covers the architecture family and this is not a v1.8.0 release blocker.
 2. **KN-1010 and KN-3811 remain regression anchors.** KN-1010 anchors the reboot-dependent `opkg-kmod-netfilter` → `xt_multiport` → real bypass rules dependency. KN-3811 anchors wrapped `show version` component IDs before/after firmware; its current 5.1.6/internal-storage shape is now preserved as live evidence.
 3. **Keep KN-1012 profiles distinct.** The accepted family now includes at least three materially different 1012-class operating profiles: dača NC-1012 external EXT4/NVMe, work KN-1012 SE external EXT4/USB flash, and dača KN-1012 GSM internal UBIFS/zRAM.
 4. **Per-device evidence record.** Store exact model/hw_id, firmware title/release, architecture, `/opt` class/filesystem, sanitized raw `components:` shape, normalized required-component result, Doctor summary, and whether any reboot-dependent capability was actually checked.

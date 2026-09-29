@@ -40,7 +40,7 @@ suffix:
 ## Источник Mihomo и fallback
 
 Project-managed shell helpers (`S00ubifs`, bypass hook, watchdog) загружаются
-отдельным `project_script_download`: bounded normal raw curl (3 retries) → один IPv4 + `X25519` compatibility retry → raw wget → Contents API raw media. Wget/API сохраняют bounded retry policy. В development-исправлении B5 каждый retry начинает с
+отдельным `project_script_download`: bounded normal raw curl (3 retries) → один IPv4 + `X25519` compatibility retry → raw wget → Contents API raw media. Wget/API сохраняют bounded retry policy. После исправления B5 каждый retry начинает с
 чистого candidate, а non-zero transport удаляет partial и не допускает его к
 validation/commit — даже если prefix содержит shebang и проходит `sh -n`.
 После успешного transport остаются прежние проверки non-empty/shebang/syntax,

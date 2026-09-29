@@ -349,7 +349,7 @@ WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 # Cleanup temp files on any exit (the watchdog stage lives on /opt,
 # next to its final destination - a /tmp -> /opt move is not atomic
 # and must never be claimed as such)
-MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"
+MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"
 installer_cleanup() {
     # Shared temporary names may only be cleaned while this installer owns lifecycle.
     [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
