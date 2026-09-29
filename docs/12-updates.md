@@ -1,5 +1,15 @@
 # Обновление и обслуживание
 
+B6/C1 process detection работает без обязательного `pidof` через `/proc`;
+неизвестное состояние запрещает probe/commit/start. После rollback updater
+по-прежнему проверяет, что восстановленный canonical executable и `/proc/<pid>/exe` — один и тот же device+inode через `test -ef`, без GNU `stat -c`. Ошибки resource
+profile остаются advisory для updater; имя `zram.swap` не делает файл native zRAM.
+Подробности и ограничения: [process/swap contract](20-process-swap-detection.md).
+
+Операции обслуживания используют [общий lifecycle lock](19-lifecycle-lock.md).
+Не запускайте старые и новые копии инструментов одновременно; при занятом lock
+повторите операцию после завершения владельца, не удаляя его state вручную.
+
 Эта страница — короткий пользовательский путь для обновления Mihomo, watchdog и
 миграции TUN stack. Подробное устройство updater'ов и дополнительные сценарии остаются
 в [HOWTO](HOWTO_RU.md).
@@ -26,12 +36,21 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - не выбирает `nohf`-варианты;
 - не запускает второй Mihomo рядом с работающим daemon;
 - заранее скачивает и проверяет candidate, затем делает короткий контролируемый stop;
+- metadata/release lookup остаются с коротким 20-секундным лимитом, а сам `.ipk` получает отдельное bounded transfer window 180 секунд на попытку, чтобы большой asset не считался сетевой ошибкой только из-за медленного GitHub/CDN пути;
 - заменяет бинарник транзакционно, сохраняя rollback-копию;
 - при неудаче восстанавливает предыдущий бинарник;
 - возвращает сервис в исходное состояние: работал до обновления → запускается снова,
   был остановлен оператором → остаётся остановленным;
 - не перезаписывает пользовательский `config.yaml`; updater меняет бинарник Mihomo, а не пользовательскую конфигурацию;
 - не делает автоматический downgrade.
+
+C7 проверяет version string целиком до сравнения и требует успешного
+exit code candidate `-v`. Malformed/non-orderable версии не разрешают замену;
+`--force` допускает повторную установку той же версии, но не downgrade.
+Нечитаемая версия после безопасного stop остаётся прежним repair-сценарием;
+opkg/project metadata не подменяет runtime truth. Запущенный daemon не пробуется
+ради сравнения; решение откладывается до stop. Explicit package/source override
+у Mihomo updater отсутствует, downgrade остаётся отдельной ручной операцией.
 
 После обновления:
 
@@ -43,6 +62,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Подробная модель rollback и one-Mihomo invariant описана в
 [HOWTO → Обновление Mihomo](HOWTO_RU.md#8-обновление-mihomo).
+
+Текущий B3/B4 rollback сначала подтверждает остановку daemon,
+копирует backup в stage рядом с canonical binary, проверяет содержимое, права и
+версию и возвращает binary через atomic rename. Только затем восстанавливается
+project binary-state (или его исходное отсутствие), без изменений opkg database.
+Ранее работающий сервис запускается после восстановления обоих файлов; его
+`/proc/<pid>/exe` должен ссылаться на тот же device+inode, что и восстановленный binary (`test -ef`). INT/TERM/HUP
+после commit/start проходят тот же recovery; повторные сигналы во время него
+игнорируются. При ошибке recovery автоматический start не выполняется либо
+неверифицированный runtime повторно останавливается; результат — ERROR, backups
+сохраняются для ручного восстановления. Если stop невозможен, процесс может
+остаться работающим: успех rollback не объявляется. `/tmp` backups исчезают при
+reboot; следующий updater не удаляет чужие recovery backups.
 
 ## Обновление MagiTrickle
 
@@ -87,6 +119,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 Подробности → [Watchdog](04-watchdog.md).
 
+Development C2/C3: updater держит общий lifecycle lock, включая stage cleanup.
+Canonical watchdog и managed wrapper имеют root:root/0755, backup — 0600 вне
+cron.5mins. Ошибка до atomic rename оставляет прежний файл; общий rollback всех
+файлов не обещается, каждый committed файл отдельно валиден. Распознанные
+пяти-минутные direct/run-parts routes сводятся к одному; комментарии не являются
+active routes. Неизвестные active references сохраняются с ERROR для ручной
+проверки. Корректный повторный запуск не меняет bytes/inode/mtime managed files.
+
 ## Legacy config: добавление TUN / `mitun0`
 
 Для старых `config.yaml`, в которых **вообще нет top-level секции `tun:`**, используется отдельный `migrate-mihomo-tun.sh`. Он не переписывает proxy/rules/DNS и не заменяет существующий TUN.
@@ -124,7 +164,13 @@ tun:
 
 Если `tun:` уже существует, этот migrator делает no-op и ничего не нормализует. Для существующего `stack: gvisor` → `stack: mips` используется отдельный `migrate-mihomo-mips.sh`.
 
-Doctor v1.2.16 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
+Development C5 вооружает recovery до commit и до stop: INT/TERM/HUP и ошибочный
+EXIT возвращают per-run config через same-filesystem stage/rename и проверяют
+восстановление прежнего сервиса. Во время recovery повторные сигналы игнорируются.
+Failed recovery сохраняет per-run backup и сообщает ошибку; historical `.pre-tun`
+не подменяет текущий snapshot. Power-loss/SIGKILL recovery не гарантируется.
+
+Doctor v1.2.17 проверяет наличие top-level `tun:`: при его отсутствии даёт INFO-подсказку на `migrate-mihomo-tun.sh --check` и объясняет, какой stack будет выбран по известной версии.
 
 ## MIPS TUN migration
 
@@ -148,12 +194,21 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - меняет только значения `stack:`, не переписывая остальной YAML;
 - проверяет поддержку фактическим `mihomo -t`, а не только номером версии;
 - соблюдает one-Mihomo invariant и при необходимости делает контролируемую остановку;
-- сохраняет `config.yaml.pre-mips` как backup для возврата;
+- сохраняет `config.yaml.pre-mips` как исторический backup первой миграции;
+- для текущей транзакции сохраняет отдельный `.config.yaml.mips-backup.<pid>` рядом
+  с config; rollback возвращает именно этот snapshot через stage + atomic rename
+  с сохранением permissions, даже если commit candidate не состоялся;
 - автоматически откатывается при провале проверки, запуска или contract-port;
 - повторный запуск идемпотентен;
 - WireGuard `ip-stack` не затрагивает.
 
-Если TUN в конфиге нет, текущий migrator ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Doctor v1.2.16 выводит INFO-подсказку, когда видит `stack: gvisor` и известная версия Mihomo соответствует документированному минимуму 1.19.31; это только предварительная готовность, окончательный feature-gate выполняет сам migrator через `mihomo -t`.
+Per-run snapshot удаляется после успеха или успешного восстановления; при ошибке
+recovery сохраняется, а скрипт печатает его путь. Historical `.pre-mips` никогда
+не подменяет snapshot текущего запуска. Обычный gvisor → mips transaction уже проходил
+live-проверки на Keenetic; преднамеренный hard-power/SIGKILL в момент commit остаётся
+задокументированным residual fault-class и не симулируется на production-роутере.
+
+Если TUN в конфиге нет, `migrate-mihomo-mips.sh` ничего не добавляет: он **не создаёт `tun:`/`mitun0` с нуля**, а только переводит уже существующий `stack: gvisor` в `stack: mips`. Для legacy-конфига без `tun:` используется отдельный `migrate-mihomo-tun.sh`. Doctor v1.2.17 даёт INFO-подсказку для обоих legacy-состояний; окончательный feature-gate всё равно выполняет соответствующий migrator через реальный `mihomo -t`.
 
 ## После обслуживания
 

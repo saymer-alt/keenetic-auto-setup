@@ -1,5 +1,9 @@
 # Updates and maintenance
 
+Maintenance tools share a PID/starttime lifecycle lock. Do not run old and new
+tool copies concurrently; retry a busy operation after its owner finishes, without
+deleting live ownership state. See the [lock and recovery protocol (RU)](../19-lifecycle-lock.md).
+
 This is the short user-facing path for updating Mihomo, MagiTrickle and the watchdog,
 plus migrating the TUN stack. Deeper implementation details remain in the
 [full HOWTO](../HOWTO.md).
@@ -31,6 +35,21 @@ The updater:
 - never overwrites the user `config.yaml`; the updater replaces the Mihomo binary, not the user's configuration;
 - never auto-downgrades.
 
+`--force` allows reinstalling the same version, not downgrading. Malformed
+versions and incomparable prereleases fail closed; an unreadable installed
+version after a controlled stop remains a repair case. Candidate `-v` must
+exit successfully and match the selected package version.
+
+Watchdog maintenance uses the same lifecycle lock. Managed executables require
+root:root/0755, legacy backups remain 0600 outside cron, and only recognized
+five-minute cron routes are normalized. Unknown active routes need manual review.
+Correct repeat runs preserve file content, inode and modification time.
+
+TUN migration arms recovery before stop/rename. INT/TERM/HUP use the EXIT
+recovery path, restoring config through a verified adjacent stage and atomic
+rename. Failed recovery retains the per-run snapshot; power loss/SIGKILL and
+hardware acceptance remain outside this test coverage.
+
 After an update:
 
 ```bash
@@ -38,6 +57,19 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```
 
 When replacing `config.yaml` itself, use `config-import.sh`: it keeps the previous config as `config.yaml.bak`, validates the candidate and rolls back if startup or the contract-port check fails.
+
+The current B3/B4 rollback first confirms daemon shutdown, copies the backup
+to a stage beside the canonical binary, checks bytes, permissions and version,
+and restores the binary by atomic rename. Project binary state (including prior
+absence) is restored only afterwards; opkg metadata is untouched. A previously
+running service is started only after both restorations, and its `/proc/<pid>/exe`
+must match the restored canonical inode. INT/TERM/HUP after commit/start use this
+same recovery; further signals are ignored during recovery. Failed recovery is
+an ERROR with retained manual backups, never a success based on `pidof` alone.
+No automatic start follows file/state restoration failure; unverifiable restored
+runtime is stopped again. If stop itself fails, a process may remain running.
+Backups in `/tmp` are volatile; subsequent updater runs do not sweep other runs'
+recovery backups. Normal same-version update/commit/start behavior has live KN-1010 acceptance. Deliberate rollback-failure or hard-power/SIGKILL injection remains regression-covered/residual rather than a production-router test.
 
 ## MagiTrickle update
 
@@ -108,7 +140,7 @@ The transaction preserves the one-Mihomo invariant, keeps both a per-run rollbac
 
 If `tun:` already exists, this migrator is a no-op. Use `migrate-mihomo-mips.sh` separately for an existing `stack: gvisor` → `stack: mips` migration.
 
-Doctor v1.2.16 checks for a top-level `tun:` section. If it is absent, Doctor prints an INFO hint for `migrate-mihomo-tun.sh --check` and explains the version-dependent stack choice.
+Doctor v1.2.17 checks for a top-level `tun:` section. If it is absent, Doctor prints an INFO hint for `migrate-mihomo-tun.sh --check` and explains the version-dependent stack choice.
 
 ## MIPS TUN migration
 
@@ -131,7 +163,16 @@ The script changes only `stack:` values, feature-gates support with `mihomo -t`,
 preserves the one-Mihomo invariant, keeps `config.yaml.pre-mips`, rolls back on
 validation/start/port failure, and is idempotent.
 
-It does **not** add a missing `tun:` block or create `mitun0` from scratch; its current scope is an existing TUN with `stack: gvisor`. Doctor v1.2.16 emits an INFO hint when that legacy stack is present and the observed Mihomo version meets the documented 1.19.31 minimum. That is only a readiness hint; the migrator's own `mihomo -t` probe remains the definitive feature gate.
+In the current B3/B4 transaction, `.pre-mips` remains the historical first-run
+backup. Transaction rollback uses a separate `.config.yaml.mips-backup.<pid>`
+snapshot of the current config, staged and renamed on the same filesystem with
+permissions preserved. A failed candidate commit also restores this current
+snapshot, never historical config. Successful completion/recovery removes the
+per-run copy; failed recovery retains it and reports its path. The normal gvisor → mips
+transaction has live Keenetic acceptance; deliberate hard-power/SIGKILL during commit
+remains a documented residual fault class rather than a production-router test.
+
+It does **not** add a missing `tun:` block or create `mitun0` from scratch; its scope is an existing TUN with `stack: gvisor`. Use `migrate-mihomo-tun.sh` for a legacy config with no top-level TUN. Doctor v1.2.17 reports both legacy states as INFO guidance; the relevant migrator's own real `mihomo -t` probe remains the definitive feature gate.
 
 ## After maintenance
 

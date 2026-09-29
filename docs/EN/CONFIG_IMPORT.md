@@ -28,7 +28,7 @@ Interactive input is read from \`/dev/tty\`, so this still works when the import
 - if the service was running before import it is started again and both process state and port 7890 are checked;
 - failed validation/start/port verification restores the previous config and previous service state.
 
-The importer also refuses to begin a transaction while an \`update-mihomo.sh\` lock/process is visible.
+In development, the importer acquires the [shared lifecycle lock (RU)](../19-lifecycle-lock.md) before stop/validation/commit and holds it through service recovery and cleanup. No separate updater-specific guard is needed: the updater uses the same lock. Existing legacy locks block acquisition; concurrent use of old and new tool copies is unsupported.
 
 ## File mode
 

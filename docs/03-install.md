@@ -30,7 +30,17 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 ### Если raw.githubusercontent.com недоступен с роутера
 
-Если браузер/ПК открывает GitHub, а сам Keenetic не может скачать `install.sh` с
+Если команда `curl ... | sh` зависает ещё **до первого вывода скрипта**, сначала проверьте compatibility-вариант для TLS:
+
+```bash
+curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+```
+
+Этот вариант не отключает проверку сертификата и не использует `--insecure`: меняется только TLS key-exchange group. Обычный TLS остаётся первым вариантом. После запуска `setup.sh` project-managed downloader сам использует bounded normal curl, затем один `X25519` compatibility retry, затем wget и GitHub Contents API.
+
+Практический кейс 2026-09-28 на NC-1812: Entware `curl 8.15.0 + OpenSSL 3.5.5` отправлял default TLS ClientHello около 1578 байт и не получал ServerHello; с `--curves X25519` ClientHello уменьшился примерно до 512 байт и тот же `raw.githubusercontent.com` ответил штатно. Это evidence конкретного TLS/path compatibility случая, а не утверждение, что OpenSSL 3.5 сломан на всех сетях.
+
+Если браузер/ПК открывает GitHub, а сам Keenetic всё равно не может скачать `install.sh` с
 `raw.githubusercontent.com`, не нужно менять DNS или ослаблять TLS ради установки.
 
 1. Скачайте [`install.sh`](../install.sh) на ПК.
@@ -225,7 +235,7 @@ Initial-install path:
 
 1. Ищет `.ipk` нужной архитектуры в актуальном release `saymer-alt/entware-go` (GitHub API)
 2. Если API или jq не сработали — fallback: grep по JSON, повторный запрос, парсинг HTML релизов
-3. Скачивает пакет
+3. Скачивает пакет. Для больших asset-файлов используется отдельное bounded transfer window **180 секунд** на попытку; короткий 20-секундный лимит остаётся только у metadata/project-script fetches и не ограничивает загрузку `.ipk`
 4. Устанавливает через `opkg`
 5. Если весь GitHub-путь провалился до успешной установки (asset не найден, скачивание
    не удалось или пакет не установился) — последний резерв: `opkg install mihomo`

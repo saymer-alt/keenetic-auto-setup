@@ -36,14 +36,38 @@ jobs:
           echo "sh -n S00ubifs"
           sh -n S00ubifs
 
+      - name: BusyBox shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
+          git ls-files '*.sh' | while IFS= read -r file; do busybox ash -n "$file"; done
+          busybox ash -n S00ubifs
+
+      - name: Lifecycle behavioural regression (dash and BusyBox ash)
+        run: python3 tests/lifecycle-regression.py
+
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
+      - name: Rollback fault regression (dash and BusyBox ash)
+        run: python3 tests/rollback-regression.py
+
+      - name: Downloader partial-transfer regression (dash and BusyBox ash)
+        run: python3 tests/download-regression.py
+
+      - name: Process discovery and swap identity (dash and BusyBox ash)
+        run: |
+          python3 tests/process-regression.py
+          python3 tests/swap-regression.py
+
       - name: Local Markdown links
         run: python3 tests/docs-links.py
+
+      - name: Maintenance audit regressions (dash and BusyBox ash)
+        run: python3 tests/maintenance-regression.py
 
       - name: Whitespace
         shell: bash

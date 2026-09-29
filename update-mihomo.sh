@@ -1,5 +1,256 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
+
 # Mihomo Auto Updater for Keenetic routers with Entware
 # -----------------------------------------------------
 # Binary-update edition, package-container source:
@@ -59,7 +310,7 @@
 #     service state is restored afterwards. A running Mihomo without an
 #     init script is an abort, never a second instance. The rule covers
 #     the INSTALLED binary as well: while a Mihomo daemon may be running
-#     (pidof reports it, or pidof is unavailable so the state is unknown),
+#     (process discovery reports running or cannot establish absence),
 #     the installed-version probe (`mihomo -v` on the installed ELF) is
 #     deferred until after the controlled stop — a second execution at
 #     that moment is the documented SIGSEGV pattern (rc=139) on 256 MB
@@ -74,7 +325,7 @@
 #     An older available version — or one that cannot be reliably ordered,
 #     e.g. prerelease/build suffixes — is skipped with a warning, even with
 #     --force. Downgrade, if ever needed, is a separate manual task.
-#   - Signal safety: INT/TERM abort the updater and restore the system
+#   - Signal safety: INT/TERM/HUP abort the updater and restore the system
 #     (service state in Phase A, binary rollback in Phase B); EXIT only
 #     cleans temp files.
 #   - User config.yaml is only ever read (mihomo -t); never written.
@@ -104,9 +355,10 @@ REPLACEMENT_STARTED=0
 TMP_NEW=""
 WORK_DIR=""
 STAGE_BIN=""
+ROLLBACK_STAGE=""
 MIHOMO_STAGE_MARGIN_KB=4096
+ASSET_DOWNLOAD_MAX_TIME=180
 RECOVERY_FAILED=0
-MAINT_MARKER="/tmp/mihomo.maintenance"
 BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
 TMP_STATE_BACKUP=""
 STATE_HAD_OLD=0
@@ -168,13 +420,17 @@ retry_silent() {
   done
   return 1
 }
-# Network acquisition helpers: curl first, wget fallback. Failed transfers
-# always remove partial destination files before the next transport.
+# Network acquisition helpers: normal TLS first, then one bounded X25519
+# compatibility retry, then wget. OpenSSL 3.5+ can emit a larger hybrid-PQ
+# ClientHello that some middleboxes/path-MTU combinations drop.
 fetch_text_with_fallback() {
   _ft_url="$1"
   _ft_out=""
   if command -v curl >/dev/null 2>&1; then
-    _ft_out=$(retry_silent curl -fsSL "$_ft_url") || _ft_out=""
+    _ft_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url") || _ft_out=""
+    if [ -z "$_ft_out" ]; then
+      _ft_out=$(curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_ft_url" 2>/dev/null) || _ft_out=""
+    fi
     if [ -n "$_ft_out" ]; then
       printf "%s" "$_ft_out"
       return 0
@@ -195,14 +451,18 @@ download_file_with_fallback() {
   _df_dst="$2"
   rm -f "$_df_dst" 2>/dev/null || true
   if command -v curl >/dev/null 2>&1; then
-    if retry_silent curl -fsSL "$_df_url" -o "$_df_dst"; then
+    if retry_silent curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url" -o "$_df_dst"; then
+      [ -s "$_df_dst" ] && return 0
+    fi
+    rm -f "$_df_dst" 2>/dev/null || true
+    if curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_df_url" -o "$_df_dst" 2>/dev/null; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
   fi
   if command -v wget >/dev/null 2>&1; then
-    warn "curl download failed after 3 attempts; trying wget fallback"
-    if retry_silent wget -qO "$_df_dst" "$_df_url"; then
+    warn "curl download failed after bounded retries; trying wget fallback"
+    if retry_silent wget -qO "$_df_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url"; then
       [ -s "$_df_dst" ] && return 0
     fi
     rm -f "$_df_dst" 2>/dev/null || true
@@ -214,7 +474,15 @@ download_file_with_fallback() {
 # either version carries non-numeric components (prerelease/build suffixes).
 # Deliberately minimal — unknown means "cannot order" and the caller errs on
 # the safe side (no replacement). Not a SemVer library.
+valid_version() {
+  printf '%s\n' "$1" | grep -Eq '^[0-9]{1,9}(\.[0-9]{1,9})*([-+][A-Za-z0-9]+([.+-][A-Za-z0-9]+)*)?$'
+}
+
 ver_compare() {
+  # Validate the ENTIRE numeric string before comparing the first component.
+  for _vc in "$1" "$2"; do
+    printf '%s\n' "$_vc" | grep -Eq '^[0-9]{1,9}(\.[0-9]{1,9})*$' || { echo unknown; return 0; }
+  done
   _va=$1
   _vb=$2
   while :; do
@@ -285,10 +553,11 @@ restore_binary_state() {
   if [ "$STATE_HAD_OLD" -eq 1 ]; then
     if [ ! -s "$TMP_STATE_BACKUP" ]; then
       RECOVERY_FAILED=1
-      warn "Binary-state rollback backup is missing; runtime binary will still be restored, but project metadata may be stale: $BINARY_STATE"
+      warn "Binary-state rollback backup is missing; binary was restored, but project metadata may be stale: $BINARY_STATE"
       return 1
     fi
-    if ! cp -f "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
+    if ! cp -p "$TMP_STATE_BACKUP" "$_rollback_stage" ||
+       ! cmp -s "$TMP_STATE_BACKUP" "$_rollback_stage" || ! mv -f "$_rollback_stage" "$BINARY_STATE"; then
       rm -f "$_rollback_stage" 2>/dev/null || true
       RECOVERY_FAILED=1
       warn "Could not restore previous project binary state at $BINARY_STATE (backup kept at $TMP_STATE_BACKUP)"
@@ -308,43 +577,112 @@ restore_binary_state() {
 # Rollback helper: restores the pre-update binary AND the project-owned
 # binary-state metadata, then attempts to start the previous service state.
 # opkg package metadata is intentionally not modified by this binary updater.
+rollback_failed() {
+  RECOVERY_FAILED=1
+  error "$1 — UPDATE FAILED AND RECOVERY FAILED. Service is not restarted. Manual recovery backups: $TMP_BACKUP and $TMP_STATE_BACKUP (volatile — gone after reboot). Canonical: $MIHOMO_PATH; metadata: $BINARY_STATE"
+}
+
+# Rollback must not call the Phase-A stop helper: its error path may restart
+# the failed new binary. Confirm quiescence before copying/probing/restoring.
+rollback_stop_confirmed() {
+  mp_known || return 1
+  if mp_running; then
+    [ -n "$INIT_SCRIPT" ] || return 1
+    "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+  fi
+  for _rs_i in 1 2 3 4 5 6 7 8 9 10; do
+    mp_stopped && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# No ELF probe beside the restored daemon. Its /proc executable must be the
+# exact canonical inode we just restored, not merely some process named mihomo.
+restored_runtime_ok() {
+  _rr_pids=$(mp_pids) || return 1
+  set -- $_rr_pids
+  [ "$#" -eq 1 ] || return 1
+  # BusyBox/POSIX test -ef compares device+inode without GNU stat -c.
+  test "$MIHOMO_PATH" -ef "/proc/$1/exe"
+}
+
+file_mode_octal() {
+  local listing perms
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
+  listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+  set -- $listing
+  [ "$#" -ge 4 ] || return 1
+  perms="$1"
+  printf '%s\n' "$perms" | awk '
+    length($0) == 10 && substr($0,1,1) == "-" {
+      u=g=o=0
+      c=substr($0,2,1); if (c=="r") u+=4; else if (c!="-") exit 1
+      c=substr($0,3,1); if (c=="w") u+=2; else if (c!="-") exit 1
+      c=substr($0,4,1); if (c=="x") u+=1; else if (c!="-") exit 1
+      c=substr($0,5,1); if (c=="r") g+=4; else if (c!="-") exit 1
+      c=substr($0,6,1); if (c=="w") g+=2; else if (c!="-") exit 1
+      c=substr($0,7,1); if (c=="x") g+=1; else if (c!="-") exit 1
+      c=substr($0,8,1); if (c=="r") o+=4; else if (c!="-") exit 1
+      c=substr($0,9,1); if (c=="w") o+=2; else if (c!="-") exit 1
+      c=substr($0,10,1); if (c=="x") o+=1; else if (c!="-") exit 1
+      printf "%d%d%d\n", u, g, o
+      next
+    }
+    { exit 1 }
+  '
+}
+
 rollback_and_exit() {
+  # A signal during error recovery must not recurse into rollback or cleanup.
+  trap '' INT TERM HUP
   log "Rolling back to previous version..."
+  rollback_stop_confirmed || rollback_failed "Cannot confirm Mihomo stopped for rollback"
+  [ -s "$TMP_BACKUP" ] || rollback_failed "Rollback backup is missing or empty"
 
-  # Usable rollback candidate: the backup this run created and
-  # size-verified in /tmp. It is volatile (gone after reboot).
-  if [ ! -s "$TMP_BACKUP" ]; then
-    RECOVERY_FAILED=1
-    restore_stopped_service
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: rollback backup is missing or empty at $TMP_BACKUP (volatile — gone after reboot). The new binary remains installed at $MIHOMO_PATH. Restore the previous binary manually (install.sh) or verify the new one with: mihomo -v"
-  fi
-
+  ROLLBACK_STAGE="$MIHOMO_DIR/.mihomo.rollback.$$"
   rm -f "$STAGE_BIN" 2>/dev/null || true
-  if ! cp -f "$TMP_BACKUP" "$MIHOMO_PATH"; then
-    RECOVERY_FAILED=1
-    restore_stopped_service
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: could not copy the backup back to $MIHOMO_PATH. The file there may be the failed new version. Restore manually from $TMP_BACKUP (volatile — gone after reboot)."
+  if ! cp -p "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
+    rollback_failed "Could not stage rollback binary"
   fi
-  if ! chmod +x "$MIHOMO_PATH"; then
-    RECOVERY_FAILED=1
-    error "$1 — UPDATE FAILED AND RECOVERY FAILED: backup restored but chmod failed on $MIHOMO_PATH. Fix permissions manually: chmod +x $MIHOMO_PATH"
+  _rb_mode=$(file_mode_octal "$TMP_BACKUP") || rollback_failed "Cannot read backup permissions"
+  chmod "$_rb_mode" "$ROLLBACK_STAGE" || rollback_failed "Could not set rollback permissions"
+  if [ ! -s "$ROLLBACK_STAGE" ] || [ ! -x "$ROLLBACK_STAGE" ] ||
+     ! cmp -s "$TMP_BACKUP" "$ROLLBACK_STAGE"; then
+    rollback_failed "Rollback stage verification failed"
   fi
+  # The restored backup is verified while no daemon is running. An unreadable
+  # old version (repair case) is not silently declared a successful recovery.
+  _rb_output=$("$ROLLBACK_STAGE" -v 2>/dev/null) || rollback_failed "Rollback binary sanity test failed"
+  _rb_ver=$(printf '%s\n' "$_rb_output" | head -1 | awk '{print $3}')
+  _rb_ver=${_rb_ver#v}
+  [ -n "$_rb_ver" ] || rollback_failed "Rollback binary version is unreadable"
+  if [ -n "$CURRENT_VER" ] && [ "$_rb_ver" != "$CURRENT_VER" ]; then
+    rollback_failed "Rollback version differs from the pre-update version"
+  fi
+  if ! mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"; then
+    rollback_failed "Could not atomically restore previous binary"
+  fi
+  ROLLBACK_STAGE=""
   log "Previous binary restored."
-
   if ! restore_binary_state; then
-    warn "Previous binary is restored, but project binary-state metadata could not be fully restored."
+    rollback_failed "Previous binary restored, but project binary-state restoration failed"
   fi
+  REPLACEMENT_STARTED=0
 
-  if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && [ -n "$INIT_SCRIPT" ]; then
+  if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+    [ -n "$INIT_SCRIPT" ] || rollback_failed "No init script to restore previous service"
+    mp_stopped || rollback_failed "Cannot prove stop before restored service start"
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     sleep 2
-    if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
-      log "Rollback successful. Previous mihomo is running."
-    else
-      log "WARNING: Rollback completed, but mihomo process is not detected."
+    if ! restored_runtime_ok; then
+      rollback_stop_confirmed || true
+      rollback_failed "Restored runtime could not be verified"
     fi
+    log "Rollback successful. Previous mihomo is running from the restored binary."
+  else
+    log "Previous service was stopped; leaving it stopped."
   fi
-
   error "$1 — update failed, previous version restored."
 }
 
@@ -358,16 +696,17 @@ restore_stopped_service() {
   if [ "$SERVICE_WAS_STOPPED" -ne 1 ] || [ -z "$INIT_SCRIPT" ]; then
     return 0
   fi
-  if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+  if mp_running; then
     log "Mihomo is already running again; nothing to restore."
     return 0
   fi
+  mp_stopped || return 1
   log "Update aborted before replacement: restarting Mihomo stopped by this updater..."
   "$INIT_SCRIPT" start >/dev/null 2>&1 || true
-  if command -v pidof >/dev/null 2>&1; then
+  if mp_known; then
     _i=0
     while [ "$_i" -lt 5 ]; do
-      if pidof mihomo >/dev/null 2>&1; then
+      if mp_running; then
         log "Old Mihomo is running again."
         return 0
       fi
@@ -376,9 +715,10 @@ restore_stopped_service() {
     done
     log "WARNING: could not confirm Mihomo is running after restore."
   else
-    log "pidof not available, skipping restore verification."
+    warn "Mihomo runtime UNKNOWN; restore not confirmed."
+    return 1
   fi
-  return 0
+  return 1
 }
 
 # Pre-flight failure: nothing on the system has been modified, but this
@@ -403,11 +743,11 @@ stop_mihomo_confirmed() {
   SERVICE_WAS_STOPPED=1
   _i=0
   while [ "$_i" -lt 10 ]; do
-    pidof mihomo >/dev/null 2>&1 || break
+    mp_stopped && break
     sleep 1
     _i=$((_i + 1))
   done
-  if pidof mihomo >/dev/null 2>&1; then
+  if ! mp_stopped; then
     preflight_fail "Old Mihomo did not stop — refusing to run a second Mihomo instance. Update aborted, installed binary untouched."
   fi
   sleep 1
@@ -418,16 +758,16 @@ stop_mihomo_confirmed() {
 # (downloaded .ipk, extracted package data, new binary, backup) survive the
 # updater; the lock file is cleaned by the same trap.
 cleanup_tmp() {
+  # A second EXIT cleanup must not touch a subsequent transaction.
+  [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+  [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
   # After a FAILED RECOVERY the backup is the user's manual restore
   # path - the error message points at it, so it must survive.
   if [ "${RECOVERY_FAILED:-0}" != "1" ]; then
-    rm -f "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
-    rm -f "$TMP_DIR"/mihomo-binary-state.backup.* 2>/dev/null || true
+    rm -f "${TMP_BACKUP:-}" 2>/dev/null || true
+    rm -f "${TMP_STATE_BACKUP:-}" 2>/dev/null || true
   fi
-  rm -f "$LOCK_LEGACY" 2>/dev/null || true
-  rm -rf "$LOCK_DIR" 2>/dev/null || true
-  rm -f "$MAINT_MARKER" 2>/dev/null || true
-  rm -f "$STAGE_BIN" 2>/dev/null || true
+  rm -f "$STAGE_BIN" "${ROLLBACK_STAGE:-}" 2>/dev/null || true
   if [ -n "$MIHOMO_DIR" ]; then
     rm -f "$MIHOMO_DIR"/.mihomo.new.* 2>/dev/null || true
   fi
@@ -435,9 +775,10 @@ cleanup_tmp() {
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.new.* 2>/dev/null || true
   rm -f /opt/etc/.keenetic-auto-setup-mihomo.state.rollback.* 2>/dev/null || true
   rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
+  ml_lifecycle_release || true
 }
 
-# Signal safety: INT/TERM explicitly abort the updater and restore the
+# Signal safety: INT/TERM/HUP explicitly abort the updater and restore the
 # system; EXIT only cleans temp files. REPLACEMENT_STARTED separates
 #   Phase A (0): old binary untouched — restore a service the updater
 #                stopped itself; a user-stopped service is never started.
@@ -458,190 +799,17 @@ signal_handler() {
   exit 1
 }
 
-# -----------------------------
-# -----------------------------
-# 0. Prevent parallel updates - atomic mkdir lock, stale-safe takeover.
-#
-# /tmp/mihomo-update.lock.d IS the lock: mkdir is an atomic test-and-set,
-# so two concurrent updaters can never both believe they own it. The pid
-# and ts files inside serve liveness and stale recovery only - losing or
-# misreading them never weakens mutual exclusion:
-#   mkdir ok            -> we own the lock
-#   dir held, pid alive and its /proc/<pid>/cmdline references this
-#   updater             -> another run is active, abort
-#   pid dead, or alive with a foreign cmdline (PID reuse) -> stale owner
-#   pid missing/garbage -> fresh (<60s by ts) may be a starter between
-#   its mkdir and its pid write: abort; otherwise stale
-# A stale takeover renames the directory away first (the mv IS the atomic
-# claim: exactly one recoverer wins) and then removes only the directory
-# it renamed. A takeover additionally requires that NO live process with
-# this updater's name exists in /proc - the independent process scan is
-# the backstop that keeps malformed metadata or clock anomalies from ever
-# overrunning a live run. Wall-clock age alone decides nothing: the
-# router may boot before time sync, so a live owner pid (checked through
-# /proc/<pid>/cmdline) always outranks any timestamp.
-# Legacy form: versions before the mkdir lock used the plain file
-# /tmp/mihomo-update.lock with no owner metadata. It is still honored:
-# a legacy lock backed by a live update process blocks this run; with no
-# live update process behind it, it is stale and reclaimed. While we
-# hold the lock we keep the legacy file present with our pid, so an
-# old-version updater (which only checks that the file exists) still
-# sees "another update is running" instead of racing us. Residual: an
-# old-version updater has a racy check-then-touch of its own and can
-# slip through a microseconds-wide window; that generation is racy by
-# design and phases out as routers update.
-# -----------------------------
-LOCK_DIR="/tmp/mihomo-update.lock.d"
-LOCK_LEGACY="/tmp/mihomo-update.lock"
-LOCK_TOOL_MARKER="update-mihomo"
-LOCK_HINT="If no update is actually running, remove it manually: rm -rf /tmp/mihomo-update.lock.d /tmp/mihomo-update.lock"
-
-# True when <pid> is a live process whose cmdline references this updater.
-lock_pid_is_ours() {
-  case "$1" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ -d "/proc/$1" ] || return 1
-  grep -q "$LOCK_TOOL_MARKER" "/proc/$1/cmdline" 2>/dev/null
-}
-
-# Independent backstop for every takeover decision: is any OTHER live
-# process visibly running this updater? Covers legacy locks (which carry
-# no pid), half-written metadata and PID reuse. Self and the direct
-# parent are excluded; a false positive only errs on the safe side.
-LOCK_TOOL_PIDS=""
-lock_tool_alive() {
-  LOCK_TOOL_PIDS=""
-  for _lock_d in /proc/[0-9]*; do
-    [ "$_lock_d" = "/proc/$$" ] && continue
-    [ "$_lock_d" = "/proc/$PPID" ] && continue
-    if grep -q "$LOCK_TOOL_MARKER" "$_lock_d/cmdline" 2>/dev/null; then
-      LOCK_TOOL_PIDS="$LOCK_TOOL_PIDS ${_lock_d#/proc/}"
-    fi
-  done
-  [ -n "$LOCK_TOOL_PIDS" ]
-}
-
-lock_write_owner() {
-  # The claim symlink is the ownership decider: creating it is an atomic
-  # create-if-absent, so on a filesystem/kernel where directory creation
-  # itself is not a reliable test-and-set (observed on a WSL2 kernel), two
-  # concurrent starters still cannot both hold the lock - exactly one
-  # claim lands, the loser backs off without touching anything. On normal
-  # kernels the ln cannot fail after our own mkdir and this is a no-op
-  # guarantee. Written before pid/ts so a lost claim never corrupts the
-  # winner's metadata.
-  ln -s "pid=$$;ts=$(date +%s)" "$LOCK_DIR/claim" 2>/dev/null || return 1
-  echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-  date +%s > "$LOCK_DIR/ts" 2>/dev/null || true
-  # Best-effort legacy companion: old-version updaters only check that
-  # the plain file exists; new runs read our pid from it.
-  echo "$$" > "$LOCK_LEGACY" 2>/dev/null || true
-}
-
+# One lifecycle owner covers download, stop/probe, commit, restore and cleanup.
 acquire_lock() {
-  # Legacy evidence first: an old-version updater only knows the plain
-  # lock file, so its presence outranks everything else.
-  if [ -e "$LOCK_LEGACY" ]; then
-    if [ ! -f "$LOCK_LEGACY" ] || [ -L "$LOCK_LEGACY" ]; then
-      error "Update lock has an unexpected form: $LOCK_LEGACY is not a regular file. Will not remove an unknown object. $LOCK_HINT"
-    fi
-    _lp=$(head -n 1 "$LOCK_LEGACY" 2>/dev/null | awk '{print $1}' || true)
-    if lock_pid_is_ours "$_lp"; then
-      error "Another Mihomo update is already running (pid $_lp). Aborting."
-    fi
-    if lock_tool_alive; then
-      error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-    fi
-    log "Removing stale legacy update lock (no live update process behind it)..."
-    rm -f "$LOCK_LEGACY"
-  fi
-
-  if mkdir "$LOCK_DIR" 2>/dev/null; then
-    if ! lock_write_owner; then
-      # The claim was lost to a concurrent starter (or the write failed):
-      # back off WITHOUT cleanup - the visible lock belongs to the winner.
-      error "Another Mihomo update is already running (lock claim lost). Aborting."
-    fi
-    return 0
-  fi
-
-  if [ ! -d "$LOCK_DIR" ]; then
-    error "Update lock has an unexpected form: $LOCK_DIR is not a directory. Will not remove an unknown object. $LOCK_HINT"
-  fi
-
-  _lp=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-  _lock_busy=0
-  case "$_lp" in
-    ''|*[!0-9]*)
-      # Missing/garbage pid: possibly a starter between its mkdir and its
-      # pid write (microseconds). Trust only a fresh ts; a malformed or
-      # missing ts counts as ancient and falls through to the
-      # live-process backstop before any takeover.
-      _now=$(date +%s)
-      _ts=$(cat "$LOCK_DIR/ts" 2>/dev/null || true)
-      case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
-      [ $((_now - _ts)) -lt 60 ] && _lock_busy=1
-      ;;
-    *)
-      lock_pid_is_ours "$_lp" && _lock_busy=1
-      # /proc/<pid> gone, or alive with a foreign cmdline (PID reuse):
-      # a dead or stale owner either way; the backstop below still runs.
-      ;;
-  esac
-  if [ "$_lock_busy" -eq 1 ]; then
-    error "Another Mihomo update is already running. Aborting."
-  fi
-
-  # Stale verdict: a live maintenance process must never be overrun,
-  # whatever its (malformed) metadata says.
-  if lock_tool_alive; then
-    error "Another Mihomo update is already running (live process:${LOCK_TOOL_PIDS}). Aborting."
-  fi
-
-  log "Taking over a stale update lock (owner pid ${_lp:-unknown} is gone)..."
-  _claim="$LOCK_DIR.stale.$$"
-  if mv "$LOCK_DIR" "$_claim" 2>/dev/null; then
-    rm -rf "$_claim"
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-      lock_write_owner
-      return 0
-    fi
-    # A fresh run took the freed path first; it owns the lock now.
-    error "Another Mihomo update is already running. Aborting."
-  fi
-  error "Another Mihomo update is already running. Aborting."
+  ml_lifecycle_acquire || error "Mihomo lifecycle is busy or unverifiable; no update started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 }
-
-# A config import also needs exclusive access to the Mihomo service lifecycle.
-# If it already owns its lock and the recorded pid is still alive, do not start
-# a binary update. The reciprocal check in config-import.sh covers the opposite
-# race (updater starts first).
-CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"
-config_import_active() {
-  [ -d "$CONFIG_IMPORT_LOCK" ] || return 1
-  _ci_pid=$(cat "$CONFIG_IMPORT_LOCK/pid" 2>/dev/null || true)
-  case "$_ci_pid" in ''|*[!0-9]*) return 1 ;; esac
-  [ -d "/proc/$_ci_pid" ]
-}
-
-if config_import_active; then
-  error "A Mihomo config import is already running (pid $_ci_pid). Finish it before updating the binary."
-fi
-
 acquire_lock
-
-# Maintenance coordination: while this transaction runs, the watchdog
-# skips its checks entirely (see mihomo-watchdog.sh) so a cron tick cannot
-# resurrect Mihomo during the planned downtime. The marker lives in /tmp,
-# so a crashed run self-heals at the next reboot; the watchdog additionally
-# ignores markers older than one hour.
-echo "$$ $(date +%s)" > "$MAINT_MARKER" 2>/dev/null || true
 
 trap cleanup_tmp EXIT
 trap 'signal_handler INT' INT
 trap 'signal_handler TERM' TERM
 trap 'signal_handler HUP' HUP
+mp_known || error "Mihomo runtime UNKNOWN; update aborted."
 
 
 
@@ -680,10 +848,37 @@ command -v tar >/dev/null || error "tar is required but not installed (busybox a
 RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
+UP_SYS_CLASS_BLOCK="${UPDATE_SYS_CLASS_BLOCK:-/sys/class/block}"
 UP_SWAP128_MIN_KB=393216
 UP_RAM256_MAX_KB=450000
 UP_RAM512_MAX_KB=786432
 UP_SWAP_MAX_KB=2097152
+
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number listing perms major minor expected sys_class
+    [ "$2" = partition ] || return 1
+    sys_class="$3"
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
 
 _up_classify_mount() {
   case "$2" in ubifs|squashfs) echo internal; return 0 ;; tmpfs|ramfs) echo ram; return 0 ;; esac
@@ -724,8 +919,10 @@ _up_scan_swap() {
         UP_DELETED_COUNT=$((UP_DELETED_COUNT + 1))
         continue
         ;;
-      *zram*) UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue ;;
     esac
+    if swap_is_zram "$_up_sw_file" "$_up_sw_type" "$UP_SYS_CLASS_BLOCK"; then
+      UP_ZRAM_KB=$((UP_ZRAM_KB + _up_sw_size)); continue
+    fi
     case "$_up_sw_type" in
       partition) case "$_up_sw_file" in /dev/sd*|/dev/nvme*) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
       file) case "$(_up_storage_class "$(dirname "$_up_sw_file")")" in external) UP_EXT_KB=$((UP_EXT_KB + _up_sw_size)) ;; *) UP_UNVER_KB=$((UP_UNVER_KB + _up_sw_size)) ;; esac ;;
@@ -847,8 +1044,8 @@ fi
 # considered.
 # -----------------------------
 resolve_mihomo_binary() {
-  if command -v pidof >/dev/null 2>&1; then
-    for _p in $(pidof mihomo 2>/dev/null); do
+  if mp_known; then
+    for _p in $(mp_pids); do
       _exe=$(readlink "/proc/$_p/exe" 2>/dev/null) || continue
       if [ "$_exe" = "/opt/sbin/mihomo" ] || [ "$_exe" = "/opt/bin/mihomo" ]; then
         if [ -x "$_exe" ]; then
@@ -876,13 +1073,12 @@ MIHOMO_DIR=$(dirname "$MIHOMO_PATH")
 log "Installed at: $MIHOMO_PATH"
 
 # One-instance rule for the INSTALLED binary too: while a daemon may be
-# running (pidof reports mihomo, or pidof is unavailable so the state is
-# unknown), executing a second Mihomo ELF is the documented SIGSEGV
+# running (process discovery reports running or unknown), executing a second Mihomo ELF is the documented SIGSEGV
 # pattern on memory-constrained devices. Defer the version probe until
 # after the controlled stop; only a confirmed-down daemon allows the
 # early probe (the fast, zero-downtime "already up to date" path).
 DEFER_VERSION_DECISION=1
-if command -v pidof >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1; then
+if mp_stopped; then
   DEFER_VERSION_DECISION=0
 fi
 CURRENT_VER=""
@@ -961,7 +1157,7 @@ case "$ASSET_VER" in
   *) error "Cannot parse package release from asset name: $ASSET_NAME" ;;
 esac
 
-[ -z "$AVAILABLE_VER" ] && error "Cannot parse version from asset name: $ASSET_NAME"
+valid_version "$AVAILABLE_VER" || error "Cannot parse version from asset name: $ASSET_NAME"
 
 log "Available package: $ASSET_NAME"
 log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
@@ -977,6 +1173,9 @@ log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
 # manual task. Exact string equality short-circuits first, so devices on a
 # prerelease are recognized as up to date when the same version is packaged.
 # An unreadable current version is treated as a repair case.
+if [ -n "$CURRENT_VER" ]; then
+  valid_version "$CURRENT_VER" || error "Malformed installed version; automatic update refused"
+fi
 if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
   log "Version decision deferred until after the controlled stop — the package is fetched so the comparison can be made safely."
 elif [ -z "$CURRENT_VER" ]; then
@@ -1003,7 +1202,8 @@ else
 fi
 
 # Remember whether Mihomo was running before the update
-if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+mp_known || error "Mihomo runtime UNKNOWN; update aborted."
+if mp_running; then
   SERVICE_WAS_RUNNING=1
 fi
 
@@ -1025,7 +1225,7 @@ TMP_IPK="$TMP_DIR/mihomo-update.ipk"
 
 # Remove stale artifacts from earlier runs / crashes (the exit trap cleans
 # every normal path; this also covers kill -9 leftovers)
-rm -f "$TMP_DIR"/mihomo-update.ipk "$TMP_DIR"/mihomo.backup.* 2>/dev/null || true
+rm -f "$TMP_DIR"/mihomo-update.ipk 2>/dev/null || true
 rm -rf "$TMP_DIR"/mihomo-ipk.* 2>/dev/null || true
 
 log "Downloading: $ASSET_NAME"
@@ -1133,8 +1333,12 @@ log "Candidate staged at $STAGE_BIN"
 
 # Rollback backup (pre-stop: the old binary is intact and running)
 TMP_BACKUP="$TMP_DIR/mihomo.backup.$$"
+if [ -e "$TMP_BACKUP" ] || [ -L "$TMP_BACKUP" ]; then
+  RECOVERY_FAILED=1
+  error "Existing recovery backup at $TMP_BACKUP — preserve it and resolve manually before retrying"
+fi
 log "Backing up current binary to $TMP_BACKUP ..."
-if ! cp -f "$MIHOMO_PATH" "$TMP_BACKUP"; then
+if ! cp -p "$MIHOMO_PATH" "$TMP_BACKUP"; then
   error "Failed to create backup in /tmp - nothing was modified, service untouched"
 fi
 BACKUP_BYTES=$(wc -c < "$TMP_BACKUP" 2>/dev/null || echo 0)
@@ -1145,8 +1349,12 @@ fi
 # Snapshot project-owned binary metadata for rollback. Absence is a valid
 # legacy/out-of-band state and is restored as absence.
 TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"
+if [ -e "$TMP_STATE_BACKUP" ] || [ -L "$TMP_STATE_BACKUP" ]; then
+  RECOVERY_FAILED=1
+  error "Existing recovery metadata at $TMP_STATE_BACKUP — preserve it and resolve manually before retrying"
+fi
 if [ -f "$BINARY_STATE" ]; then
-  if ! cp -f "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
+  if ! cp -p "$BINARY_STATE" "$TMP_STATE_BACKUP"; then
     error "Failed to back up project binary-state metadata - nothing was modified, service untouched"
   fi
   STATE_HAD_OLD=1
@@ -1171,7 +1379,7 @@ fi
 # be stopped — abort instead of risking a second instance. The stop is
 # confirmed before anything executes the new binary.
 # -----------------------------
-if command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+if mp_running; then
   SERVICE_WAS_RUNNING=1
 fi
 
@@ -1183,6 +1391,8 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
 fi
 
 # -----------------------------
+mp_stopped || preflight_fail "Cannot prove Mihomo stopped before executable probes"
+
 # 12b. Deferred installed-version decision (one-instance path). The old
 # daemon is confirmed down (or was never running), so probing the
 # installed binary is safe here. Same decision rules as the early
@@ -1194,6 +1404,10 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
     INSTALLED_VER=$(echo "$VERSION_OUTPUT" | head -1 | awk '{print $3}')
     INSTALLED_VER=${INSTALLED_VER#v}
   fi
+  CURRENT_VER="$INSTALLED_VER"
+  if [ -n "$CURRENT_VER" ]; then
+    valid_version "$CURRENT_VER" || preflight_fail "Malformed installed version; automatic update refused"
+  fi
   if [ -z "$INSTALLED_VER" ]; then
     log "Installed version still unreadable after the stop — proceeding with the repair update."
   elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
@@ -1201,7 +1415,7 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
       if [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
         log "Already up to date ($INSTALLED_VER) — verified after the controlled stop."
       else
-        log "Already up to date ($INSTALLED_VER) — verified without pidof; the service state could not be confirmed."
+        log "Already up to date ($INSTALLED_VER) — verified with Mihomo confirmed stopped."
       fi
       restore_stopped_service
       exit 0
@@ -1231,7 +1445,10 @@ fi
 # stopped (a service that was already down stays down) and leaves the old
 # binary in place.
 # -----------------------------
-PACKAGE_VER=$("$STAGE_BIN" -v 2>/dev/null | head -1 | awk '{print $3}')
+if ! PACKAGE_OUTPUT=$("$STAGE_BIN" -v 2>/dev/null); then
+  preflight_fail "Candidate version probe failed; installed Mihomo untouched"
+fi
+PACKAGE_VER=$(printf '%s\n' "$PACKAGE_OUTPUT" | head -1 | awk '{print $3}')
 PACKAGE_VER=${PACKAGE_VER#v}
 if [ "$PACKAGE_VER" != "$AVAILABLE_VER" ]; then
   preflight_fail "Pre-flight failed: package binary reports ${PACKAGE_VER:-unknown}, expected $AVAILABLE_VER (from $ASSET_NAME) — installed Mihomo untouched"
@@ -1257,11 +1474,12 @@ fi
 # canonical target never exists in a missing or partially copied state,
 # and a failed rename leaves the old binary untouched.
 # -----------------------------
-if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && command -v pidof >/dev/null 2>&1 && pidof mihomo >/dev/null 2>&1; then
+if [ "$SERVICE_WAS_RUNNING" -eq 1 ] && mp_running; then
   log "Mihomo is running again (watchdog restart?) - stopping before the commit..."
   stop_mihomo_confirmed
 fi
 
+mp_stopped || preflight_fail "Cannot prove Mihomo stopped before binary commit"
 REPLACEMENT_STARTED=1
 log "Committing: rename $STAGE_BIN -> $MIHOMO_PATH ..."
 if ! mv -f "$STAGE_BIN" "$MIHOMO_PATH"; then
@@ -1328,15 +1546,16 @@ log "Project binary state updated: $BINARY_STATE"
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
   if [ -n "$INIT_SCRIPT" ]; then
+    mp_stopped || rollback_and_exit "Cannot prove stop before service start"
     log "Starting mihomo service..."
     if ! "$INIT_SCRIPT" start >/dev/null 2>&1; then
       log "WARNING: Mihomo init script reported start failure. Checking process..."
     fi
 
-    if command -v pidof >/dev/null 2>&1; then
+    if mp_known; then
       SERVICE_OK=0
       for i in 1 2 3 4 5; do
-        if pidof mihomo >/dev/null 2>&1; then
+        if mp_running; then
           SERVICE_OK=1
           break
         fi
@@ -1347,7 +1566,7 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
         rollback_and_exit "Service start failed — rolled back to previous version"
       fi
     else
-      log "pidof not available, skipping strict process verification."
+      rollback_and_exit "Mihomo runtime UNKNOWN after start"
     fi
   else
     log "WARNING: No init script found. Please start manually: mihomo -d /opt/etc/mihomo"
@@ -1360,15 +1579,8 @@ fi
 # 18. Final process verification
 # -----------------------------
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
-  if command -v pidof >/dev/null 2>&1; then
-    if pidof mihomo >/dev/null 2>&1; then
-      log "Process is running."
-    else
-      log "WARNING: Binary works, but mihomo process is not detected."
-    fi
-  else
-    log "pidof not available, skipping process check"
-  fi
+  mp_running || rollback_and_exit "Final Mihomo process verification failed or UNKNOWN"
+  log "Process is running."
 fi
 
 # -----------------------------

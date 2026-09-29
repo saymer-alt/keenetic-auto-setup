@@ -5,6 +5,11 @@
 
 ## Граница ответственности
 
+Development B6/C1: отсутствие `pidof` не доказывает остановку daemon; installer
+использует `/proc` fallback и прекращает опасный шаг при unknown. Native zRAM
+требует block-device identity и согласованного sysfs, поэтому `zram.swap` на USB
+проверяется как внешний swap со всеми size limits. См. [контракт](20-process-swap-detection.md).
+
 `install.sh` поддерживает aarch64 / armv7 / mipsel / mips и два режима хранения:
 
 - `ram` — проект включает `S00ubifs` для tmpfs runtime-каталогов;
@@ -34,6 +39,14 @@ suffix:
 
 ## Источник Mihomo и fallback
 
+Project-managed shell helpers (`S00ubifs`, bypass hook, watchdog) загружаются
+отдельным `project_script_download`: bounded normal raw curl (3 retries) → один IPv4 + `X25519` compatibility retry → raw wget → Contents API raw media. Wget/API сохраняют bounded retry policy. После исправления B5 каждый retry начинает с
+чистого candidate, а non-zero transport удаляет partial и не допускает его к
+validation/commit — даже если prefix содержит shebang и проходит `sh -n`.
+После успешного transport остаются прежние проверки non-empty/shebang/syntax,
+проверка соседнего stage и atomic rename в destination. Неудача оставляет
+canonical файл прежним; невозможность очистить candidate прерывает загрузку.
+
 Перед package-path installer ищет executable canonical binary:
 `/opt/sbin/mihomo`, затем `/opt/bin/mihomo`.
 
@@ -45,11 +58,16 @@ Mihomo**. Замена существующего binary принадлежит 
 готовый архитектурный `.ipk` из release `latest` репозитория
 `saymer-alt/entware-go`.
 
+Development C6: каждый parser выбирает ровно один URL с точным package basename
+и architecture suffix; nohf и чужие packages исключены. Несколько различных
+подходящих assets — ERROR без перехода к feed. Отсутствие подходящего asset
+сохраняет существующую fallback chain.
+
 Порядок initial-install path:
 
 1. GitHub API;
 2. резервный разбор ответа/страницы release;
-3. скачивание найденного asset;
+3. скачивание найденного asset; большие `.ipk` используют отдельный bounded transfer window 180 секунд на попытку, тогда как metadata/project scripts сохраняют короткий 20-секундный лимит;
 4. `opkg install <downloaded.ipk>`;
 5. если весь GitHub-путь не дал успешной установки — last resort
    `opkg install mihomo` из настроенного Entware feed.

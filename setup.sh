@@ -53,25 +53,53 @@ script_candidate_ok() {
     sh -n "$_sc_file" >/dev/null 2>&1
 }
 
+curl_to_file_once() {
+    _rc_url="$1"
+    _rc_dst="$2"
+    _rc_api="${3:-0}"
+    _rc_curve="${4:-}"
+    if [ "$_rc_api" -eq 1 ]; then
+        if [ -n "$_rc_curve" ]; then
+            curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
+                -H "Accept: application/vnd.github.raw+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$_rc_url" -o "$_rc_dst" 2>/dev/null
+        else
+            curl -fSsL --connect-timeout 5 --max-time 20 \
+                -H "Accept: application/vnd.github.raw+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$_rc_url" -o "$_rc_dst" 2>/dev/null
+        fi
+    elif [ -n "$_rc_curve" ]; then
+        curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
+            "$_rc_url" -o "$_rc_dst" 2>/dev/null
+    else
+        curl -fSsL --connect-timeout 5 --max-time 20 \
+            "$_rc_url" -o "$_rc_dst" 2>/dev/null
+    fi
+}
+
 retry_curl_to_file() {
     _rc_url="$1"
     _rc_dst="$2"
     _rc_api="${3:-0}"
     for _rc_try in 1 2 3; do
         rm -f "$_rc_dst" 2>/dev/null || true
-        if [ "$_rc_api" -eq 1 ]; then
-            if curl -fSsL \
-                -H "Accept: application/vnd.github.raw+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "$_rc_url" -o "$_rc_dst" 2>/dev/null; then
-                return 0
-            fi
-        elif curl -fSsL "$_rc_url" -o "$_rc_dst" 2>/dev/null; then
+        if curl_to_file_once "$_rc_url" "$_rc_dst" "$_rc_api"; then
             return 0
         fi
         rm -f "$_rc_dst" 2>/dev/null || true
         sleep 2
     done
+
+    # OpenSSL 3.5+ can emit a much larger hybrid-PQ TLS ClientHello. Some
+    # middleboxes/path-MTU combinations drop it while classical X25519 works.
+    # Keep normal TLS first; use one bounded compatibility retry before wget/API.
+    rm -f "$_rc_dst" 2>/dev/null || true
+    if curl_to_file_once "$_rc_url" "$_rc_dst" "$_rc_api" X25519; then
+        return 0
+    fi
+    rm -f "$_rc_dst" 2>/dev/null || true
     return 1
 }
 
@@ -111,9 +139,9 @@ download_project_script() {
     else
         rm -f "$_dps_dst" 2>/dev/null || true
         if command -v wget >/dev/null 2>&1; then
-            warn "raw/curl failed after 3 attempts for $_dps_rel; trying wget fallback"
+            warn "raw/curl failed after bounded retries for $_dps_rel; trying wget fallback"
         else
-            warn "raw/curl failed after 3 attempts for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
+            warn "raw/curl failed after bounded retries for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
         fi
     fi
 
@@ -233,9 +261,10 @@ if [ -r /dev/tty ] && [ -w /dev/tty ]; then
 else
     warn "Interactive terminal not available; config import was not started."
     echo "Run it later with:"
-    echo "  curl -fSsL ${PROJECT_RAW_BASE}/config-import.sh | sh"
+    echo "  curl -fSsL --connect-timeout 5 --max-time 20 ${PROJECT_RAW_BASE}/config-import.sh | sh"
 fi
 
 echo
 echo "Optional full diagnostic:"
-echo "  curl -fSsL ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"
+echo "  curl -fSsL --connect-timeout 5 --max-time 20 ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"
+echo "If raw GitHub TLS stalls before script output, retry curl with: --curves X25519"

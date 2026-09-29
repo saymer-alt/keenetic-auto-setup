@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when a local Markdown link points to a missing repository path."""
+"""Fail CI on broken local Markdown links or pasted chat/tool artifacts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,14 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 SCHEMES = {"http", "https", "mailto", "tel", "data"}
+ARTIFACT_PATTERNS = (
+    ("sandbox path", re.compile(r"sandbox:/mnt/data/", re.IGNORECASE)),
+    ("file citation token", re.compile(r"(?:filecite|turn\d+file\d+)", re.IGNORECASE)),
+    ("chat timestamp wrapper", re.compile(r"\[Message sent at [^\]]+\]")),
+    ("chat skipped-message wrapper", re.compile(r"Skipped \d+ messages?", re.IGNORECASE)),
+    ("uploaded-file wrapper", re.compile(r"<<File name=", re.IGNORECASE)),
+    ("writing-block fence", re.compile(r":::writing\b", re.IGNORECASE)),
+)
 
 
 def destination(raw: str) -> str:
@@ -47,12 +55,17 @@ def resolve(doc: Path, target: str) -> Path | None:
 
 def main() -> int:
     broken: list[tuple[str, str, str]] = []
+    artifacts: list[tuple[str, str]] = []
     checked = 0
 
     for doc in sorted(ROOT.rglob("*.md")):
         # Repository history/build artifacts are not present in this checkout;
         # every tracked Markdown document is otherwise in scope.
         text = doc.read_text(encoding="utf-8")
+        for label, pattern in ARTIFACT_PATTERNS:
+            if pattern.search(text):
+                artifacts.append((str(doc.relative_to(ROOT)), label))
+
         for match in LINK_RE.finditer(text):
             raw = destination(match.group(1))
             candidate = resolve(doc, raw)
@@ -85,7 +98,14 @@ def main() -> int:
         print(f"[FAIL] {len(broken)} broken local Markdown link(s)", file=sys.stderr)
         return 1
 
+    if artifacts:
+        for doc, label in artifacts:
+            print(f"[FAIL] {doc}: pasted {label} detected", file=sys.stderr)
+        print(f"[FAIL] {len(artifacts)} Markdown chat/tool artifact(s)", file=sys.stderr)
+        return 1
+
     print(f"[OK] Local Markdown links: {checked} checked, 0 broken")
+    print("[OK] Markdown hygiene: 0 pasted chat/tool artifacts")
     return 0
 
 

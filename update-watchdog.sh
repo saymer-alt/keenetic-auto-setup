@@ -1,5 +1,167 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
 # =========================================================
 # MIHOMO WATCHDOG UPDATER (transactional, layout-canonicalizing)
 # ---------------------------------------------------------
@@ -31,7 +193,8 @@
 #
 # Transaction model (same principles as update-mihomo.sh):
 #   - the candidate is downloaded to /tmp (RAM) and fully validated
-#     BEFORE anything on /opt is touched;
+#     before replacing the canonical executable (stale-stage/backup hygiene
+#     occurs first, under the lifecycle lock);
 #   - it is staged at /opt/bin/.mihomo_watchdog.sh.new.$$ (SAME
 #     filesystem as the target), re-validated there, and committed with
 #     a single atomic rename; the canonical file never passes through a
@@ -46,9 +209,9 @@
 #
 # Cron schedule normalization: exactly one route runs the watchdog
 # (a cron.5mins run-parts line, or the single managed direct line).
-# Duplicate managed direct lines are collapsed to one; a direct line is
-# removed only when a cron.5mins run-parts line also exists; crontab
-# lines that do not exactly match the managed direct line are preserved.
+# Recognized five-minute direct/run-parts routes are deduplicated, preferring
+# run-parts when present. Comments are inert; unknown active routes are
+# preserved and reported as requiring manual review.
 #
 # The installer installs and recognizes; the updater updates and
 # migrates. Re-running against an already-canonical router is a no-op.
@@ -116,9 +279,96 @@ status_err() { printf '%s%s%s\n' "$COLOR_ERR_RED" "$1" "$COLOR_ERR_RESET" >&2; }
 #   (Aug 2026; the last one deployed until the Sep 2026 canonicalization)
 LEGACY_HASHES="a660e191909664b79f3d6d5fa0211ea85ad5609ab20e090e7309ee89d122d9ff 7c8b6969fd4474e355d51801d6379d06281525140e74c8ca2d85e02dca5a8715 39c5a07ff74d9bc922678e06ecb7def97c0c5ab66641b2d41aedba741b9fbee6 a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a 122d17d8fa40cc9d6a4c1879094cdcf299c5e6e5a4e00c83a8bb807a7749bd80"
 
+WRAPPER_STAGE="/opt/etc/cron.5mins/.mihomo_watchdog.new.$$"
+CRONTAB_STAGE="/opt/etc/.mihomo-crontab.new.$$"
+CRON_CANDIDATE="/tmp/mihomo-crontab.new.$$"
+BACKUP_STAGE="/opt/etc/.mihomo-watchdog-backup.new.$$"
+
+# BEGIN WATCHDOG MANAGED FILES v1
+# Shared by installer and updater, both under the existing lifecycle lock.
+# Keenetic BusyBox stat does not provide GNU -c formatting.
+wd_file_state() {
+    local listing perms uid gid
+    [ -f "$1" ] && [ ! -L "$1" ] || return 1
+    listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 4 ] || return 1
+    perms="$1"; uid="$3"; gid="$4"
+    printf '%s:%s:%s\n' "$uid" "$gid" "$perms"
+}
+
+wd_permissions() {
+    local expected
+    case "$2" in
+        755) expected='-rwxr-xr-x' ;;
+        600) expected='-rw-------' ;;
+        *) return 1 ;;
+    esac
+    if [ "$(wd_file_state "$1")" != "0:0:$expected" ]; then
+        chown 0:0 "$1" && chmod "$2" "$1" || return 1
+    fi
+    [ "$(wd_file_state "$1")" = "0:0:$expected" ]
+}
+
+wd_wrapper_install() {
+    mkdir -p /opt/etc/cron.5mins || return 1
+    [ ! -L "$WATCHDOG_CRON" ] || return 1
+    if [ -f "$WATCHDOG_CRON" ] &&
+       [ "$(cat "$WATCHDOG_CRON")" = "$(printf '#!/bin/sh\nexec /opt/bin/mihomo_watchdog.sh "$@"\n')" ]; then
+        wd_permissions "$WATCHDOG_CRON" 755
+        return $?
+    fi
+    (umask 077; printf '#!/bin/sh\nexec /opt/bin/mihomo_watchdog.sh "$@"\n' > "$WRAPPER_STAGE") || return 1
+    sh -n "$WRAPPER_STAGE" && wd_permissions "$WRAPPER_STAGE" 755 || return 1
+    mv -f "$WRAPPER_STAGE" "$WATCHDOG_CRON"
+}
+
+wd_normalize_cron() {
+    # Only recognized five-minute project routes are normalized. Unknown active
+    # references are preserved and require operator review; comments are inert.
+    [ -f "$CRONTAB_FILE" ] && [ ! -L "$CRONTAB_FILE" ] || return 1
+    if ! awk -v direct='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog' '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ {lines[++n]=$0; next}
+    {
+        line=$0; norm=$0; gsub(/^[ \t]+|[ \t]+$/, "", norm); gsub(/[ \t]+/, " ", norm)
+        prefix="*/5 * * * * root "
+        cmd=substr(norm,length(prefix)+1)
+        if (substr(norm,1,length(prefix)) == prefix) {
+            if (cmd == "run-parts /opt/etc/cron.5mins" || cmd == "/opt/bin/run-parts /opt/etc/cron.5mins") {
+                if (!route) route=line
+                next
+            }
+            if (cmd == "/bin/sh /opt/etc/cron.5mins/mihomo_watchdog" || cmd == "/opt/etc/cron.5mins/mihomo_watchdog" ||
+                cmd == "/bin/sh /opt/bin/mihomo_watchdog.sh" || cmd == "/opt/bin/mihomo_watchdog.sh") next
+        }
+        if (index(norm,"mihomo_watchdog") || index(norm,"cron.5mins")) unknown=1
+        lines[++n]=line
+    }
+    END {
+        if (unknown) exit 2
+        for (i=1;i<=n;i++) print lines[i]
+        if (route) print route; else print direct
+    }' "$CRONTAB_FILE" > "$CRON_CANDIDATE"; then
+        return 1
+    fi
+    if cmp -s "$CRONTAB_FILE" "$CRON_CANDIDATE"; then
+        rm -f "$CRON_CANDIDATE"
+        return 0
+    fi
+    cp -p "$CRONTAB_FILE" "$CRONTAB_STAGE" &&
+        cat "$CRON_CANDIDATE" > "$CRONTAB_STAGE" || return 1
+    mv -f "$CRONTAB_STAGE" "$CRONTAB_FILE" || return 1
+    rm -f "$CRON_CANDIDATE"
+    if [ -x /opt/etc/init.d/S10cron ]; then /opt/etc/init.d/S10cron restart || return 1; fi
+}
+# END WATCHDOG MANAGED FILES v1
+
 # --- CLEANUP / SIGNALS ---
 cleanup() {
-    rm -f "$STAGE_FILE" "$TMP_FILE" 2>/dev/null || true
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
+    rm -f "$STAGE_FILE" "$TMP_FILE" "$WRAPPER_STAGE" "$CRONTAB_STAGE" "$BACKUP_STAGE" "$CRON_CANDIDATE" 2>/dev/null || true
+    ml_lifecycle_release || true
 }
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
@@ -173,14 +423,19 @@ download_watchdog_candidate() {
     if command -v curl >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if curl -fSsL "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
+            if curl -fSsL --connect-timeout 5 --max-time 20 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true
             sleep 2
         done
+        rm -f "$TMP_FILE" 2>/dev/null || true
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_dw_url" -o "$TMP_FILE" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$TMP_FILE" 2>/dev/null || true
         if command -v wget >/dev/null 2>&1; then
-            status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; trying wget fallback"
+            status_out "$COLOR_YELLOW" "[WARN] curl download failed after bounded retries; trying wget fallback"
         elif [ -z "${WATCHDOG_URL:-}" ]; then
             status_out "$COLOR_YELLOW" "[WARN] curl download failed after 3 attempts; wget unavailable, trying GitHub Contents API fallback"
         fi
@@ -208,7 +463,7 @@ download_watchdog_candidate() {
     if [ -z "${WATCHDOG_URL:-}" ] && command -v curl >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if curl -fSsL \
+            if curl -fSsL --connect-timeout 5 --max-time 20 \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then
@@ -217,10 +472,25 @@ download_watchdog_candidate() {
             rm -f "$TMP_FILE" 2>/dev/null || true
             sleep 2
         done
+        rm -f "$TMP_FILE" 2>/dev/null || true
+        if curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves X25519 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_dw_api" -o "$TMP_FILE" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$TMP_FILE" 2>/dev/null || true
     fi
 
     return 1
 }
+
+[ "$(id -u)" -eq 0 ] || { status_err "[ERROR] Run the watchdog updater as root"; exit 1; }
+ml_lifecycle_acquire || { status_err "[ERROR] Mihomo lifecycle busy or unverifiable"; exit 1; }
+umask 077
+for _wd_file in "$WATCHDOG_BIN" "$WATCHDOG_CRON" "$CRON_LEGACY_BAK" "$CRON_LEGACY_BAK_OLD"; do
+    [ ! -L "$_wd_file" ] || { status_err "[ERROR] Refusing symlink: $_wd_file"; exit 1; }
+done
 
 # --- OBJECT SANITY (fail conservatively, never write through anomalies) ---
 if [ -e "$WATCHDOG_BIN" ] && [ ! -f "$WATCHDOG_BIN" ]; then
@@ -248,16 +518,16 @@ rm -f /opt/bin/.mihomo_watchdog.sh.new.* 2>/dev/null || true
 # On BusyBox/run-parts an executable backup there can be scheduled as a second
 # watchdog. Move it out of the cron directory and make the backup non-executable.
 if [ -f "$CRON_LEGACY_BAK_OLD" ]; then
-    if cp -f "$CRON_LEGACY_BAK_OLD" "$CRON_LEGACY_BAK" 2>/dev/null; then
-        chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
-        rm -f "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
-        status_out "$COLOR_CYAN" "[INFO] Moved legacy watchdog backup out of cron.5mins"
-    else
-        chmod -x "$CRON_LEGACY_BAK_OLD" 2>/dev/null || true
-        status_out "$COLOR_YELLOW" "[WARN] Could not move old watchdog backup out of cron.5mins; executable bit removed"
-    fi
+    # Disable the old cron backup before any fallible copy/move.
+    chmod 600 "$CRON_LEGACY_BAK_OLD" || exit 1
+    cp -f "$CRON_LEGACY_BAK_OLD" "$BACKUP_STAGE" &&
+        wd_permissions "$BACKUP_STAGE" 600 &&
+        mv -f "$BACKUP_STAGE" "$CRON_LEGACY_BAK" &&
+        rm -f "$CRON_LEGACY_BAK_OLD" || exit 1
 fi
-rm -f /tmp/mihomo-watchdog.sh.new.* 2>/dev/null || true
+if [ -f "$CRON_LEGACY_BAK" ]; then wd_permissions "$CRON_LEGACY_BAK" 600 || exit 1; fi
+rm -f /tmp/mihomo-watchdog.sh.new.* /opt/etc/cron.5mins/.mihomo_watchdog.new.* \
+    /opt/etc/.mihomo-crontab.new.* /opt/etc/.mihomo-watchdog-backup.new.* || exit 1
 
 # --- DOWNLOAD + VALIDATE (in RAM, before touching anything on /opt) ---
 status_out "$COLOR_CYAN" "[INFO] Downloading watchdog..."
@@ -286,6 +556,7 @@ fi
 # --- INSTALL / UPDATE the canonical binary (unless already current) ---
 ALREADY_CURRENT=0
 if [ -f "$WATCHDOG_BIN" ] && cmp -s "$TMP_FILE" "$WATCHDOG_BIN" 2>/dev/null; then
+    wd_permissions "$WATCHDOG_BIN" 755 || exit 1
     ALREADY_CURRENT=1
     status_out "$COLOR_CYAN" "[INFO] Canonical watchdog is already current - no binary rewrite"
 else
@@ -304,7 +575,7 @@ else
         status_out "$COLOR_RED" "[ERROR] Staged watchdog failed the syntax check - installed watchdog untouched"
         exit 1
     fi
-    chmod +x "$STAGE_FILE" || {
+    wd_permissions "$STAGE_FILE" 755 || {
         status_out "$COLOR_RED" "[ERROR] Failed to set executable permission on the staged watchdog - installed watchdog untouched"
         exit 1
     }
@@ -338,80 +609,26 @@ fi
 
 case "$CRON_ACTION" in
     migrate)
-        # One bounded backup of the replaced managed legacy copy
-        # (overwritten on every migration, never accumulates).
-        if cp -f "$WATCHDOG_CRON" "$CRON_LEGACY_BAK" 2>/dev/null; then
-            chmod -x "$CRON_LEGACY_BAK" 2>/dev/null || true
-            status_out "$COLOR_CYAN" "[INFO] Legacy watchdog copy backed up to $CRON_LEGACY_BAK"
-        else
-            status_out "$COLOR_YELLOW" "[WARN] Could not back up the legacy watchdog copy (migrating anyway)"
-        fi
-        wrapper_content > "$WATCHDOG_CRON" || { status_out "$COLOR_RED" "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
-        chmod +x "$WATCHDOG_CRON" 2>/dev/null || true
-        status_out "$COLOR_CYAN" "[INFO] Managed legacy watchdog migrated: cron entry converted to wrapper"
+        cp -f "$WATCHDOG_CRON" "$BACKUP_STAGE" &&
+            wd_permissions "$BACKUP_STAGE" 600 &&
+            mv -f "$BACKUP_STAGE" "$CRON_LEGACY_BAK" || exit 1
+        wd_wrapper_install || exit 1
         ;;
-    create)
-        mkdir -p /opt/etc/cron.5mins
-        wrapper_content > "$WATCHDOG_CRON" || { status_out "$COLOR_RED" "[ERROR] Failed to write wrapper at $WATCHDOG_CRON"; exit 1; }
-        chmod +x "$WATCHDOG_CRON" 2>/dev/null || true
-        status_out "$COLOR_CYAN" "[INFO] Cron wrapper created: $WATCHDOG_CRON"
-        ;;
+    create) wd_wrapper_install || exit 1 ;;
+    ok) wd_permissions "$WATCHDOG_CRON" 755 || exit 1 ;;
+    *) exit 1 ;;
 esac
 
 # --- CRON SCHEDULE NORMALIZATION (duplicate prevention) ---
-# Only the exact managed direct line is ever removed or collapsed; any
-# other crontab line mentioning the watchdog is preserved and reported.
-if [ -f "$CRONTAB_FILE" ]; then
-    _runparts=$(grep "cron.5mins" "$CRONTAB_FILE" 2>/dev/null | grep -vc "mihomo_watchdog" || true)
-    _direct_exact=$(grep -cFx "$CRON_DIRECT" "$CRONTAB_FILE" 2>/dev/null || true)
-    # grep -c prints "0" AND exits 1 on no match: guard the value, never
-    # chain `|| echo 0` into the substitution (it would yield two lines).
-    _dc=$(grep -c "mihomo_watchdog" "$CRONTAB_FILE" 2>/dev/null)
-    case "$_dc" in ''|*[!0-9]*) _dc=0 ;; esac
-    _direct_var=$(( _dc - _direct_exact ))
-    _cron_changed=0
-    case "${_runparts:-0}" in
-        ''|*[!0-9]*) _runparts=0 ;;
-    esac
-    case "${_direct_exact:-0}" in
-        ''|*[!0-9]*) _direct_exact=0 ;;
-    esac
-    case "${_direct_var:-0}" in
-        ''|*[!0-9]*) _direct_var=0 ;;
-    esac
-    # grep -v exits 1 when every line matched (empty result) - its status
-    # is deliberately not part of the commit condition below.
-    if [ "${_runparts:-0}" -gt 0 ] && [ "${_direct_exact:-0}" -gt 0 ]; then
-        # A cron.5mins run-parts route exists: the managed direct line
-        # would execute the watchdog a second time every 5 minutes.
-        grep -vFx "$CRON_DIRECT" "$CRONTAB_FILE" > "$CRONTAB_FILE.tmp.$$" 2>/dev/null
-        mv -f "$CRONTAB_FILE.tmp.$$" "$CRONTAB_FILE" \
-            && { status_out "$COLOR_CYAN" "[INFO] Removed duplicate watchdog cron line (run-parts route already covers cron.5mins)"; _cron_changed=1; }
-        rm -f "$CRONTAB_FILE.tmp.$$" 2>/dev/null || true
-    elif [ "${_direct_exact:-0}" -ge 2 ]; then
-        grep -vFx "$CRON_DIRECT" "$CRONTAB_FILE" > "$CRONTAB_FILE.tmp.$$" 2>/dev/null
-        echo "$CRON_DIRECT" >> "$CRONTAB_FILE.tmp.$$"
-        mv -f "$CRONTAB_FILE.tmp.$$" "$CRONTAB_FILE" \
-            && { status_out "$COLOR_CYAN" "[INFO] Collapsed duplicate watchdog cron lines to one"; _cron_changed=1; }
-        rm -f "$CRONTAB_FILE.tmp.$$" 2>/dev/null || true
-    elif [ "${_direct_exact:-0}" -eq 0 ] && [ "${_direct_var:-0}" -eq 0 ] && [ "${_runparts:-0}" -eq 0 ]; then
-        echo "$CRON_DIRECT" >> "$CRONTAB_FILE" 2>/dev/null \
-            && { status_out "$COLOR_CYAN" "[INFO] Watchdog cron line added to $CRONTAB_FILE"; _cron_changed=1; }
-    fi
-    if [ "${_direct_var:-0}" -gt 0 ]; then
-        status_out "$COLOR_YELLOW" "[WARN] $CRONTAB_FILE has non-standard watchdog cron lines - preserved (possible duplicates, check manually)"
-    fi
-    if [ "$_cron_changed" -eq 1 ] && [ -x /opt/etc/init.d/S10cron ]; then
-        /opt/etc/init.d/S10cron restart >/dev/null 2>&1 || status_out "$COLOR_YELLOW" "[WARN] Cron restart failed - schedule changes apply at next cron reload"
-    fi
-else
-    status_out "$COLOR_YELLOW" "[WARN] No /opt/etc/crontab - watchdog schedule not verified"
-fi
+wd_normalize_cron || {
+    status_err "[ERROR] Cron normalization failed or an unrecognized active route needs manual review; crontab not blindly rewritten"
+    exit 1
+}
 
 # --- RESULT ---
 if has_marker "$WATCHDOG_BIN" && is_exact_wrapper; then
     if [ "$ALREADY_CURRENT" -eq 1 ] && [ "$CRON_ACTION" = "ok" ]; then
-        status_out "$COLOR_GREEN" "[OK] Watchdog already current (canonical binary + cron wrapper) - no changes made"
+        status_out "$COLOR_GREEN" "[OK] Watchdog already current (canonical binary + cron wrapper) - content already current; permissions/schedule verified"
     else
         status_out "$COLOR_GREEN" "[OK] Watchdog update complete (canonical binary + cron wrapper)"
     fi

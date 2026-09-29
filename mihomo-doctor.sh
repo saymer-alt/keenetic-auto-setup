@@ -1,7 +1,264 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
+# Only temporary coordination state is written; no service/config mutation.
+trap 'ml_lifecycle_release || true' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+
 # =========================================================
-# mihomo-doctor.sh v1.2.16 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.17 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -33,7 +290,7 @@
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.16"
+DOCTOR_VERSION="1.2.17"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -155,6 +412,9 @@ finding_action() {
             ;;
         *"Unsupported external /opt filesystem:"*)
             printf '%s' "Migrate/reformat the external Entware storage to EXT4, verify that Keenetic mounts it and Entware starts from it, then run Doctor again. This project never formats or converts storage."
+            ;;
+        *"Internal /opt flash protection is required"*|*"Internal /opt volatile-write protection is incomplete"*)
+            printf '%s' "Restore the project RAM-mode protection: keep /opt/etc/init.d/S00ubifs executable and ENABLED=yes, start it, and verify /opt/tmp, /opt/var/log and /opt/var/run are mounted as tmpfs; then run Doctor again."
             ;;
         *"Supported-profile component missing: dns-filter; runtime DNS interception is currently active"*)
             printf '%s' "No immediate runtime repair is required: DNS interception is live. This legacy installation does not match the supported component profile; install dns-filter before reprovisioning or rebuilding the component set, then re-check."
@@ -359,13 +619,19 @@ proxy_profile_class() {
 }
 
 # fetch_url URL -> globals FETCH_OUT (body) and FETCH_RC.
-# curl is tried first; an actual curl failure falls back to wget rather than
-# using wget only when curl is absent. Nothing is written to disk.
+# curl is tried first; after a bounded normal-TLS failure one X25519
+# compatibility retry is allowed before wget. Nothing is written to disk.
 fetch_url() {
     FETCH_OUT=""
     FETCH_RC=1
     if command -v curl >/dev/null 2>&1; then
         FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 "$1" 2>/dev/null)
+        FETCH_RC=$?
+        if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
+            return 0
+        fi
+        FETCH_OUT=""
+        FETCH_OUT=$(curl -fsSL --connect-timeout 5 --max-time 15 -4 --curves X25519 "$1" 2>/dev/null)
         FETCH_RC=$?
         if [ "$FETCH_RC" -eq 0 ] && [ -n "$FETCH_OUT" ]; then
             return 0
@@ -396,6 +662,21 @@ run_with_timeout() {
         RUN_OUT=$( "$@" 2>&1 )
     fi
     RUN_RC=$?
+}
+
+# Reserve lifecycle only for executable diagnostics; re-observe under the lock.
+# 125 is SKIPPED / UNVERIFIED, never a binary/config failure.
+doctor_mihomo_probe() {
+    RUN_OUT=""
+    RUN_RC=125
+    PROBE_SKIPPED=1
+    ml_lifecycle_acquire || return 0
+    observe_mihomo_procs
+    if [ "$MIHOMO_PROCS" -eq 0 ]; then
+        PROBE_SKIPPED=0
+        run_with_timeout "$@"
+    fi
+    ml_lifecycle_release || true
 }
 
 # port_listening N -> PL_RC: 0 listening, 1 not listening,
@@ -449,28 +730,21 @@ udp_listening() {
     fi
 }
 
-# observe_mihomo_procs -> MIHOMO_PROCS + MIHOMO_PIDS. pidof
-# preferred; without it, scan /proc cmdlines for argv0 basename ==
-# "mihomo" (the watchdog and this doctor have different basenames
-# and are not counted). Observed ONCE near the start and reused by
-# the later sections: the report is an interval observation, not an
-# atomic snapshot.
+# Interval observation: -1 means unknown, 0 proven stopped, positive running.
+# The shared detector prefers pidof and falls back to executable identity in /proc.
+# Executable diagnostics re-observe under lifecycle ownership.
 observe_mihomo_procs() {
-    MIHOMO_PROCS=0
-    MIHOMO_PIDS=""
-    if command -v pidof >/dev/null 2>&1; then
-        MIHOMO_PIDS=$(pidof mihomo 2>/dev/null)
+    if mp_state; then
+        MIHOMO_STATE=running
+        MIHOMO_PIDS=$MP_PIDS
         set -- $MIHOMO_PIDS
         MIHOMO_PROCS=$#
     else
-        for _p in /proc/[0-9]*/cmdline; do
-            _pid=${_p%/cmdline}; _pid=${_pid#/proc/}
-            [ "$_pid" = "$$" ] && continue
-            _a0=$(tr '\000' '\n' < "$_p" 2>/dev/null | head -n 1)
-            [ "$(basename "$_a0" 2>/dev/null)" = "mihomo" ] || continue
-            MIHOMO_PIDS="$MIHOMO_PIDS $_pid"
-            MIHOMO_PROCS=$((MIHOMO_PROCS+1))
-        done
+        _mp_rc=$?
+        MIHOMO_PIDS=""
+        MIHOMO_PROCS=-1
+        MIHOMO_STATE=unknown
+        if [ "$_mp_rc" -eq 1 ]; then MIHOMO_PROCS=0; MIHOMO_STATE=stopped; fi
     fi
 }
 
@@ -867,6 +1141,32 @@ DOC_SYS_CLASS_BLOCK="${DOCTOR_SYS_CLASS_BLOCK:-/sys/class/block}"
 # nodes, cannot host swap); USB/NVMe disks appear as /dev/sd*|/dev/nvme*
 # with partitions mounted under /tmp/mnt/*. Sources are overridable
 # (DOCTOR_MEMINFO, DOCTOR_SWAPS, DOCTOR_MOUNTS) for read-only testing.
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number listing perms major minor expected sys_class
+    [ "$2" = partition ] || return 1
+    sys_class="$3"
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
+
 _doc_classify_mount() {
     case "$2" in
         ubifs|squashfs) echo internal; return 0 ;;
@@ -923,6 +1223,73 @@ _doc_opt_fstype() {
     done < "$MOUNTS_SRC"
     echo "$_doc_of_fst"
 }
+
+# BEGIN DOCTOR STORAGE PROTECTION v1
+# Resolve the deepest mount carrying a path and expose the actual Entware
+# location instead of reporting only an internal/external class.
+_doc_resolve_mount() {
+    _doc_rm_path="${1:-$OPT_ROOT}"
+    _doc_rm_bl=0
+    DOC_MOUNT_SOURCE=unknown
+    DOC_MOUNTPOINT=unknown
+    DOC_MOUNT_FSTYPE=unknown
+    DOC_MOUNT_CLASS=unknown
+    [ -r "$MOUNTS_SRC" ] || return 1
+    while read -r _doc_rm_src _doc_rm_mp _doc_rm_fst _doc_rm_rest; do
+        case "$_doc_rm_path" in
+            "$_doc_rm_mp") ;;
+            *) case "$_doc_rm_path" in
+                   "$_doc_rm_mp"/*) ;;
+                   *) continue ;;
+               esac ;;
+        esac
+        _doc_rm_len=${#_doc_rm_mp}
+        [ "$_doc_rm_len" -ge "$_doc_rm_bl" ] || continue
+        _doc_rm_bl=$_doc_rm_len
+        DOC_MOUNT_SOURCE=$_doc_rm_src
+        DOC_MOUNTPOINT=$_doc_rm_mp
+        DOC_MOUNT_FSTYPE=$_doc_rm_fst
+        DOC_MOUNT_CLASS=$(_doc_classify_mount "$_doc_rm_src" "$_doc_rm_fst")
+    done < "$MOUNTS_SRC"
+    [ "$DOC_MOUNTPOINT" != unknown ]
+}
+
+_doc_exact_tmpfs_mount() {
+    [ -r "$MOUNTS_SRC" ] || return 1
+    awk -v path="$1" '$2 == path && $3 == "tmpfs" {found=1} END {exit !found}' "$MOUNTS_SRC"
+}
+
+_doc_check_internal_flash_protection() {
+    _doc_fp_script="$OPT_ROOT/etc/init.d/S00ubifs"
+    _doc_fp_missing=""
+
+    if [ ! -f "$_doc_fp_script" ]; then
+        fail "Internal /opt flash protection is required but S00ubifs is missing"
+    elif [ ! -x "$_doc_fp_script" ]; then
+        fail "Internal /opt flash protection is required but S00ubifs is not executable"
+    elif ! grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]*(#.*)?)?$' "$_doc_fp_script" 2>/dev/null; then
+        fail "Internal /opt flash protection is required but S00ubifs is disabled"
+    else
+        ok "Internal /opt flash protection service is present, executable and enabled (S00ubifs)"
+    fi
+
+    for _doc_fp_dir in "$OPT_ROOT/tmp" "$OPT_ROOT/var/log" "$OPT_ROOT/var/run"; do
+        if ! _doc_exact_tmpfs_mount "$_doc_fp_dir"; then
+            if [ -n "$_doc_fp_missing" ]; then
+                _doc_fp_missing="$_doc_fp_missing, $_doc_fp_dir"
+            else
+                _doc_fp_missing=$_doc_fp_dir
+            fi
+        fi
+    done
+
+    if [ -z "$_doc_fp_missing" ]; then
+        ok "Internal /opt volatile-write protection is active: $OPT_ROOT/tmp, $OPT_ROOT/var/log and $OPT_ROOT/var/run are tmpfs"
+    else
+        fail "Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing: $_doc_fp_missing"
+    fi
+}
+# END DOCTOR STORAGE PROTECTION v1
 _doc_swap_source_capacity_kb() {
     _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
     case "$_dsc_type" in
@@ -956,8 +1323,10 @@ _doc_scan_swap() {
                 _doc_deleted_count=$((_doc_deleted_count + 1))
                 continue
                 ;;
-            *zram*) _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue ;;
         esac
+        if swap_is_zram "$_doc_sw_file" "$_doc_sw_type" "$DOC_SYS_CLASS_BLOCK"; then
+            _doc_zram_kb=$((_doc_zram_kb + _doc_sw_size)); continue
+        fi
         case "$_doc_sw_type" in
             partition)
                 case "$_doc_sw_file" in
@@ -985,13 +1354,25 @@ _doc_scan_swap() {
     [ "$_doc_ext_kb" -gt "$DOC_SWAP_MAX_KB" ] 2>/dev/null && _doc_ext_oversize=1
 }
 
+_doc_resolve_mount "$OPT_ROOT" || true
 _doc_opt=$(_doc_opt_class)
 _doc_opt_fstype_value=$(_doc_opt_fstype)
+info "Entware /opt mount: source=${DOC_MOUNT_SOURCE:-unknown}; mountpoint=${DOC_MOUNTPOINT:-unknown}; filesystem=${DOC_MOUNT_FSTYPE:-${_doc_opt_fstype_value:-unknown}}; class=${DOC_MOUNT_CLASS:-$_doc_opt}"
 case "$_doc_opt" in
-    internal) info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
-    external) info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
-    ram)      info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent" ;;
-    *)        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})" ;;
+    internal)
+        info "/opt storage: internal Keenetic storage (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        _doc_check_internal_flash_protection
+        ;;
+    external)
+        info "/opt storage: external persistent storage (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        info "Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage"
+        ;;
+    ram)
+        info "/opt storage: RAM-backed (tmpfs/ramfs) - not persistent"
+        ;;
+    *)
+        info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})"
+        ;;
 esac
 
 if [ "$_doc_opt" = external ]; then
@@ -1169,8 +1550,8 @@ hdr "3. Mihomo binary"
 RUNTIME_EXE=""
 _RUNTIME_SEEN=""
 _READLINK_FAILED=0
-if command -v pidof >/dev/null 2>&1; then
-    for _p in $(pidof mihomo 2>/dev/null); do
+if mp_known; then
+    for _p in $(mp_pids); do
         _exe=$(readlink "/proc/$_p/exe" 2>/dev/null)
         if [ -z "$_exe" ]; then
             _READLINK_FAILED=1
@@ -1252,10 +1633,19 @@ if [ -n "$BIN" ]; then
         fi
         probe_controller_version
     else
-        run_with_timeout 15 "$BIN" -v
+        doctor_mihomo_probe 15 "$BIN" -v
         MV_RC=$RUN_RC
         MV_OUT=$RUN_OUT
         case "$MV_RC" in
+            125)
+                if [ "$PROBE_SKIPPED" -eq 1 ]; then
+                    BIN_STATE="unverified"
+                    info "Mihomo executable probe SKIPPED / UNVERIFIED: lifecycle busy, runtime unknown, or daemon appeared since the initial observation."
+                else
+                    BIN_STATE="execfail"
+                    fail "Mihomo binary execution failed (exit 125)"
+                fi
+                ;;
             0)
                 BIN_STATE="ok"
                 BIN_VER=$(first_line "$MV_OUT" | awk '{print $3}')
@@ -1487,8 +1877,10 @@ else
     if [ "$DAEMON_RUNNING" -eq 1 ]; then
         info "Config validation SKIPPED / UNVERIFIED: Mihomo is running and 'mihomo -t' would execute a second Mihomo (the established SIGSEGV pattern on constrained hardware) - the one-Mihomo invariant wins. The running config is NOT judged by this test; stop the service to enable the executable validation."
     elif [ "$BIN_STATE" = "ok" ]; then
-        run_with_timeout 30 "$BIN" -d "$CONFIG_DIR" -t
-        if [ "$RUN_RC" -eq 0 ]; then
+        doctor_mihomo_probe 30 "$BIN" -d "$CONFIG_DIR" -t
+        if [ "$PROBE_SKIPPED" -eq 1 ]; then
+            info "Config test SKIPPED / UNVERIFIED: lifecycle busy, runtime unknown, or daemon appeared since the initial observation."
+        elif [ "$RUN_RC" -eq 0 ]; then
             ok "Config test passed ($BIN -d $CONFIG_DIR -t)"
         else
             fail "Config test FAILED (exit $RUN_RC) - the running config is rejected by this Mihomo version"
@@ -1521,7 +1913,9 @@ fi
 
 # Process state was observed once at the top of section 3 and is
 # reused here (interval observation, not an atomic snapshot).
-if [ "$MIHOMO_PROCS" -gt 0 ]; then
+if [ "$MIHOMO_PROCS" -lt 0 ]; then
+    warn "Mihomo runtime UNKNOWN: process visibility is incomplete; no executable probe is allowed."
+elif [ "$MIHOMO_PROCS" -gt 0 ]; then
     if [ -n "$INIT_SCRIPT" ]; then
         ok "Mihomo is running ($MIHOMO_PROCS process(es)), managed by $INIT_SCRIPT"
     else
@@ -1538,14 +1932,16 @@ else
     fi
 fi
 if ! command -v pidof >/dev/null 2>&1; then
-    info "pidof unavailable - process count done via /proc scan"
+    info "pidof unavailable - process state evaluated via /proc; incomplete visibility remains UNKNOWN"
 fi
 
 # =========================================================
 hdr "6. Ports"
 # =========================================================
 
-if [ "$MIHOMO_PROCS" -eq 0 ]; then
+if [ "$MIHOMO_PROCS" -lt 0 ]; then
+    info "Runtime UNKNOWN; listener availability cannot prove Mihomo identity."
+elif [ "$MIHOMO_PROCS" -eq 0 ]; then
     info "Mihomo is not running - listener checks are informational only"
     port_listening "$CONTRACT_PORT"
     if [ "$PL_RC" -eq 0 ]; then
@@ -2369,15 +2765,15 @@ _WDEOF
             if [ "$MIHOMO_PROCS" -gt 0 ]; then
                 warn "Historical stability: WARN - Mihomo is running now, but there was $WD_STAB_WHY; the current running state does not by itself prove stability"
             else
-                warn "Historical stability: WARN - $WD_STAB_WHY (and the service is currently stopped)"
+                warn "Historical stability: WARN - $WD_STAB_WHY (service state: ${MIHOMO_STATE:-unknown})"
             fi
         else
             if [ "$WD_RECENT" -eq 1 ] && [ "$WD_RECOVERY_CONFIRMED" -eq 1 ]; then
                 ok "Historical stability: OK - one isolated watchdog restart in the last 24h was followed by a healthy check; no repeated/rate-limited pattern is present"
             elif [ "$WD_PEN" -gt 0 ]; then
-                ok "Historical stability: OK - no warning-level recent intervention pattern (older or isolated events may be on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
+                ok "Historical stability: OK - no warning-level recent intervention pattern (older or isolated events may be on record; service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo "${MIHOMO_STATE:-unknown}"))"
             else
-                ok "Historical stability: OK - no watchdog interventions on record (service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo stopped))"
+                ok "Historical stability: OK - no watchdog interventions on record (service currently $( [ "$MIHOMO_PROCS" -gt 0 ] && echo running || echo "${MIHOMO_STATE:-unknown}"))"
             fi
         fi
 

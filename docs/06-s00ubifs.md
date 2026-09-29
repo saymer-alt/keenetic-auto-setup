@@ -58,6 +58,12 @@ Entware активно пишет:
 
 ### При старте
 
+Development C4: уже существующий tmpfs пропускается; non-tmpfs mount на целевом
+пути — ошибка без unmount/remount. Failed mount возвращает non-zero и прекращает
+setup; уже успешно смонтированные каталоги сохраняются. Повторный start пропускает
+их и продолжает оставшиеся. Status возвращает non-zero при неполном наборе tmpfs.
+RAM installer останавливается при ошибке S00ubifs; disabled service остаётся no-op.
+
 Размеры подбираются автоматически по свободной RAM (профили):
 
 | Профиль | Свободная RAM | /opt/tmp | /opt/var/log | /opt/var/run |
@@ -87,6 +93,24 @@ mount -t tmpfs -o size=$SIZE,mode=$MODE,noatime,nosuid,nodev tmpfs "$d"
 * временные файлы
 * сокеты
 * PID
+
+### Обязательная проверка Doctor для внутреннего Entware
+
+Doctor теперь выводит фактическое размещение Entware `/opt`: source, mountpoint,
+filesystem и класс `internal` / `external`.
+
+Если `/opt` находится во внутренней памяти Keenetic, защита volatile-записей является
+обязательной частью поддерживаемого профиля. Doctor требует одновременно:
+
+* `/opt/etc/init.d/S00ubifs` существует, executable и содержит `ENABLED=yes`;
+* `/opt/tmp` реально смонтирован как `tmpfs`;
+* `/opt/var/log` реально смонтирован как `tmpfs`;
+* `/opt/var/run` реально смонтирован как `tmpfs`.
+
+Отсутствие любого из этих условий — **FAIL**, потому что одного файла S00ubifs
+недостаточно: Doctor проверяет фактическую активную защиту внутренней флеш-памяти.
+Для Entware на внешнем persistent storage эта проверка показывается как N/A/INFO:
+внутренняя NAND не является носителем `/opt`.
 
 ---
 

@@ -1,5 +1,256 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
+
 set -e
 
 echo "=== Keenetic Auto Setup ==="
@@ -40,6 +291,7 @@ TMP_DIR="/tmp"
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
+ASSET_DOWNLOAD_MAX_TIME=180
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -97,8 +349,18 @@ WATCHDOG_STAGE="/opt/bin/.mihomo_watchdog.sh.new.$$"
 # Cleanup temp files on any exit (the watchdog stage lives on /opt,
 # next to its final destination - a /tmp -> /opt move is not atomic
 # and must never be claimed as such)
-MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"
-trap 'rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE"' EXIT INT TERM HUP
+MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"
+installer_cleanup() {
+    # Shared temporary names may only be cleaned while this installer owns lifecycle.
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
+    rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE" "${WRAPPER_STAGE:-}" "${CRONTAB_STAGE:-}" "${CRON_CANDIDATE:-}"
+    ml_lifecycle_release || true
+}
+trap installer_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # ---------------------------
 # CHECK BASE
@@ -147,6 +409,32 @@ SWAP_MAX_KB=2097152       # 2 GiB project/vendor cap for external storage-backed
 SYS_CLASS_BLOCK="${INSTALL_SYS_CLASS_BLOCK:-/sys/class/block}"
 PROC_MOUNTS="${INSTALL_MOUNTS:-/proc/mounts}"
 PROC_SWAPS="${INSTALL_SWAPS:-/proc/swaps}"
+
+# BEGIN ZRAM IDENTITY v1
+# Active partition + real block device + matching zramN sysfs device number.
+# BusyBox stat on Keenetic lacks GNU -c; use portable ls -ln metadata instead.
+# Missing/contradictory evidence is unverified, never native zRAM.
+swap_is_zram() {
+    local path name number listing perms major minor expected sys_class
+    [ "$2" = partition ] || return 1
+    sys_class="$3"
+    path=$(readlink -f "$1" 2>/dev/null) || return 1
+    name=${path##*/}
+    case "$name" in zram*) number=${name#zram} ;; *) return 1 ;; esac
+    case "$number" in ''|*[!0-9]*) return 1 ;; esac
+    listing=$(LC_ALL=C ls -ln "$path" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 6 ] || return 1
+    perms="$1"
+    case "$perms" in b?????????) ;; *) return 1 ;; esac
+    major=${5%,}
+    minor="$6"
+    case "$major:$minor" in ''|*[!0-9:]*) return 1 ;; esac
+    expected=$(cat "$sys_class/$name/dev" 2>/dev/null) || return 1
+    case "$expected" in ''|*[!0-9:]*) return 1 ;; esac
+    [ "$major:$minor" = "$expected" ]
+}
+# END ZRAM IDENTITY v1
 
 # classify_mount SOURCE FSTYPE -> internal | external | ram | unknown
 classify_mount() {
@@ -250,8 +538,10 @@ scan_swap_backends() {
                 SW_DELETED_COUNT=$((SW_DELETED_COUNT + 1))
                 continue
                 ;;
-            *zram*) SW_ZRAM_KB=$((SW_ZRAM_KB + _sw_size)); continue ;;
         esac
+        if swap_is_zram "$_sw_file" "$_sw_type" "$SYS_CLASS_BLOCK"; then
+            SW_ZRAM_KB=$((SW_ZRAM_KB + _sw_size)); continue
+        fi
         case "$_sw_type" in
             partition)
                 # Keenetic internal storage (UBIFS) has no block-device nodes
@@ -563,6 +853,8 @@ require_project_keeneticos_components() {
 }
 
 require_project_keeneticos_components
+ml_lifecycle_acquire || err "Mihomo lifecycle is busy or unverifiable; installation not started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
+mp_known || err "Mihomo runtime UNKNOWN; installation not started."
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
@@ -626,6 +918,49 @@ project_script_candidate_ok() {
     sh -n "$_psc_file" >/dev/null 2>&1
 }
 
+# Invalidate each attempt, including retries within one transport. A successful
+# attempt that writes nothing must not inherit a failed attempt's valid prefix.
+project_script_transfer() {
+    _pst_dest="$1"
+    shift
+    rm -f "$_pst_dest" || return 1
+    if "$@"; then
+        return 0
+    fi
+    rm -f "$_pst_dest"
+    return 1
+}
+
+project_script_curl_retry() {
+    _pc_url="$1"
+    _pc_dest="$2"
+    _pc_api="${3:-0}"
+
+    if [ "$_pc_api" -eq 1 ]; then
+        if retry_silent project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_pc_url" -o "$_pc_dest"; then
+            return 0
+        fi
+        project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 -4 --curves X25519 \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_pc_url" -o "$_pc_dest"
+    else
+        if retry_silent project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 \
+            "$_pc_url" -o "$_pc_dest"; then
+            return 0
+        fi
+        project_script_transfer "$_pc_dest" curl -fsSL \
+            --connect-timeout 5 --max-time 20 -4 --curves X25519 \
+            "$_pc_url" -o "$_pc_dest"
+    fi
+}
+
 project_script_download() {
     _psd_rel="$1"
     _psd_dest="$2"
@@ -634,13 +969,13 @@ project_script_download() {
     _psd_raw="$PROJECT_RAW_BASE/$_psd_rel"
     _psd_api="$PROJECT_API_CONTENTS/$_psd_rel?ref=$PROJECT_REF"
 
-    rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+    rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || return 1
 
-    if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then
+    if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then
         if project_script_candidate_ok "$_psd_tmp"; then
             :
         else
-            rm -f "$_psd_tmp"
+            rm -f "$_psd_tmp" || return 1
             if command -v wget >/dev/null 2>&1; then
                 warn "raw/curl returned an invalid script candidate for $_psd_rel; trying wget fallback"
             else
@@ -650,39 +985,40 @@ project_script_download() {
     else
         # curl may leave a partial non-empty file after a reset; never let that
         # suppress the next transport.
-        rm -f "$_psd_tmp"
+        rm -f "$_psd_tmp" || return 1
         if command -v wget >/dev/null 2>&1; then
-            warn "raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback"
+            warn "raw/curl failed after bounded retries for $_psd_rel; trying wget fallback"
         else
-            warn "raw/curl failed after 3 attempts for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
+            warn "raw/curl failed after bounded retries for $_psd_rel; wget unavailable, trying GitHub Contents API fallback"
         fi
     fi
 
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
-        rm -f "$_psd_tmp"
-        if retry_silent wget -qO "$_psd_tmp" "$_psd_raw"; then
+        rm -f "$_psd_tmp" || return 1
+        if retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"; then
             if project_script_candidate_ok "$_psd_tmp"; then
                 :
             else
                 warn "raw/wget returned an invalid script candidate for $_psd_rel; trying GitHub Contents API fallback"
-                rm -f "$_psd_tmp"
+                rm -f "$_psd_tmp" || return 1
             fi
         else
-            rm -f "$_psd_tmp"
+            rm -f "$_psd_tmp" || return 1
             warn "raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback"
         fi
     fi
 
     if [ ! -s "$_psd_tmp" ]; then
-        rm -f "$_psd_tmp"
-        if retry_silent curl -fsSL \
-            -H "Accept: application/vnd.github.raw+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$_psd_api" -o "$_psd_tmp"; then
+        rm -f "$_psd_tmp" || return 1
+        if project_script_curl_retry "$_psd_api" "$_psd_tmp" 1; then
             if ! project_script_candidate_ok "$_psd_tmp"; then
                 warn "GitHub Contents API returned an invalid script candidate for $_psd_rel"
-                rm -f "$_psd_tmp"
+                rm -f "$_psd_tmp" || return 1
             fi
+        else
+            # Syntax-valid partial content is still invalid after transport failure.
+            rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
+            return 1
         fi
     fi
 
@@ -716,7 +1052,10 @@ fetch_url_text() {
     _fut_out=""
 
     if command -v curl >/dev/null 2>&1; then
-        _fut_out=$(retry_silent curl -fsSL "$_fut_url") || _fut_out=""
+        _fut_out=$(retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_fut_url") || _fut_out=""
+        if [ -z "$_fut_out" ]; then
+            _fut_out=$(curl -fsSL --connect-timeout 5 --max-time 20 -4 --curves X25519 "$_fut_url" 2>/dev/null) || _fut_out=""
+        fi
         if [ -n "$_fut_out" ]; then
             printf '%s' "$_fut_out"
             return 0
@@ -741,7 +1080,11 @@ download_url_file() {
     rm -f "$_duf_dst" 2>/dev/null || true
 
     if command -v curl >/dev/null 2>&1; then
-        if retry_silent curl -fL "$_duf_url" -o "$_duf_dst"; then
+        if retry_silent curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"; then
+            [ -s "$_duf_dst" ] && return 0
+        fi
+        rm -f "$_duf_dst" 2>/dev/null || true
+        if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
@@ -749,7 +1092,7 @@ download_url_file() {
 
     if command -v wget >/dev/null 2>&1; then
         warn "curl download failed after 3 attempts; trying wget fallback"
-        if retry_silent wget -qO "$_duf_dst" "$_duf_url"; then
+        if retry_silent wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
@@ -806,7 +1149,7 @@ if [ "$MODE" = "ram" ]; then
 
     if project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"; then
         chmod +x /opt/etc/init.d/S00ubifs
-        /opt/etc/init.d/S00ubifs start || warn "S00ubifs start failed"
+        /opt/etc/init.d/S00ubifs start || err "S00ubifs start failed; RAM mode initialization incomplete"
     else
         warn "S00ubifs download failed after raw/curl, raw/wget and GitHub API fallbacks"
     fi
@@ -842,14 +1185,9 @@ resolve_installed_mihomo() {
 }
 
 # Conservative one-Mihomo guard used by both the early informational version
-# probe and the final self-check. If pidof is unavailable, executable probes
-# are skipped rather than risking a second Mihomo process.
+# probe and final self-check. Only a positive stopped observation permits ELF probes.
 mihomo_running() {
-    if command -v pidof >/dev/null 2>&1; then
-        pidof mihomo >/dev/null 2>&1
-    else
-        return 0
-    fi
+    mp_running
 }
 
 REPO_OWNER="saymer-alt"
@@ -863,6 +1201,25 @@ case "$ARCH" in
     *) err "Unsupported arch: $ARCH" ;;
 esac
 
+# Select a unique exact package basename for the already-detected architecture.
+# Input is one URL/path per line from jq, API grep or HTML; duplicates are harmless.
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name, length(name)-length(suffix)+1) != suffix) next
+        version=substr(name, 8, length(name)-7-length(suffix))
+        if (substr(name,1,7) != "mihomo_" || version !~ /^[0-9][A-Za-z0-9.+-]*$/) next
+        if (!seen[url]++) {selected=url; count++}
+    }
+    END {if (count == 1) print selected; else if (count > 1) exit 2; else exit 1}'
+}
+
+asset_selection_failed() {
+    [ "$1" -ne 2 ] || err "Ambiguous Mihomo packages for $IPK_SUFFIX; refusing selection or feed fallback"
+    return 0
+}
+
 MIHOMO_RESTART_NEEDED=0
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
 
@@ -870,6 +1227,7 @@ if [ -n "$MIHOMO_BIN" ]; then
     log "Existing Mihomo binary found at $MIHOMO_BIN - package install/upgrade skipped"
     log "Use update-mihomo.sh to update an installed Mihomo transactionally"
 else
+    mp_stopped || err "Cannot prove Mihomo stopped before package installation."
     log "Installing Mihomo..."
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
@@ -878,38 +1236,35 @@ else
     DOWNLOAD_URL=""
 
     if [ -n "$ASSETS_JSON" ]; then
-        DOWNLOAD_URL=$(echo "$ASSETS_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-            .assets[]?
-            | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk"))
+        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" | jq -r '
+            .assets[]? | select(.name == (.browser_download_url | split("/") | last))
             | .browser_download_url
-        ' 2>/dev/null | head -n 1)
+        ' 2>/dev/null | select_mihomo_asset) || asset_selection_failed "$?"
     fi
 
-    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    if [ -z "$DOWNLOAD_URL" ]; then
         log "jq filter empty, trying grep fallback on API response..."
-        if [ -n "$ASSETS_JSON" ]; then
-            DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
-        fi
+        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
+            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
+            select_mihomo_asset) || asset_selection_failed "$?"
     fi
 
-    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    if [ -z "$DOWNLOAD_URL" ]; then
         log "API failed, trying direct API grep..."
         ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
-        if [ -n "$ASSETS_JSON" ]; then
-            DOWNLOAD_URL=$(echo "$ASSETS_JSON" | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | head -1 | sed 's/.*": *"//;s/"$//')
-        fi
+        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
+            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
+            select_mihomo_asset) || asset_selection_failed "$?"
     fi
 
-    if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+    if [ -z "$DOWNLOAD_URL" ]; then
         log "Trying HTML scraping..."
         HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
         HTML_BODY=$(fetch_url_text "$HTML_URL") || HTML_BODY=""
-        REL_PATH=$(printf '%s' "$HTML_BODY" | \
-            grep -oE 'href="[^"]*releases/download/[^"]*mihomo_[^"]*_'$IPK_SUFFIX'\.ipk"' | \
-            head -n 1 | cut -d'"' -f2)
-        if [ -n "$REL_PATH" ]; then
-            DOWNLOAD_URL="https://github.com$REL_PATH"
-        fi
+        REL_PATH=$(printf '%s\n' "$HTML_BODY" |
+            grep -oE 'href="/[^"]*releases/download/[^"]*"' | cut -d'"' -f2 |
+            select_mihomo_asset) || asset_selection_failed "$?"
+        if [ -n "$REL_PATH" ]; then DOWNLOAD_URL="https://github.com$REL_PATH"; fi
     fi
 
     # GitHub Releases are the primary package source; the Entware feed below
@@ -947,8 +1302,8 @@ else
     [ -z "$MIHOMO_BIN" ] && err "Mihomo package installation completed but no executable canonical binary was found at /opt/sbin/mihomo or /opt/bin/mihomo"
 fi
 
-if mihomo_running; then
-    log "Mihomo version probe skipped - daemon is running (one-Mihomo invariant)"
+if ! mp_stopped; then
+    log "Mihomo version probe skipped - daemon is running or state is unknown (one-Mihomo invariant)"
 elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
     log "Mihomo version: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
 else
@@ -986,6 +1341,7 @@ ensure_bootstrap_config() {
     fi
 
     if [ "$_replace" -eq 1 ]; then
+        mp_known || err "Runtime UNKNOWN; bootstrap config not changed."
         log "Writing bootstrap config (mixed-port 7890)..."
         cat > "$_config" <<'EOF' || err "Failed to write required Mihomo bootstrap config"
 # Bootstrap config installed by keenetic-auto-setup.
@@ -1388,6 +1744,90 @@ log "Installing watchdog..."
 
 WATCHDOG_BIN="/opt/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="/opt/etc/cron.5mins/mihomo_watchdog"
+CRONTAB_FILE="/opt/etc/crontab"
+WRAPPER_STAGE="/opt/etc/cron.5mins/.mihomo_watchdog.new.$$"
+CRONTAB_STAGE="/opt/etc/.mihomo-crontab.new.$$"
+CRON_CANDIDATE="/tmp/mihomo-crontab.new.$$"
+BACKUP_STAGE="/opt/etc/.mihomo-watchdog-backup.new.$$"
+# BEGIN WATCHDOG MANAGED FILES v1
+# Shared by installer and updater, both under the existing lifecycle lock.
+# Keenetic BusyBox stat does not provide GNU -c formatting.
+wd_file_state() {
+    local listing perms uid gid
+    [ -f "$1" ] && [ ! -L "$1" ] || return 1
+    listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+    set -- $listing
+    [ "$#" -ge 4 ] || return 1
+    perms="$1"; uid="$3"; gid="$4"
+    printf '%s:%s:%s\n' "$uid" "$gid" "$perms"
+}
+
+wd_permissions() {
+    local expected
+    case "$2" in
+        755) expected='-rwxr-xr-x' ;;
+        600) expected='-rw-------' ;;
+        *) return 1 ;;
+    esac
+    if [ "$(wd_file_state "$1")" != "0:0:$expected" ]; then
+        chown 0:0 "$1" && chmod "$2" "$1" || return 1
+    fi
+    [ "$(wd_file_state "$1")" = "0:0:$expected" ]
+}
+
+wd_wrapper_install() {
+    mkdir -p /opt/etc/cron.5mins || return 1
+    [ ! -L "$WATCHDOG_CRON" ] || return 1
+    if [ -f "$WATCHDOG_CRON" ] &&
+       [ "$(cat "$WATCHDOG_CRON")" = "$(printf '#!/bin/sh\nexec /opt/bin/mihomo_watchdog.sh "$@"\n')" ]; then
+        wd_permissions "$WATCHDOG_CRON" 755
+        return $?
+    fi
+    (umask 077; printf '#!/bin/sh\nexec /opt/bin/mihomo_watchdog.sh "$@"\n' > "$WRAPPER_STAGE") || return 1
+    sh -n "$WRAPPER_STAGE" && wd_permissions "$WRAPPER_STAGE" 755 || return 1
+    mv -f "$WRAPPER_STAGE" "$WATCHDOG_CRON"
+}
+
+wd_normalize_cron() {
+    # Only recognized five-minute project routes are normalized. Unknown active
+    # references are preserved and require operator review; comments are inert.
+    [ -f "$CRONTAB_FILE" ] && [ ! -L "$CRONTAB_FILE" ] || return 1
+    if ! awk -v direct='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog' '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ {lines[++n]=$0; next}
+    {
+        line=$0; norm=$0; gsub(/^[ \t]+|[ \t]+$/, "", norm); gsub(/[ \t]+/, " ", norm)
+        prefix="*/5 * * * * root "
+        cmd=substr(norm,length(prefix)+1)
+        if (substr(norm,1,length(prefix)) == prefix) {
+            if (cmd == "run-parts /opt/etc/cron.5mins" || cmd == "/opt/bin/run-parts /opt/etc/cron.5mins") {
+                if (!route) route=line
+                next
+            }
+            if (cmd == "/bin/sh /opt/etc/cron.5mins/mihomo_watchdog" || cmd == "/opt/etc/cron.5mins/mihomo_watchdog" ||
+                cmd == "/bin/sh /opt/bin/mihomo_watchdog.sh" || cmd == "/opt/bin/mihomo_watchdog.sh") next
+        }
+        if (index(norm,"mihomo_watchdog") || index(norm,"cron.5mins")) unknown=1
+        lines[++n]=line
+    }
+    END {
+        if (unknown) exit 2
+        for (i=1;i<=n;i++) print lines[i]
+        if (route) print route; else print direct
+    }' "$CRONTAB_FILE" > "$CRON_CANDIDATE"; then
+        return 1
+    fi
+    if cmp -s "$CRONTAB_FILE" "$CRON_CANDIDATE"; then
+        rm -f "$CRON_CANDIDATE"
+        return 0
+    fi
+    cp -p "$CRONTAB_FILE" "$CRONTAB_STAGE" &&
+        cat "$CRON_CANDIDATE" > "$CRONTAB_STAGE" || return 1
+    mv -f "$CRONTAB_STAGE" "$CRONTAB_FILE" || return 1
+    rm -f "$CRON_CANDIDATE"
+    if [ -x /opt/etc/init.d/S10cron ]; then /opt/etc/init.d/S10cron restart || return 1; fi
+}
+# END WATCHDOG MANAGED FILES v1
+
 
 watchdog_is_canonical() {
     [ -f "$1" ] && grep -q "MIHOMO WATCHDOG SCRIPT" "$1" 2>/dev/null
@@ -1414,39 +1854,24 @@ install_watchdog_bin() {
         warn "Failed to stage the new watchdog at $WATCHDOG_STAGE"
         return 1
     fi
+    wd_permissions "$WATCHDOG_STAGE" 755 || return 1
     if ! mv -f "$WATCHDOG_STAGE" "$WATCHDOG_BIN"; then
         warn "Failed to install $WATCHDOG_BIN"
         return 1
     fi
-    chmod +x "$WATCHDOG_BIN"
+    return 0
 }
 
 ensure_watchdog_cron() {
-    mkdir -p /opt/etc/cron.5mins
-    cat > "$WATCHDOG_CRON" <<'EOF' || { warn "Failed to write $WATCHDOG_CRON"; return 1; }
-#!/bin/sh
-exec /opt/bin/mihomo_watchdog.sh "$@"
-EOF
-    chmod +x "$WATCHDOG_CRON"
-
+    wd_wrapper_install || return 1
     mkdir -p /opt/var/log
     touch /opt/var/log/mihomo_watchdog.log
     chmod 666 /opt/var/log/mihomo_watchdog.log
-
-    # Exactly one cron route: run-parts on cron.5mins when the crontab
-    # already delegates it, otherwise one direct line (deduplicated).
-    if grep -q "cron.5mins" /opt/etc/crontab 2>/dev/null; then
-        log "Using run-parts"
-    else
-        log "Fallback to crontab"
-        grep -q "mihomo_watchdog" /opt/etc/crontab 2>/dev/null || \
-            echo "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" >> /opt/etc/crontab
-    fi
-
-    /opt/etc/init.d/S10cron restart || warn "Cron restart failed"
+    wd_normalize_cron || return 1
 }
 
 if watchdog_is_canonical "$WATCHDOG_BIN"; then
+    wd_permissions "$WATCHDOG_BIN" 755 || err "Watchdog permissions need repair"
     # Canonical binary present: accept the new layout, keep one cron route.
     # A wrapper is recognized by its exec line, so a full watchdog that
     # merely mentions the canonical path in its header is not mistaken
@@ -1454,6 +1879,8 @@ if watchdog_is_canonical "$WATCHDOG_BIN"; then
     if [ -f "$WATCHDOG_CRON" ] && ! grep -q "^exec $WATCHDOG_BIN" "$WATCHDOG_CRON" 2>/dev/null; then
         warn "Unknown file at $WATCHDOG_CRON, left unchanged"
     elif [ -f "$WATCHDOG_CRON" ]; then
+        wd_permissions "$WATCHDOG_BIN" 755 && wd_permissions "$WATCHDOG_CRON" 755 &&
+            wd_normalize_cron || err "Watchdog permissions/schedule need repair"
         log "New watchdog layout already in place"
     else
         log "Canonical watchdog present, installing cron wrapper"
@@ -1483,6 +1910,7 @@ fi
 # no-op for the running service. Restart only when this installer changed
 # something Mihomo must reload. If the service is stopped, start it so the
 # installer can still satisfy its working-stack contract.
+mp_known || err "Runtime UNKNOWN; service action aborted."
 MIHOMO_SERVICE_ACTION=none
 if [ -x /opt/etc/init.d/S99mihomo ]; then
     if [ "$MIHOMO_RESTART_NEEDED" -eq 1 ]; then
@@ -1492,6 +1920,7 @@ if [ -x /opt/etc/init.d/S99mihomo ]; then
             MIHOMO_SERVICE_ACTION=restart
         else
             log "Mihomo binary/config changed and service is stopped - starting service"
+            mp_stopped || err "Cannot prove stop before service start."
             /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
             MIHOMO_SERVICE_ACTION=start
         fi
@@ -1499,6 +1928,7 @@ if [ -x /opt/etc/init.d/S99mihomo ]; then
         log "Mihomo binary/config unchanged and daemon is running - restart skipped"
     else
         log "Mihomo binary/config unchanged but daemon is stopped - starting service"
+        mp_stopped || err "Cannot prove stop before service start."
         /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
         MIHOMO_SERVICE_ACTION=start
     fi
@@ -1508,6 +1938,7 @@ fi
 
 if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then
     sleep 2
+    mp_running || err "Mihomo start/restart could not be confirmed."
 fi
 
 # ---------------------------
@@ -1568,8 +1999,8 @@ CONFIG="/opt/etc/mihomo/config.yaml"
 # Mihomo binary + version
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
 if [ -n "$MIHOMO_BIN" ]; then
-    if mihomo_running; then
-        check_info "Mihomo daemon is running - binary probe (-v) skipped (one-Mihomo invariant); the running daemon itself proves the binary executes"
+    if ! mp_stopped; then
+        check_info "Mihomo daemon is running or unknown - binary probe (-v) skipped (one-Mihomo invariant); runtime execution is not verified by this probe"
     elif MIHOMO_VERSION_OUTPUT=$("$MIHOMO_BIN" -v 2>/dev/null); then
         check_ok "Mihomo binary: $(printf '%s\n' "$MIHOMO_VERSION_OUTPUT" | head -1)"
     else
@@ -1701,8 +2132,8 @@ fi
 # Config.yaml: the bootstrap (mixed-port 7890) should always be present;
 # port 7890 is checked whenever a config exists.
 if [ -f "$CONFIG" ]; then
-    if mihomo_running; then
-        check_info "Mihomo config syntax check skipped - the daemon is running and 'mihomo -t' would execute a second Mihomo (one-Mihomo invariant); the running service proves the config loads"
+    if ! mp_stopped; then
+        check_info "Mihomo config syntax check skipped - the daemon is running or unknown and 'mihomo -t' would execute a second Mihomo (one-Mihomo invariant); this probe does not verify the running config"
     elif ${MIHOMO_BIN} -t -d /opt/etc/mihomo -f "$CONFIG" >/dev/null 2>&1; then
         check_ok "Mihomo config syntax valid"
     else

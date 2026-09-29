@@ -157,7 +157,7 @@ mode_size() {
 #######################################
 
 is_mounted() {
-    grep -qs " $1 " /proc/mounts
+    awk -v path="$1" '$2 == path && $3 == "tmpfs" {found=1} END {exit !found}' /proc/mounts
 }
 
 #######################################
@@ -179,6 +179,7 @@ do_check() {
 
     printf "\n"
 
+    _check_rc=0
     for d in $DIRS; do
 
         printf "$ansi_white %-${COLUMNS}s $ansi_std" "$d"
@@ -187,8 +188,10 @@ do_check() {
             printf "$ansi_green mounted $ansi_std\n"
         else
             printf "$ansi_red not mounted $ansi_std\n"
+            _check_rc=1
         fi
     done
+    return "$_check_rc"
 }
 
 #######################################
@@ -204,7 +207,7 @@ do_check() {
 
 do_start() {
 
-    [ "$ENABLED" = "yes" ] || return 1
+    [ "$ENABLED" = "yes" ] || return 0
 
     set_adaptive_sizes
 
@@ -232,6 +235,11 @@ do_start() {
             continue
         fi
 
+        if awk -v path="$d" '$2 == path {found=1} END {exit !found}' /proc/mounts; then
+            printf "$ansi_red conflicting non-tmpfs mount; left untouched $ansi_std\n"
+            return 1
+        fi
+
         if mount -t tmpfs \
             -o size="$SIZE",mode="$MODE",noatime,nosuid,nodev \
             tmpfs "$d"; then
@@ -255,7 +263,7 @@ do_start() {
 
 do_stop() {
 
-    [ "$ENABLED" = "yes" ] || return 1
+    [ "$ENABLED" = "yes" ] || return 0
 
     # Flush pending writes before unmounting
     sync
@@ -337,13 +345,13 @@ case "$ACTION" in
     ;;
 
     restart)
-        do_stop
+        do_stop || exit 1
         sleep 1
         do_start
     ;;
 
     reload)
-        do_stop
+        do_stop || exit 1
         sleep 1
         do_start
     ;;
@@ -367,4 +375,4 @@ case "$ACTION" in
 
 esac
 
-exit 0
+exit $?

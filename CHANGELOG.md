@@ -8,6 +8,45 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.8.0] - 2026-09-29
+
+### Исправлено
+- Добавлен единый PID/starttime lifecycle lock для installer, Mihomo updater, Config Import, TUN migrators и watchdog restart. Параллельные project-maintenance операции теперь сериализованы; stale ownership проверяется по PID/starttime, а отсутствие `pidof` больше не считается доказательством остановленного Mihomo.
+- Усилен rollback B3/B4: MIPS migration восстанавливает snapshot именно текущего запуска, а binary updater подтверждает stop, валидирует rollback-stage, возвращает binary atomic rename и только затем project binary state. После recovery runtime считается восстановленным только при совпадении canonical executable с `/proc/<pid>/exe`.
+- Project-script download B5 больше не принимает partial candidate после transport failure: каждый retry начинает с чистого stage, а к validation/commit допускается только файл от успешного transport.
+- Config Import больше не обращается к удалённому helper `updater_in_progress`; взаимное исключение полностью обеспечивается общим lifecycle lock.
+- Native zRAM C1 определяется по реальной block-device identity и совпадению sysfs major:minor, а не по имени пути. Файлы с `zram` в имени остаются storage-backed и не обходят resource policy.
+- Watchdog updater C2/C3 использует общий lifecycle lock, root:root/0755 для managed executable, 0600 для backup, same-filesystem atomic replacement и нормализует только распознанные активные пяти-минутные cron routes. Повторный корректный запуск сохраняет content/inode/mtime.
+- S00ubifs C4 теперь возвращает ошибку при failed/conflicting tmpfs mount; RAM install прекращается вместо продолжения с неполной защитой. TUN migration C5 вооружает recovery до commit и восстанавливает config/service через EXIT при INT/TERM/HUP.
+- Installer/updater C6/C7 выбирают только один точный architecture asset, отвергают nohf/foreign/ambiguous варианты, строго проверяют version string и candidate `-v`; `--force` разрешает same-version reinstall, но не downgrade.
+- Добавлен GitHub TLS compatibility fallback после live-кейса NC-1812: bounded normal curl → один bounded IPv4 + X25519 retry → wget/API. Сертификат по-прежнему проверяется; `--insecure` не используется.
+- Большие Mihomo assets больше не ограничены коротким 20-секундным metadata timeout: installer/updater используют отдельное bounded transfer window 180 секунд на попытку, сохраняя короткий connect/TLS gate и fallback chain.
+- Удалена зависимость Keenetic runtime от GNU `stat -c`. Owner/mode читаются BusyBox-compatible `ls -ldn`, executable identity — `test -ef`, zRAM identity — `ls -ln` + sysfs major:minor.
+- Исправлен staging helper MagiTrickle: вместо литерального `magitrickle-add-repo.$` используется process-unique shell PID `$$`; contract test запрещает возврат single-dollar regression.
+- Doctor v1.2.17 явно показывает фактический mount Entware `/opt`: source, mountpoint, filesystem и internal/external class. Для internal `/opt` обязательны executable/enabled `S00ubifs` и реальные tmpfs на `/opt/tmp`, `/opt/var/log`, `/opt/var/run`; нарушение даёт FAIL. Для external persistent `/opt` проверка internal-flash protection — INFO/N/A.
+
+### Изменено
+- KeeneticOS + BusyBox ash + Entware закреплены как отдельный runtime contract для агентов и тестирования. Linux/Ubuntu CI больше не считается доказательством доступности GNU/coreutils options на роутере; новые runtime dependencies должны быть field-proven либо иметь safe detection/fallback.
+- Постоянные CI-sentinels запрещают известные опасные assumptions: GNU `stat -c`, bash-style `[[ ... ]]`, `$RANDOM` и неуникальный MagiTrickle stage.
+- Markdown CI теперь дополнительно отвергает случайно вставленные внутренние chat/tool artifacts: служебные download-path markers, citation tokens, message wrappers, uploaded-file wrappers и writing-block fences.
+- RU/EN maintenance/process documentation синхронизирована с Doctor v1.2.17 и фактическим состоянием B1–B6/C1–C7; устаревшие пометки «development / hardware acceptance pending» удалены там, где live acceptance уже выполнен.
+- Roadmap больше не содержит устаревших v1.4.x release-number examples для будущего opt-in auto-updater.
+- `saymer-alt/entware-go:latest` перед release-prep проверен на все четыре поддерживаемые package suffix: `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4`; nohf остаётся отдельным и selector его не принимает.
+
+### Тестирование
+- KN-1010 / mipsel / 256 MB: C1 проверен в двух реальных профилях — external storage-backed swap при неактивных `/dev/zram*` и native-zRAM-only `/dev/zram0` с совпадающим sysfs major:minor. Оба Doctor-run завершились без WARN/FAIL.
+- На том же KN-1010 `update-mihomo.sh --force` подтвердил exact `mihomo_1.19.31-2_mipsel-3.4.ipk`, same-version transaction, controlled stop, atomic commit/start, project binary state и canonical runtime identity. Первый запуск обнаружил слишком короткий 20 s asset timeout; после исправления 12.8 MB IPK загрузился и transaction прошёл.
+- NC-1812 / AArch64 / >512 MB: live BusyBox 1.37 подтвердил отсутствие GNU `stat -c`, portability fix, watchdog updater idempotency/permissions/cron, IPv4+X25519 TLS recovery и inactive-zram negative path.
+- KN-3811 / AArch64 / internal UBIFS: Doctor v1.2.17 подтвердил internal `/opt`, enabled/executable S00ubifs и активные tmpfs для `/opt/tmp`, `/opt/var/log`, `/opt/var/run`.
+- Рабочий KN-1012 gateway / AArch64 / external EXT4: Doctor v1.2.17 завершился **36 OK / 0 WARN / 0 FAIL**; прошли EXT4 + `ext`/`ext-utils`, 512 MB resource profile с external swap, Mihomo 1.19.31, MagiTrickle, canonical Proxy0, watchdog и delivery checks.
+- Текущий pre-release `main` после hygiene changes прошёл полный CI: shell syntax, BusyBox ash, lifecycle behavior, contract smoke, transaction invariants, rollback/downloader/process/swap regressions, Markdown links/hygiene, maintenance regressions и whitespace.
+
+### Границы
+- Преднамеренный hard-power/SIGKILL в момент updater/migrator commit не инжектировался на production-router и не заявляется hardware-tested; recovery model остаётся покрыт архитектурой и fault regressions.
+- `armv7` и big-endian `mips` имеют package/selector/CI support и актуальные entware-go assets, но не имеют столь же свежего физического acceptance, как mipsel/AArch64 release devices.
+
+---
+
 ## [1.7.2] - 2026-09-27
 
 ### Изменено

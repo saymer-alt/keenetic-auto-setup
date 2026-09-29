@@ -28,7 +28,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - если сервис ранее работал, он запускается снова; проверяются процесс и порт 7890;
 - при ошибке validation/start/port старый конфиг атомарно восстанавливается из \`.bak\`, а прежнее состояние сервиса возвращается.
 
-Importer также отказывается начинать транзакцию, если видит lock/process \`update-mihomo.sh\`.
+В development importer берёт [общий lifecycle lock](19-lifecycle-lock.md) до stop/validation/commit и удерживает его до cleanup, включая восстановление сервиса. Отдельный updater-specific guard не нужен: updater использует тот же lock. Существующие legacy locks блокируют захват; параллельный запуск старых и новых копий инструментов не поддерживается.
 
 ## Импорт из файла
 

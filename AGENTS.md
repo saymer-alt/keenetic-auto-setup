@@ -67,6 +67,7 @@ The most sensitive parts — change only for an explicit task and with full unde
   saymer-alt/entware-go release; the final fallback if the GitHub path fails is
   `opkg install mihomo` from the configured Entware feed, whose version may be older).
 - Secure-DNS component contract: because the supported traffic path always uses KeeneticOS Proxy Client / ProxyN, new installs require **at least one** of `dns-tls` (DNS-over-TLS proxy) or `dns-https` (DNS-over-HTTPS proxy). This is an OR requirement, not AND: Keenetic's Proxy Client guide warns proxy Internet access may be unreliable without DoT/DoH and recommends enabling either DoT or DoH. The project does not auto-select a resolver; whitelist-network reachability remains operator-specific.
+- Entware storage / flash-protection contract: Doctor must report the deepest mount that actually carries `/opt` (source, mountpoint, filesystem and internal/external class). If Entware `/opt` is on internal Keenetic storage, supported runtime health requires the project S00ubifs service to be present, executable and enabled, and `/opt/tmp`, `/opt/var/log`, `/opt/var/run` to be active tmpfs mounts. Missing/disabled service or any missing tmpfs is a Doctor FAIL: file presence alone is not proof of NAND-write protection. This check is N/A/INFO when `/opt` is external persistent storage.
 - External-storage contract: if Entware `/opt` is on external persistent storage, new installs support **EXT4 only**. `install.sh` reads the actual deepest `/opt` mount from `/proc/mounts`; external non-EXT4 is a hard preflight error. External `/opt` additionally requires KeeneticOS component ids `ext` and `ext-utils` from `show version`. Internal UBIFS installs are not subject to these two storage-component requirements. Doctor mirrors violations as FAIL; update-mihomo.sh only warns for an already-existing legacy non-EXT4 install and continues servicing it. The project never formats, converts or repairs storage automatically. `ext-utils` is required for the platform filesystem check/repair tooling; do not claim automatic fsck on every boot without separate evidence.
 - Mihomo package/binary metadata boundary: `update-mihomo.sh` is a **binary-only** updater and must not rewrite Entware opkg package metadata or call `opkg install mihomo`. The opkg database describes the package payload as a whole; the canonical binary committed by the project is tracked separately in `/opt/etc/keenetic-auto-setup-mihomo.state`. That state must participate in the same rollback transaction as the binary. Doctor treats runtime version as truth, project binary state as project provenance, and opkg metadata as package-manager provenance; none may be silently substituted for another.
 - Resource-profile contract `20260927_1` (live-detected from /proc/meminfo, /proc/swaps, /proc/mounts; never guessed; rationale, vendor links and field evidence in docs/06): 128 MB-class remains best-effort/experimental and install.sh REFUSES it unless /opt is verified external AND external storage-backed active swap is >=384 MB (project-specific floor; zRAM never counts). 256 MB-class is expected to have one active memory-pressure backend: native KeeneticOS zRAM OR verified external storage-backed swap; absence remains WARN and does not block installation. **512 MB-class is a constrained profile, not a bare-RAM supported baseline:** a supported new install REQUIRES active native KeeneticOS zRAM OR verified external storage-backed swap; if neither backend can be verified, install.sh stops with ERROR and Doctor reports FAIL. There is no low-memory override for this class. This rule is keyed to live MemTotal/backend state, not model name or router role; there is no AP/extender exception because role/load can change and the project must retain OOM headroom. When external swap is chosen on 256/512 MB-class, 1x detected RAM remains the project warning floor: below 1x is WARN, while 1x..3x is informational only. The preferred sizing target remains 3x detected RAM capped at 2 GiB; external swap above 2 GiB is an install ERROR / Doctor FAIL. The 1x floor and 3x target are project policy, not vendor minimums. Vendor guidance says not to combine zRAM with disk/file swap; Installer/Doctor/Updater warn if both are active but never change them. Above the 512 MB-class, swap/zRAM is optional. update-mihomo.sh never blocks an existing legacy install solely for a resource-profile violation: it warns and continues while keeping all transaction safety gates. The project never creates/enables/formats/mounts/resizes swap or storage.
@@ -119,16 +120,16 @@ delivery branch. Production project fetches default to `stable`; development/tes
 override the project ref explicitly. Remote delivery is a reliability contract learned from
 a real `raw.githubusercontent.com` reset during installation:
 - project-managed script acquisition must use bounded fallbacks where applicable:
-  raw GitHub via `curl` → the same raw URL via `wget` → GitHub Contents API raw media;
+  raw GitHub via bounded normal `curl` → one bounded `curl --curves X25519` compatibility retry → the same raw URL via `wget` → GitHub Contents API raw media;
 - failed file transfers must remove partial/non-empty candidates before the next transport;
+- do not reuse the short metadata/script total timeout for package assets. Live KN-1010 acceptance on 2026-09-28 showed that the ~12.8 MB mipsel IPK can exceed a 20 s total transfer window even when the path is otherwise healthy. Metadata/project scripts keep the short bounded window; large asset downloads in installer/updater use a separate 180 s bounded transfer window while retaining the 5 s connect/TLS gate and IPv4+X25519 compatibility retry;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
 - the public fresh-install **happy path must stay concise and copy-pasteable**:
   `opkg update && opkg install curl && curl .../stable/setup.sh | sh`. Do not inline a
   long temp-file/API fallback transaction into README, Quick Start, HOWTO, Entware guides,
   or the normal setup command. The hardened multi-transport/validation contract begins once
-  `setup.sh` is running. If the initial raw fetch itself is unavailable, point users to the
-  documented offline/SCP recovery path instead of making the primary command unreadable;
+  `setup.sh` is running. If the initial raw fetch stalls during TLS before script output, document the short `-4 --connect-timeout 5 --max-time 20 --curves X25519` recovery command; if it still fails, point users to the documented offline/SCP recovery path instead of making the primary command unreadable;
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the
@@ -155,6 +156,11 @@ If a change in these areas is required, first understand the dependency
 for the operator.
 
 Risk-zone specifics:
+- Watchdog installer/updater share the existing lifecycle lock and identical managed-file helpers. Successful managed executables require root:root/0755; legacy backups remain 0600 outside cron. Normalize only recognized active five-minute routes; preserve unknown schedules for manual review. Correct repeat runs preserve managed content/inode/mtime.
+- Absence of `pidof` is not evidence that Mihomo is stopped. The identical standalone `mp_state` contract returns 0 running / 1 stopped / 2 unknown, with executable-identity `/proc` fallback. Safety-critical stop/probe/commit/start decisions fail closed on unknown; lifecycle ownership is still required. The B4 canonical inode verifier remains a separate, stricter check.
+- Native zRAM is identified by actual zram block-device identity, not substring matching in swap source names. All three scanners share `swap_is_zram`: active partition, numeric zramN device name, block-device metadata and matching sysfs major/minor. Missing/conflicting evidence is unverified. Resource thresholds are unchanged.
+- MIPS migration rollback must use the current run's config snapshot, never the historical `.pre-mips` artifact. Restore through a same-filesystem stage/rename with permissions preserved; retain the snapshot on recovery failure.
+- Binary rollback stays under the shared lifecycle lock: confirmed stop → verified same-filesystem rollback stage → atomic binary rename → project-state restore → optional previous-service start and canonical executable-inode verification. Failure in recovery must remain an ERROR with manual backups retained; never report success merely because `pidof` finds a process. INT/TERM/HUP are already handled; repeated signals during recovery must not re-enter it.
 - update-mihomo.sh is transactional: acquire/download/extract while the old service runs, verify destination free space, same-filesystem stage beside the canonical binary, create/verify the volatile /tmp rollback backup, controlled one-Mihomo stop, runtime/config pre-flight, then a single same-filesystem rename commit followed by verification/start. There is no rm-old-then-copy window. Change this order only with full understanding.
 - watchdog: restart only when WAN is confirmed and the proxy/tunnel check fails; on total
   WAN failure the script exits without action — an intentional decision (comment in code,
@@ -235,6 +241,33 @@ The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer r
 Repository CI now provides shell syntax, contract/regression smoke tests, repository-local Markdown-link checks and whitespace checks, but it does not make a change automatically safe — do not invent results.
 The committed lightweight cross-component smoke test is `sh tests/contracts.sh`; it preserves a few real installation/diagnostic contracts without emulating KeeneticOS.
 
+### Keenetic runtime portability contract
+
+The target is **KeeneticOS + BusyBox ash + Entware**, not a normal GNU/Linux distribution.
+Linux CI hosts are useful syntax/regression runners, but the commands and options they expose are
+not evidence that the router runtime exposes the same applets or GNU extensions.
+
+- Before introducing a new runtime command or option, first prefer an already proven project primitive.
+  If a new dependency is genuinely needed, either verify it on the target BusyBox/Entware environment
+  or guard it with `command -v` plus a safe fallback/UNKNOWN path. Do not assume availability because
+  Ubuntu, Debian, macOS, WSL, shellcheck, or CI accepts it.
+- Prefer shell builtins, `/proc`, `/sys`, POSIX/basic `awk`/`sed`/`grep`, and already field-proven
+  BusyBox forms. Do not replace these with shorter GNU-only one-liners.
+- Known field boundary: Keenetic BusyBox 1.37 `stat` does **not** provide GNU `-c`. Runtime code must
+  not use `stat -c`; use the project-proven alternatives (`ls -ldn`, `ls -ln` + sysfs major:minor,
+  or `test -ef`) according to the fact being checked.
+- Treat `pidof`, `ss`, `ndmq`, `timeout`, checksum applets and similar helpers as optional unless the
+  installer explicitly guarantees them. A missing optional helper must not silently become proof of
+  a stopped service, missing capability, or failed identity check.
+- Process-unique temporary/staging names must use a real uniqueness source such as shell PID `$$`
+  (or an established lifecycle-owned adjacent stage). A literal single `$` in a staging suffix is a
+  bug, not an acceptable placeholder.
+- If a change depends on a command-output format or BusyBox option not already covered by retained
+  hardware evidence, call that out explicitly in the review and require the smallest focused live test
+  before production promotion. Never describe host-CI execution as Keenetic runtime proof.
+- When a real router exposes a portability failure, preserve both lessons: add the smallest permanent
+  regression/static sentinel that can catch the known bad assumption, and document the runtime boundary
+  here or in `docs/TESTING_STRATEGY.md`.
 ### Parsing external command output
 
 Treat every parsed Keenetic/Entware command as an **external input protocol**. A visually convenient CLI sample is not automatically a stable machine format.
@@ -262,6 +295,10 @@ The agent must clearly separate what was verified by sh -n/review from what requ
 a live run.
 
 ## 10. Historical context (why it is this way)
+
+- 2026-09-28 live NC-1812 C2/C3 acceptance exposed a platform boundary hidden by CI: built-in BusyBox 1.37.0 `stat` accepts only `-l/-t`, not GNU `-c`. Router runtime paths must not depend on `stat -c`. Managed-file owner/mode checks use `ls -ldn`; B4 exact executable identity uses `test -ef`; zRAM device identity uses `ls -ln` plus sysfs major:minor. Keep this pinned by regressions because Linux CI hosts normally provide GNU coreutils.
+- 2026-09-28 pre-release review found a second host-CI blind spot: `MAGITRICKLE_REPO_STAGE` had regressed to a literal `magitrickle-add-repo.$` path. It was syntactically valid and ordinary CI did not object, but concurrent installer runs would share one stage path. Staging-path uniqueness is therefore a runtime contract: use real `$$`/lifecycle-owned unique names and pin exact managed staging forms in contracts.
+- 2026-09-28 live NC-1812 evidence isolated a TLS bootstrap compatibility failure before Doctor execution: Entware `curl 8.15.0 + OpenSSL 3.5.5` sent a default TLS 1.3 ClientHello of about 1578 bytes to `raw.githubusercontent.com` and received no ServerHello; `--curves X25519` reduced it to about 512 bytes and completed TLS/HTTP2 immediately. OpenSSL 3.5 changed default keyshares toward hybrid PQC groups, but the project does not claim OpenSSL itself is universally broken: treat this as a path/middlebox/MTU compatibility case. Normal TLS stays first; the compatibility fallback is explicitly IPv4 + X25519 (`-4 --curves X25519`), never `--insecure`. Current field evidence proves that combination; it does not prove that either IPv4 forcing or X25519 alone is universally sufficient.
 
 - 2026-09-19 the operator's **NC-1812 / KeeneticOS 5.1.5** already showed the same `show version` presentation class: a component ID could be split across adjacent physical lines (for example `ike-` / `client`). That observation was treated as harmless display wrapping and no parser regression was created. This was an early warning we failed to promote into a general rule.
 - 2026-09-25 KN-3811 before/after 5.1.5 -> 5.1.6 made the consequence explicit: `ndmc -c "show version"` hard-wrapped required IDs (`dns-` / `filter`, `opkg-kmod-` / `netfilter`), so line-oriented matching produced false missing-component evidence. Never test required component IDs line-by-line against the raw dump. Normalize only the understood `components:` continuation field, then exact-match comma-delimited IDs. This applies to both Doctor and installer; `opkg-kmod-netfilter-addons` must never satisfy `opkg-kmod-netfilter`. The permanent regression now splits every required component ID at every possible internal position.
@@ -303,16 +340,16 @@ a live run.
 
 ## 11. Known pitfalls
 
-- Duplicate lines in /opt/etc/crontab → watchdog runs twice (docs/08/09);
-  install.sh adds an entry only if absent, but manual crontab editing can easily create
-  duplicates.
+- Duplicate lines in /opt/etc/crontab → watchdog runs twice (docs/08/09).
+  Installer/updater normalize recognized five-minute routes; unknown custom routes
+  require manual review.
 - run-parts in Entware is unreliable — hence the fallback to a direct path in crontab.
 - External Entware storage: supported new-install profile is EXT4 only. NTFS/exFAT/FAT or an unverified external `/opt` must not be silently accepted; external `/opt` requires `ext` + `ext-utils`. Do not make installer formatting/repair automatic.
 - 128 MB RAM: known low-headroom risk (docs/06). New installation is allowed only as best-effort/experimental with verified external /opt + >=384 MB external storage-backed active swap (project-specific floor; zRAM does not count). 256 MB-class devices should have zRAM OR verified external storage-backed swap; missing both remains WARN. **512 MB-class is explicitly unsupported without one active backend:** native zRAM OR verified external storage-backed swap is mandatory, missing both is installer ERROR / Doctor FAIL, with no AP/extender or low-memory override. External swap below 1x detected RAM is WARN; 1x..3x is INFO with 3x as the preferred target, capped at 2 GiB; >2 GiB is invalid for new installs. Above the 512 MB-class, swap/zRAM is optional under the current contract. If zRAM and disk/file swap are both active, warn per vendor guidance; never auto-toggle either backend. Do not weaken these profile rules or try to "make it work" by silently bypassing them.
 - Nested-tunnel MTU is topology-specific. In the documented Keenetic WARP-over-ProxyN/Mihomo chain, MTU 1200 is live-working; 1200–1300 is only a troubleshooting range, not a universal default. Do not confuse the router WireGuard MTU with Mihomo `tun.mtu` (docs/09, encyclopedia/34).
 - DoH: fast ≠ working; docs/08 recommendations are cloudflare-dns / dns.google / quad9.
 - Incorrect system time → SSL errors → "opkg update failed"; start diagnosis with `date`.
-- Re-running install.sh does not clean an existing crontab or remove old components.
+- Re-running install.sh normalizes managed watchdog cron routes, but does not remove unrelated old components.
 - update-mihomo.sh, migrate-mihomo-mips.sh and migrate-mihomo-tun.sh determine the binary deterministically:
   /proc/<pid>/exe of the running daemon if it points to /opt/sbin/mihomo or
   /opt/bin/mihomo, otherwise /opt/sbin/mihomo, otherwise /opt/bin/mihomo (mirrors the

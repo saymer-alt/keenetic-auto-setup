@@ -1,5 +1,256 @@
 #!/bin/sh
 
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+# Kept identical in standalone consumers (curl | sh needs no library).
+# A short mkdir guard serializes ALL metadata changes, including stale recovery.
+# Never steal this guard: a crash inside its tiny critical section fails closed.
+# An operator may remove an abandoned guard only with maintenance stopped.
+MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"
+MAINT_MARKER="/tmp/mihomo.maintenance"
+ML_ID=""
+ML_GATE=""
+ML_MARKER=""
+ML_LIFECYCLE_HELD=0
+
+ml_starttime() {
+    local data tail
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    data=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    # comm (field 2) may contain spaces and ')'; strip through its LAST ') '.
+    tail=${data##*) }
+    [ "$tail" != "$data" ] || return 1
+    printf '%s\n' "$tail" | awk 'NF >= 20 && $20 ~ /^[0-9]+$/ { print $20; ok=1 } END { if (!ok) exit 1 }'
+}
+
+ml_identity() {
+    local start
+    [ -n "$ML_ID" ] && return 0
+    start=$(ml_starttime "$$") || return 1
+    ML_ID="$$ $start"
+}
+
+# 0 = live identity, 1 = proven stale, 2 = unknown (never steal).
+ml_owner_state() {
+    local pid start extra current
+    IFS=' ' read -r pid start extra < "$1" || return 2
+    case "$pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+    case "$start" in ''|*[!0-9]*) return 2 ;; esac
+    [ -z "$extra" ] || return 2
+    if current=$(ml_starttime "$pid"); then
+        [ "$current" = "$start" ] && return 0
+        return 1
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 2
+}
+
+ml_gate_enter() {
+    [ -z "$ML_GATE" ] || return 1
+    (umask 077; mkdir "$1.guard") 2>/dev/null || return 1
+    ML_GATE="$1.guard"
+}
+
+ml_gate_leave() {
+    [ -n "$ML_GATE" ] || return 0
+    rmdir "$ML_GATE" 2>/dev/null || return 1
+    ML_GATE=""
+}
+
+ml_lock_acquire() {
+    local path state
+    path=$1
+    ml_identity || return 1
+    ml_gate_enter "$path" || return 1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -d "$path" ] || [ -L "$path" ] || [ ! -f "$path/owner" ] || [ -L "$path/owner" ]; then
+            ml_gate_leave
+            return 1
+        fi
+        if ml_owner_state "$path/owner"; then state=0; else state=$?; fi
+        if [ "$state" -ne 1 ]; then
+            ml_gate_leave
+            return 1
+        fi
+        # Under the guard no new owner can appear between inspect/remove/mkdir.
+        if ! rm -f "$path/owner" || ! rmdir "$path"; then
+            ml_gate_leave
+            return 1
+        fi
+    fi
+    if ! (umask 077; mkdir "$path"); then
+        ml_gate_leave
+        return 1
+    fi
+    if ! printf '%s\n' "$ML_ID" > "$path/owner"; then
+        rm -f "$path/owner"
+        rmdir "$path" 2>/dev/null || true
+        ml_gate_leave
+        return 1
+    fi
+    ml_gate_leave
+}
+
+ml_lock_release() {
+    local path
+    path=$1
+    [ -n "$ML_ID" ] || return 0
+    # A signal during metadata work may already own this short guard.
+    if [ "$ML_GATE" != "$path.guard" ]; then
+        ml_gate_enter "$path" || return 1
+    fi
+    if [ -d "$path" ] && [ ! -L "$path" ] && [ -f "$path/owner" ] &&
+       [ ! -L "$path/owner" ] && [ "$(cat "$path/owner" 2>/dev/null)" = "$ML_ID" ]; then
+        if [ "$path" = "$MIHOMO_LIFECYCLE_LOCK" ] && [ -n "$ML_MARKER" ] &&
+           [ ! -L "$MAINT_MARKER" ] && [ -f "$MAINT_MARKER" ] &&
+           [ "$(cat "$MAINT_MARKER" 2>/dev/null)" = "$ML_MARKER" ]; then
+            rm -f "$MAINT_MARKER" || { ml_gate_leave; return 1; }
+        fi
+        rm -f "$path/owner" || { ml_gate_leave; return 1; }
+        rmdir "$path" 2>/dev/null || { ml_gate_leave; return 1; }
+    fi
+    ml_gate_leave
+}
+
+# Old tools do not participate in this protocol. Never remove their lock files;
+# require a quiescent handover. A PID-only live marker is conservatively busy.
+ml_legacy_busy() {
+    local path
+    for path in /tmp/mihomo-update.lock /tmp/mihomo-update.lock.d \
+        /tmp/mihomo-config-import.lock.d /tmp/mihomo-migrate.lock \
+        /tmp/mihomo-migrate.lock.d /tmp/mihomo-tun-migrate.lock.d; do
+        if [ -e "$path" ] || [ -L "$path" ]; then return 0; fi
+    done
+    return 1
+}
+
+ml_marker_busy() {
+    local pid stamp start extra current
+    [ -e "$MAINT_MARKER" ] || [ -L "$MAINT_MARKER" ] || return 1
+    [ -f "$MAINT_MARKER" ] && [ ! -L "$MAINT_MARKER" ] || return 0
+    IFS=' ' read -r pid stamp start extra < "$MAINT_MARKER" || return 0
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if current=$(ml_starttime "$pid"); then
+        case "$start" in ''|*[!0-9]*) return 0 ;; esac
+        [ "$start" != "$current" ] && [ -z "$extra" ] && return 1
+        return 0
+    fi
+    [ ! -d "/proc/$pid" ] && return 1
+    return 0
+}
+
+ml_lifecycle_acquire() {
+    ml_lock_acquire "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=1
+    if ml_legacy_busy || ml_marker_busy; then
+        ml_lifecycle_release
+        return 1
+    fi
+    # First two fields remain compatible with older watchdogs.
+    ML_MARKER="$$ $(date +%s) ${ML_ID#* }"
+    if ! (umask 077; printf '%s\n' "$ML_MARKER" > "$MAINT_MARKER"); then
+        ml_lifecycle_release
+        return 1
+    fi
+    return 0
+}
+
+ml_lifecycle_release() {
+    [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
+    ml_lock_release "$MIHOMO_LIFECYCLE_LOCK" || return 1
+    ML_LIFECYCLE_HELD=0
+    ML_MARKER=""
+}
+# END MIHOMO LIFECYCLE LOCK v1
+
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
+
 # Safe Mihomo configuration importer for keenetic-auto-setup.
 #
 # Usage:
@@ -23,14 +274,8 @@ STAGE_CONFIG="$CONFIG_DIR/.config.yaml.new.$$"
 BACKUP_STAGE="$CONFIG_DIR/.config.yaml.bak.new.$$"
 ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.rollback.$$"
 TEST_LOG="/tmp/mihomo-config-test.$$"
-LOCK_DIR="/tmp/mihomo-config-import.lock.d"
-MAINT_MARKER="/tmp/mihomo.maintenance"
-UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"
-UPDATER_LOCK_LEGACY="/tmp/mihomo-update.lock"
 INIT_SCRIPT="/opt/etc/init.d/S99mihomo"
 
-LOCK_OWNED=0
-MARKER_OWNED=0
 SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
@@ -80,61 +325,24 @@ resolve_mihomo() {
 
 cleanup() {
     rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
-    if [ "$MARKER_OWNED" -eq 1 ]; then
-        rm -f "$MAINT_MARKER" 2>/dev/null || true
-    fi
-    if [ "$LOCK_OWNED" -eq 1 ]; then
-        rm -rf "$LOCK_DIR" 2>/dev/null || true
-    fi
+    ml_lifecycle_release || true
 }
 
-config_import_process_alive() {
-    _ci_pid="$1"
-    case "$_ci_pid" in ''|*[!0-9]*) return 1 ;; esac
-    [ -d "/proc/$_ci_pid" ] || return 1
-    grep -q "config-import" "/proc/$_ci_pid/cmdline" 2>/dev/null
-}
 
-acquire_lock() {
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-        LOCK_OWNED=1
-        echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-        return 0
-    fi
 
-    [ -d "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] ||
-        error "Config-import lock has an unexpected form: $LOCK_DIR"
 
-    _ci_owner=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
-    if config_import_process_alive "$_ci_owner"; then
-        error "Another config import is already running (pid $_ci_owner)."
-    fi
 
-    log "Removing stale config-import lock..."
-    rm -rf "$LOCK_DIR" || error "Cannot remove stale lock: $LOCK_DIR"
-    mkdir "$LOCK_DIR" || error "Another config import started at the same time."
-    LOCK_OWNED=1
-    echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
-}
 
-updater_in_progress() {
-    [ -e "$UPDATER_LOCK_DIR" ] && return 0
-    [ -e "$UPDATER_LOCK_LEGACY" ] && return 0
-    for _ci_proc in /proc/[0-9]*; do
-        grep -q "update-mihomo" "$_ci_proc/cmdline" 2>/dev/null && return 0
-    done
-    return 1
-}
 
 mihomo_running() {
-    pidof mihomo >/dev/null 2>&1
+    mp_running
 }
 
 stop_mihomo_confirmed() {
     "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
     _ci_try=0
     while [ "$_ci_try" -lt 10 ]; do
-        if ! mihomo_running; then
+        if mp_stopped; then
             SERVICE_STOPPED_BY_US=1
             return 0
         fi
@@ -145,6 +353,7 @@ stop_mihomo_confirmed() {
 }
 
 start_mihomo_confirmed() {
+    mp_stopped || return 1
     "$INIT_SCRIPT" start >/dev/null 2>&1 || true
     _ci_try=0
     while [ "$_ci_try" -lt 8 ]; do
@@ -188,10 +397,12 @@ restore_old_service() {
         return 0
     fi
 
-    if ! mihomo_running; then
+    mp_known || return 1
+    if mp_stopped; then
         log "Restoring previous Mihomo service state..."
         start_mihomo_confirmed || return 1
     fi
+    mihomo_running || return 1
 
     if wait_for_contract_port; then
         log "Previous Mihomo service restored; port 7890 is listening."
@@ -211,15 +422,11 @@ rollback_config() {
     _ci_reason="$1"
     log "Rolling back config.yaml..."
 
+    mp_known || error "Runtime UNKNOWN; rollback backup retained at $BACKUP_PATH"
     if mihomo_running; then
-        "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
-        _ci_try=0
-        while [ "$_ci_try" -lt 10 ]; do
-            mihomo_running || break
-            sleep 1
-            _ci_try=$((_ci_try + 1))
-        done
+        stop_mihomo_confirmed || error "Cannot confirm stop; rollback backup retained at $BACKUP_PATH"
     fi
+    mp_stopped || error "Cannot prove stop before config rollback; backup: $BACKUP_PATH"
 
     [ -s "$BACKUP_PATH" ] ||
         error "$_ci_reason — rollback backup is missing or empty: $BACKUP_PATH"
@@ -264,8 +471,6 @@ trap 'signal_handler HUP' HUP
 
 echo "=== Mihomo Config Import ==="
 
-command -v pidof >/dev/null 2>&1 ||
-    error "pidof is required for the one-Mihomo safety check."
 [ -x "$INIT_SCRIPT" ] || error "Mihomo init script not found: $INIT_SCRIPT"
 [ -d "$CONFIG_DIR" ] || error "Mihomo config directory not found: $CONFIG_DIR. Run setup.sh first."
 [ -s "$CONFIG_PATH" ] || error "Current config.yaml is missing or empty. Run setup.sh first."
@@ -323,20 +528,10 @@ if ! grep -Eq '^[[:space:]]*mixed-port:[[:space:]]*7890([[:space:]]*(#.*)?)?$' "
 fi
 log "Project contract found: mixed-port 7890."
 
-acquire_lock
+ml_lifecycle_acquire ||
+    error "Mihomo lifecycle is busy or unverifiable; config not changed. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 
-if updater_in_progress; then
-    error "Mihomo binary update appears to be running or locked. Finish/recover update-mihomo.sh before importing a config."
-fi
-
-if [ -e "$MAINT_MARKER" ]; then
-    error "Another Mihomo maintenance operation is active (or left a marker): $MAINT_MARKER"
-fi
-
-echo "$$ $(date +%s)" > "$MAINT_MARKER" ||
-    error "Cannot create watchdog maintenance marker."
-MARKER_OWNED=1
-
+mp_known || error "Mihomo runtime UNKNOWN; import aborted."
 if mihomo_running; then
     SERVICE_WAS_RUNNING=1
     log "Mihomo is running. Stopping it for one-instance config validation..."
@@ -346,11 +541,7 @@ else
     log "Mihomo was already stopped; it will remain stopped after a successful import."
 fi
 
-if updater_in_progress; then
-    restore_old_service || true
-    error "Mihomo updater became active during config import. Candidate was not installed."
-fi
-
+mp_stopped || error "Cannot prove Mihomo stopped before validation."
 log "Validating candidate with Mihomo..."
 if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t >"$TEST_LOG" 2>&1; then
     echo
@@ -380,11 +571,7 @@ mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
     error "Could not commit config backup; candidate was not installed."
 }
 
-if updater_in_progress; then
-    restore_old_service || true
-    error "Mihomo updater became active before config commit. Candidate was not installed."
-fi
-
+mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Installing config atomically..."
 chmod 600 "$STAGE_CONFIG" 2>/dev/null || true
 CONFIG_COMMIT_STARTED=1

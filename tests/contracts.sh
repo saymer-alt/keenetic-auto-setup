@@ -43,7 +43,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
-grep -Fq 'DOCTOR_VERSION="1.2.16"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must advance for the 512 MB severity contract change"
+grep -Fq 'DOCTOR_VERSION="1.2.17"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
@@ -99,6 +99,19 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
 pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk warning, and 1x/3x swap severity"
+for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
+    ! grep -Fq "stat -L -c '%F:%t:%T'" "$ROOT/$_f" || fail "$_f zRAM identity must not require GNU stat -c"
+    grep -Fq 'listing=$(LC_ALL=C ls -ln "$path"' "$ROOT/$_f" || fail "$_f zRAM identity must use BusyBox-compatible device metadata"
+done
+pass "all zRAM identity scanners are BusyBox-compatible"
+
+# Static sentinels for runtime assumptions that Linux CI can accidentally satisfy with GNU tools.
+for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-tun.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-watchdog.sh mihomo-route-check.sh mihomo-interface-check.sh mihomo-proxy-selection-watch.sh 020-bypass-wa.sh S00ubifs; do
+    ! grep -Eq '(^|[[:space:]])stat[[:space:]]+(-[^[:space:]]*)*c([[:space:]]|$)' "$ROOT/$_f" || fail "$_f must not depend on GNU stat -c at Keenetic runtime"
+    ! grep -Fq '$RANDOM' "$ROOT/$_f" || fail "$_f must not depend on bash-style RANDOM at Keenetic runtime"
+    ! grep -Eq '(^|[;&|()[:space:]])\[\[[[:space:]]' "$ROOT/$_f" || fail "$_f must stay BusyBox/POSIX-sh compatible and avoid shell [[ ... ]]"
+done
+pass "production runtime scripts keep known GNU/bash-only assumptions out"
 
 grep -Fq -- '--allow-internal-disk' "$ROOT/install.sh" || fail "installer must expose the narrow internal-disk override"
 grep -Fq 'Storage-mode mismatch: disk mode was selected while /opt is on internal Keenetic storage' "$ROOT/install.sh" || fail "installer must hard-stop accidental disk mode on internal /opt"
@@ -111,6 +124,14 @@ grep -Fq "The project supports external Entware /opt only on EXT4" "$ROOT/instal
 grep -Fq 'Unsupported external /opt filesystem:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must diagnose unsupported external /opt filesystems"
 grep -Fq 'UNSUPPORTED EXTERNAL /opt FILESYSTEM:' "$ROOT/update-mihomo.sh" || fail "updater must warn on legacy non-EXT4 external /opt"
 pass "external Entware storage contract is EXT4-only and mirrored by installer/Doctor/updater"
+
+grep -Fq 'Entware /opt mount: source=' "$ROOT/mihomo-doctor.sh" || fail "Doctor must report the actual Entware mount source/mountpoint/filesystem/class"
+grep -Fq 'Internal /opt flash protection is required but S00ubifs is missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must hard-diagnose missing S00ubifs on internal Entware"
+grep -Fq 'Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require active tmpfs protection on internal Entware"
+grep -Fq 'Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep internal-flash protection N/A for external Entware"
+sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
+    fail "Doctor Entware storage / internal-flash protection fixtures failed"
+pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
 
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q '^MIHOMO_STAGE_MARGIN_KB=4096$' "$ROOT/$_f" || fail "$_f must use the shared 4 MB Mihomo staging margin"
@@ -166,8 +187,13 @@ pass "migrator --check obeys the one-Mihomo invariant"
 
 grep -q 'CRON_LEGACY_BAK="/opt/etc/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must live outside cron.5mins"
 grep -q 'CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must recognize the old in-cron backup path"
-grep -q 'chmod -x "$CRON_LEGACY_BAK"' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
+grep -Fq 'wd_permissions "$BACKUP_STAGE" 600' "$ROOT/update-watchdog.sh" || fail "watchdog legacy backup must be non-executable"
+grep -Fq 'chmod 600 "$CRON_LEGACY_BAK_OLD"' "$ROOT/update-watchdog.sh" || fail "old cron backup must be disabled before migration"
 pass "watchdog updater cannot leave an executable legacy backup in cron.5mins"
+! grep -Fq "stat -c" "$ROOT/update-watchdog.sh" || fail "watchdog updater must not require GNU stat -c on Keenetic BusyBox"
+! grep -Fq "stat -c '%u:%g:%a'" "$ROOT/install.sh" || fail "installer watchdog path must not require GNU stat -c"
+grep -q '^wd_file_state()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must use BusyBox-compatible managed-file metadata"
+pass "watchdog managed-file ownership/mode checks are BusyBox-compatible"
 
 grep -q 'WATCHDOG_LEGACY_BAK_OLD=' "$ROOT/mihomo-doctor.sh" || fail "doctor must know the historical in-cron watchdog backup path"
 grep -q 'Executable legacy watchdog backup remains inside cron.5mins' "$ROOT/mihomo-doctor.sh" || fail "doctor must warn about executable legacy watchdog backup"
@@ -218,6 +244,8 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
 grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
+grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper staging must be process-unique via shell PID $$"
+! grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must not use a literal single-dollar staging suffix"
 grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
 grep -Fq 'sh "$MAGITRICKLE_REPO_STAGE" >/dev/null' "$ROOT/install.sh" || fail "validated upstream MagiTrickle helper stdout must be suppressed"
 grep -q 'MagiTrickle installed and started' "$ROOT/install.sh" || fail "installer must confirm the automated MagiTrickle outcome"
@@ -442,7 +470,7 @@ grep -q '^resolve_installed_mihomo()' "$ROOT/install.sh" || fail "installer must
 grep -q 'Existing Mihomo binary found at .*package install/upgrade skipped' "$ROOT/install.sh" || fail "repeat install must leave an existing Mihomo binary untouched"
 grep -q 'Use update-mihomo.sh to update an installed Mihomo transactionally' "$ROOT/install.sh" || fail "installer must direct existing-binary updates to update-mihomo.sh"
 [ "$(grep -c '^mihomo_running()' "$ROOT/install.sh")" -eq 1 ] || fail "installer must have exactly one shared one-Mihomo daemon guard"
-grep -q 'Mihomo version probe skipped - daemon is running (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
+grep -q 'Mihomo version probe skipped - daemon is running or state is unknown (one-Mihomo invariant)' "$ROOT/install.sh" || fail "early installer version probe must obey one-Mihomo"
 pass "repeat install does not replace live Mihomo and all installer probes share one-Mihomo guard"
 
 grep -Fq 'MIHOMO_RESTART_NEEDED=0' "$ROOT/install.sh" || fail "installer must track whether Mihomo actually needs a reload"
@@ -470,8 +498,10 @@ pass "MagiTrickle helper avoids duplicate opkg update when repository configurat
 # a real fresh install reached the watchdog step and raw.githubusercontent.com reset
 # all three curl attempts while the rest of the stack had already installed.
 grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must centralize project-script delivery"
-grep -Fq 'if retry_silent curl -fsSL "$_psd_raw" -o "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with quiet curl retries first"
-grep -Fq 'retry_silent wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
+grep -q '^project_script_curl_retry()' "$ROOT/install.sh" || fail "project-script delivery must centralize bounded curl compatibility retries"
+grep -Fq 'if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with bounded curl retries first"
+grep -Fq -- '--connect-timeout 5 --max-time 20 -4 --curves X25519' "$ROOT/install.sh" || fail "installer must retain the bounded X25519 TLS compatibility retry"
+grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
@@ -483,6 +513,9 @@ pass "installer project-script downloads use validated curl/wget/API fallbacks a
 
 grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
 grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
+grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/install.sh" || fail "installer must give large assets a separate bounded transfer window"
+grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
+grep -Fq 'wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"' "$ROOT/install.sh" || fail "installer large-file wget fallback must remain bounded"
 grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
 grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
 grep -Fq 'rm -f "$_duf_dst"' "$ROOT/install.sh" || fail "installer generic file downloader must clear partial files between transports"
@@ -503,42 +536,49 @@ grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog update
 pass "watchdog updater download path is resilient and preserves source override semantics"
 
 # Managed network retries must not flood a router console with one raw error and
-# one project WARN per attempt. Keep the three-attempt resilience, summarize a
-# failed transport once, and preserve the next fallback.
+# one project WARN per attempt. Keep the three normal curl attempts, add only one
+# bounded X25519 compatibility retry, summarize exhaustion once, and preserve the next fallback.
 grep -q '^retry_silent()' "$ROOT/install.sh" || fail "installer must have a quiet managed-download retry helper"
 grep -Fq '"$@" 2>/dev/null && return 0' "$ROOT/install.sh" || fail "installer quiet retry must suppress per-attempt transport stderr"
-grep -Fq 'raw/curl failed after 3 attempts for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
+grep -Fq 'raw/curl failed after bounded retries for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
 grep -Fq 'raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/wget once"
-grep -Fq 'retry_silent curl -fsSL "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use quiet retries"
-grep -Fq 'retry_silent curl -fsSL "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use quiet retries"
+grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use bounded quiet retries"
+grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must give large assets a separate bounded transfer window"
+grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use the large-asset transfer window"
+grep -Fq 'retry_silent wget -qO "$_df_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater wget asset fallback must remain bounded"
+grep -Fq -- '--curves X25519' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must retain the X25519 TLS compatibility retry"
 ! grep -Fq 'curl download attempt $_rc_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every curl retry"
 ! grep -Fq 'wget download attempt $_rw_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every wget retry"
-grep -Fq 'raw/curl failed after 3 attempts for $_dps_rel; trying wget fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/curl once"
+grep -Fq 'raw/curl failed after bounded retries for $_dps_rel; trying wget fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/curl once"
+grep -q '^curl_to_file_once()' "$ROOT/setup.sh" || fail "setup must centralize bounded curl invocation"
+grep -Fq -- '--connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve"' "$ROOT/setup.sh" || fail "setup must retain the X25519 TLS compatibility retry"
 grep -Fq 'raw/wget failed after 3 attempts for $_dps_rel; trying GitHub Contents API fallback' "$ROOT/setup.sh" || fail "setup must summarize exhausted raw/wget once"
 ! grep -Fq 'curl download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every curl retry"
 ! grep -Fq 'wget download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every wget retry"
 ! grep -Fq 'GitHub API download attempt $_dw_try/3 failed' "$ROOT/update-watchdog.sh" || fail "watchdog updater must not print a WARN for every API retry"
-grep -Fq 'curl download failed after 3 attempts; trying wget fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted curl once"
+grep -Fq 'curl download failed after bounded retries; trying wget fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted curl once"
+grep -Fq -- '--connect-timeout 5 --max-time 20 -4 --curves X25519' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain the bounded X25519 TLS compatibility retry"
 grep -Fq 'wget download failed after 3 attempts; trying GitHub Contents API fallback' "$ROOT/update-watchdog.sh" || fail "watchdog updater must summarize exhausted wget once"
 grep -Fq 'quiet per attempt' "$ROOT/AGENTS.md" || fail "AGENTS must preserve the quiet managed-download retry contract"
 grep -Fq 'не печатают каждую внутреннюю попытку' "$ROOT/docs/18-output-colors.md" || fail "RU output contract must document quiet retry presentation"
 pass "managed download retries stay resilient without per-attempt console spam"
 
-grep -Fq 'curl is tried first; an actual curl failure falls back to wget' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must fall back after a real curl failure"
+grep -Fq 'after a bounded normal-TLS failure one X25519' "$ROOT/mihomo-doctor.sh" || fail "Doctor fetch helper must document the bounded X25519 retry before wget"
+grep -Fq -- '--connect-timeout 5 --max-time 15 -4 --curves X25519' "$ROOT/mihomo-doctor.sh" || fail "Doctor must retain the bounded X25519 TLS compatibility retry"
 grep -Fq 'PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must know the project API delivery fallback"
 grep -Fq 'GitHub Contents API fallback is reachable - hardened project downloads can continue' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish raw-host failure from total project-delivery failure"
 pass "Doctor reports the hardened project delivery paths accurately"
 
 # Permanent contracts for the two previously fixed high-consequence updater bugs:
 # stale/racy locking and non-atomic cross-filesystem replacement.
-grep -Fq 'LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must use the atomic lock directory"
-grep -Fq 'if mkdir "$LOCK_DIR" 2>/dev/null; then' "$ROOT/update-mihomo.sh" || fail "updater lock acquisition must remain mkdir-based"
+grep -Fq 'MIHOMO_LIFECYCLE_LOCK="/tmp/mihomo-lifecycle.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must join the shared lifecycle"
+grep -Fq 'ml_lifecycle_acquire || error' "$ROOT/update-mihomo.sh" || fail "updater must acquire lifecycle before mutation"
 grep -Fq 'MAINT_MARKER="/tmp/mihomo.maintenance"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate planned downtime with watchdog"
 grep -Fq 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" || fail "updater candidate must stage on the destination filesystem"
 grep -Fq 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" || fail "updater must create a bounded rollback backup"
-grep -Fq 'cp -f "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must copy the current binary to rollback backup before commit"
+grep -Fq 'cp -p "$MIHOMO_PATH" "$TMP_BACKUP"' "$ROOT/update-mihomo.sh" || fail "updater must preserve the current binary in rollback backup before commit"
 grep -Fq 'mv -f "$STAGE_BIN" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater commit must remain a same-filesystem atomic rename"
-grep -Fq 'cp -f "$TMP_BACKUP" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must retain rollback restoration"
+grep -Fq 'mv -f "$ROLLBACK_STAGE" "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must atomically restore the rollback stage"
 ! grep -Fq 'rm -f "$MIHOMO_PATH"' "$ROOT/update-mihomo.sh" || fail "updater must never delete the canonical binary before atomic commit"
 _stage_line=$(grep -n 'STAGE_BIN="$MIHOMO_DIR/.mihomo.new.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
 _backup_line=$(grep -n 'TMP_BACKUP="$TMP_DIR/mihomo.backup.' "$ROOT/update-mihomo.sh" | head -1 | cut -d: -f1)
@@ -562,6 +602,10 @@ grep -Fq 'restore_binary_state()' "$ROOT/update-mihomo.sh" || fail "updater roll
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must read project-owned Mihomo binary state"
 grep -Fq 'core changed outside update-mihomo.sh or metadata is stale' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish external core replacement from package metadata"
 pass "project-owned Mihomo binary-state contract remains pinned"
+! grep -Fq "stat -L -c '%d:%i'" "$ROOT/update-mihomo.sh" || fail "updater runtime identity must not require GNU stat -c"
+grep -Fq 'test "$MIHOMO_PATH" -ef "/proc/$1/exe"' "$ROOT/update-mihomo.sh" || fail "updater must verify restored runtime with device+inode file identity"
+! grep -Fq "stat -c '%a'" "$ROOT/update-mihomo.sh" || fail "updater rollback mode preservation must be BusyBox-compatible"
+pass "updater rollback identity and mode checks are BusyBox-compatible"
 
 # User-facing HOWTOs must mirror the storage-mode guard and current ProxyN behavior.
 for _f in docs/HOWTO_RU.md docs/HOWTO.md; do
@@ -627,11 +671,10 @@ grep -Fq 'rollback_config "Mihomo did not start with the new config"' "$ROOT/con
 grep -Fq 'rollback_config "Mihomo started but project port 7890 did not become ready"' "$ROOT/config-import.sh" || fail "missing contract port after start must roll back config"
 grep -Fq 'Previous Mihomo service restored; port 7890 is listening.' "$ROOT/config-import.sh" || fail "pre-commit failure recovery must wait for old service port 7890 readiness"
 grep -Fq 'start_mihomo_confirmed || return 1' "$ROOT/config-import.sh" || fail "old service restoration must fail if the process cannot be restarted"
-grep -Fq 'UPDATER_LOCK_DIR="/tmp/mihomo-update.lock.d"' "$ROOT/config-import.sh" || fail "config importer must refuse known updater transactions"
+grep -Fq 'ml_lifecycle_acquire ||' "$ROOT/config-import.sh" || fail "config importer must acquire shared lifecycle"
 grep -Fq 'CONFIG_COMMIT_STARTED=1' "$ROOT/config-import.sh" || fail "config importer must mark the commit phase before atomic replacement"
 grep -Fq 'if [ "$CONFIG_COMMIT_STARTED" -eq 1 ] || [ "$CONFIG_REPLACED" -eq 1 ]; then' "$ROOT/config-import.sh" || fail "signals during the commit window must roll back"
-grep -Fq 'CONFIG_IMPORT_LOCK="/tmp/mihomo-config-import.lock.d"' "$ROOT/update-mihomo.sh" || fail "updater must coordinate with active config import"
-grep -Fq 'if config_import_active; then' "$ROOT/update-mihomo.sh" || fail "updater must refuse active config import before acquiring update lock"
+grep -Fq 'ml_lifecycle_release || true' "$ROOT/update-mihomo.sh" || fail "updater cleanup must release only owned lifecycle"
 ! grep -Fq 'cat > "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config importer must never stream input directly into canonical config"
 pass "config importer validates, atomically commits and rolls back under one-Mihomo safety"
 
