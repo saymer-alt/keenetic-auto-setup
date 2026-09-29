@@ -109,7 +109,7 @@ pass "all zRAM identity scanners are BusyBox-compatible"
 for _f in setup.sh install.sh config-import.sh update-mihomo.sh update-watchdog.sh migrate-mihomo-tun.sh migrate-mihomo-mips.sh mihomo-doctor.sh mihomo-watchdog.sh mihomo-route-check.sh mihomo-interface-check.sh mihomo-proxy-selection-watch.sh 020-bypass-wa.sh S00ubifs; do
     ! grep -Eq '(^|[[:space:]])stat[[:space:]]+(-[^[:space:]]*)*c([[:space:]]|$)' "$ROOT/$_f" || fail "$_f must not depend on GNU stat -c at Keenetic runtime"
     ! grep -Fq '$RANDOM' "$ROOT/$_f" || fail "$_f must not depend on bash-style RANDOM at Keenetic runtime"
-    ! grep -Fq '[[' "$ROOT/$_f" || fail "$_f must stay BusyBox/POSIX-sh compatible and avoid [[ ... ]]"
+    ! grep -Eq '(^|[;&|()[:space:]])\[\[[[:space:]]' "$ROOT/$_f" || fail "$_f must stay BusyBox/POSIX-sh compatible and avoid shell [[ ... ]]"
 done
 pass "production runtime scripts keep known GNU/bash-only assumptions out"
 
