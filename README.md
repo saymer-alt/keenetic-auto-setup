@@ -80,6 +80,22 @@ MagiTrickle:  http://192.168.1.1:8080/
 nano /opt/etc/mihomo/config.yaml
 ```
 
+Если нужно полностью заменить конфиг вручную, можно сначала сохранить текущую версию в `.bak`, сразу очистить файл и открыть уже пустой `config.yaml`:
+
+```bash
+cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && \
+: > /opt/etc/mihomo/config.yaml && \
+nano /opt/etc/mihomo/config.yaml
+```
+
+Если backup не нужен, короткий вариант:
+
+```bash
+: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```
+
+> **Важно:** обе команды обнуляют текущий `config.yaml` до 0 байт до открытия `nano`. Не перезапускайте Mihomo, пока не вставите новый корректный YAML и не сохраните файл.
+
 После ручной правки перезапустите Mihomo и проверьте статус.
 
 Doctor:
@@ -87,7 +103,6 @@ Doctor:
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
 ```
-
 CLI использует единый «светофор»: зелёный — штатный ход/`OK`, голубой (cyan) — `INFO`, жёлтый — `WARN`, красный — `ERROR`/`FAIL`. Цвет — только подсказка: префиксы всегда сохраняются, а при редиректе, `NO_COLOR` или `TERM=dumb` ANSI отключается. Полный контракт: [цвета и статусы CLI](docs/18-output-colors.md).
 
 Точечная read-only проверка одного домена/IP через цепочку ProxyN → Mihomo:
@@ -178,7 +193,6 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```
 
 Подробности → [Proxy Selection Watch](docs/11-proxy-selection-watch.md)
-
 ## 6. Скрипты проекта
 
 | Скрипт | Назначение / документация |
