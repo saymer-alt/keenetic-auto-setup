@@ -80,12 +80,10 @@ MagiTrickle:  http://192.168.1.1:8080/
 nano /opt/etc/mihomo/config.yaml
 ```
 
-Если нужно полностью заменить конфиг вручную, можно сначала сохранить текущую версию в `.bak`, сразу очистить файл и открыть уже пустой `config.yaml`:
+Если нужно полностью заменить конфиг вручную, можно сначала сохранить текущую версию в `.bak`, сразу очистить файл и открыть уже пустой `config.yaml`. Команда готова для копирования в консоль целиком одной строкой:
 
 ```bash
-cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && \
-: > /opt/etc/mihomo/config.yaml && \
-nano /opt/etc/mihomo/config.yaml
+cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
 ```
 
 Если backup не нужен, короткий вариант:
