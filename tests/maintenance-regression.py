@@ -39,8 +39,8 @@ def package_versions(shell):
     urls = [a['browser_download_url'] for a in assets]
     for suffix in ['aarch64-3.10', 'armv7-3.2', 'mipsel-3.4', 'mips-3.4']:
         good = next(u for u in urls if '/mihomo_1.' in u and u.endswith('_'+suffix+'.ipk'))
-        for values, rc in [(urls, 0), ([good, good], 0),
-                           ([good, good.replace('1.19.31', '1.19.32')], 2),
+        for values, rc in [(urls, 0), ([good, good], 2),
+                           ([good, good.replace('1.19.31', '1.19.32')], 0),
                            (['https://host/foreign_'+good.rsplit('/', 1)[1]], 1),
                            ([good.replace(suffix, 'wrong-arch')], 1), ([], 1),
                            ([good.replace('1.19.31', '1.19.32-rc.1')], 0)]:
@@ -50,7 +50,7 @@ def package_versions(shell):
                 assert len(p.stdout.splitlines()) == 1
                 assert 'nohf' not in p.stdout
     updater = source('update-mihomo.sh')
-    funcs = function(updater, 'valid_version') + function(updater, 'ver_compare')
+    funcs = function(updater, 'valid_version') + function(updater, 'ver_compare') + function(updater, 'same_version_package_action')
     for a, b, expected in [('1.20.0', '1.19.31', 'gt'), ('1.19.31', '1.19.31', 'eq'),
                             ('1.19.30', '1.19.31', 'lt'), ('2.bad', '1.0', 'unknown'),
                             ('1..20', '1.19', 'unknown'), ('1.2.', '1.2', 'unknown'),

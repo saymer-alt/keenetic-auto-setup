@@ -129,6 +129,10 @@ grep -Fq 'Entware /opt mount: source=' "$ROOT/mihomo-doctor.sh" || fail "Doctor 
 grep -Fq 'Internal /opt flash protection is required but S00ubifs is missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must hard-diagnose missing S00ubifs on internal Entware"
 grep -Fq 'Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require active tmpfs protection on internal Entware"
 grep -Fq 'Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep internal-flash protection N/A for external Entware"
+sh "$ROOT/tests/installer-tmpfs-regression.sh" "$ROOT" ||
+    fail "Installer must require S00ubifs activation and all three live tmpfs mounts"
+pass "installer RAM mode fails closed on incomplete protection and can reuse a valid existing service"
+
 sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
     fail "Doctor Entware storage / internal-flash protection fixtures failed"
 pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
@@ -505,7 +509,8 @@ grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" 
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
-grep -Fq 'project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
+grep -Fq 'project_script_download "S00ubifs" "$_ita_script"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
+grep -Fq 'S00_SCRIPT="/opt/etc/init.d/S00ubifs"' "$ROOT/install.sh" || fail "S00ubifs activation must use canonical service path"
 grep -Fq 'project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"' "$ROOT/install.sh" || fail "bypass hook must use resilient project-script delivery"
 grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
 grep -Fq 'rm -f "$_psd_tmp"' "$ROOT/install.sh" || fail "installer project downloader must clear partial candidates between transports"
@@ -591,8 +596,8 @@ pass "updater lock/stage/backup/atomic-commit/rollback invariants remain pinned"
 # database. Runtime version is the truth; stale package metadata is expected
 # after update-mihomo.sh and after Mihomo/MetaCubeXD self-upgrade.
 ! grep -Eq 'opkg[[:space:]]+install[[:space:]].*mihomo' "$ROOT/update-mihomo.sh" || fail "binary updater must not install Mihomo through opkg"
-grep -Fq 'Already up to date ($CURRENT_VER). Use --force to replace anyway.' "$ROOT/update-mihomo.sh" || fail "same-version update must skip replacement unless --force is requested"
-grep -Fq 'Same version ($CURRENT_VER) and --force given: replacing the binary anyway.' "$ROOT/update-mihomo.sh" || fail "--force must retain same-version binary replacement semantics"
+grep -Fq 'Already up to date ($CURRENT_VER). Use --force to replace anyway.' "$ROOT/update-mihomo.sh" || fail "same-version update retains the skip message when no newer project package release is known"
+grep -Fq 'Same runtime version ($CURRENT_VER): applying newer package release or explicit --force.' "$ROOT/update-mihomo.sh" || fail "--force must retain same-version binary replacement semantics"
 grep -Fq 'stale metadata - expected after binary-only updates' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain stale opkg metadata as expected binary-only update state"
 pass "binary-only Mihomo update and stale-opkg semantics remain pinned"
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/update-mihomo.sh" || fail "updater must persist project-owned Mihomo binary state"

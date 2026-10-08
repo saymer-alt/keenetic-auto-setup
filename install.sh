@@ -1144,15 +1144,58 @@ fi
 # ---------------------------
 # TMPFS
 # ---------------------------
-if [ "$MODE" = "ram" ]; then
-    log "Installing S00ubifs..."
+# BEGIN INSTALLER TMPFS PROTECTION v1
+# Match Doctor: executable/enabled service and three active tmpfs mounts.
+# A successful start or presence of S00ubifs alone is insufficient.
+installer_tmpfs_service_enabled() {
+    grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]*(#.*)?)?$' "$1" 2>/dev/null
+}
 
-    if project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"; then
-        chmod +x /opt/etc/init.d/S00ubifs
-        /opt/etc/init.d/S00ubifs start || err "S00ubifs start failed; RAM mode initialization incomplete"
+installer_tmpfs_protection_ready() {
+    _itp_script="$1"
+    _itp_root="$2"
+    _itp_mounts="$3"
+
+    [ -f "$_itp_script" ] && [ -x "$_itp_script" ] || return 1
+    installer_tmpfs_service_enabled "$_itp_script" || return 1
+    [ -r "$_itp_mounts" ] || return 1
+
+    for _itp_dir in "$_itp_root/tmp" "$_itp_root/var/log" "$_itp_root/var/run"; do
+        awk -v path="$_itp_dir" '$2 == path && $3 == "tmpfs" { found=1 } END { exit !found }' "$_itp_mounts" || return 1
+    done
+    return 0
+}
+
+installer_tmpfs_activate() {
+    _ita_script="$1"
+    _ita_root="$2"
+    _ita_mounts="$3"
+
+    if project_script_download "S00ubifs" "$_ita_script"; then
+        chmod +x "$_ita_script" || err "Cannot make S00ubifs executable; RAM mode initialization incomplete"
     else
         warn "S00ubifs download failed after raw/curl, raw/wget and GitHub API fallbacks"
+        # Transactional downloading leaves the previously installed copy intact.
+        # Do not reuse it unless it is executable and passes the script validator.
+        if [ ! -x "$_ita_script" ] || ! project_script_candidate_ok "$_ita_script"; then
+            err "S00ubifs download failed and no valid executable existing copy is available; refusing RAM mode"
+        fi
+        log "Reusing existing S00ubifs after download failure"
     fi
+
+    installer_tmpfs_service_enabled "$_ita_script" ||
+        err "S00ubifs is disabled or has no ENABLED=yes directive; refusing RAM mode"
+    "$_ita_script" start || err "S00ubifs start failed; RAM mode initialization incomplete"
+    installer_tmpfs_protection_ready "$_ita_script" "$_ita_root" "$_ita_mounts" ||
+        err "S00ubifs RAM protection incomplete: tmpfs required on $_ita_root/tmp, $_ita_root/var/log and $_ita_root/var/run"
+}
+# END INSTALLER TMPFS PROTECTION v1
+
+S00_SCRIPT="/opt/etc/init.d/S00ubifs"
+S00_ROOT="/opt"
+if [ "$MODE" = "ram" ]; then
+    log "Installing S00ubifs..."
+    installer_tmpfs_activate "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"
 else
     log "Skip S00ubifs (disk mode)"
 fi
@@ -1160,11 +1203,116 @@ fi
 # ---------------------------
 # DETECT ARCH
 # ---------------------------
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
-    sub(/[-_].*/,"",$2); print $2; exit
-}')
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
 
-[ -z "$ARCH" ] && err "Cannot detect architecture"
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (("x" a) == ("x" b)) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (("x" ap) == ("x" bp)) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) {
+                c=numeric(aa[i],bb[i]); if(c) return c; continue
+            }
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            if (("x" aa[i]) == ("x" bb[i])) continue
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        if (an == bn) return 0
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
+
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" or (.assets | length) == 0 then error("release metadata") else . end
+        # A known failed stable upload is ineligible, not a reason to reject a healthy ABI.
+        | def starter:
+            .state == "starter" and .size == 0 and .digest == null
+            and (.id | type) == "number" and .id > 0 and (.id | floor) == .id
+            and (.name | test("^mihomo_(nohf_)?(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)-[1-9][0-9]*_(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4|x64-3[.]2)[.]ipk$"))
+            and ((.name | startswith("mihomo_nohf_")) == false or (.name | endswith("_armv7-3.2.ipk")))
+            and (.browser_download_url | test("^(https://github[.]com)?/saymer-alt/entware-go/releases/download/latest/[A-Za-z0-9_.+-]+[.]ipk$"));
+        if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then
+                (.state == "uploaded" and (.size | type) == "number" and .size > 0 and (.size | floor) == .size)
+                or starter
+                else true end))
+            and (.assets as $assets | all($assets[];
+                if (.name | startswith("mihomo_")) and .state == "starter" then
+                    . as $pending
+                    | ([$assets[] | select(.name == $pending.name)] | length == 1)
+                      and ([$assets[] | select(.id == $pending.id)] | length == 1)
+                else true end))
+          then [.assets[] | select((.name | startswith("mihomo_")) and .state == "starter" | not)
+                | .browser_download_url] | join("\n")
+          else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
+
+IPK_SUFFIX=$(opkg print-architecture | detect_mihomo_package_arch) || err "Cannot establish a unique supported Entware architecture/ABI"
+ARCH=${IPK_SUFFIX%-*}
 
 log "Arch: $ARCH"
 
@@ -1193,32 +1341,6 @@ mihomo_running() {
 REPO_OWNER="saymer-alt"
 REPO_NAME="entware-go"
 
-case "$ARCH" in
-    aarch64*) IPK_SUFFIX="aarch64-3.10" ;;
-    armv7*|arm*) IPK_SUFFIX="armv7-3.2" ;;
-    mipsel*) IPK_SUFFIX="mipsel-3.4" ;;
-    mips*) IPK_SUFFIX="mips-3.4" ;;
-    *) err "Unsupported arch: $ARCH" ;;
-esac
-
-# Select a unique exact package basename for the already-detected architecture.
-# Input is one URL/path per line from jq, API grep or HTML; duplicates are harmless.
-select_mihomo_asset() {
-    awk -v suffix="_$IPK_SUFFIX.ipk" '
-    {
-        url=$0; name=url; sub(/^.*\//, "", name)
-        if (substr(name, length(name)-length(suffix)+1) != suffix) next
-        version=substr(name, 8, length(name)-7-length(suffix))
-        if (substr(name,1,7) != "mihomo_" || version !~ /^[0-9][A-Za-z0-9.+-]*$/) next
-        if (!seen[url]++) {selected=url; count++}
-    }
-    END {if (count == 1) print selected; else if (count > 1) exit 2; else exit 1}'
-}
-
-asset_selection_failed() {
-    [ "$1" -ne 2 ] || err "Ambiguous Mihomo packages for $IPK_SUFFIX; refusing selection or feed fallback"
-    return 0
-}
 
 MIHOMO_RESTART_NEEDED=0
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
@@ -1231,40 +1353,23 @@ else
     log "Installing Mihomo..."
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
-    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/latest"
     ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
     DOWNLOAD_URL=""
 
     if [ -n "$ASSETS_JSON" ]; then
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" | jq -r '
-            .assets[]? | select(.name == (.browser_download_url | split("/") | last))
-            | .browser_download_url
-        ' 2>/dev/null | select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "jq filter empty, trying grep fallback on API response..."
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
-            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
-            select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "API failed, trying direct API grep..."
-        ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
-            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
-            select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "Trying HTML scraping..."
-        HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" | release_mihomo_asset) ||
+            err "Invalid, ambiguous or unavailable Mihomo asset for $IPK_SUFFIX; refusing feed fallback"
+    else
+        log "API unavailable, trying release HTML..."
+        HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/expanded_assets/latest"
         HTML_BODY=$(fetch_url_text "$HTML_URL") || HTML_BODY=""
-        REL_PATH=$(printf '%s\n' "$HTML_BODY" |
-            grep -oE 'href="/[^"]*releases/download/[^"]*"' | cut -d'"' -f2 |
-            select_mihomo_asset) || asset_selection_failed "$?"
-        if [ -n "$REL_PATH" ]; then DOWNLOAD_URL="https://github.com$REL_PATH"; fi
+        if [ -n "$HTML_BODY" ]; then
+            REL_PATH=$(printf '%s\n' "$HTML_BODY" |
+                grep -oE 'href="/[^"]*releases/download/[^"]*"' | cut -d'"' -f2 |
+                select_mihomo_asset) || err "Cannot safely select Mihomo from release HTML"
+            DOWNLOAD_URL="https://github.com$REL_PATH"
+        fi
     fi
 
     # GitHub Releases are the primary package source; the Entware feed below
@@ -2120,12 +2225,12 @@ else
     check_fail "MagiTrickle package not installed"
 fi
 
-# S00ubifs (ram mode only)
+# S00ubifs (ram mode only): check actual protection rather than file presence.
 if [ "$MODE" = "ram" ]; then
-    if [ -x /opt/etc/init.d/S00ubifs ]; then
-        check_ok "S00ubifs present (ram mode)"
+    if installer_tmpfs_protection_ready "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"; then
+        check_ok "S00ubifs enabled; /opt/tmp, /opt/var/log and /opt/var/run are active tmpfs (ram mode)"
     else
-        check_fail "S00ubifs missing (ram mode)"
+        check_fail "S00ubifs RAM protection missing/disabled or required tmpfs unmounted (ram mode)"
     fi
 fi
 

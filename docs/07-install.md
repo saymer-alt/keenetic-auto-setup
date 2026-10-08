@@ -47,6 +47,16 @@ validation/commit — даже если prefix содержит shebang и пр�
 проверка соседнего stage и atomic rename в destination. Неудача оставляет
 canonical файл прежним; невозможность очистить candidate прерывает загрузку.
 
+Для `ram`-режима сохранение файла само по себе не считается успехом: если
+доставка `S00ubifs` не удалась, installer проверяет существующую executable-копию
+(shebang и `sh -n`), затем запускает её. Если пригодной копии нет, либо
+`ENABLED=yes` отсутствует, запуск вернул ошибку или после запуска отсутствует
+хотя бы один tmpfs (`/opt/tmp`, `/opt/var/log`, `/opt/var/run`), установка
+завершается с ERROR. Финальный self-check проверяет enabled state и реальные
+mount-записи — одного существующего S00ubifs недостаточно.
+Правило действует для `ram` и с внутренним, и с внешним `/opt`.
+`disk`-режим не изменён.
+
 Перед package-path installer ищет executable canonical binary:
 `/opt/sbin/mihomo`, затем `/opt/bin/mihomo`.
 
