@@ -1203,11 +1203,95 @@ fi
 # ---------------------------
 # DETECT ARCH
 # ---------------------------
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
-    sub(/[-_].*/,"",$2); print $2; exit
-}')
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
 
-[ -z "$ARCH" ] && err "Cannot detect architecture"
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (a == b) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (ap == bp) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] == bb[i]) continue
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) return numeric(aa[i],bb[i])
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
+
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" then error("release metadata") else . end
+        | if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then .state == "uploaded" and (.size | type) == "number" and .size > 0 else true end))
+          then .assets[].browser_download_url else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
+
+IPK_SUFFIX=$(opkg print-architecture | detect_mihomo_package_arch) || err "Cannot establish a unique supported Entware architecture/ABI"
+ARCH=${IPK_SUFFIX%-*}
 
 log "Arch: $ARCH"
 
@@ -1236,32 +1320,6 @@ mihomo_running() {
 REPO_OWNER="saymer-alt"
 REPO_NAME="entware-go"
 
-case "$ARCH" in
-    aarch64*) IPK_SUFFIX="aarch64-3.10" ;;
-    armv7*|arm*) IPK_SUFFIX="armv7-3.2" ;;
-    mipsel*) IPK_SUFFIX="mipsel-3.4" ;;
-    mips*) IPK_SUFFIX="mips-3.4" ;;
-    *) err "Unsupported arch: $ARCH" ;;
-esac
-
-# Select a unique exact package basename for the already-detected architecture.
-# Input is one URL/path per line from jq, API grep or HTML; duplicates are harmless.
-select_mihomo_asset() {
-    awk -v suffix="_$IPK_SUFFIX.ipk" '
-    {
-        url=$0; name=url; sub(/^.*\//, "", name)
-        if (substr(name, length(name)-length(suffix)+1) != suffix) next
-        version=substr(name, 8, length(name)-7-length(suffix))
-        if (substr(name,1,7) != "mihomo_" || version !~ /^[0-9][A-Za-z0-9.+-]*$/) next
-        if (!seen[url]++) {selected=url; count++}
-    }
-    END {if (count == 1) print selected; else if (count > 1) exit 2; else exit 1}'
-}
-
-asset_selection_failed() {
-    [ "$1" -ne 2 ] || err "Ambiguous Mihomo packages for $IPK_SUFFIX; refusing selection or feed fallback"
-    return 0
-}
 
 MIHOMO_RESTART_NEEDED=0
 MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
@@ -1274,40 +1332,23 @@ else
     log "Installing Mihomo..."
     log "Looking for mihomo ipk ($IPK_SUFFIX) in $REPO_OWNER/$REPO_NAME..."
 
-    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/latest"
     ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
     DOWNLOAD_URL=""
 
     if [ -n "$ASSETS_JSON" ]; then
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" | jq -r '
-            .assets[]? | select(.name == (.browser_download_url | split("/") | last))
-            | .browser_download_url
-        ' 2>/dev/null | select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "jq filter empty, trying grep fallback on API response..."
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
-            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
-            select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "API failed, trying direct API grep..."
-        ASSETS_JSON=$(fetch_url_text "$API_URL") || ASSETS_JSON=""
-        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" |
-            grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*": *"//;s/"$//' |
-            select_mihomo_asset) || asset_selection_failed "$?"
-    fi
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        log "Trying HTML scraping..."
-        HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+        DOWNLOAD_URL=$(printf '%s\n' "$ASSETS_JSON" | release_mihomo_asset) ||
+            err "Invalid, ambiguous or unavailable Mihomo asset for $IPK_SUFFIX; refusing feed fallback"
+    else
+        log "API unavailable, trying release HTML..."
+        HTML_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/expanded_assets/latest"
         HTML_BODY=$(fetch_url_text "$HTML_URL") || HTML_BODY=""
-        REL_PATH=$(printf '%s\n' "$HTML_BODY" |
-            grep -oE 'href="/[^"]*releases/download/[^"]*"' | cut -d'"' -f2 |
-            select_mihomo_asset) || asset_selection_failed "$?"
-        if [ -n "$REL_PATH" ]; then DOWNLOAD_URL="https://github.com$REL_PATH"; fi
+        if [ -n "$HTML_BODY" ]; then
+            REL_PATH=$(printf '%s\n' "$HTML_BODY" |
+                grep -oE 'href="/[^"]*releases/download/[^"]*"' | cut -d'"' -f2 |
+                select_mihomo_asset) || err "Cannot safely select Mihomo from release HTML"
+            DOWNLOAD_URL="https://github.com$REL_PATH"
+        fi
     fi
 
     # GitHub Releases are the primary package source; the Entware feed below

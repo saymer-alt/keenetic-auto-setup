@@ -999,19 +999,95 @@ fi
 # -----------------------------
 # 3. Detect Entware architecture (same method as install.sh)
 # -----------------------------
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
-    sub(/[-_].*/,"",$2); print $2; exit
-}')
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
 
-[ -z "$ARCH" ] && error "Cannot detect architecture"
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (a == b) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (ap == bp) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] == bb[i]) continue
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) return numeric(aa[i],bb[i])
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
 
-case "$ARCH" in
-  aarch64*)            IPK_SUFFIX="aarch64-3.10" ;;
-  armv7*|arm*)         IPK_SUFFIX="armv7-3.2" ;;
-  mipsel*)             IPK_SUFFIX="mipsel-3.4" ;;
-  mips*)               IPK_SUFFIX="mips-3.4" ;;
-  *) error "Unsupported architecture: $ARCH" ;;
-esac
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" then error("release metadata") else . end
+        | if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then .state == "uploaded" and (.size | type) == "number" and .size > 0 else true end))
+          then .assets[].browser_download_url else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
+
+IPK_SUFFIX=$(opkg print-architecture | detect_mihomo_package_arch) || error "Cannot establish a unique supported Entware architecture/ABI"
+ARCH=${IPK_SUFFIX%-*}
 
 log "Detected Entware arch: $ARCH"
 log "Package architecture: $IPK_SUFFIX"
@@ -1096,29 +1172,8 @@ log "Current Mihomo: ${CURRENT_VER:-unknown}"
 # -----------------------------
 # 6. Select the package asset for this architecture
 # -----------------------------
-DOWNLOAD_URL=""
-
-if [ -n "$RELEASE_JSON" ]; then
-  DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-    .assets[]?
-    | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk") and (contains("nohf") | not))
-    | .browser_download_url
-  ' 2>/dev/null | head -n 1)
-fi
-
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-  log "jq filter empty, trying grep fallback on API response..."
-  if [ -n "$RELEASE_JSON" ]; then
-    DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" \
-      | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' \
-      | grep -v "nohf" \
-      | head -n 1 | sed 's/.*": *"//;s/"$//')
-  fi
-fi
-
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-  error "No mihomo package for $IPK_SUFFIX in $REPO:latest — only versions actually published there can be installed. Check https://github.com/$REPO/releases"
-fi
+DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" | release_mihomo_asset) ||
+  error "Invalid, ambiguous or unavailable Mihomo asset for $IPK_SUFFIX in $REPO:latest"
 
 ASSET_NAME=$(basename "$DOWNLOAD_URL")
 
@@ -1173,6 +1228,32 @@ log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
 # manual task. Exact string equality short-circuits first, so devices on a
 # prerelease are recognized as up to date when the same version is packaged.
 # An unreadable current version is treated as a repair case.
+# Compare a package-only rebuild using project state, never stale opkg metadata.
+# The current runtime version and canonical file size must still match the record.
+same_version_package_action() {
+  if [ ! -e "${BINARY_STATE:-}" ]; then printf '%s\n' unknown; return; fi
+  if [ ! -f "$BINARY_STATE" ] || [ -L "$BINARY_STATE" ]; then printf '%s\n' invalid; return; fi
+  _sp_size=$(wc -c < "$MIHOMO_PATH" | tr -d ' ') || { printf '%s\n' invalid; return; }
+  _sp_release=$(awk -F= -v version="$AVAILABLE_VER" -v suffix="$IPK_SUFFIX" -v size="$_sp_size" '
+    $1 ~ /^(state_format|runtime_version|source|asset|package_release|binary_size_bytes)$/ {
+      if (NF != 2 || seen[$1]++) bad=1
+      value[$1]=$2
+    }
+    END {
+      release=value["package_release"]
+      if (!bad && value["state_format"] == "1" && value["runtime_version"] == version &&
+          value["source"] == "entware-go-binary-updater" && release ~ /^[1-9][0-9]*$/ &&
+          value["asset"] == "mihomo_" version "-" release "_" suffix ".ipk" &&
+          value["binary_size_bytes"] == size && size > 0) print release
+      else exit 1
+    }' "$BINARY_STATE") || { printf '%s\n' invalid; return; }
+  awk -v old="$_sp_release" -v candidate="$PACKAGE_RELEASE" 'BEGIN {
+    if (length(candidate)>length(old) || (length(candidate)==length(old) && ("x" candidate)>("x" old))) print "newer"
+    else if (candidate == old) print "same"
+    else print "older"
+  }'
+}
+
 if [ -n "$CURRENT_VER" ]; then
   valid_version "$CURRENT_VER" || error "Malformed installed version; automatic update refused"
 fi
@@ -1181,11 +1262,17 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
 elif [ -z "$CURRENT_VER" ]; then
   log "Current version unknown — attempting repair with the available package."
 elif [ "$CURRENT_VER" = "$AVAILABLE_VER" ]; then
-  if [ "$FORCE_UPDATE" -eq 0 ]; then
+  _pkg_action=$(same_version_package_action)
+  [ "$_pkg_action" != invalid ] || error "Project package state does not match the canonical binary; refusing package-only update"
+  if [ "$_pkg_action" = older ]; then
+    warn "Available package release is older than project state; downgrade refused even with --force."
+    exit 0
+  fi
+  if [ "$_pkg_action" != newer ] && [ "$FORCE_UPDATE" -eq 0 ]; then
     log "Already up to date ($CURRENT_VER). Use --force to replace anyway."
     exit 0
   fi
-  log "Same version ($CURRENT_VER) and --force given: replacing the binary anyway."
+  log "Same runtime version ($CURRENT_VER): applying newer package release or explicit --force."
 else
   _ver_rel=$(ver_compare "$AVAILABLE_VER" "$CURRENT_VER")
   if [ "$_ver_rel" = "gt" ]; then
@@ -1411,7 +1498,14 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
   if [ -z "$INSTALLED_VER" ]; then
     log "Installed version still unreadable after the stop — proceeding with the repair update."
   elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
-    if [ "$FORCE_UPDATE" -eq 0 ]; then
+    _pkg_action=$(same_version_package_action)
+    [ "$_pkg_action" != invalid ] || preflight_fail "Project package state does not match the canonical binary; refusing package-only update"
+    if [ "$_pkg_action" = older ]; then
+      warn "Available package release is older than project state; downgrade refused even with --force."
+      restore_stopped_service
+      exit 0
+    fi
+    if [ "$_pkg_action" != newer ] && [ "$FORCE_UPDATE" -eq 0 ]; then
       if [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
         log "Already up to date ($INSTALLED_VER) — verified after the controlled stop."
       else
@@ -1420,7 +1514,7 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
       restore_stopped_service
       exit 0
     fi
-    log "Same version ($INSTALLED_VER) and --force given: replacing the binary anyway."
+    log "Same runtime version ($INSTALLED_VER): applying newer package release or explicit --force."
   else
     _ver_rel=$(ver_compare "$AVAILABLE_VER" "$INSTALLED_VER")
     if [ "$_ver_rel" = "gt" ]; then
