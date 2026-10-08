@@ -596,8 +596,8 @@ pass "updater lock/stage/backup/atomic-commit/rollback invariants remain pinned"
 # database. Runtime version is the truth; stale package metadata is expected
 # after update-mihomo.sh and after Mihomo/MetaCubeXD self-upgrade.
 ! grep -Eq 'opkg[[:space:]]+install[[:space:]].*mihomo' "$ROOT/update-mihomo.sh" || fail "binary updater must not install Mihomo through opkg"
-grep -Fq 'Already up to date ($CURRENT_VER). Use --force to replace anyway.' "$ROOT/update-mihomo.sh" || fail "same-version update must skip replacement unless --force is requested"
-grep -Fq 'Same version ($CURRENT_VER) and --force given: replacing the binary anyway.' "$ROOT/update-mihomo.sh" || fail "--force must retain same-version binary replacement semantics"
+grep -Fq 'Already up to date ($CURRENT_VER). Use --force to replace anyway.' "$ROOT/update-mihomo.sh" || fail "same-version update retains the skip message when no newer project package release is known"
+grep -Fq 'Same runtime version ($CURRENT_VER): applying newer package release or explicit --force.' "$ROOT/update-mihomo.sh" || fail "--force must retain same-version binary replacement semantics"
 grep -Fq 'stale metadata - expected after binary-only updates' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain stale opkg metadata as expected binary-only update state"
 pass "binary-only Mihomo update and stale-opkg semantics remain pinned"
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/update-mihomo.sh" || fail "updater must persist project-owned Mihomo binary state"
