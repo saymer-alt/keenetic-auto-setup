@@ -6,10 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-10-08
+
 ### Исправлено
 - F2/F3: installer и updater исключают точно распознанные пустые GitHub `starter` assets из выбора IPK, сохраняя доступ к исправному пакету нужного ABI. Повреждённые/неоднозначные metadata по-прежнему останавливают выбор; SemVer prerelease identifiers сравниваются без неявного числового приведения и независимо от порядка assets.
 - EG-02: installer и updater выбирают новейший корректный Mihomo IPK при временном overlap в rolling feed; одинаково проверяют версию, package release и точный ABI. Дубли выбранного кандидата, повреждённые metadata и конфликтующие варианты останавливают выбор. Updater применяет более новый package release при той же runtime version по проверенному project state; downgrade пакета запрещён даже с --force.
 - KAS-01: `install.sh` больше не принимает RAM-режим только по наличию файла `S00ubifs`: проверяет `ENABLED=yes` и три реально смонтированных tmpfs сразу после запуска и в финальной самопроверке. При недоступном download запускает только пригодную старую копию; иначе останавливается с ошибкой.
+
+### Границы проверки
+- Пройдены автоматизированные dash/BusyBox, tmpfs/Doctor/resource-profile, transactional update/rollback/lock и producer/consumer проверки. Physical hardware acceptance версии 1.8.1 ещё не выполнена; выпуск до неё разрешён владельцем.
+- Публикация релиза не обновляет установленные роутеры автоматически.
 
 ---
 
