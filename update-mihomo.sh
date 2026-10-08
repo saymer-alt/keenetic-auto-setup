@@ -999,19 +999,95 @@ fi
 # -----------------------------
 # 3. Detect Entware architecture (same method as install.sh)
 # -----------------------------
-ARCH=$(opkg print-architecture | awk '/^arch/ && $2~/^(mips|mipsel|aarch64|arm)/{
-    sub(/[-_].*/,"",$2); print $2; exit
-}')
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
 
-[ -z "$ARCH" ] && error "Cannot detect architecture"
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (a == b) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (ap == bp) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] == bb[i]) continue
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) return numeric(aa[i],bb[i])
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
 
-case "$ARCH" in
-  aarch64*)            IPK_SUFFIX="aarch64-3.10" ;;
-  armv7*|arm*)         IPK_SUFFIX="armv7-3.2" ;;
-  mipsel*)             IPK_SUFFIX="mipsel-3.4" ;;
-  mips*)               IPK_SUFFIX="mips-3.4" ;;
-  *) error "Unsupported architecture: $ARCH" ;;
-esac
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" then error("release metadata") else . end
+        | if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then .state == "uploaded" and (.size | type) == "number" and .size > 0 else true end))
+          then .assets[].browser_download_url else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
+
+IPK_SUFFIX=$(opkg print-architecture | detect_mihomo_package_arch) || error "Cannot establish a unique supported Entware architecture/ABI"
+ARCH=${IPK_SUFFIX%-*}
 
 log "Detected Entware arch: $ARCH"
 log "Package architecture: $IPK_SUFFIX"
@@ -1096,29 +1172,8 @@ log "Current Mihomo: ${CURRENT_VER:-unknown}"
 # -----------------------------
 # 6. Select the package asset for this architecture
 # -----------------------------
-DOWNLOAD_URL=""
-
-if [ -n "$RELEASE_JSON" ]; then
-  DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-    .assets[]?
-    | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk") and (contains("nohf") | not))
-    | .browser_download_url
-  ' 2>/dev/null | head -n 1)
-fi
-
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-  log "jq filter empty, trying grep fallback on API response..."
-  if [ -n "$RELEASE_JSON" ]; then
-    DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" \
-      | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' \
-      | grep -v "nohf" \
-      | head -n 1 | sed 's/.*": *"//;s/"$//')
-  fi
-fi
-
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-  error "No mihomo package for $IPK_SUFFIX in $REPO:latest — only versions actually published there can be installed. Check https://github.com/$REPO/releases"
-fi
+DOWNLOAD_URL=$(printf '%s\n' "$RELEASE_JSON" | release_mihomo_asset) ||
+  error "Invalid, ambiguous or unavailable Mihomo asset for $IPK_SUFFIX in $REPO:latest"
 
 ASSET_NAME=$(basename "$DOWNLOAD_URL")
 

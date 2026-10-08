@@ -69,6 +69,9 @@ jobs:
       - name: Maintenance audit regressions (dash and BusyBox ash)
         run: python3 tests/maintenance-regression.py
 
+      - name: Mihomo rolling-feed selection (dash and BusyBox ash)
+        run: python3 tests/ipk-selection-regression.py
+
       - name: Whitespace
         shell: bash
         run: |
