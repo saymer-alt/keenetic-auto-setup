@@ -1144,15 +1144,58 @@ fi
 # ---------------------------
 # TMPFS
 # ---------------------------
-if [ "$MODE" = "ram" ]; then
-    log "Installing S00ubifs..."
+# BEGIN INSTALLER TMPFS PROTECTION v1
+# Match Doctor: executable/enabled service and three active tmpfs mounts.
+# A successful start or presence of S00ubifs alone is insufficient.
+installer_tmpfs_service_enabled() {
+    grep -Eq '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes([[:space:]]*(#.*)?)?$' "$1" 2>/dev/null
+}
 
-    if project_script_download "S00ubifs" "/opt/etc/init.d/S00ubifs"; then
-        chmod +x /opt/etc/init.d/S00ubifs
-        /opt/etc/init.d/S00ubifs start || err "S00ubifs start failed; RAM mode initialization incomplete"
+installer_tmpfs_protection_ready() {
+    _itp_script="$1"
+    _itp_root="$2"
+    _itp_mounts="$3"
+
+    [ -f "$_itp_script" ] && [ -x "$_itp_script" ] || return 1
+    installer_tmpfs_service_enabled "$_itp_script" || return 1
+    [ -r "$_itp_mounts" ] || return 1
+
+    for _itp_dir in "$_itp_root/tmp" "$_itp_root/var/log" "$_itp_root/var/run"; do
+        awk -v path="$_itp_dir" '$2 == path && $3 == "tmpfs" { found=1 } END { exit !found }' "$_itp_mounts" || return 1
+    done
+    return 0
+}
+
+installer_tmpfs_activate() {
+    _ita_script="$1"
+    _ita_root="$2"
+    _ita_mounts="$3"
+
+    if project_script_download "S00ubifs" "$_ita_script"; then
+        chmod +x "$_ita_script" || err "Cannot make S00ubifs executable; RAM mode initialization incomplete"
     else
         warn "S00ubifs download failed after raw/curl, raw/wget and GitHub API fallbacks"
+        # Transactional downloading leaves the previously installed copy intact.
+        # Do not reuse it unless it is executable and passes the script validator.
+        if [ ! -x "$_ita_script" ] || ! project_script_candidate_ok "$_ita_script"; then
+            err "S00ubifs download failed and no valid executable existing copy is available; refusing RAM mode"
+        fi
+        log "Reusing existing S00ubifs after download failure"
     fi
+
+    installer_tmpfs_service_enabled "$_ita_script" ||
+        err "S00ubifs is disabled or has no ENABLED=yes directive; refusing RAM mode"
+    "$_ita_script" start || err "S00ubifs start failed; RAM mode initialization incomplete"
+    installer_tmpfs_protection_ready "$_ita_script" "$_ita_root" "$_ita_mounts" ||
+        err "S00ubifs RAM protection incomplete: tmpfs required on $_ita_root/tmp, $_ita_root/var/log and $_ita_root/var/run"
+}
+# END INSTALLER TMPFS PROTECTION v1
+
+S00_SCRIPT="/opt/etc/init.d/S00ubifs"
+S00_ROOT="/opt"
+if [ "$MODE" = "ram" ]; then
+    log "Installing S00ubifs..."
+    installer_tmpfs_activate "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"
 else
     log "Skip S00ubifs (disk mode)"
 fi
@@ -2120,12 +2163,12 @@ else
     check_fail "MagiTrickle package not installed"
 fi
 
-# S00ubifs (ram mode only)
+# S00ubifs (ram mode only): check actual protection rather than file presence.
 if [ "$MODE" = "ram" ]; then
-    if [ -x /opt/etc/init.d/S00ubifs ]; then
-        check_ok "S00ubifs present (ram mode)"
+    if installer_tmpfs_protection_ready "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"; then
+        check_ok "S00ubifs enabled; /opt/tmp, /opt/var/log and /opt/var/run are active tmpfs (ram mode)"
     else
-        check_fail "S00ubifs missing (ram mode)"
+        check_fail "S00ubifs RAM protection missing/disabled or required tmpfs unmounted (ram mode)"
     fi
 fi
 
