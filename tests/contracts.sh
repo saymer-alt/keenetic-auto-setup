@@ -129,6 +129,10 @@ grep -Fq 'Entware /opt mount: source=' "$ROOT/mihomo-doctor.sh" || fail "Doctor 
 grep -Fq 'Internal /opt flash protection is required but S00ubifs is missing' "$ROOT/mihomo-doctor.sh" || fail "Doctor must hard-diagnose missing S00ubifs on internal Entware"
 grep -Fq 'Internal /opt volatile-write protection is incomplete; required tmpfs mount(s) missing:' "$ROOT/mihomo-doctor.sh" || fail "Doctor must require active tmpfs protection on internal Entware"
 grep -Fq 'Internal-flash tmpfs protection check: not required because Entware /opt is on external persistent storage' "$ROOT/mihomo-doctor.sh" || fail "Doctor must keep internal-flash protection N/A for external Entware"
+sh "$ROOT/tests/installer-tmpfs-regression.sh" "$ROOT" ||
+    fail "Installer must require S00ubifs activation and all three live tmpfs mounts"
+pass "installer RAM mode fails closed on incomplete protection and can reuse a valid existing service"
+
 sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
     fail "Doctor Entware storage / internal-flash protection fixtures failed"
 pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
