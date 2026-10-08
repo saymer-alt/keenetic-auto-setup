@@ -1219,7 +1219,7 @@ select_mihomo_asset() {
     awk -v suffix="_$IPK_SUFFIX.ipk" '
     function numeric(a,b) {
         if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
-        if (a == b) return 0
+        if (("x" a) == ("x" b)) return 0
         return ("x" a)>("x" b) ? 1 : -1
     }
     function valid(v, base,parts,n,i,x) {
@@ -1248,17 +1248,20 @@ select_mihomo_asset() {
         sub(/-.*/, "", a); sub(/-.*/, "", b)
         split(a,aa,"."); split(b,bb,".")
         for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
-        if (ap == bp) return 0
+        if (("x" ap) == ("x" bp)) return 0
         if (ap == "") return 1
         if (bp == "") return -1
         an=split(ap,aa,"."); bn=split(bp,bb,".")
         for(i=1;i<=an && i<=bn;i++) {
-            if (aa[i] == bb[i]) continue
-            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) return numeric(aa[i],bb[i])
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) {
+                c=numeric(aa[i],bb[i]); if(c) return c; continue
+            }
             if (aa[i] ~ /^[0-9]+$/) return -1
             if (bb[i] ~ /^[0-9]+$/) return 1
+            if (("x" aa[i]) == ("x" bb[i])) continue
             return ("x" aa[i])>("x" bb[i]) ? 1 : -1
         }
+        if (an == bn) return 0
         return an>bn ? 1 : -1
     }
     {
@@ -1280,11 +1283,29 @@ select_mihomo_asset() {
 release_mihomo_asset() {
     # Validate before selection: a jq error must never fall through to API grep.
     _mra_urls=$(jq -er '
-        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" then error("release metadata") else . end
-        | if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" or (.assets | length) == 0 then error("release metadata") else . end
+        # A known failed stable upload is ineligible, not a reason to reject a healthy ABI.
+        | def starter:
+            .state == "starter" and .size == 0 and .digest == null
+            and (.id | type) == "number" and .id > 0 and (.id | floor) == .id
+            and (.name | test("^mihomo_(nohf_)?(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)-[1-9][0-9]*_(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4|x64-3[.]2)[.]ipk$"))
+            and ((.name | startswith("mihomo_nohf_")) == false or (.name | endswith("_armv7-3.2.ipk")))
+            and (.browser_download_url | test("^(https://github[.]com)?/saymer-alt/entware-go/releases/download/latest/[A-Za-z0-9_.+-]+[.]ipk$"));
+        if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
             and .name == (.browser_download_url | split("/") | last)
-            and (if (.name | startswith("mihomo_")) then .state == "uploaded" and (.size | type) == "number" and .size > 0 else true end))
-          then .assets[].browser_download_url else error("asset metadata") end
+            and (if (.name | startswith("mihomo_")) then
+                (.state == "uploaded" and (.size | type) == "number" and .size > 0 and (.size | floor) == .size)
+                or starter
+                else true end))
+            and (.assets as $assets | all($assets[];
+                if (.name | startswith("mihomo_")) and .state == "starter" then
+                    . as $pending
+                    | ([$assets[] | select(.name == $pending.name)] | length == 1)
+                      and ([$assets[] | select(.id == $pending.id)] | length == 1)
+                else true end))
+          then [.assets[] | select((.name | startswith("mihomo_")) and .state == "starter" | not)
+                | .browser_download_url] | join("\n")
+          else error("asset metadata") end
     ' 2>/dev/null) || return 3
     printf '%s\n' "$_mra_urls" | select_mihomo_asset
 }
