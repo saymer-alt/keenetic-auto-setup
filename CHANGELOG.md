@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Исправлено
-- EG-02: installer и updater выбирают новейший корректный Mihomo IPK при временном overlap в rolling feed; одинаково проверяют версию, package release и точный ABI. Дубли выбранного кандидата, повреждённые metadata и конфликтующие варианты останавливают выбор. Запрет автоматического downgrade сохранён.
+- EG-02: installer и updater выбирают новейший корректный Mihomo IPK при временном overlap в rolling feed; одинаково проверяют версию, package release и точный ABI. Дубли выбранного кандидата, повреждённые metadata и конфликтующие варианты останавливают выбор. Updater применяет более новый package release при той же runtime version по проверенному project state; downgrade пакета запрещён даже с --force.
 - KAS-01: `install.sh` больше не принимает RAM-режим только по наличию файла `S00ubifs`: проверяет `ENABLED=yes` и три реально смонтированных tmpfs сразу после запуска и в финальной самопроверке. При недоступном download запускает только пригодную старую копию; иначе останавливается с ошибкой.
 
 ---

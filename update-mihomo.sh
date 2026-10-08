@@ -1228,6 +1228,32 @@ log "Available Mihomo: $AVAILABLE_VER (package release: $PACKAGE_RELEASE)"
 # manual task. Exact string equality short-circuits first, so devices on a
 # prerelease are recognized as up to date when the same version is packaged.
 # An unreadable current version is treated as a repair case.
+# Compare a package-only rebuild using project state, never stale opkg metadata.
+# The current runtime version and canonical file size must still match the record.
+same_version_package_action() {
+  if [ ! -e "${BINARY_STATE:-}" ]; then printf '%s\n' unknown; return; fi
+  if [ ! -f "$BINARY_STATE" ] || [ -L "$BINARY_STATE" ]; then printf '%s\n' invalid; return; fi
+  _sp_size=$(wc -c < "$MIHOMO_PATH" | tr -d ' ') || { printf '%s\n' invalid; return; }
+  _sp_release=$(awk -F= -v version="$AVAILABLE_VER" -v suffix="$IPK_SUFFIX" -v size="$_sp_size" '
+    $1 ~ /^(state_format|runtime_version|source|asset|package_release|binary_size_bytes)$/ {
+      if (NF != 2 || seen[$1]++) bad=1
+      value[$1]=$2
+    }
+    END {
+      release=value["package_release"]
+      if (!bad && value["state_format"] == "1" && value["runtime_version"] == version &&
+          value["source"] == "entware-go-binary-updater" && release ~ /^[1-9][0-9]*$/ &&
+          value["asset"] == "mihomo_" version "-" release "_" suffix ".ipk" &&
+          value["binary_size_bytes"] == size && size > 0) print release
+      else exit 1
+    }' "$BINARY_STATE") || { printf '%s\n' invalid; return; }
+  awk -v old="$_sp_release" -v candidate="$PACKAGE_RELEASE" 'BEGIN {
+    if (length(candidate)>length(old) || (length(candidate)==length(old) && ("x" candidate)>("x" old))) print "newer"
+    else if (candidate == old) print "same"
+    else print "older"
+  }'
+}
+
 if [ -n "$CURRENT_VER" ]; then
   valid_version "$CURRENT_VER" || error "Malformed installed version; automatic update refused"
 fi
@@ -1236,11 +1262,17 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
 elif [ -z "$CURRENT_VER" ]; then
   log "Current version unknown — attempting repair with the available package."
 elif [ "$CURRENT_VER" = "$AVAILABLE_VER" ]; then
-  if [ "$FORCE_UPDATE" -eq 0 ]; then
+  _pkg_action=$(same_version_package_action)
+  [ "$_pkg_action" != invalid ] || error "Project package state does not match the canonical binary; refusing package-only update"
+  if [ "$_pkg_action" = older ]; then
+    warn "Available package release is older than project state; downgrade refused even with --force."
+    exit 0
+  fi
+  if [ "$_pkg_action" != newer ] && [ "$FORCE_UPDATE" -eq 0 ]; then
     log "Already up to date ($CURRENT_VER). Use --force to replace anyway."
     exit 0
   fi
-  log "Same version ($CURRENT_VER) and --force given: replacing the binary anyway."
+  log "Same runtime version ($CURRENT_VER): applying newer package release or explicit --force."
 else
   _ver_rel=$(ver_compare "$AVAILABLE_VER" "$CURRENT_VER")
   if [ "$_ver_rel" = "gt" ]; then
@@ -1466,7 +1498,14 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
   if [ -z "$INSTALLED_VER" ]; then
     log "Installed version still unreadable after the stop — proceeding with the repair update."
   elif [ "$INSTALLED_VER" = "$AVAILABLE_VER" ]; then
-    if [ "$FORCE_UPDATE" -eq 0 ]; then
+    _pkg_action=$(same_version_package_action)
+    [ "$_pkg_action" != invalid ] || preflight_fail "Project package state does not match the canonical binary; refusing package-only update"
+    if [ "$_pkg_action" = older ]; then
+      warn "Available package release is older than project state; downgrade refused even with --force."
+      restore_stopped_service
+      exit 0
+    fi
+    if [ "$_pkg_action" != newer ] && [ "$FORCE_UPDATE" -eq 0 ]; then
       if [ "$SERVICE_WAS_STOPPED" -eq 1 ]; then
         log "Already up to date ($INSTALLED_VER) — verified after the controlled stop."
       else
@@ -1475,7 +1514,7 @@ if [ "$DEFER_VERSION_DECISION" -eq 1 ]; then
       restore_stopped_service
       exit 0
     fi
-    log "Same version ($INSTALLED_VER) and --force given: replacing the binary anyway."
+    log "Same runtime version ($INSTALLED_VER): applying newer package release or explicit --force."
   else
     _ver_rel=$(ver_compare "$AVAILABLE_VER" "$INSTALLED_VER")
     if [ "$_ver_rel" = "gt" ]; then

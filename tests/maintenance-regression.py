@@ -50,7 +50,7 @@ def package_versions(shell):
                 assert len(p.stdout.splitlines()) == 1
                 assert 'nohf' not in p.stdout
     updater = source('update-mihomo.sh')
-    funcs = function(updater, 'valid_version') + function(updater, 'ver_compare')
+    funcs = function(updater, 'valid_version') + function(updater, 'ver_compare') + function(updater, 'same_version_package_action')
     for a, b, expected in [('1.20.0', '1.19.31', 'gt'), ('1.19.31', '1.19.31', 'eq'),
                             ('1.19.30', '1.19.31', 'lt'), ('2.bad', '1.0', 'unknown'),
                             ('1..20', '1.19', 'unknown'), ('1.2.', '1.2', 'unknown'),
