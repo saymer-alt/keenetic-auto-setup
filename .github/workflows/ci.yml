@@ -49,6 +49,9 @@ jobs:
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
+      - name: Owner experience — safe first-run errors
+        run: python3 tests/owner-experience-gate.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
