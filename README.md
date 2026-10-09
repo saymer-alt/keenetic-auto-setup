@@ -2,6 +2,14 @@
 
 Автоматизированная установка Mihomo и вспомогательных компонентов на Keenetic + Entware.
 
+> **EN:** Turns a Keenetic router with Entware into a self-healing Mihomo (Clash Meta) VPN gateway: one-command install, watchdog, safe config import and MagiTrickle integration.
+
+**Что это даёт.** Роутер Keenetic становится шлюзом с [Mihomo](https://github.com/MetaCubeX/mihomo) (Clash Meta): трафик выбранных сайтов и сервисов идёт через ваши прокси/VPN-подписки, остальное — напрямую (режим белых списков / политик). Установка — одна команда, дальше проект сам ставит Mihomo + MagiTrickle, настраивает watchdog с самовосстановлением и принимает конфиг через безопасный импорт с проверкой `mihomo -t` и автооткатом.
+
+**Кому подходит.** Владельцам Keenetic с Entware/OPKG, которым нужен управляемый прокси-шлюз на роутере без ручной сборки окружения.
+
+**Результат установки:** работающий Mihomo на порту 7890 + веб-дашборды MetaCubeXD (`:9090/ui/`) и MagiTrickle (`:8080/`), watchdog и средства диагностики (Doctor, route-check).
+
 [English](docs/EN/README.md)
 
 ---
@@ -12,6 +20,7 @@
 - Доступ к shell
 - Интернет
 - KeeneticOS: **Клиент прокси** (`proxy`), **Фильтрация контента и блокировка рекламы при помощи облачных сервисов** (`dns-filter`), **Модули ядра подсистемы Netfilter** (`opkg-kmod-netfilter`) и хотя бы один secure-DNS компонент — `dns-tls` **или** `dns-https`
+  (это устанавливаемые компоненты KeeneticOS, а не пакеты Entware — их ставят в Web-интерфейсе роутера; полный список и где их найти → [COMPONENTS_RU.md](docs/COMPONENTS_RU.md))
 - Если `/opt` на внешнем USB/NVMe: **только EXT4**; компоненты KeeneticOS `ext` и `ext-utils` обязательны
 - Для штатного профиля с внутренним `/opt` проект использует **S00ubifs**: временные каталоги `/opt/tmp`, `/opt/var/log` и `/opt/var/run` переносятся в `tmpfs` (RAM), что уменьшает постоянные записи во внутреннюю флешку; конфиги и пакеты остаются на постоянном хранилище
 
