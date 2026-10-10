@@ -1,0 +1,23 @@
+name: "Предложение / Feature request"
+description: "Предложить улучшение для Keenetic / Entware"
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Какую проблему это решит?"
+      description: "Опишите реальную пользовательскую задачу, а не только реализацию."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Предлагаемое решение"
+      description: "Опишите желаемое поведение и возможные ограничения."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Альтернативы и контекст"
+      description: "Что уже пробовали? Есть ли ограничения по оборудованию или совместимости?"
