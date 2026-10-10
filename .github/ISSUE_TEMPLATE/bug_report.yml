@@ -1,0 +1,36 @@
+name: "Ошибка / Bug report"
+description: "Сообщить о воспроизводимой ошибке в Keenetic / Entware"
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Не прикладывайте пароли, закрытые ключи, подписки, токены, адреса частной инфраструктуры и конфиденциальные сведения. Уязвимости не публикуйте в открытом Issue."
+  - type: textarea
+    id: description
+    attributes:
+      label: "Что происходит?"
+      description: "Кратко опишите проблему и ожидаемое поведение."
+      placeholder: "Ожидалось ...; фактически ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Как воспроизвести?"
+      description: "Минимальные шаги или синтетический пример без секретов."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "Окружение"
+      description: "Версии ПО, платформа, модель устройства или ОС — только необходимое."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "Дополнительные сведения"
+      description: "Обезличенные логи, скриншоты и результаты проверок. Не публикуйте конфиденциальные данные."
+    validations:
+      required: false
