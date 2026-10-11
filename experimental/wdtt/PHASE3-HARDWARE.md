@@ -1,3 +1,5 @@
+Исторический Phase3. Для текущего owner-local install admission см. [Phase4](PHASE4-HARDWARE.md).
+
 # Phase 3: ARM и KN-1010, 11–12 октября 2026
 
 **Сейчас разрешённый следующий шаг — read-only preflight. Установка WDTT не допущена.** Ни агент, ни CI не подключались к роутерам/VPS. Домашний Keenetic — production, вне этих испытаний.

@@ -47,4 +47,17 @@ admission "$1" "$2" "$3" "$4"
    mount.write_text(saved);run()
    saved_probe=probe.read_text();probe.write_text(saved_probe.replace('800000 12%', '1 12%'));run(False)
    probe.write_text(saved_probe)
+   # Owner-local admission is separate from public APPROVED and stays fail-closed.
+   init=put('init.d','synthetic init');installer=put('install.sh','synthetic installer')
+   owner_probe=saved_probe.replace('admission "$1"', 'install_profile=owner-test\nadmission "$1"')
+   probe.write_text(owner_probe)
+   provenance.update(install_ready=False,license_gate='DEFERRED; NOT APPROVED',owner_local=True,
+       owner_install_candidate=True,quarantine=False,public_distribution_approved=False,
+       sdk_sha256='d51f30c126425ebff203b107a1a0aa9d3a5844f6c481bc6ff4c117cadc208674',
+       lifecycle_sha256={'service.sh':hashlib.sha256(probe.read_bytes()).hexdigest(),
+        'init.d':hashlib.sha256(init.read_bytes()).hexdigest(),'install.sh':hashlib.sha256(installer.read_bytes()).hexdigest()})
+   prov.write_text(json.dumps(provenance));run()
+   provenance['quarantine']=True;prov.write_text(json.dumps(provenance));run(False)
+   provenance['quarantine']=False;provenance['lifecycle_sha256']['service.sh']='0'*64
+   prov.write_text(json.dumps(provenance));run(False)
  print('PASS read-only admission:',shell,'ARM64/MIPSel ELF+opkg, SHA/softfloat metadata, RAM/backend/storage/tmpfs/port and closed provenance gates')

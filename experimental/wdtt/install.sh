@@ -1,5 +1,5 @@
 #!/bin/sh
-# Opt-in wrapper; reviewed source admission in service.sh remains closed.
+# Opt-in wrapper; public source admission remains closed; owner-test is explicit.
 # No downloads, package manager, routing, DNS, firewall or KAS integration.
 case ${1-} in
     --plan)
@@ -11,12 +11,15 @@ case ${1-} in
             'rollback=verified-own-PID-stop,atomic-previous-binary-restore' \
             'uninstall=verified-own-manifest-only' \
             'reboot=disabled-until-live-acceptance' \
-            'status=BLOCKED license-notices,server-auth,real-pair,installer-rollback-acceptance'
+            'status=public-install-blocked;owner-local-requires-explicit-opt-in,verified-package+device-preflight'
         ;;
-    --install)
+    --install|--install-owner-test)
+        profile=$1
         [ "$#" -eq 5 ] || { printf '%s\n' 'WDTT_INSTALL_ARGUMENTS_REJECTED' >&2; exit 78; }
         shift
-        exec /bin/sh "$(dirname "$0")/service.sh" install "$@"
+        action=install
+        [ "$profile" != --install-owner-test ] || action=install-owner-test
+        exec /bin/sh "$(dirname "$0")/service.sh" "$action" "$@"
         ;;
-    *) printf '%s\n' 'WDTT_INSTALL_BLOCKED: licensing, server authentication and real-pair gates remain open.' >&2; exit 78 ;;
+    *) printf '%s\n' 'WDTT_INSTALL_BLOCKED: explicit owner-test action and verified device admission required.' >&2; exit 78 ;;
 esac

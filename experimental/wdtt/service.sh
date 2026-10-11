@@ -1,6 +1,6 @@
 #!/bin/sh
 # Experimental Entware lifecycle. No downloads/opkg/routes/DNS/firewall.
-# Installation remains blocked by a reviewed source policy, without env bypass.
+# Public installation remains blocked; explicit owner-test has independent admission.
 set -f
 umask 077
 export LC_ALL=C
@@ -50,10 +50,18 @@ admission() {
     [ -f "$provenance" ] && [ ! -L "$provenance" ] || return 1
     command -v jq >/dev/null 2>&1 || return 1
     case $wanted_arch in aarch64-3.10) goarch=arm64;; mipsel-3.4) goarch=mipsle;; *) return 1;; esac
-    jq -e --arg sha "$wanted_sha" --arg arch "$goarch" '
+    jq -e --arg sha "$wanted_sha" --arg arch "$goarch" --arg profile "${install_profile-public}" \
+      --arg service_sha "$(sha256sum "$0" | awk '{print $1}')" \
+      --arg init_sha "$(sha256sum "$(dirname "$0")/init.d" 2>/dev/null | awk '{print $1}')" \
+      --arg installer_sha "$(sha256sum "$(dirname "$0")/install.sh" 2>/dev/null | awk '{print $1}')" '
       .source == "1110a75f76e42c23149b8e24f9182c1ff179e515" and
       .toolchain == "go version go1.26.1 linux/amd64" and
-      .install_ready == true and .license_gate == "APPROVED" and
+      ((.install_ready == true and .license_gate == "APPROVED" and $profile=="public") or
+       ($profile=="owner-test" and .owner_local==true and .owner_install_candidate==true and
+        .quarantine==false and .public_distribution_approved==false and .install_ready==false and
+        .sdk_sha256=="d51f30c126425ebff203b107a1a0aa9d3a5844f6c481bc6ff4c117cadc208674" and
+        .lifecycle_sha256["service.sh"]==$service_sha and .lifecycle_sha256["init.d"]==$init_sha and
+        .lifecycle_sha256["install.sh"]==$installer_sha)) and
       any(.builds[]; .arch==$arch and .sha256==$sha and .pt_interp==false and
           ($arch!="mipsle" or (.go_metadata|contains("GOMIPS=softfloat"))))
     ' "$provenance" >/dev/null 2>&1 || return 1
@@ -108,10 +116,12 @@ ROOT=/opt/wdtt-experimental
 STATE=/tmp/wdtt-runtime-$(id -u)
 INIT=/opt/etc/init.d/S98wdtt-lab
 action=${1-}
+install_profile=public
+if [ "$action" = install-owner-test ]; then install_profile=owner-test; action=install; fi
 fail() { printf '%s\n' "WDTT_$1" >&2; exit 78; }
 # Change only through a reviewed commit after the stated gates close.
 INSTALL_ADMITTED=no
-[ "$action" != install ] || [ "$INSTALL_ADMITTED" = yes ] || fail INSTALL_BLOCKED
+[ "$action" != install ] || [ "$INSTALL_ADMITTED" = yes ] || [ "$install_profile" = owner-test ] || fail INSTALL_BLOCKED
 private_dir() {
     [ -d "$1" ] && [ ! -L "$1" ] && [ "$(cd -P "$1" && pwd)" = "$1" ] || return 1
     ls -ldn "$1" 2>/dev/null | awk -v uid="$(id -u)" '$1=="drwx------" && $3==uid {ok=1} END {exit !ok}'
@@ -188,7 +198,83 @@ owned_running() {
       END {exit (bad || NR!=3)}' || { [ -d "/proc/$worker_pid" ] || return 1; return 2; }
     return 0
 }
+auto_owned() {
+    [ -r "$STATE/auto.pid" ] && [ ! -L "$STATE/auto.pid" ] || return 1
+    read -r auto_pid auto_born auto_sha < "$STATE/auto.pid" || return 2
+    case $auto_pid:$auto_born in *[!0-9:]*|:*|*:) return 2;; esac
+    [ -d "/proc/$auto_pid" ] || return 1
+    [ "$(start_time "$auto_pid")" = "$auto_born" ] || return 2
+    [ "$(sed 's/^.*) //' "/proc/$auto_pid/stat" | awk '{print $1}')" != Z ] || return 1
+    [ "/proc/$auto_pid/exe" -ef /bin/sh ] && [ "$(digest "$ROOT/service.sh")" = "$auto_sha" ] || return 2
+    tr '\000' '\n' < "/proc/$auto_pid/cmdline" | awk -v script="$ROOT/service.sh" '
+      NR==1 && $0!="/bin/sh" {bad=1} NR==2 && $0!=script {bad=1} NR==3 && $0!="supervise" {bad=1}
+      END {exit (bad || NR!=3)}' || return 2
+}
+stop_auto() {
+    printf '%s\n' STOP > "$STATE/auto.stop" || fail AUTO_STOP_WRITE
+    auto_owned; auto_state=$?
+    [ "$auto_state" -ne 2 ] || fail AUTO_OWNERSHIP_UNKNOWN
+    if [ "$auto_state" -eq 0 ]; then
+        auto_owned || fail AUTO_PROCESS_CHANGED
+        kill -TERM "$auto_pid" || fail AUTO_STOP_FAILED
+        auto_n=0
+        while [ "$auto_n" -lt 5 ]; do
+            auto_owned; auto_state=$?
+            [ "$auto_state" -ne 2 ] || fail AUTO_PROCESS_CHANGED
+            [ "$auto_state" -eq 0 ] || break
+            sleep 1; auto_n=$((auto_n+1))
+        done
+        [ "$auto_state" -ne 0 ] || fail AUTO_STOP_TIMEOUT
+    fi
+    rm -f "$STATE/auto.pid"
+}
+auto_configured() {
+    [ -r "$ROOT/auto.enabled" ] && [ ! -L "$ROOT/auto.enabled" ] || return 1
+    read -r auto_version auto_service < "$ROOT/auto.enabled" || return 1
+    [ "$auto_version" = "$(cat "$ROOT/current")" ] && version_ok "$auto_version" &&
+        [ "$auto_service" = "$(digest "$ROOT/service.sh")" ]
+}
+network_ready() {
+    command -v ip >/dev/null 2>&1 || return 1
+    ip -4 route show default 2>/dev/null | awk '$1=="default" {ok=1} END {exit !ok}'
+}
+auto_loop() {
+    # No lifecycle lock is held by this supervisor. Child starts take that lock.
+    trap 'exit 0' 1 2 15
+    auto_n=0
+    while [ ! -r "$STATE/auto.pid" ] && [ "$auto_n" -lt 3 ]; do sleep 1; auto_n=$((auto_n+1)); done
+    auto_owned && [ "$auto_pid" = "$$" ] && auto_configured || fail AUTO_IDENTITY_REJECTED
+    deadline=$(( $(date +%s)+120 ))
+    printf '%s\n' AUTO_WAIT_NETWORK > "$STATE/auto.status"
+    until network_ready; do
+        [ ! -e "$STATE/auto.stop" ] || exit 0
+        [ "$(date +%s)" -lt "$deadline" ] || { printf '%s\n' AUTO_READINESS_TIMEOUT > "$STATE/auto.status"; exit 0; }
+        sleep 2
+    done
+    auto_tries=0
+    while [ ! -e "$STATE/auto.stop" ] && auto_configured; do
+        owned_running; auto_state=$?
+        [ "$auto_state" -ne 2 ] || { printf '%s\n' AUTO_WORKER_UNKNOWN > "$STATE/auto.status"; exit 78; }
+        if [ "$auto_state" -eq 0 ]; then sleep 2; continue; fi
+        attempts=0; next=0
+        [ ! -r "$STATE/retry" ] || read -r attempts next < "$STATE/retry"
+        case $attempts:$next in *[!0-9:]*|:*|*:) exit 78;; esac
+        [ "$attempts" -lt 5 ] || { printf '%s\n' AUTO_RETRY_EXHAUSTED > "$STATE/auto.status"; exit 0; }
+        if [ -r "$STATE/exit" ] && [ "$(cat "$STATE/exit")" = 78 ]; then
+            printf '%s\n' AUTO_FATAL_CONFIG > "$STATE/auto.status"; exit 0
+        fi
+        [ "$auto_tries" -lt 5 ] || { printf '%s\n' AUTO_RETRY_EXHAUSTED > "$STATE/auto.status"; exit 0; }
+        if [ "$(date +%s)" -ge "$next" ]; then
+            auto_tries=$((auto_tries+1))
+            /bin/sh "$ROOT/service.sh" auto-start </dev/null >/dev/null 2>&1
+            printf '%s\n' AUTO_ATTEMPTED > "$STATE/auto.status"
+        fi
+        sleep 2
+    done
+}
+
 stop_worker() {
+    stop_auto
     owned_running; state=$?
     [ "$state" -ne 2 ] || fail PROCESS_OWNERSHIP_UNKNOWN
     if [ "$state" -eq 0 ]; then
@@ -211,6 +297,9 @@ start_worker() {
     owned_running; state=$?
     [ "$state" -ne 2 ] || fail PROCESS_OWNERSHIP_UNKNOWN
     [ "$state" -ne 0 ] || return 0
+    available=$(memory_available_kib)
+    case $available in ''|*[!0-9]*) fail MEMORY_UNKNOWN;; esac
+    [ "$available" -ge 98304 ] || fail MEMORY_LOW
     [ -f "$ROOT/config.json" ] && [ ! -L "$ROOT/config.json" ] || fail CONFIG_REQUIRED
     config_meta=$(ls -ln "$ROOT/config.json" 2>/dev/null)
     printf '%s\n' "$config_meta" | awk -v uid="$(id -u)" '$1=="-rw-------" && $2==1 && $3==uid {ok=1} END {exit !ok}' || fail PRIVATE_CONFIG_REQUIRED
@@ -238,6 +327,8 @@ start_worker() {
     # No automatic restart, stdout/stderr or persistent flash logs.
     # The monitor only waits for this child and records its numeric exit code.
     (
+        # An asynchronous monitor must never release its parent's lifecycle lock.
+        trap - 0 1 2 15
         "$ROOT/versions/$current/worker" -config-file "$STATE/config.json" </dev/null >/dev/null 2>&1 &
         pid=$!
         born=$(start_time "$pid")
@@ -277,19 +368,30 @@ if [ ! -f "$ROOT/owner" ]; then
     printf '%s\n' kas-wdtt-experimental-v1 > "$ROOT/owner" || fail OWNER_WRITE
 fi
 [ ! -L "$ROOT/owner" ] && [ "$(cat "$ROOT/owner")" = kas-wdtt-experimental-v1 ] || fail FOREIGN_OWNER
-for name in versions current previous config.json current.stage previous.stage port service.sh service.sha256 init.sha256 owner; do
+for name in versions current previous config.json current.stage previous.stage port service.sh service.sha256 init.sha256 owner auto.enabled; do
     [ ! -L "$ROOT/$name" ] || fail STATE_SYMLINK
     if [ -e "$ROOT/$name" ] && [ "$name" != versions ]; then
         ls -ln "$ROOT/$name" | awk -v uid="$(id -u)" '$1 ~ /^-rw[x-]------$/ && $2==1 && $3==uid {ok=1} END {exit !ok}' || fail PRIVATE_FILE_REQUIRED
     fi
 done
-for name in retry exit status pid config.json pid.stage; do
+for name in retry exit status pid config.json pid.stage auto.pid auto.stop auto.status; do
     [ ! -L "$STATE/$name" ] || fail STATE_SYMLINK
     if [ -e "$STATE/$name" ]; then
         ls -ln "$STATE/$name" | awk -v uid="$(id -u)" '$1=="-rw-------" && $2==1 && $3==uid {ok=1} END {exit !ok}' || fail PRIVATE_STATE_FILE_REQUIRED
     fi
 done
-mkdir "$STATE/lock" 2>/dev/null || fail LOCKED
+[ "$action" != supervise ] || { auto_loop; exit $?; }
+case $action in stop|restart|rollback|uninstall|disable-auto)
+    printf '%s\n' STOP > "$STATE/auto.stop" || fail AUTO_STOP_WRITE;;
+esac
+case $action in stop|restart|rollback|uninstall|disable-auto|status)
+    lock_wait=0
+    while ! mkdir "$STATE/lock" 2>/dev/null; do
+        [ "$lock_wait" -lt 10 ] || fail LOCKED
+        sleep 1; lock_wait=$((lock_wait+1))
+    done;;
+    *) mkdir "$STATE/lock" 2>/dev/null || fail LOCKED;;
+esac
 trap 'finish_transaction' 0
 trap 'exit 78' 1 2 15
 
@@ -364,6 +466,25 @@ case $action in
         rm -f "$STATE/retry" "$STATE/exit"
         printf '%s\n' INSTALLED_AUTOSTART_DISABLED > "$STATE/status"
         ;;
+    boot)
+        auto_configured || { printf '%s\n' WDTT_AUTOSTART_DISABLED; exit 0; }
+        auto_owned; auto_state=$?; [ "$auto_state" -ne 2 ] || fail AUTO_OWNERSHIP_UNKNOWN
+        [ "$auto_state" -ne 0 ] || exit 0
+        rm -f "$STATE/auto.stop"
+        /bin/sh "$ROOT/service.sh" supervise </dev/null >/dev/null 2>&1 &
+        auto_pid=$!; auto_born=$(start_time "$auto_pid")
+        [ -n "$auto_born" ] || fail AUTO_START_FAILED
+        printf '%s %s %s\n' "$auto_pid" "$auto_born" "$(digest "$ROOT/service.sh")" > "$STATE/auto.pid" || fail AUTO_PID_WRITE
+        ;;
+    enable-auto)
+        [ "${2-}" = --manual-reboot-verified ] || fail MANUAL_REBOOT_ACCEPTANCE_REQUIRED
+        owned_running || fail MANUAL_RUNNING_REQUIRED
+        printf '%s %s\n' "$(cat "$ROOT/current")" "$(digest "$ROOT/service.sh")" > "$ROOT/auto.enabled" || fail AUTO_MODE_WRITE
+        printf '%s\n' AUTOMATIC_CONFIGURED_NEXT_BOOT;;
+    disable-auto) stop_auto; rm -f "$ROOT/auto.enabled"; printf '%s\n' MANUAL_MODE;;
+    auto-start)
+        auto_configured && [ ! -e "$STATE/auto.stop" ] || fail AUTO_NOT_ENABLED
+        start_worker;;
     start) start_worker;;
     stop) stop_worker;;
     restart) stop_worker; start_worker;;
@@ -374,6 +495,7 @@ case $action in
         stop_worker
         printf '%s\n' "$previous" > "$ROOT/current.stage" && mv "$ROOT/current.stage" "$ROOT/current" || fail ROLLBACK_FAILED
         rm -f "$STATE/retry" "$STATE/exit"
+        rm -f "$ROOT/auto.enabled"
         printf '%s\n' ROLLED_BACK_STOPPED > "$STATE/status"
         ;;
     uninstall)
@@ -388,7 +510,8 @@ case $action in
         rmdir "$ROOT/versions" 2>/dev/null || :
         # Keep operator secrets and unknown files. Never rm -rf the sandbox.
         rm -f "$ROOT/current" "$ROOT/previous" "$STATE/retry" "$STATE/exit" "$STATE/status"
-        rm -f "$INIT" "$ROOT/init.sha256" "$ROOT/service.sh" "$ROOT/service.sha256" "$ROOT/port"
+        rm -f "$INIT" "$ROOT/init.sha256" "$ROOT/service.sh" "$ROOT/service.sha256" "$ROOT/port" "$ROOT/auto.enabled"
+        rm -f "$STATE/auto.stop" "$STATE/auto.status"
         # Keep private config, WG output, credentials, owner marker and foreign files.
         printf '%s\n' UNINSTALLED_SECRETS_AND_UNKNOWN_FILES_RETAINED
         ;;
