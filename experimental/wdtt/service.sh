@@ -116,6 +116,46 @@ private_dir() {
     [ -d "$1" ] && [ ! -L "$1" ] && [ "$(cd -P "$1" && pwd)" = "$1" ] || return 1
     ls -ldn "$1" 2>/dev/null | awk -v uid="$(id -u)" '$1=="drwx------" && $3==uid {ok=1} END {exit !ok}'
 }
+txn_active=no
+save_before() {
+    if [ -e "$2" ]; then
+        [ -f "$2" ] && [ ! -L "$2" ] && cp "$2" "$txn/saved-$1" || return 1
+    else
+        : > "$txn/absent-$1" || return 1
+    fi
+}
+restore_before() {
+    if [ -f "$txn/saved-$1" ]; then
+        restore_stage="$2.recover-$$"
+        [ ! -e "$restore_stage" ] && [ ! -L "$restore_stage" ] || return 1
+        cp "$txn/saved-$1" "$restore_stage" && chmod "$3" "$restore_stage" && mv "$restore_stage" "$2" || return 1
+    elif [ -f "$txn/absent-$1" ]; then
+        [ ! -L "$2" ] && rm -f "$2" || return 1
+    else
+        return 1
+    fi
+}
+finish_transaction() {
+    # Do not re-enter recovery on repeated signals. SIGKILL/power-loss durability
+    # is a separate unproven gate; retain snapshots if any restore fails.
+    trap '' 1 2 15
+    if [ "$txn_active" = yes ]; then
+        recovered=yes
+        for field in current previous port service.sha256 init.sha256; do
+            restore_before "$field" "$ROOT/$field" 600 || recovered=no
+        done
+        restore_before service "$ROOT/service.sh" 700 || recovered=no
+        restore_before init "$INIT" 700 || recovered=no
+        if [ "$recovered" = yes ]; then
+            printf '%s\n' INSTALL_RECOVERED_PREVIOUS_STOPPED > "$STATE/status"
+            printf '%s\n' WDTT_INSTALL_RECOVERED_PREVIOUS_STOPPED >&2
+        else
+            printf '%s\n' INSTALL_RECOVERY_FAILED_SNAPSHOT_RETAINED > "$STATE/status"
+            printf '%s\n' WDTT_INSTALL_RECOVERY_FAILED_SNAPSHOT_RETAINED >&2
+        fi
+    fi
+    rmdir "$STATE/lock" 2>/dev/null || :
+}
 digest() { sha256sum "$1" 2>/dev/null | awk '{print $1}'; }
 version_ok() {
     case $1 in *[!0-9a-f]*|'') return 1;; esac
@@ -250,7 +290,7 @@ for name in retry exit status pid config.json pid.stage; do
     fi
 done
 mkdir "$STATE/lock" 2>/dev/null || fail LOCKED
-trap 'rmdir "$STATE/lock" 2>/dev/null' 0
+trap 'finish_transaction' 0
 trap 'exit 78' 1 2 15
 
 case $action in
@@ -289,20 +329,38 @@ case $action in
         [ ! -e "$INIT.stage-$$" ] && [ ! -L "$INIT.stage-$$" ] || fail INIT_STAGE_CONFLICT
         cp "$0" "$txn/service" && chmod 700 "$txn/service" || fail SERVICE_STAGE
         cp "$(dirname "$0")/init.d" "$INIT.stage-$$" && chmod 700 "$INIT.stage-$$" || fail INIT_STAGE
+        new_service_sha=$(digest "$txn/service")
+        new_init_sha=$(digest "$INIT.stage-$$")
+        [ "${#new_service_sha}" -eq 64 ] && [ "${#new_init_sha}" -eq 64 ] || fail SCRIPT_DIGEST_FAILED
+        for field in current previous port service.sha256 init.sha256; do
+            save_before "$field" "$ROOT/$field" || fail SNAPSHOT_FAILED
+        done
+        save_before service "$ROOT/service.sh" && save_before init "$INIT" || fail SNAPSHOT_FAILED
         owned_running; state=$?; [ "$state" -ne 2 ] || fail PROCESS_OWNERSHIP_UNKNOWN
         stop_worker
+        txn_active=yes
         previous=''; [ ! -r "$ROOT/current" ] || read -r previous < "$ROOT/current"
-        [ "$previous" = "$args_digest" ] || printf '%s\n' "$previous" > "$ROOT/previous.stage"
+        if [ "$previous" != "$args_digest" ]; then
+            printf '%s\n' "$previous" > "$ROOT/previous.stage" || fail PREVIOUS_WRITE
+        fi
         printf '%s\n' "$args_digest" > "$ROOT/current.stage" || fail STATE_WRITE
         mv "$ROOT/current.stage" "$ROOT/current" || fail STATE_COMMIT
-        [ ! -e "$ROOT/previous.stage" ] || mv "$ROOT/previous.stage" "$ROOT/previous"
+        if [ -e "$ROOT/previous.stage" ]; then mv "$ROOT/previous.stage" "$ROOT/previous" || fail PREVIOUS_COMMIT; fi
         # Files are staged on their own filesystem and selected atomically.
         mv "$txn/service" "$ROOT/service.sh" || fail SERVICE_COMMIT
         mv "$INIT.stage-$$" "$INIT" || fail INIT_COMMIT
-        rmdir "$txn" || fail SCRIPT_STAGE_CLEANUP
-        digest "$ROOT/service.sh" > "$ROOT/service.sha256"
-        digest "$INIT" > "$ROOT/init.sha256"
-        printf '%s\n' "$args_port" > "$ROOT/port"
+        printf '%s\n' "$new_service_sha" > "$ROOT/service.sha256" || fail SERVICE_DIGEST_WRITE
+        printf '%s\n' "$new_init_sha" > "$ROOT/init.sha256" || fail INIT_DIGEST_WRITE
+        printf '%s\n' "$args_port" > "$ROOT/port" || fail PORT_WRITE
+        # Verify the whole selected set before declaring the transaction complete.
+        [ "$(cat "$ROOT/current")" = "$args_digest" ] && version_ok "$args_digest" &&
+            [ "$(digest "$ROOT/service.sh")" = "$new_service_sha" ] &&
+            [ "$(digest "$INIT")" = "$new_init_sha" ] && [ "$(cat "$ROOT/port")" = "$args_port" ] || fail COMMIT_VERIFY
+        txn_active=no
+        for field in current previous port service.sha256 init.sha256 service init; do
+            rm -f "$txn/saved-$field" "$txn/absent-$field"
+        done
+        rmdir "$txn" 2>/dev/null || :
         rm -f "$STATE/retry" "$STATE/exit"
         printf '%s\n' INSTALLED_AUTOSTART_DISABLED > "$STATE/status"
         ;;

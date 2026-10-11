@@ -45,6 +45,16 @@ for shell in [['sh'],['busybox','ash']]:
         # /tmp on the host is not a Keenetic tmpfs; fixture reset below models
         # volatile state without mounting anything or claiming hardware proof.
         text=text.replace('runtime_mount_ok || fail VOLATILE_RUNTIME_REQUIRED','true # synthetic fixture runtime, never the shipped check')
+        # CI fixtures own their temporary files as the runner UID, without root.
+        # Only the copied install-root requirement is bypassed, never ownership checks.
+        text=text.replace('[ "$(id -u)" = 0 ] || fail ROOT_REQUIRED','true # unprivileged private fixture only')
+        text='''mv() {
+ if [ "${WDTT_FIXTURE_FAIL_COMMIT-}" = yes ] && [ "$2" = "$ROOT/service.sh" ] && [ ! -f "$STATE/fault-fired" ]; then
+   : > "$STATE/fault-fired"; return 1
+ fi
+ command mv "$@"
+}
+''' + text
         (scripts/'service.sh').write_text(text)
         # Keep the actual init logic; only its fixed service path is redirected.
         (scripts/'init.d').write_text((base/'init.d').read_text().replace('/opt/wdtt-experimental',str(root)))
@@ -73,10 +83,21 @@ for shell in [['sh'],['busybox','ash']]:
             run('install',bins[1],ok=False)
             assert (state/'pid').read_text()==pid and (root/'current').read_text().strip()==bins[0][1]
             (scripts/'init.d').write_bytes(saved)
+            old_service=(root/'service.sh').read_bytes();old_init=init.read_bytes()
+            failed=run('install',bins[1],ok=False,env={'WDTT_FIXTURE_FAIL_COMMIT':'yes'})
+            assert 'INSTALL_RECOVERED_PREVIOUS_STOPPED' in failed.stderr
+            assert (root/'current').read_text().strip()==bins[0][1]
+            assert (root/'service.sh').read_bytes()==old_service and init.read_bytes()==old_init
+            assert run('status').stdout.strip()=='STOPPED'
+            time.sleep(2);run('start')
             run('install',bins[1]);assert run('status').stdout.strip()=='STOPPED'
             assert (root/'previous').read_text().strip()==bins[0][1]
             run('start');run('rollback');assert (root/'current').read_text().strip()==bins[0][1]
-            run('start');run('stop');run('start',ok=False);time.sleep(2);run('start');run('stop')
+            run('start');run('stop')
+            # Fixed future/past deadlines avoid wall-clock second-boundary races.
+            (state/'retry').write_text('1 9999999999\n')
+            assert 'BACKOFF' in run('start',ok=False).stderr
+            (state/'retry').write_text('1 0\n');run('start');run('stop')
             foreign=subprocess.Popen(['sleep','60'])
             try:
                 born=pathlib.Path(f'/proc/{foreign.pid}/stat').read_text().rsplit(') ',1)[1].split()[19]
