@@ -28,9 +28,9 @@ sh ./preflight.sh --network
 
 Сейчас готовый IPK не выпускается. Не закрыты notice/scope fhttp, production/server review и реальная VK пара. Локальная TURN/WRAP/DTLS/WG/Mihomo пара уже прошла TCP, tunnel DNS, UDP 64–1400 байт, handshake/counters и transport-down failure. AUTH-патч проверен на реальном обработчике; это не полный аудит сервера. Лабораторный бинарник — vpn-only, секреты в 0600 JSON внутри 0700 каталога, STDIN закрыт, upstream stdout/stderr отключены, вместо них фиксированный status. Диагностика потеряна сознательно до аудита безопасного структурированного вывода. Это не production исправление всего upstream.
 
-`install.sh` сейчас только admission guard с `--plan`: возвращает 78 при попытке установки и ничего не меняет. Отдельный `sandbox-lifecycle.sh` реализует install/start/stop/status/restart/rollback/uninstall **только** внутри private `/tmp/wdtt-sandbox-*`. Проверяет checksum, атомарно выбирает versioned binary, сохраняет previous, отказывает при чужом PID/inode/start-time/argv и symlink, сохраняет unknown files и operator secrets. Он не устанавливается в Entware init.d. Полный router admission/Entware init/reboot transaction пока **не реализованы и не проверены**. Не выдавать sandbox за готовый установщик.
+Phase 3 добавляет отдельный `service.sh` и manual-only Entware init.d: versioned `/opt/wdtt-experimental`, private volatile runtime, ABI/SHA/resource/port admission, PID ownership, bounded manual retries, repeat install, rollback/uninstall. Shipped source gate закрыт; не менять его вручную. Локальные fixture проверки не являются аппаратным допуском. Phase2 sandbox сохранён отдельно.
 
-Sandbox не перезапускает процесс автоматически: ручные старты ограничены пятью попытками с exponential backoff, код78 блокирует повтор до новой установки. Child stdout/stderr направлены в /dev/null, status и exit-code имеют фиксированный размер. Это отдельная локальная проверка файлов/процессов, не доказательство совместимости BusyBox на конкретном Keenetic. Тест: `python3 tests/wdtt-sandbox.py` на Linux с gcc и BusyBox. Запускать sandbox на роутере не предлагается.
+Актуальные floors, ограничения, точные команды диагностики KN-1010, ARM сценарий, условные lifecycle команды и оставшиеся gates — в [PHASE3-HARDWARE.md](PHASE3-HARDWARE.md). Установка, аппаратный reboot и настоящее VK соединение пока NOT RUN.
 
 ## После закрытия gates: ARM64 сценарий
 
@@ -53,9 +53,9 @@ Upstream main изменяет ip_forward, NAT/FORWARD, удаляет wg-инт
 
 ## Stop, rollback, reboot
 
-В текущем состоянии установщик не изменяет устройство, поэтому rollback не требуется. Проект сервиса расположен отдельно и проверяется в sandbox; он не включается в init.d на реальном устройстве до закрытия gates. Нет изменений routes/DNS/Mihomo, значит восстановление этих подсистем не выполняется и их работа проверяется независимым baseline.
+В текущем состоянии установщик не изменяет устройство, поэтому rollback не требуется. Проект сервиса расположен отдельно и проверяется с реальными локальными файлами/процессами; на реальном устройстве он не устанавливается до закрытия gates. Нет изменений routes/DNS/Mihomo, значит восстановление этих подсистем не выполняется и их работа проверяется независимым baseline.
 
-Sandbox rollback возвращает previous binary selection атомарно и оставляет сервис остановленным; owner запускает его явно. Не перезаписывает бинарник работающего процесса. Uninstall сверяет version digest, удаляет только собственные worker-файлы и state; operator config и неизвестные файлы остаются. Перенос этих механизмов в Entware потребует отдельного admission/reboot/fault review. После reboot ручной старт и новые TURN credentials, пока не доказано безопасное unattended refresh.
+Sandbox rollback возвращает previous binary selection атомарно и оставляет сервис остановленным; owner запускает его явно. Не перезаписывает бинарник работающего процесса. Uninstall сверяет version digest, удаляет только собственные worker-файлы и state; operator config и неизвестные файлы остаются. Новый Entware prototype описан в Phase3; hardware/reboot/fault acceptance остаются открытыми. После reboot ручной старт и новые TURN credentials, пока не доказано безопасное unattended refresh.
 
 ## Офлайн конвертация WG-конфига
 

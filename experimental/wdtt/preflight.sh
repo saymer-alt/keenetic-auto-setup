@@ -1,7 +1,7 @@
 #!/bin/sh
 # Read-only. No files, package updates, routes, DNS or firewall mutations.
 # Intentionally never reads running-config, process argv, environ or WG configs.
-set -f
+# Globbing is required for the /proc and /sys discovery loops below.
 export LC_ALL=C
 network=no
 case ${1-} in
@@ -39,7 +39,9 @@ if command -v od >/dev/null 2>&1; then
     for exe in /opt/bin/opkg /opt/bin/busybox /opt/sbin/opkg; do
         [ -f "$exe" ] || continue
         bytes=$(od -An -tu1 -N20 "$exe" 2>/dev/null)
+        set -f
         set -- $bytes
+        set +f
         if [ "${1-}" = 127 ] && [ "${2-}" = 69 ] && [ "${3-}" = 76 ] && [ "${4-}" = 70 ]; then
             printf 'entware_elf_class=%s endian=%s machine_bytes=%s,%s\n' "${5-}" "${6-}" "${19-}" "${20-}"
             break

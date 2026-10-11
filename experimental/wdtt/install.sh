@@ -1,6 +1,6 @@
 #!/bin/sh
-# Admission boundary: research prototypes must never install on a router yet.
-# No network access, filesystem mutation, package manager or service execution.
+# Opt-in wrapper; reviewed source admission in service.sh remains closed.
+# No downloads, package manager, routing, DNS, firewall or KAS integration.
 case ${1-} in
     --plan)
         printf '%s\n' 'WDTT_INSTALL_PLAN_V1' \
@@ -12,6 +12,11 @@ case ${1-} in
             'uninstall=verified-own-manifest-only' \
             'reboot=disabled-until-live-acceptance' \
             'status=BLOCKED license-notices,server-auth,real-pair,installer-rollback-acceptance'
+        ;;
+    --install)
+        [ "$#" -eq 5 ] || { printf '%s\n' 'WDTT_INSTALL_ARGUMENTS_REJECTED' >&2; exit 78; }
+        shift
+        exec /bin/sh "$(dirname "$0")/service.sh" install "$@"
         ;;
     *) printf '%s\n' 'WDTT_INSTALL_BLOCKED: licensing, server authentication and real-pair gates remain open.' >&2; exit 78 ;;
 esac
