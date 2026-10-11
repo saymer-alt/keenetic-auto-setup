@@ -1,0 +1,2 @@
+# Preserve the delivered patch byte-for-byte, including blank context lines.
+CSQTT-musl-ABI-lab.patch -text whitespace=-blank-at-eol,-blank-at-eof

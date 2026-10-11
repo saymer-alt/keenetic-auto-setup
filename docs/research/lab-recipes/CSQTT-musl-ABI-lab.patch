@@ -1,0 +1,45 @@
+--- a/rust-client/udp_batch.rs
++++ b/rust-client/udp_batch.rs
+@@ -550,7 +550,7 @@
+         }
+         #[cfg(target_os = "linux")]
+         {
+-            unsafe { libc::recvmmsg(fd, messages, count, flags, timeout) }
++            unsafe { libc::recvmmsg(fd, messages, count, flags as _, timeout) }
+         }
+     }
+ 
+@@ -574,7 +574,7 @@
+         }
+         #[cfg(target_os = "linux")]
+         {
+-            unsafe { libc::sendmmsg(fd, messages, count, flags) }
++            unsafe { libc::sendmmsg(fd, messages, count, flags as _) }
+         }
+     }
+ 
+@@ -639,18 +639,12 @@
+     }
+ 
+     fn mmsg_header(iovec: *mut libc::iovec) -> libc::mmsghdr {
+-        libc::mmsghdr {
+-            msg_hdr: libc::msghdr {
+-                msg_name: ptr::null_mut(),
+-                msg_namelen: 0,
+-                msg_iov: iovec,
+-                msg_iovlen: 1,
+-                msg_control: ptr::null_mut(),
+-                msg_controllen: 0,
+-                msg_flags: 0,
+-            },
+-            msg_len: 0,
+-        }
++        // Lab portability probe: libc POD fields permit all-zero initialization.
++        // This initializes musl's private padding without naming those fields.
++        let mut header: libc::mmsghdr = unsafe { std::mem::zeroed() };
++        header.msg_hdr.msg_iov = iovec;
++        header.msg_hdr.msg_iovlen = 1;
++        header
+     }
+ }
+ 

@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-11",
+  "branch": "research/wdtt-csqtt-wg-obfuscator-20261011",
+  "base": "ac959105509c56a5b4bfb080a64bf825880eb09b",
+  "source_count": 22,
+  "pinned_code_references": 117,
+  "source_status": {
+    "amurcanov/csqtt": "",
+    "amurcanov/proxy-turn-vk-android": "",
+    "ClusterM/wg-obfuscator": "",
+    "Ground-Zerro/Phobos": "",
+    "hoaxisr/awg-manager": "",
+    "hoaxisr/proxy-turn-vk-android": "",
+    "ildarmaga/pwdtt-client": "",
+    "ildarmaga/wdtt": "",
+    "Ivan4537/WDTT-Plus": "",
+    "kkvoru/wdtt-server-entware": "",
+    "luminescq/focsq": "",
+    "MetaCubeX/mihomo": "",
+    "SanityProtocol/swg-panel": "",
+    "saymer-alt/amnezia-mihomo-gateway": "",
+    "saymer-alt/entware-go": "",
+    "saymer-alt/keenetic-auto-setup": "?? docs/research/",
+    "saymer-alt/keenetic-knowledge-base": "",
+    "saymer-alt/link-generators": "",
+    "saymer-alt/mihomo-auto-build": "",
+    "saymer-alt/vps-gateway-bootstrap": "",
+    "saymer-alt/web4core": "",
+    "SpaceNeuroX/proxy-turn-vk-android": ""
+  },
+  "local_doc_checks": "[OK] Local Markdown links: 487 checked, 0 broken\n[OK] Markdown hygiene: 0 pasted chat/tool artifacts",
+  "remote_refs": "ac959105509c56a5b4bfb080a64bf825880eb09b\trefs/heads/main\nac959105509c56a5b4bfb080a64bf825880eb09b\trefs/heads/stable\n3cac18449f25330de35037ba851761f420a177bc\trefs/tags/v1.8.1\ndb6e8f2f045d00b5e3362d6153149a28d83db4f0\trefs/tags/v1.8.1^{}",
+  "commits_created": false,
+  "pr_created": false,
+  "binary_publication": false,
+  "production_mutation": false,
+  "files": [
+    {
+      "path": "docs/research/KAS-TRANSPORT-INTEGRATION.md",
+      "bytes": 28715,
+      "sha256": "373b3debf9d564610d75ba5805133777a753c29f8d420ba81f379a76ed1f3ecd"
+    },
+    {
+      "path": "docs/research/lab-recipes/build_csqtt.py",
+      "bytes": 2405,
+      "sha256": "96a578ade0a544449584bab46e32d725a1a2f72f60fa6fba30ceb420c122414b"
+    },
+    {
+      "path": "docs/research/lab-recipes/build_csqtt_arm64.py",
+      "bytes": 2407,
+      "sha256": "4073fd26e05e4c8eded42f77052865b4720bd5ecaa5c76065dd6be0c3243d1ce"
+    },
+    {
+      "path": "docs/research/lab-recipes/build_extra.py",
+      "bytes": 1310,
+      "sha256": "0a14506a3379a5b0ff118d4e0cb4311da4733a206f261531eac249e04d9651c8"
+    },
+    {
+      "path": "docs/research/lab-recipes/build_obfuscator.py",
+      "bytes": 2549,
+      "sha256": "302509df1caf51b50f7af7baa38070bbb07944ff61583ba4d95bed114974453b"
+    },
+    {
+      "path": "docs/research/lab-recipes/build_wdtt.py",
+      "bytes": 1255,
+      "sha256": "780d78c04b64c90b293e933e85f765776c665f44792208514bad103b5d948aa9"
+    },
+    {
+      "path": "docs/research/lab-recipes/capture_elf.py",
+      "bytes": 1045,
+      "sha256": "10942b24f8a35f035825766249c48734526b408709006ac29452c8cdffc50097"
+    },
+    {
+      "path": "docs/research/lab-recipes/CSQTT-musl-ABI-lab.patch",
+      "bytes": 1411,
+      "sha256": "10500d7289a0d0b3b1f16828c67dba528ac8efbb96dfff113cf976d94659dcb4"
+    },
+    {
+      "path": "docs/research/lab-recipes/inspect_go_deps.py",
+      "bytes": 2234,
+      "sha256": "0f86e1301437600787610368f065160aa7413a56e67a6ff3e3beefe32058ff52"
+    },
+    {
+      "path": "docs/research/lab-recipes/LICENSES/CSQTT-PolyForm-Noncommercial-1.0.0.txt",
+      "bytes": 4841,
+      "sha256": "15c9a3f5217bf23e2a9accb23191133b4a3b9bde0382e9496f1fb83cd8992a75"
+    },
+    {
+      "path": "docs/research/lab-recipes/probe_csqtt_musl_patch.py",
+      "bytes": 3143,
+      "sha256": "5dc03206d660218b60a8f20d4f29d4a3b14ec6d1d2df66ab2f846e9b649ee432"
+    },
+    {
+      "path": "docs/research/lab-recipes/probe_runtime.py",
+      "bytes": 3457,
+      "sha256": "956a6f46e3d535aa71f1debaea99ed3b5068d1dc5073854653b9702ef170f0b3"
+    },
+    {
+      "path": "docs/research/lab-recipes/README.md",
+      "bytes": 3327,
+      "sha256": "a779bfbe04b4d50787042995b8ddc15edeee40a9f734a45215f82ba899085ebf"
+    },
+    {
+      "path": "docs/research/lab-recipes/run_socks_probe.py",
+      "bytes": 752,
+      "sha256": "65580fc1e4ddeeef5bb546f33e58c4d0f7ff9d99ca3d73c2beda343844636862"
+    },
+    {
+      "path": "docs/research/lab-recipes/socks_probe.go",
+      "bytes": 1175,
+      "sha256": "6a43d1b48cea9ae61060128f8720cea197153ef237a6852cd997fbedc74a8c48"
+    },
+    {
+      "path": "docs/research/lab-recipes/test_csqtt.py",
+      "bytes": 1054,
+      "sha256": "423fe658c55ee8cd8fb4f18ebda4d730e7bd60336dfea027461edba7536e7c8f"
+    },
+    {
+      "path": "docs/research/README.md",
+      "bytes": 2564,
+      "sha256": "e642d0e10eefa6a759586f8bb8fe06a54451f984d7b9fc3f1ee3bc1b27105259"
+    },
+    {
+      "path": "docs/research/TRANSPORT-BUILD-PLAN.md",
+      "bytes": 20700,
+      "sha256": "932ddcdb5ed82b7a2d4af7a56221ec85dd7b16ca21f019bb578fbf5dbaf35aa2"
+    },
+    {
+      "path": "docs/research/TRANSPORT-COMPATIBILITY-MATRIX.md",
+      "bytes": 19201,
+      "sha256": "2c89ec3115ba1a6fa1ab9db5be5871a861f3e0d9d6279ce69cd5c3e42ecb6f30"
+    },
+    {
+      "path": "docs/research/TRANSPORT-RESEARCH-EVIDENCE.json",
+      "bytes": 178416,
+      "sha256": "3a46245292ec05d30d88ef3bf07b8a0afbd31d41838b6491b1016fce599aba54"
+    },
+    {
+      "path": "docs/research/TRANSPORT-TEST-PLAN.md",
+      "bytes": 25246,
+      "sha256": "6567bce02d88e21971cf3ae32a6de7e99aacb719b23538c17f8ef4af444b035e"
+    },
+    {
+      "path": "docs/research/WDTT-CSQTT-WG-OBFUSCATOR-2026.md",
+      "bytes": 56736,
+      "sha256": "bbbf3fe6ce6249fc91e7aeb44dc346b3b9b0489c1e8116157bf489c27969b52b"
+    }
+  ]
+}
