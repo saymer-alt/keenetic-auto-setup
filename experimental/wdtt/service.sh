@@ -198,25 +198,32 @@ owned_running() {
       END {exit (bad || NR!=3)}' || { [ -d "/proc/$worker_pid" ] || return 1; return 2; }
     return 0
 }
+auto_gone() {
+    [ ! -d "/proc/$auto_pid" ] && return 0
+    [ "$(sed 's/^.*) //' "/proc/$auto_pid/stat" 2>/dev/null | awk '{print $1}')" = Z ]
+}
 auto_owned() {
     [ -r "$STATE/auto.pid" ] && [ ! -L "$STATE/auto.pid" ] || return 1
     read -r auto_pid auto_born auto_sha < "$STATE/auto.pid" || return 2
     case $auto_pid:$auto_born in *[!0-9:]*|:*|*:) return 2;; esac
     [ -d "/proc/$auto_pid" ] || return 1
-    [ "$(start_time "$auto_pid")" = "$auto_born" ] || return 2
+    [ "$(start_time "$auto_pid")" = "$auto_born" ] || { auto_gone && return 1; return 2; }
     [ "$(sed 's/^.*) //' "/proc/$auto_pid/stat" | awk '{print $1}')" != Z ] || return 1
-    [ "/proc/$auto_pid/exe" -ef /bin/sh ] && [ "$(digest "$ROOT/service.sh")" = "$auto_sha" ] || return 2
+    [ "/proc/$auto_pid/exe" -ef /bin/sh ] && [ "$(digest "$ROOT/service.sh")" = "$auto_sha" ] || { auto_gone && return 1; return 2; }
     tr '\000' '\n' < "/proc/$auto_pid/cmdline" | awk -v script="$ROOT/service.sh" '
       NR==1 && $0!="/bin/sh" {bad=1} NR==2 && $0!=script {bad=1} NR==3 && $0!="supervise" {bad=1}
-      END {exit (bad || NR!=3)}' || return 2
+      END {exit (bad || NR!=3)}' || { auto_gone && return 1; return 2; }
 }
 stop_auto() {
     printf '%s\n' STOP > "$STATE/auto.stop" || fail AUTO_STOP_WRITE
     auto_owned; auto_state=$?
     [ "$auto_state" -ne 2 ] || fail AUTO_OWNERSHIP_UNKNOWN
     if [ "$auto_state" -eq 0 ]; then
-        auto_owned || fail AUTO_PROCESS_CHANGED
-        kill -TERM "$auto_pid" || fail AUTO_STOP_FAILED
+        auto_owned; auto_state=$?
+        [ "$auto_state" -ne 2 ] || fail AUTO_PROCESS_CHANGED
+        if [ "$auto_state" -eq 0 ]; then
+            kill -TERM "$auto_pid" 2>/dev/null || { auto_gone || fail AUTO_STOP_FAILED; }
+        fi
         auto_n=0
         while [ "$auto_n" -lt 5 ]; do
             auto_owned; auto_state=$?
@@ -279,8 +286,11 @@ stop_worker() {
     [ "$state" -ne 2 ] || fail PROCESS_OWNERSHIP_UNKNOWN
     if [ "$state" -eq 0 ]; then
         # Recheck inode/start-time/argv immediately before the signal.
-        owned_running || fail PROCESS_CHANGED
-        kill -TERM "$worker_pid" || fail STOP_FAILED
+        owned_running; state=$?
+        [ "$state" -ne 2 ] || fail PROCESS_CHANGED
+        if [ "$state" -eq 0 ]; then
+            kill -TERM "$worker_pid" 2>/dev/null || { [ ! -d "/proc/$worker_pid" ] || fail STOP_FAILED; }
+        fi
         n=0
         while [ "$n" -lt 10 ]; do
             owned_running; state=$?

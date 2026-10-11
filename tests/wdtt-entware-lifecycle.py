@@ -121,7 +121,8 @@ for shell in [['sh'],['busybox','ash']]:
             supervisor_pid=(state/'auto.pid').read_text().split()[0]
             assert os.path.samefile(f'/proc/{supervisor_pid}/exe',shell_exe)
             assert not (state/'pid').exists() and (state/'auto.status').read_text().strip()=='AUTO_WAIT_NETWORK'
-            (d/'network-ready').touch();until(lambda:(state/'pid').exists())
+            run('stop');assert not (state/'auto.pid').exists()
+            boot_auto();(d/'network-ready').touch();until(lambda:(state/'pid').exists())
             assert run('status').stdout.strip()=='RUNNING_NOT_TUNNEL_PROOF'
             run('stop');assert not (state/'pid').exists() and not (state/'auto.pid').exists()
             # Model reboot by dropping only this fixture's volatile files.
