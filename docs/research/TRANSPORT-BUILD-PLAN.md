@@ -112,7 +112,7 @@ MIPS gate до включения в matrix: target-tier/stdlib availability, cu
 7. **Publish workflow отдельно:** только `workflow_dispatch`, protected Environment с ручным owner approval; берёт **проверенный artifact digest из build run**, не пересобирает «тот же tag». contents:write только publisher; oidc/id-token при attestation только этой стадии. Не запускать из pull_request_target с untrusted code. Third-party Actions pin full reviewed commit SHA, не только @v4.
 8. **Immutable release / retention:** уникальная версия вроде `wt-client-hoaxisr-1.4.0-kas.0+1110a75f.r1`, component manifests append-only; не перетирать старый healthy binary. Хранить N и N-1 + источники всех опубликованных версий; `latest` только pointer после acceptance. Не удалять старую проверенную архитектуру из-за partial matrix failure. [E2]
 
-Новый build-repo не должен давать себе право менять KAS stable/main, updater URLs или VPS systemd. Из исторического mihomo-auto-build берём урок provenance и license gate, а не прежние публикационные полномочия. Его jobs остаются отключёнными. [E3]
+Новый build-only workflow в entware-go не должен давать себе право менять KAS stable/main, updater URLs или VPS systemd. Из исторического mihomo-auto-build берём урок provenance и license gate, а не прежние публикационные полномочия. Его jobs остаются отключёнными. [E3]
 
 ## 6. Диагностика build failure
 
