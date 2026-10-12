@@ -104,6 +104,15 @@ pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB
 ! grep -Fq 'warn "zRAM and external storage-backed swap are active together' "$ROOT/mihomo-doctor.sh" || fail "Doctor coexistence must never be downgraded to WARN"
 ! grep -Fq '_profile_warn_banner "MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater coexistence must never return to WARN"
 pass "coexisting zRAM and external swap can never be silently downgraded"
+# KAS-SAFETY-001 constitutional contract, applied to policy and documentation.
+grep -Fq 'KAS-SAFETY-001' "$ROOT/docs/CONSTITUTION.md" || fail "dual swap critical invariant constitution missing"
+grep -Fq 'docs/CONSTITUTION.md' "$ROOT/AGENTS.md" || fail "agents must read constitutional contract"
+grep -Fq 'docs/CONSTITUTION.md' "$ROOT/.github/pull_request_template.md" || fail "PR checklist must enforce constitutional contract"
+grep -Fq 'Installer — ERROR, Doctor — FAIL, Updater — ERROR' "$ROOT/README.md" || fail "README must state critical dual-swap severity"
+grep -Fq 'Coexistence native zRAM + external swap — строго запрещённый профиль' "$ROOT/docs/20-process-swap-detection.md" || fail "scanner contract must forbid dual backend"
+! grep -Fq 'Coexistence native zRAM + external swap остаётся WARN' "$ROOT/docs/20-process-swap-detection.md" || fail "stale coexistence warning is forbidden"
+! grep -Fq 'проект выдаёт WARN: документация производителя' "$ROOT/docs/06-s00ubifs.md" || fail "stale resource policy warning is forbidden"
+pass "KAS-SAFETY-001 constitutional hard gate is pinned across policy, agent rules and docs"
 for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
     ! grep -Fq "stat -L -c '%F:%t:%T'" "$ROOT/$_f" || fail "$_f zRAM identity must not require GNU stat -c"
     grep -Fq 'listing=$(LC_ALL=C ls -ln "$path"' "$ROOT/$_f" || fail "$_f zRAM identity must use BusyBox-compatible device metadata"
