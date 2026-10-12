@@ -1411,7 +1411,7 @@ if [ "$_doc_ext_oversize" -eq 1 ]; then
     fail "External storage-backed SWAP exceeds 2 GiB (active total: $((_doc_ext_kb/1024)) MB; largest detected backend: $((_doc_ext_max_backend_kb/1024)) MB) - project/vendor cap is 2048 MB"
 fi
 if [ "$_doc_zram_kb" -gt 0 ] 2>/dev/null && [ "$_doc_ext_kb" -gt 0 ] 2>/dev/null; then
-    warn "zRAM and external storage-backed swap are active together - vendor guidance says not to use both; when disk/file swap is used, disable zRAM"
+    fail "zRAM and external storage-backed swap are active together - unsupported new-install resource profile; disable one backend (when using disk/file swap, disable zRAM)"
 fi
 if is_num "$MEM_TOTAL"; then
     info "RAM total: $((MEM_TOTAL/1024)) MB, available: $(is_num "$MEM_AVAIL" && echo $((MEM_AVAIL/1024)) || echo '?') MB"
