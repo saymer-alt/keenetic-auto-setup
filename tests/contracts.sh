@@ -98,7 +98,7 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
-pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk warning, and 1x/3x swap severity"
+pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk hard rejection, and 1x/3x swap severity"
 for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
     ! grep -Fq "stat -L -c '%F:%t:%T'" "$ROOT/$_f" || fail "$_f zRAM identity must not require GNU stat -c"
     grep -Fq 'listing=$(LC_ALL=C ls -ln "$path"' "$ROOT/$_f" || fail "$_f zRAM identity must use BusyBox-compatible device metadata"
@@ -162,7 +162,10 @@ grep -q 'MEMORY PROFILE WARNING: 256 MB-class without active zRAM or external sw
 grep -q 'MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external swap' "$ROOT/update-mihomo.sh" || fail "updater must warn 512 MB missing backend"
 grep -q 'External SWAP is below project minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must WARN below the 1x RAM swap floor"
 grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must keep the 1x..3x swap range informational"
-grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "profile warnings must not become updater hard gates"
+grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "other legacy-profile warnings remain non-blocking"
+grep -Fq 'err "UNSUPPORTED MEMORY BACKENDS: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater must hard-gate simultaneous zRAM and external SWAP"
+grep -Fq 'err "zRAM and external storage-backed swap are active together' "$ROOT/install.sh" || fail "installer must reject simultaneous zRAM and external SWAP"
+grep -Fq 'fail "zRAM and external storage-backed swap are active together' "$ROOT/mihomo-doctor.sh" || fail "Doctor must FAIL simultaneous zRAM and external SWAP"
 pass "updater mirrors resource contract without blocking legacy service"
 
 grep -q '^HEALTHY_LOG_INTERVAL=1200$' "$ROOT/mihomo-watchdog.sh" || fail "watchdog healthy heartbeat must stay throttled to 20 minutes"
