@@ -99,6 +99,11 @@ pass "resource scanner does not abort install.sh before resource-profile policy 
 sh "$ROOT/tests/resource-policy-regression.sh" "$ROOT" ||
     fail "resource policy fixtures must preserve hard gates and warning-only states"
 pass "resource policy fixtures cover >2 GiB reject, 128 MB prerequisites, 512 MB backend hard gate, zRAM+disk hard rejection, and 1x/3x swap severity"
+# Owner-approved safety invariant: never allow a future refactor to silently restore WARN/INFO.
+! grep -Fq 'warn "zRAM and external storage-backed swap are active together' "$ROOT/install.sh" || fail "installer coexistence guard must never be downgraded to WARN"
+! grep -Fq 'warn "zRAM and external storage-backed swap are active together' "$ROOT/mihomo-doctor.sh" || fail "Doctor coexistence must never be downgraded to WARN"
+! grep -Fq '_profile_warn_banner "MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater coexistence must never return to WARN"
+pass "coexisting zRAM and external swap can never be silently downgraded"
 for _f in install.sh update-mihomo.sh mihomo-doctor.sh; do
     ! grep -Fq "stat -L -c '%F:%t:%T'" "$ROOT/$_f" || fail "$_f zRAM identity must not require GNU stat -c"
     grep -Fq 'listing=$(LC_ALL=C ls -ln "$path"' "$ROOT/$_f" || fail "$_f zRAM identity must use BusyBox-compatible device metadata"
