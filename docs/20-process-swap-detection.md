@@ -71,7 +71,7 @@ storage-backed, если mount классифицирован как external. �
 обходит cap. 128 MB требует external swap >=384 MB: такой файл засчитывается,
 native zRAM — нет. 256 MB без backend остаётся WARN; 512 MB без доказанного
 backend — installer ERROR / Doctor FAIL. Updater сохраняет advisory-only policy.
-Coexistence native zRAM + external swap остаётся WARN. Пороги 1x/3x/2 GiB не меняются.
+Coexistence native zRAM + external swap — строго запрещённый профиль: Installer ERROR до изменений, Doctor FAIL, Updater ERROR до остановки сервиса/замены бинарника. WARN/INFO и overrides недопустимы. Пороги 1x/3x/2 GiB не меняются.
 
 Parser сохраняет существующий формат `/proc/swaps`: escaped `\040` остаётся
 escaped и сопоставляется с таким же mount path; deleted entries учитываются
