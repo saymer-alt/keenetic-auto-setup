@@ -100,7 +100,60 @@ log() {{ echo "$1"; }}; warn() {{ echo "WARN $1"; }}; err() {{ echo "ERROR $1"; 
                 p=subprocess.run(shell,input=pre+env+policy,text=True,capture_output=True)
                 assert (p.returncode!=0)==reject and needle in p.stdout,(shell,label,p.returncode,p.stdout,p.stderr)
                 total+=1
-        print('PASS','/'.join(shell),'51 cross-consumer classifications + 9 installer policy cases',flush=True)
+            # KAS-SAFETY-001: execute production policy, not a copied condition.
+            # Installer runs its complete entry prefix through resource preflight.
+            # Updater runs its entire resource preflight; Doctor runs its scanner
+            # and severity dispatch. No router paths are written by this harness.
+            installer = SOURCES['install.sh'].split('# REQUIRED KEENETICOS COMPONENT PREFLIGHT')[0]
+            updater = SOURCES['update-mihomo.sh']
+            updater = updater[updater.index('RESOURCE_PROFILE_CONTRACT_VERSION='):updater.index('# 3. Detect Entware architecture')]
+            doctor = SOURCES['mihomo-doctor.sh']
+            doc_scan = doctor[doctor.index('# BEGIN ZRAM IDENTITY v1'):doctor.index('_doc_opt=$(_doc_opt_class)')]
+            doc_gate = doctor[doctor.index('\n_doc_scan_swap\n'):doctor.index('\nif is_num "$MEM_TOTAL";', doctor.index('if [ "$_doc_zram_kb" -gt 0 ] 2>/dev/null'))]
+            # Preserve real output/exit semantics of the production handlers.
+            def handler(source, name):
+                return next(line for line in source.splitlines() if line.startswith(name+'()'))+'\n'
+            common = '''
+status_out() { printf '%s\\n' "$2"; }
+append_finding() { :; }
+log() { echo "INFO $1"; }; warn() { echo "WARN $1"; }
+is_num() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
+opkg() { :; }
+'''
+            for ram in [131072, 262144, 524288, 1048576]:
+                mem.write_text(f'MemTotal: {ram} kB\nSwapTotal: 1048576 kB\n')
+                for mode in ['ram', 'disk']:
+                    for label, rows in [('dual', cases[6][1]), ('zram', cases[0][1]), ('external', cases[2][1])]:
+                        swaps.write_text('Filename Type Size Used Priority\n'+rows+'\n')
+                        env = f'''
+set -- {mode}
+INSTALL_MEMINFO={shlex.quote(str(mem))}; INSTALL_MOUNTS=$PROC_MOUNTS
+INSTALL_SWAPS=$PROC_SWAPS; INSTALL_SYS_CLASS_BLOCK=$SYS_CLASS_BLOCK
+UPDATE_MOUNTS=$PROC_MOUNTS; UPDATE_SWAPS=$PROC_SWAPS; UPDATE_SYS_CLASS_BLOCK=$SYS_CLASS_BLOCK
+MEM_TOTAL={ram}; DOC_SWAP_MAX_KB=2097152; N_FAIL=0
+# Only the kernel meminfo observation is substituted, not policy logic.
+awk() {{ case "$*" in *'/proc/meminfo'*) command awk "$1" {shlex.quote(str(mem))};; *) command awk "$@";; esac; }}
+'''
+                        for name, block in [
+                            ('install.sh', installer),
+                            ('update-mihomo.sh', handler(SOURCES['update-mihomo.sh'], 'error')+updater),
+                            ('mihomo-doctor.sh', 'set +e\n'+handler(doctor, 'fail')+doc_scan+doc_gate+'\necho "FAIL_COUNT=$N_FAIL"\n'),
+                        ]:
+                            script = pre+common+env+block+'\necho REACHED_NEXT_PHASE\n'
+                            p=subprocess.run(shell,input=script,text=True,capture_output=True)
+                            dual = label == 'dual'
+                            if name == 'mihomo-doctor.sh':
+                                assert p.returncode == 0, (shell, name, p.stderr)
+                                assert ('[FAIL] zRAM and external' in p.stdout) == dual, (shell, ram, mode, label, p.stdout)
+                                assert f'FAIL_COUNT={int(dual)}' in p.stdout
+                            else:
+                                reject = dual or (name == 'install.sh' and ram == 131072 and label == 'zram')
+                                assert (p.returncode != 0) == reject, (shell, name, ram, mode, label, p.stdout, p.stderr)
+                                assert ('REACHED_NEXT_PHASE' not in p.stdout) == reject
+                                if dual:
+                                    assert '[ERROR]' in p.stdout and ('active together' in p.stdout or 'both active' in p.stdout)
+                            total += 1
+        print('PASS','/'.join(shell),'51 classifications + 9 installer cases + 72 constitutional policy cases',flush=True)
     print('All',total,'C1 scenarios passed.')
 
 
