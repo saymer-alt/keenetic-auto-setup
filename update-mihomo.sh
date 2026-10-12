@@ -962,7 +962,7 @@ if [ "$UP_EXT_KB" -gt "$UP_SWAP_MAX_KB" ] 2>/dev/null; then
   _profile_warn_banner "UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB" "Project/vendor cap is 2048 MB; active external storage-backed swap totals $((UP_EXT_KB/1024)) MB." "Updater remains non-blocking for this existing installation; reduce the SWAP partition/file separately."
 fi
 if [ "$UP_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$UP_EXT_KB" -gt 0 ] 2>/dev/null; then
-  _profile_warn_banner "MEMORY BACKEND WARNING: zRAM + external storage-backed swap are both active" "Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM." "Detected: external swap=$((UP_EXT_KB/1024)) MB, zRAM=$((UP_ZRAM_KB/1024)) MB. The updater will not change either backend."
+  err "UNSUPPORTED MEMORY BACKENDS: zRAM + external storage-backed swap are both active (zRAM=$((UP_ZRAM_KB/1024)) MB; external SWAP=$((UP_EXT_KB/1024)) MB). Update REFUSED before mutation. Disable one backend and rerun; neither will be changed automatically."
 fi
 
 if [ -n "$TOTAL_MEM_KB" ]; then
