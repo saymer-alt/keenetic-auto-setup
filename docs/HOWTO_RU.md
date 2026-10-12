@@ -1106,7 +1106,7 @@ MT7621/mipsel-устройства используют тот же универ
 
 ## 14. Известные ограничения
 
-- **Memory-profile:** 128 МБ — best-effort/experimental только с внешним /opt + внешним swap >=384 МБ; 256 МБ-класс — zRAM **или** внешний storage-backed swap (нет обоих => WARN); **512 МБ-класс — zRAM или проверенный внешний swap обязателен для новой установки (нет обоих => ERROR/FAIL)**; внешний swap <1× RAM => WARN, 1×..3× => INFO, preferred target ≈3× RAM, hard cap 2 ГиБ; >512 МБ-класса swap/zRAM опциональны; совместный zRAM + disk/file swap получает WARN.
+- **Memory-profile:** 128 МБ — best-effort/experimental только с внешним /opt + внешним swap >=384 МБ; 256 МБ-класс — zRAM **или** внешний storage-backed swap (нет обоих => WARN); **512 МБ-класс — zRAM или проверенный внешний swap обязателен для новой установки (нет обоих => ERROR/FAIL)**; внешний swap <1× RAM => WARN, 1×..3× => INFO, preferred target ≈3× RAM, hard cap 2 ГиБ; >512 МБ-класса swap/zRAM опциональны; совместный zRAM + disk/file swap запрещён: installer ERROR, Doctor FAIL, updater ERROR до любых изменений.
 - **Watchdog чинит только Mihomo.** Он не починит мёртвый VPN-сервер, аварию у провайдера, DNS или ошибки в конфиге.
 - **bypass_wa для выбранного VoIP/real-time UDP — это осознанный выбор маршрута, а не универсальное утверждение, что Mihomo «плохо работает с UDP».**
 - **Entware — не полноценный Linux.** Причуды BusyBox (`$RANDOM`, `pidof`, `ss`, `run-parts`), урезанные пакеты — держите это в голове, прежде чем «модернизировать» скрипты.
