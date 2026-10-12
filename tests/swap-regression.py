@@ -86,7 +86,7 @@ SWAP_MAX_KB=2097152; DOC_SWAP_MAX_KB=2097152
                 ('128 zram only',cases[0][1],131072,True,'required at least 384 MB'),
                 ('512 real zram',cases[0][1],524288,False,'512 MB-class with active zRAM'),
                 ('512 named disk',cases[2][1],524288,False,'512 MB-class with external storage-backed'),
-                ('coexistence',cases[6][1],524288,False,'active together'),
+                ('coexistence',cases[6][1],524288,True,'active together'),
                 ('256 unknown',cases[9][1],254472,False,'neither active zRAM'),
                 ('512 unknown',cases[9][1],524288,True,'Bare 512 MB RAM'),
                 ('512 disk below floor',cases[5][1],524288,False,'below the project minimum floor'),

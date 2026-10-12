@@ -391,7 +391,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 #     vendor-stated minimum.
 #   - External storage-backed swap above 2 GiB is a hard install ERROR.
 #   - Vendor guidance says not to use zRAM together with a disk/file swap.
-#     If both are active, warn but never change either backend automatically.
+#     If both are active, reject installation without changing either backend.
 # See docs/06-s00ubifs.md for the vendor references behind this contract.
 # Detection: /proc/meminfo (RAM/totals), /proc/swaps (active swap entries),
 # /proc/mounts (deepest mount carrying a path). Keenetic conventions used for
@@ -636,7 +636,7 @@ if [ "$SW_EXT_OVERSIZE" -eq 1 ]; then
     err "External storage-backed SWAP exceeds the 2 GiB project/vendor cap (active total: $((SW_EXT_KB / 1024)) MB; largest detected backend: $((SW_EXT_MAX_BACKEND_KB / 1024)) MB). Reduce the SWAP partition/file to <= 2048 MB and re-run. Stopping before package installation or project changes."
 fi
 if [ "$SW_ZRAM_KB" -gt 0 ] 2>/dev/null && [ "$SW_EXT_KB" -gt 0 ] 2>/dev/null; then
-    warn "zRAM and external storage-backed swap are active together. Vendor guidance says not to use zRAM together with a disk/file swap; when disk swap is used, disable zRAM. Installation continues without changing either backend."
+    err "zRAM and external storage-backed swap are active together. New installation is REFUSED: disable either native zRAM or external disk/file swap and re-run. Neither backend will be changed automatically."
 fi
 case "$MEM_TOTAL_KB" in
     ''|*[!0-9]*)
