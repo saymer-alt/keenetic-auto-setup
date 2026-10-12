@@ -443,3 +443,12 @@ the gate should then confirm:
 - the tag/release, when approved, is created from the exact reviewed commit.
 
 New feature work stops during the release gate unless a concrete blocker is found.
+
+
+## v1.8.2 / KAS-SAFETY-001 release acceptance
+
+Current resource-profile contract is `20261012_1`; the historical 512 MB field rationale above remains valid. RAM thresholds are unchanged. Dual native zRAM + external SWAP is always Installer ERROR / Doctor FAIL / Updater ERROR, including >512 MB and both RAM/DISK modes.
+
+`tests/swap-regression.py` executes production scanners and policy under dash and BusyBox ash: 51 scanner cases, 9 installer profile cases and 72 constitutional policy cases per shell (264 total). The constitutional matrix covers 128/256/512/1024 MB, RAM/DISK and dual/zRAM-only/external-only. The 128 MB zRAM-only installer remains rejected by the independent external-swap prerequisite. Installer uses its complete entry prefix through resource preflight; Updater uses its entire resource preflight; Doctor uses its scanner and production FAIL dispatch. Reaching the next phase after a forbidden Installer/Updater profile fails the test. Existing identity fixtures include misleading zram filenames, unknown devices, conflicting/unreadable sysfs and deleted sources. CI also runs transaction/lifecycle/rollback regressions and contract guards.
+
+These are synthetic Linux kernel-observation fixtures, not a router emulator. Physical v1.8.2 acceptance on KN-1010, reboot and power-loss behaviour are NOT TESTED in this release audit. No live router experiment is authorized by the automated fixture suite.

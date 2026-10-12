@@ -872,7 +872,7 @@ sh update-mihomo.sh [--force]
 Что происходит, по шагам:
 
 1. Lock-файл не даёт запустить два обновления параллельно.
-2. Updater читает тот же resource-profile, но **не блокирует уже существующую legacy-установку только из-за его нарушения**: 128 МБ без внешнего /opt + внешнего swap >=384 МБ, 256 МБ без обоих backend и legacy-установка 512 МБ без zRAM/external swap получают сильный UNSUPPORTED WARN. Новую установку на 512 МБ без backend уже блокирует install.sh, но update-mihomo.sh остаётся non-blocking, чтобы существующий legacy-роутер можно было обслужить. Совместный zRAM + disk/file swap получает отдельный WARN по vendor guidance. Все реальные safety-gates updater'а (one-Mihomo, config test, архитектура, место, atomic commit, rollback) остаются обязательными.
+2. Updater читает тот же resource-profile, но **не блокирует уже существующую legacy-установку только из-за его нарушения**: 128 МБ без внешнего /opt + внешнего swap >=384 МБ, 256 МБ без обоих backend и legacy-установка 512 МБ без zRAM/external swap получают сильный UNSUPPORTED WARN. Новую установку на 512 МБ без backend уже блокирует install.sh, но update-mihomo.sh остаётся non-blocking, чтобы существующий legacy-роутер можно было обслужить. Исключение из legacy advisory-policy — совместный zRAM + disk/file swap: KAS-SAFETY-001 требует ERROR и остановку updater до изменения бинарника или сервиса независимо от RAM. Все реальные safety-gates updater'а (one-Mihomo, config test, архитектура, место, atomic commit, rollback) остаются обязательными.
 3. Архитектура — через `opkg print-architecture`; пакет берётся из ready-to-install набора фида `saymer-alt/entware-go` (release `latest`) — того же, которым ставит `install.sh`: `aarch64-3.10` / `armv7-3.2` / `mipsel-3.4` / `mips-3.4`; softfloat-вариант `nohf` исключается.
 4. Версии: совпали → выход (без `--force`); доступная старше установленной или надёжно не сравнивается (prerelease-суффиксы) → отказ от автоматического даунгрейда, даже с `--force`.
 5. Скачивает `.ipk` в `/tmp` (curl, до 3 попыток) и извлекает из него только новый бинарник — файловые операции, сервис ещё работает.
@@ -1098,7 +1098,7 @@ MT7621/mipsel-устройства используют тот же универ
 - **256 МБ-класс:** проект ожидает штатный zRAM **или** внешний storage-backed swap; нет обоих — WARN. **512 МБ-класс:** один из этих backend обязателен для новой установки; нет обоих — installer ERROR / Doctor FAIL.
 - **Размер внешнего swap:** project warning floor = 1× обнаруженной RAM; меньше 1× — WARN. Диапазон 1×..3× — INFO, а preferred target ≈3× RAM, максимум 2 ГиБ. >2 ГиБ — ошибка новой установки. В актуальной документации производителя ни 1×, ни 3× не названы обязательным минимумом; это project policy.
 - **Выше 512 МБ-класса:** swap/zRAM опциональны.
-- **zRAM + disk/file swap вместе:** vendor guidance рекомендует не использовать их одновременно; при disk swap zRAM отключают.
+- **zRAM + disk/file swap вместе:** vendor guidance рекомендует не использовать их одновременно; при disk swap zRAM отключают вручную. KAS-SAFETY-001: Installer ERROR, Doctor FAIL, Updater ERROR до изменений; любые RAM-классы и режимы, без обходов.
 - **Обновление Mihomo на MIPS/mipsel:** обслуживается тем же `update-mihomo.sh` — пакет берётся из того же фида `saymer-alt/entware-go` (суффикс `mipsel-3.4`), которым ставит `install.sh`. Подмена случайными сборками в `/opt` по-прежнему не нужна и опасна.
 - **MTU:** классический симптом «всё медленно» на этих устройствах — это MTU туннеля, а не маршрутизация (рабочие значения 1200–1300, [docs/09](09-limitations.md)).
 

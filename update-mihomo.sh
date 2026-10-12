@@ -843,9 +843,9 @@ command -v curl >/dev/null || error "curl is required but not installed"
 command -v tar >/dev/null || error "tar is required but not installed (busybox applet)"
 
 # -----------------------------
-# 2. Resource-profile advisory (read-only; never blocks legacy updates)
+# 2. Resource-profile preflight (dual swap blocks; other legacy violations are advisory)
 # -----------------------------
-RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20261012_1
 UP_MOUNTS="${UPDATE_MOUNTS:-/proc/mounts}"
 UP_SWAPS="${UPDATE_SWAPS:-/proc/swaps}"
 UP_SYS_CLASS_BLOCK="${UPDATE_SYS_CLASS_BLOCK:-/sys/class/block}"

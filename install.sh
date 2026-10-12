@@ -371,7 +371,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # RAM / STORAGE / SWAP PREFLIGHT
 # ---------------------------
 # Memory capacity, /opt location and swap backends are detected from live
-# system state - never guessed. Resource-profile contract 20260927_1:
+# system state - never guessed. Resource-profile contract 20261012_1:
 #   - 128 MB-class: best-effort/experimental. Installation is REFUSED unless
 #     /opt is on verified EXTERNAL persistent storage AND EXTERNAL
 #     storage-backed active swap is >= 384 MB. This is a project-specific
@@ -400,7 +400,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 # with partitions mounted under /tmp/mnt/*. Unrecognized state fails
 # conservatively where the contract requires proof.
 # This script never creates, enables, formats or resizes swap or storage.
-RESOURCE_PROFILE_CONTRACT_VERSION=20260927_1
+RESOURCE_PROFILE_CONTRACT_VERSION=20261012_1
 RAM128_MAX_KB=200000      # below this total RAM = 128 MB-class
 RAM256_MAX_KB=450000      # below this total RAM = 256 MB-class
 RAM512_MAX_KB=786432      # below this total RAM = 512 MB-class (real ~486 MB MemTotal fits here)
