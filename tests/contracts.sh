@@ -163,7 +163,7 @@ grep -q 'MEMORY PROFILE WARNING: 512 MB-class without active zRAM or external sw
 grep -q 'External SWAP is below project minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must WARN below the 1x RAM swap floor"
 grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/update-mihomo.sh" || fail "updater must keep the 1x..3x swap range informational"
 grep -q 'The updater will continue only to service this existing installation' "$ROOT/update-mihomo.sh" || fail "other legacy-profile warnings remain non-blocking"
-grep -Fq 'err "UNSUPPORTED MEMORY BACKENDS: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater must hard-gate simultaneous zRAM and external SWAP"
+grep -Fq 'error "UNSUPPORTED MEMORY BACKENDS: zRAM + external storage-backed swap are both active' "$ROOT/update-mihomo.sh" || fail "updater must hard-gate simultaneous zRAM and external SWAP"
 grep -Fq 'err "zRAM and external storage-backed swap are active together' "$ROOT/install.sh" || fail "installer must reject simultaneous zRAM and external SWAP"
 grep -Fq 'fail "zRAM and external storage-backed swap are active together' "$ROOT/mihomo-doctor.sh" || fail "Doctor must FAIL simultaneous zRAM and external SWAP"
 pass "updater mirrors resource contract without blocking legacy service"
