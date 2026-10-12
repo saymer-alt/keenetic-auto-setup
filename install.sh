@@ -391,7 +391,7 @@ command -v opkg >/dev/null 2>&1 || err "opkg not found"
 #     vendor-stated minimum.
 #   - External storage-backed swap above 2 GiB is a hard install ERROR.
 #   - Vendor guidance says not to use zRAM together with a disk/file swap.
-#     If both are active, warn but never change either backend automatically.
+#     If both are active, reject installation without changing either backend.
 # See docs/06-s00ubifs.md for the vendor references behind this contract.
 # Detection: /proc/meminfo (RAM/totals), /proc/swaps (active swap entries),
 # /proc/mounts (deepest mount carrying a path). Keenetic conventions used for
