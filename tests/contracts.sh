@@ -32,7 +32,7 @@ grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fa
 grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
-PROFILE_CONTRACT=20260927_1
+PROFILE_CONTRACT=20261012_1
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q "RESOURCE_PROFILE_CONTRACT_VERSION=$PROFILE_CONTRACT" "$ROOT/$_f" ||
         fail "$_f must carry resource-profile contract $PROFILE_CONTRACT"
@@ -90,7 +90,7 @@ grep -q '3x RAM, capped at 2048 MB' "$ROOT/install.sh" || fail "installer must r
 grep -q '256 MB-class device .*has neither active zRAM nor verified external storage-backed SWAP' "$ROOT/install.sh" || fail "256 MB missing backend must WARN"
 grep -q 'err "512 MB-class device .*Bare 512 MB RAM is NOT a supported project baseline' "$ROOT/install.sh" || fail "512 MB missing backend must hard-stop new installs with explicit unsupported-baseline wording"
 grep -q 'Stopping before package installation or project changes' "$ROOT/install.sh" || fail "oversized external swap must be an early installer error"
-pass "installer enforces resource contract 20260927_1"
+pass "installer enforces resource contract 20261012_1"
 
 sh "$ROOT/tests/resource-scan-regression.sh" "$ROOT" ||
     fail "resource scanner must remain non-fatal for ordinary states under set -e"
@@ -168,7 +168,7 @@ grep -q '256 MB-class has neither active zRAM nor verified external storage-back
 grep -q 'fail "512 MB-class has neither active zRAM nor verified external storage-backed SWAP .*bare 512 MB RAM is not a supported project baseline' "$ROOT/mihomo-doctor.sh" || fail "doctor must FAIL 512 MB missing backend with explicit unsupported-baseline wording"
 grep -q 'External SWAP is below project minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must WARN below the 1x RAM swap floor"
 grep -q 'External SWAP is below preferred project sizing target but meets the minimum floor' "$ROOT/mihomo-doctor.sh" || fail "doctor must report the 1x..3x swap range as INFO"
-pass "doctor mirrors resource contract 20260927_1"
+pass "doctor mirrors resource contract 20261012_1"
 
 grep -q 'UNSUPPORTED EXTERNAL SWAP SIZE: above 2 GiB' "$ROOT/update-mihomo.sh" || fail "updater must surface oversized external swap"
 grep -q "UP_DELETED_COUNT" "$ROOT/update-mihomo.sh" || fail "updater must exclude deleted swap sources from capacity decisions"
