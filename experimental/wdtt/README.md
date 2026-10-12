@@ -1,3 +1,5 @@
+KN-1010 external SWAP: [повторная диагностика и причины INSTALL_BLOCKED](KN1010-EXTERNAL-SWAP.md). ELF запуск и IPK SHA подтверждены владельцем; при ~70 МиБ доступной RAM новый диагностический профиль не разрешает установку.
+
 Phase4: актуальная owner-local установка, Manual/Automatic и KN-1010 — [PHASE4-HARDWARE.md](PHASE4-HARDWARE.md). Публичный gate остаётся закрытым; Phase2/3 ниже — историческая доказательная база.
 
 # WDTT: изолированный эксперимент, допуск закрыт

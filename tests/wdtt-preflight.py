@@ -19,6 +19,8 @@ for shell in [['sh'], ['busybox', 'ash']]:
             put('proc/mounts', '/dev/root / squashfs ro 0 0\n/dev/sda1 ' + str(root/'opt') + ' ext4 rw 0 0\n')
             put('proc/123/comm', 'mihomo\n'); put('proc/124/comm', 'wt-client\n')
             put('proc/125/comm', 'other\n')
+            put('proc/123/status', 'VmRSS: 72704 kB\nVmSwap: 0 kB\nThreads: 12\n')
+            put('proc/vmstat', 'pswpin 0\npswpout 0\npgmajfault 4\n')
             # Canaries must not be read even when located next to allowed files.
             put('proc/123/cmdline', 'SECRET_ARGV_CANARY'); put('proc/123/environ', 'SECRET_ENV_CANARY')
             put('proc/net/udp', 'sl local_address rem_address st\n0: 0100007F:4A38 00000000:0000 07\n')
@@ -42,6 +44,9 @@ for shell in [['sh'], ['busybox', 'ash']]:
             # BusyBox ash may prefer built-in applets over PATH; explicit fixture
             # functions keep uname/df/ip inputs identical in both shells.
             script = '\n'.join(f'{name}() {{ "{root}/bin/{name}" "$@"; }}' for name in ['uname', 'df', 'ip', 'ndmc', 'opkg']) + '\n' + script
+            # Exercise the actual BusyBox applet, not GNU od via PATH. Model
+            # a minimal vendor build that rejects the old extended options.
+            script = 'od() { [ "$#" = 1 ] && [ "$1" = -b ] || return 99; busybox od "$@"; }\n' + script
             put('preflight.sh', script)
             before = {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()}
             env = dict(os.environ, PATH=str(root/'bin') + ':' + os.environ['PATH'])
@@ -57,4 +62,36 @@ for shell in [['sh'], ['busybox', 'ash']]:
                 assert expected in p.stdout, (shell, arch, expected, p.stdout)
             assert 'SECRET_' not in p.stdout+p.stderr and 'port_tcp_hex=0001' not in p.stdout
             assert before == {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            def probe(*args):
+                result=subprocess.run(shell+[str(root/'preflight.sh'),*args],env=env,capture_output=True,text=True,timeout=10)
+                assert result.returncode==0,result.stderr
+                return result.stdout
+            # Partial and non-ELF data must be UNKNOWN, never a guessed ABI.
+            header=root/'opt/bin/opkg'
+            header.write_bytes(bytes(data[:19]));assert 'entware_elf=UNKNOWN' in probe()
+            header.write_bytes(b'X'*20);assert 'entware_elf=UNKNOWN' in probe()
+            header.write_bytes(bytes(data))
+            # Actual reported KN-1010 baseline: swap capacity cannot buy RAM.
+            (root/'proc/meminfo').write_text('MemTotal: 254472 kB\nMemAvailable: 71680 kB\nSwapTotal: 479996 kB\nSwapFree: 479996 kB\n')
+            (root/'proc/swaps').write_text('Filename Type Size Used Priority\n/dev/sda1 partition 479996 0 -2\n')
+            before={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            result=probe('--kn1010-external-swap')
+            for expected in ['candidate_profile=kn1010-external-swap-v1 diagnostic_only=true',
+                             'candidate_memory_gate=BLOCKED','candidate_swap_size_kib=479996 used_kib=0',
+                             'candidate_swap_block_identity=unverified','candidate_process=mihomo pid=123 VmRSS: 72704 kB',
+                             'candidate_install=BLOCKED','candidate_vm_pswpout=0']:
+                assert expected in result,(shell,expected,result)
+            assert 'SECRET_' not in result
+            assert before=={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            for mem,expected in [('MemTotal: 254472 kB\nMemAvailable: 98303 kB\n','BLOCKED'),
+                                 ('MemTotal: 254472 kB\nMemAvailable: 98304 kB\n','FLOOR_MET_NOT_ADMISSION'),
+                                 ('MemTotal: 254472 kB\nMemFree: 71680 kB\nCached: 100000 kB\n','BLOCKED'),
+                                 ('MemTotal: 120000 kB\nMemAvailable: 100000 kB\n','BLOCKED')]:
+                (root/'proc/meminfo').write_text(mem)
+                result=probe('--kn1010-external-swap')
+                assert 'candidate_memory_gate='+expected in result and 'candidate_install=BLOCKED' in result
+            for swap in ['/dev/sda1 partition 479996 0 -2\n/dev/zram0 partition 200000 0 5\n',
+                         '/dev/sda1 file 479996 0 -2\n','/dev/sda1 partition invalid 0 -2\n','']:
+                (root/'proc/swaps').write_text('Filename Type Size Used Priority\n'+swap)
+                assert 'candidate_swap=UNVERIFIED' in probe('--kn1010-external-swap')
     print('PASS preflight:', shell, 'ARM64/MIPSel/MIPS fixtures, process/TUN glob, ports, ABI evidence, resources, no writes/secrets')
