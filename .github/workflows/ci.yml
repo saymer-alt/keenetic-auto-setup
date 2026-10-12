@@ -69,6 +69,14 @@ jobs:
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 
+      - name: WDTT experimental admission and offline conversion
+        run: |
+          python3 tests/wdtt-experimental.py
+          python3 tests/wdtt-preflight.py
+          python3 tests/wdtt-sandbox.py
+          python3 tests/wdtt-entware-lifecycle.py
+          python3 tests/wdtt-admission.py
+
       - name: Maintenance audit regressions (dash and BusyBox ash)
         run: python3 tests/maintenance-regression.py
 
