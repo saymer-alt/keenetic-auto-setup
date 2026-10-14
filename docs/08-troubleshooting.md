@@ -318,6 +318,14 @@ running-config).
 
 ---
 
+### ⏳ Первый Doctor после установки: `_CUST_BYPASS_WA_` ещё не видна
+
+На Hopper после переустановки на новый носитель первый Doctor показывал `[FAIL] bypass_wa Netfilter chain missing`; через 5–10 минут повторный запуск дал `[OK]` без ручной правки. **Причина не установлена**, это не доказательство ложного FAIL.
+
+Не пересоздавайте правила вручную только ради исчезновения сообщения. Если ситуация повторится, снимите `iptables -t mangle -S` с кодами возврата **в момент FAIL** и повторно при OK; проверьте не только chain, но и ссылку из PREROUTING, MARK/CONNMARK/RETURN. Полный безопасный протокол: [полевой разбор первого Doctor](21-netfilter-first-doctor-field.md), [KAS #144](https://github.com/saymer-alt/keenetic-auto-setup/issues/144).
+
+---
+
 ### ❌ Telegram / WhatsApp звонки не работают
 
 ---
