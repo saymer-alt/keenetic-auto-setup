@@ -19,6 +19,8 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 
 If Entware is not installed yet and `/opt` will be placed on USB/SSD → [prepare external EXT4 storage and install Entware](ENTWARE_EXTERNAL_STORAGE.md).
 
+**`opkg update` cannot download packages?** See the [Entware/NJU mirror troubleshooting guide (Russian)](../22-entware-feed-fallback.md) for read-only checks, a reversible manual switch, and rollback.
+
 Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md) · [S00ubifs flash-write reduction and RAM mode](../06-s00ubifs.md)
 
 ## 1. Installation
