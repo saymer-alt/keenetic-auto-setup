@@ -261,7 +261,7 @@ _mt_action_line=$(grep -nF '*"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*
 [ -n "$_dns_action_line" ] && [ -n "$_mt_action_line" ] && [ "$_dns_action_line" -lt "$_mt_action_line" ] || fail "DNS-interception finding must resolve before the generic MagiTrickle action"
 grep -Fq '/proc/PID/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output must use markdown-safe /proc/PID/exe wording"
 ! grep -Fq '/proc/<pid>/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output/comments must avoid markdown-eaten <pid> placeholder"
-grep -Fq 'FAIL findings (%d):' "$ROOT/mihomo-doctor.sh" || fail "doctor summary must not call every FAIL a current blocking outage"
+grep -Fq 'status_out "$COLOR_RED" "FAIL findings ($N_FAIL):"' "$ROOT/mihomo-doctor.sh" || fail "doctor summary must retain the scoped FAIL findings section and present it as red"
 grep -Fq 'Legacy-profile note: direct component FAILs are reserved for prerequisites whose current runtime capability is not separately proven by Doctor.' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain capability-correlated legacy component semantics"
 pass "doctor summarizes WARN/FAIL findings with precise legacy-safe next steps"
 
