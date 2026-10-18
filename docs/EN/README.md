@@ -4,7 +4,72 @@ Automated installation and integration of **[Mihomo](https://github.com/MetaCube
 
 [Русский](../../README.md)
 
-**Quick links:** [Install](#1-installation) · [Configure](#2-mihomo-configuration) · [Check](#3-check-and-start) · [Update](#4-updates) · [More commands](#5-additional-commands)
+**Quick links:** [Common commands](#common-commands) · [Install](#1-installation) · [Configure](#2-mihomo-configuration) · [Check](#3-check-and-start) · [Update](#4-updates) · [More commands](#5-additional-commands)
+
+---
+
+## Common commands
+
+Frequently used SSH commands in one place. **Copy one block at a time.** More details are in the sections below.
+
+**1. Install KAS (Mihomo + MagiTrickle)**
+
+~~~sh
+opkg update && opkg install curl && \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+~~~
+
+**2. Edit the Mihomo configuration**
+
+~~~sh
+nano /opt/etc/mihomo/config.yaml
+~~~
+
+**3. Back up, empty the config and open nano**
+
+⚠️ The file is emptied **before nano opens**. The original is copied to `config.yaml.bak` (overwrites an existing `.bak`).
+
+~~~sh
+cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+~~~
+
+**4. Empty config without a backup and open nano**
+
+⚠️ **Danger:** this discards the existing `config.yaml`. Do not restart Mihomo until a working YAML has been saved.
+
+~~~sh
+: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+~~~
+
+**5. Safely import YAML instead (recommended)**
+
+~~~sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+~~~
+
+**6. Inspect the setup — Doctor**
+
+~~~sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
+~~~
+
+**7. Restart Mihomo**
+
+~~~sh
+/opt/etc/init.d/S99mihomo restart
+~~~
+
+**8. Check Mihomo status**
+
+~~~sh
+/opt/etc/init.d/S99mihomo status
+~~~
+
+**9. Update Mihomo**
+
+~~~sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
+~~~
 
 ---
 
