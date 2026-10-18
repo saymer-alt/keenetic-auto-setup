@@ -1297,6 +1297,80 @@ _doc_check_internal_flash_protection() {
     fi
 }
 # END DOCTOR STORAGE PROTECTION v1
+
+# BEGIN DOCTOR UBI HEALTH v1
+# Read-only UBI/NAND evidence. /storage may be internal UBIFS even when the
+# Entware /opt mount is external EXT4. Only ubiN devices have these fields;
+# ubiN_M volume entries are NOT independent devices. No flash writes/tools.
+DOC_UBI_ROOT="${DOCTOR_UBI_ROOT:-/sys/class/ubi}"
+
+_doc_ubi_read_number() {
+    [ -r "$1" ] || return 1
+    _doc_ubi_number=$(cat "$1" 2>/dev/null) || return 1
+    case "$_doc_ubi_number" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$_doc_ubi_number"
+}
+
+_doc_report_ubi_health() {
+    info "NAND / UBI health (read-only; counters are not a flash lifetime estimate)"
+    _doc_ubi_expected=0
+    if [ -r "$MOUNTS_SRC" ]; then
+        _doc_ubi_storage=$(awk '$2=="/storage" {print $1 " " $3; exit}' "$MOUNTS_SRC" 2>/dev/null)
+        if [ -n "$_doc_ubi_storage" ]; then
+            _doc_ubi_source=${_doc_ubi_storage% *}
+            _doc_ubi_fstype=${_doc_ubi_storage##* }
+            info "/storage mount: source=$_doc_ubi_source; filesystem=$_doc_ubi_fstype"
+            [ "$_doc_ubi_fstype" = ubifs ] && _doc_ubi_expected=1
+        else
+            info "/storage mount: not reported by mount table"
+        fi
+    else
+        info "/storage mount: unavailable (mount table not readable)"
+    fi
+
+    if [ ! -d "$DOC_UBI_ROOT" ]; then
+        if [ "$_doc_ubi_expected" -eq 1 ]; then
+            warn "UBI sysfs unavailable while /storage is UBIFS; NAND health cannot be verified"
+        else
+            info "UBI sysfs unavailable (N/A; NAND health not inferred)"
+        fi
+        return 0
+    fi
+
+    _doc_ubi_seen=0
+    for _doc_ubi_path in "$DOC_UBI_ROOT"/ubi[0-9]*; do
+        [ -d "$_doc_ubi_path" ] || continue
+        _doc_ubi_name=${_doc_ubi_path##*/}
+        _doc_ubi_id=${_doc_ubi_name#ubi}
+        # Only numeric device IDs: exclude volumes such as ubi0_0.
+        case "$_doc_ubi_id" in ''|*[!0-9]*) continue ;; esac
+        _doc_ubi_seen=$((_doc_ubi_seen + 1))
+
+        _doc_ubi_ec=$(_doc_ubi_read_number "$_doc_ubi_path/max_ec") ||
+            _doc_ubi_ec=unavailable
+        _doc_ubi_bad=$(_doc_ubi_read_number "$_doc_ubi_path/bad_peb_count") ||
+            _doc_ubi_bad=unavailable
+        _doc_ubi_ro=$(_doc_ubi_read_number "$_doc_ubi_path/ro_mode") ||
+            _doc_ubi_ro=unavailable
+
+        info "UBI $_doc_ubi_name: max_ec=$_doc_ubi_ec; bad_peb_count=$_doc_ubi_bad; ro_mode=$_doc_ubi_ro"
+        case "$_doc_ubi_ro" in
+            0) ok "UBI $_doc_ubi_name: read-write mode (ro_mode=0)" ;;
+            1) fail "UBI $_doc_ubi_name: read-only mode reported (ro_mode=1); inspect NAND/UBI state before further writes" ;;
+            *) warn "UBI $_doc_ubi_name: ro_mode unavailable or invalid; NAND read-only state unverified" ;;
+        esac
+    done
+
+    if [ "$_doc_ubi_seen" -eq 0 ]; then
+        if [ "$_doc_ubi_expected" -eq 1 ]; then
+            warn "No UBI devices found in sysfs despite /storage being UBIFS; NAND health unverified"
+        else
+            info "No UBI devices detected (N/A; NAND health not inferred)"
+        fi
+    fi
+}
+# END DOCTOR UBI HEALTH v1
+
 _doc_swap_source_capacity_kb() {
     _dsc_src="$1"; _dsc_type="$2"; _dsc_active="$3"; _dsc_cap=""
     case "$_dsc_type" in
@@ -1381,6 +1455,9 @@ case "$_doc_opt" in
         info "/opt storage: cannot determine (filesystem: ${_doc_opt_fstype_value:-unknown})"
         ;;
 esac
+
+# NAND /storage is independent of the selected Entware /opt backend.
+_doc_report_ubi_health
 
 if [ "$_doc_opt" = external ]; then
     if [ "$_doc_opt_fstype_value" = ext4 ]; then
