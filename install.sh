@@ -936,6 +936,7 @@ pkg_ensure() {
 pkg_ensure ca-bundle
 pkg_ensure curl
 pkg_ensure jq
+pkg_ensure iptables
 pkg_ensure nano
 pkg_ensure cron
 
