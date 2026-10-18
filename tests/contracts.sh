@@ -30,6 +30,16 @@ grep -Fq 'status_out "$COLOR_GREEN" "[OK]   $1"' "$ROOT/mihomo-doctor.sh" || fai
 grep -Fq 'status_out "$COLOR_CYAN" "[INFO] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor INFO must be cyan"
 grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor WARN must be yellow"
 grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
+# Human-readable Doctor summaries must preserve the same severity as individual
+# diagnostic lines. A FAIL must never appear like a neutral/green success.
+grep -Fq 'status_out "$COLOR_RED" "[FAIL] Overall status: FAIL"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final FAIL must be red and explicitly prefixed"
+grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] Overall status: WARN"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final WARN must be yellow and explicitly prefixed"
+grep -Fq 'status_out "$COLOR_GREEN" "[OK] Overall status: OK"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final OK must be green and explicitly prefixed"
+grep -Fq 'status_out "$_pfg_color" "[$_pfg_kind] $_pfg_msg"' "$ROOT/mihomo-doctor.sh" || fail "Doctor human findings must have matching severity color"
+grep -Fq 'CONFIG IMPORT MODE (NOT A SHELL PROMPT)' "$ROOT/config-import.sh" || fail "config importer must distinguish YAML prompt from root shell"
+grep -Fq 'Shell commands were pasted into the YAML importer, not a shell' "$ROOT/config-import.sh" || fail "config importer must reject shell commands as YAML"
+pass "Doctor human summary severity and config-import terminal guidance are pinned"
+
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
 PROFILE_CONTRACT=20261012_1
