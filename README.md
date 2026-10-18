@@ -19,6 +19,8 @@
 
 Если Entware ещё не установлен и `/opt` планируется на USB/SSD → [подготовка внешнего EXT4-накопителя и установка Entware](docs/16-entware-external-storage.md).
 
+**`opkg update` не скачивает пакеты?** [Проверка Entware и китайское зеркало NJU — с резервной копией и откатом](docs/22-entware-feed-fallback.md).
+
 Полные требования → [компоненты KeeneticOS и prerequisites](docs/COMPONENTS_RU.md) · [RAM / storage / ограничения](docs/09-limitations.md) · [S00ubifs: защита флешки и RAM-режим](docs/06-s00ubifs.md)
 
 ## 1. Установка
