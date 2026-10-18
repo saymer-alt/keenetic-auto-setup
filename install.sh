@@ -2285,10 +2285,6 @@ check_bypass_netfilter_runtime() {
         check_fail "bypass_wa runtime cannot be verified: iptables not found"
         return 0
     fi
-    if ! _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1); then
-        check_fail "bypass_wa runtime chain unavailable: $_br_chain — hook may not have been applied after installation; check native Netfilter rebuild"
-        return 0
-    fi
     if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
         check_fail "bypass_wa runtime policy mark cannot be verified: curl/jq missing"
         return 0
@@ -2315,9 +2311,18 @@ check_bypass_netfilter_runtime() {
     # Validate the complete serialized chain, including exact policy mark,
     # full mark masks and MARK -> CONNMARK -> RETURN order. Do not accept an
     # empty chain, partial rules, duplicates or unrelated extra rules.
+    # Netfilter rewrite callbacks are asynchronous on some devices.
+    # Bound the read-only verification to eight snapshots (~14 seconds max).
+    # A real missing/incomplete chain remains a hard FAIL; no firewall writes,
+    # reloads or interface toggles occur during these retries.
+    _br_probe_once() {
+    if ! _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1); then
+        _br_last_fault="chain cannot be inspected"
+        return 1
+    fi
     if ! _br_pre=$(iptables -t mangle -S PREROUTING 2>&1); then
-        check_fail "bypass_wa PREROUTING cannot be inspected (iptables -S failed)"
-        return 0
+        _br_last_fault="PREROUTING cannot be inspected"
+        return 1
     fi
     if ! printf '%s\n' "$_br_pre" | awk -v chain="$_br_chain" '
         $1=="-A" && $2=="PREROUTING" && $3=="-m" &&
@@ -2325,8 +2330,8 @@ check_bypass_netfilter_runtime() {
         $7=="-j" && $8==chain && NF==8 {hits++}
         END {exit !(hits==1)}
     '; then
-        check_fail "bypass_wa live PREROUTING link to $_br_chain missing or ambiguous"
-        return 0
+        _br_last_fault="PREROUTING link missing or ambiguous"
+        return 1
     fi
 
     if ! printf '%s\n' "$_br_chain_dump" | awk -v chain="$_br_chain" -v ports="$_br_ports" -v mark="$_br_mark" '
@@ -2365,10 +2370,27 @@ check_bypass_netfilter_runtime() {
                    good_mark==1 && good_connmark==1 && good_return==1)
         }
     '; then
-        check_fail "bypass_wa live Netfilter rules incomplete, wrong mark/mask, wrong order or unverified via iptables -S; required policy mark=0x$_br_mark"
-        return 0
+        _br_last_fault="chain incomplete, wrong mark/mask, wrong order or unverified"
+        return 1
     fi
-    check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified via iptables -S"
+        return 0
+    }
+    _br_round=1
+    _br_max_rounds=8
+    while :; do
+        if _br_probe_once; then
+            check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified via iptables -S"
+            if [ "$_br_round" -gt 1 ]; then
+                check_info "bypass_wa live rules became ready after $_br_round read-only checks (2s interval)"
+            fi
+            return 0
+        fi
+        [ "$_br_round" -lt "$_br_max_rounds" ] || break
+        sleep 2
+        _br_round=$((_br_round + 1))
+    done
+    check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks: $_br_last_fault; required policy mark=0x$_br_mark"
+
 }
 check_bypass_netfilter_runtime
 
