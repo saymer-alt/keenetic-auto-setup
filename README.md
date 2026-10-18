@@ -4,7 +4,72 @@
 
 [English](docs/EN/README.md)
 
-**Быстрый переход:** [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
+**Быстрый переход:** [Частые команды](#частые-команды) · [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
+
+---
+
+## Частые команды
+
+Все команды для SSH в одном месте: **каждый блок копируется отдельно**. Подробные пояснения остались в разделах ниже.
+
+**1. Установить KAS (Mihomo + MagiTrickle)**
+
+```bash
+opkg update && opkg install curl && \
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+```
+
+**2. Открыть конфигурацию Mihomo**
+
+```bash
+nano /opt/etc/mihomo/config.yaml
+```
+
+**3. Сохранить копию, очистить конфиг и открыть nano**
+
+⚠️ Текущий файл очищается **до открытия редактора**; старая версия сохраняется в `config.yaml.bak` (существующая `.bak` будет перезаписана).
+
+```bash
+cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```
+
+**4. Очистить конфиг без резервной копии и открыть nano**
+
+⚠️ **Опасно:** содержимое `config.yaml` будет потеряно. Не перезапускайте Mihomo, пока не сохраните исправный YAML.
+
+```bash
+: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```
+
+**5. Безопасно импортировать новый YAML (предпочтительно вместо очистки)**
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+```
+
+**6. Проверить систему — Doctor**
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
+```
+
+**7. Перезапустить Mihomo**
+
+```bash
+/opt/etc/init.d/S99mihomo restart
+```
+
+**8. Проверить статус Mihomo**
+
+```bash
+/opt/etc/init.d/S99mihomo status
+```
+
+**9. Обновить Mihomo**
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
+```
 
 ---
 
