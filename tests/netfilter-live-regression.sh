@@ -23,6 +23,7 @@ sh -n "$WORK/function.sh" || exit 1
 MOCK_MARK=ffffaab
 MOCK_API_FAIL=0
 MOCK_CHAIN_FAIL=0
+MOCK_CHAIN_DELAY=0
 MOCK_PRE_FAIL=0
 
 iptables() {
@@ -30,6 +31,12 @@ iptables() {
     case "$4" in
         _CUST_BYPASS_WA_)
             [ "$MOCK_CHAIN_FAIL" -eq 0 ] || return 1
+            if [ "$MOCK_CHAIN_DELAY" -gt 0 ]; then
+                _mock_round=$(cat "$WORK/chain-attempts" 2>/dev/null || printf 0)
+                _mock_round=$((_mock_round + 1))
+                printf '%s\n' "$_mock_round" > "$WORK/chain-attempts"
+                [ "$_mock_round" -gt "$MOCK_CHAIN_DELAY" ] || return 1
+            fi
             printf '%s\n' "$MOCK_CHAIN"
             ;;
         PREROUTING)
@@ -49,6 +56,9 @@ jq() {
 }
 check_ok() { RESULT_OK=$((RESULT_OK+1)); }
 check_fail() { RESULT_FAIL=$((RESULT_FAIL+1)); }
+check_info() { RESULT_INFO=$((RESULT_INFO+1)); }
+# Avoid waiting 14s per expected-failure fixture: test retry counts, not wall time.
+sleep() { :; }
 
 MOCK_PRE='-P PREROUTING ACCEPT
 -A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_'
@@ -80,6 +90,12 @@ run_case() {
 }
 
 run_case "real NC-1812 serialized --set-xmark and full CONNMARK mask" pass
+MOCK_CHAIN_DELAY=2
+: > "$WORK/chain-attempts"
+run_case "transient empty Netfilter chain recovers after two snapshot failures" pass
+[ "$(cat "$WORK/chain-attempts")" -eq 3 ] ||
+    { echo "[FAIL] Netfilter retry count expected 3"; exit 1; }
+MOCK_CHAIN_DELAY=0
 MOCK_CHAIN=$(printf '%s\n' "$ORIGINAL_CHAIN" | sed 's@--set-xmark 0xffffaab/0xffffffff@--set-mark 0xffffaab@;s@ --nfmask 0xffffffff --ctmask 0xffffffff@@')
 run_case "legacy canonical --set-mark and CONNMARK defaults" pass
 MOCK_CHAIN="$ORIGINAL_CHAIN"
