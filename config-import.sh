@@ -506,7 +506,7 @@ else
     echo "Paste the COMPLETE Mihomo YAML, not Linux/Entware commands."
     echo "Example start: mixed-port: 7890"
     status_out "$COLOR_CYAN" "[INFO] When the paste is finished, press Ctrl+D once."
-    echo "To return to the shell without importing, type only: s"
+    status_out "$COLOR_CYAN" "[INFO] To return to the shell without importing, type only: s"
     echo "Nothing will be changed until the candidate passes validation."
     echo
     printf "YAML (or s to skip): " > /dev/tty
