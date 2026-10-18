@@ -40,6 +40,13 @@ grep -Fq 'CONFIG IMPORT MODE (NOT A SHELL PROMPT)' "$ROOT/config-import.sh" || f
 grep -Fq 'Shell commands were pasted into the YAML importer, not a shell' "$ROOT/config-import.sh" || fail "config importer must reject shell commands as YAML"
 pass "Doctor human summary severity and config-import terminal guidance are pinned"
 
+# A missing policy mark must never silently route VoIP using a guessed "1".
+! grep -Eq 'mark_id_=1([[:space:]]|$)' "$ROOT/020-bypass-wa.sh" || fail "bypass hook must not substitute a guessed mark"
+grep -Fq 'refusing to change Netfilter rules' "$ROOT/020-bypass-wa.sh" || fail "bypass hook must fail closed on missing policy mark"
+grep -Fq "jq -er '[.[] | select(.description == \"bypass_wa\") | .mark]" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must require a unique API-derived mark"
+grep -Fq "case \"\$mark_id_\" in" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must validate hexadecimal mark before Netfilter mutation"
+pass "bypass hook fails closed instead of using mark=1"
+
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
 PROFILE_CONTRACT=20261012_1
