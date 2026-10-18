@@ -69,6 +69,11 @@ _hook_line=$(grep -nF 'log "Installing bypass rules..."' "$ROOT/install.sh" | he
 _bounce_line=$(grep -nF 'activate_bypass_on_fresh_proxy() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _mihomo_service_line=$(grep -nF 'MIHOMO_SERVICE_ACTION=none' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 [ "$_fresh_line" -lt "$_opkg_line" ] && [ "$_hook_line" -lt "$_bounce_line" ] && [ "$_bounce_line" -lt "$_mihomo_service_line" ] || fail "freshness must be captured pre-install; hook delivered before bounce; service started after bounce"
+# Truly clean Entware must receive the iptables userspace utility, including
+# its Keenetic-specific feed build, before any netfilter.d hook can apply.
+grep -Fq 'pkg_ensure iptables' "$ROOT/install.sh" || fail "KAS must install iptables on clean Entware"
+_ipt_pkg=$(grep -nF 'pkg_ensure iptables' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+[ "$_ipt_pkg" -lt "$_hook_line" ] || fail "iptables must be installed before bypass hook delivery"
 pass "clean Entware proxy activation is guarded, reversible and runtime-verified"
 
 
