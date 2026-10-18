@@ -15,17 +15,11 @@ ports="1400,3478,3482"
 # Custom chain name
 chain="_CUST_BYPASS_WA_"
 
-# Load multiport module if not already loaded.
-# KeeneticOS component opkg-kmod-netfilter provides xt_multiport for this path;
-# the separate Xtables-addons component is not required by this script.
-if ! lsmod | grep -q '^xt_multiport'; then
-    modprobe xt_multiport 2>/dev/null || \
-    insmod /lib/modules/$(uname -r)/xt_multiport.ko 2>/dev/null
-fi
-
-# Exit for IPv6 or non-mangle table
-[ "$type" = "ip6tables" ] && exit 0
-[ "$table" != "mangle" ] && exit 0
+# netfilter.d is invoked by KeeneticOS for multiple protocol/table updates.
+# Ignore everything except IPv4 mangle, including an accidental manual call
+# without the documented type/table context.
+[ "${type:-}" = "iptables" ] || exit 0
+[ "${table:-}" = "mangle" ] || exit 0
 
 # Resolve the actual Keenetic policy mark BEFORE touching live Netfilter state.
 # Mark values are hexadecimal in the Keenetic API (e.g. ffffaab).
@@ -49,6 +43,14 @@ case "$mark_id_" in
         exit 1
         ;;
 esac
+
+# Load multiport module only when applying verified IPv4 mangle policy.
+# KN-1010 A/B/C established that opkg-kmod-netfilter provides this module
+# without needing the separate Xtables-addons firmware component.
+if ! lsmod | grep -q '^xt_multiport'; then
+    modprobe xt_multiport 2>/dev/null || \
+    insmod /lib/modules/$(uname -r)/xt_multiport.ko 2>/dev/null
+fi
 
 # Create chain if it doesn't exist, otherwise flush it.
 # Keep the original hook application behavior until the runtime-safe
