@@ -42,7 +42,7 @@ hdr "Live bypass policy (read-only KeeneticOS)"
 if command -v ndmc >/dev/null 2>&1; then
     # Extract only policy name/description and mark, not full routing data.
     ndmc -c 'show ip policy' 2>&1 |
-        awk '/policy, name = /{p=$0; next} /mark:/{if(p ~ /bypass_wa/) {print p; print $0}; p=""}' 
+        awk '/policy, name = /{p=$0; next} /mark:/{if(p ~ /bypass_wa/) {print p; print $0}; p=""}'
 else
     say "[INFO] ndmc unavailable; policy mark not probed"
 fi
