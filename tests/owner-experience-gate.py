@@ -51,14 +51,14 @@ def main() -> None:
         expect_failure(invoke(path), "Install Entware first.")
         print("PASS: missing OPKG fails with an actionable prerequisite")
 
-        # Fake OPKG is discoverable but must NEVER be executed: curl is absent.
+        # Fake OPKG is discoverable but must NEVER be executed: both secure bootstrap downloaders are absent.
         sentinel = path / "opkg-was-run"
         fake = path / "opkg"
         fake.write_text("#!/bin/sh\nprintf invoked > " + str(sentinel) + "\nexit 97\n")
         fake.chmod(0o700)
-        expect_failure(invoke(path), "opkg update && opkg install curl")
+        expect_failure(invoke(path), "Neither curl nor wget is available")
         assert not sentinel.exists(), "Unexpected OPKG execution"
-        print("PASS: missing curl fails with a copyable next step; no OPKG calls")
+        print("PASS: missing both bootstrap downloaders fails closed; no OPKG calls")
 
     print("OWNER EXPERIENCE GATE: setup first-run refusals PASS (no network/device)")
 
