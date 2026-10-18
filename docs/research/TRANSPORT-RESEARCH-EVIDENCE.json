@@ -1,0 +1,1760 @@
+{
+  "as_of": "2026-10-11 Europe/Moscow",
+  "scope": "RESEARCH ONLY; local build/loopback; no real VK account, router, VPS, production mutation, publication or PR",
+  "kas_base": "ac959105509c56a5b4bfb080a64bf825880eb09b",
+  "kas_branch": "research/wdtt-csqtt-wg-obfuscator-20261011",
+  "sources": [
+    {
+      "repo": "amurcanov/csqtt",
+      "sha": "71712b07dbabe16fa43f5a248dc69e1ab9f3a270",
+      "date": "2026-10-03T04:20:28+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v2.1.9",
+          "published_at": "2026-09-02T03:28:19Z",
+          "assets": [
+            "CSQTT-arm64-v8a.apk",
+            "CSQTT-armeabi-v7a.apk",
+            "CSQTT-universal.apk",
+            "CSQTT-x86_64.apk"
+          ]
+        },
+        {
+          "tag": "v2.1.5",
+          "published_at": "2026-08-28T19:41:07Z",
+          "assets": [
+            "CSQTT-arm64-v8a.apk",
+            "CSQTT-armeabi-v7a.apk",
+            "CSQTT-universal.apk"
+          ]
+        },
+        {
+          "tag": "v2.0.0",
+          "published_at": "2026-08-16T14:31:48Z",
+          "assets": [
+            "CSQTT-arm64-v8a.apk",
+            "CSQTT-armeabi-v7a.apk",
+            "CSQTT-universal.apk"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "amurcanov/proxy-turn-vk-android",
+      "sha": "f4f83bd5d22162ba25dd91ff1d1dc97ca9dd8fda",
+      "date": "2026-09-12T01:25:50+03:00",
+      "branch": "main",
+      "archived": true,
+      "releases": [
+        {
+          "tag": "v1.2.4",
+          "published_at": "2026-07-07T21:59:23Z",
+          "assets": [
+            "WDTT-arm64-v8a.apk",
+            "WDTT-armeabi-v7a.apk",
+            "WDTT-universal.apk",
+            "WDTT-x86_64.apk"
+          ]
+        },
+        {
+          "tag": "v1.1.8",
+          "published_at": "2026-05-21T08:06:14Z",
+          "assets": [
+            "WDTT-arm64-v8a.apk",
+            "WDTT-armeabi-v7a.apk",
+            "WDTT-universal.apk",
+            "WDTT-x86_64.apk"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "ClusterM/wg-obfuscator",
+      "sha": "7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f",
+      "date": "2026-10-09T10:23:20+02:00",
+      "branch": "master",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.6",
+          "published_at": "2026-08-18T22:09:02Z",
+          "assets": [
+            "wg-obfuscator-v1.6-docker-386.tar",
+            "wg-obfuscator-v1.6-docker-amd64.tar",
+            "wg-obfuscator-v1.6-docker-arm-v5.tar",
+            "wg-obfuscator-v1.6-docker-arm-v6.tar",
+            "wg-obfuscator-v1.6-docker-arm-v7.tar",
+            "wg-obfuscator-v1.6-docker-arm64.tar",
+            "wg-obfuscator-v1.6-docker-ppc64le.tar",
+            "wg-obfuscator-v1.6-docker-s390x.tar",
+            "wg-obfuscator-v1.6-linux-arm64.tar.gz",
+            "wg-obfuscator-v1.6-linux-armv5-sf.tar.gz",
+            "wg-obfuscator-v1.6-linux-armv6-softfp.tar.gz",
+            "wg-obfuscator-v1.6-linux-armv7-hf.tar.gz",
+            "wg-obfuscator-v1.6-linux-armv7-softfp.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips-mips1.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips-mips32.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips-mips32r2.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips64.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips64el.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips64elr2.tar.gz",
+            "wg-obfuscator-v1.6-linux-mips64r2.tar.gz",
+            "wg-obfuscator-v1.6-linux-mipsel-mips1.tar.gz",
+            "wg-obfuscator-v1.6-linux-mipsel-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.6-linux-mipsel-mips32.tar.gz",
+            "wg-obfuscator-v1.6-linux-mipsel-mips32r2.tar.gz",
+            "wg-obfuscator-v1.6-linux-powerpc.tar.gz",
+            "wg-obfuscator-v1.6-linux-ppc64le.tar.gz",
+            "wg-obfuscator-v1.6-linux-riscv32.tar.gz",
+            "wg-obfuscator-v1.6-linux-riscv64.tar.gz",
+            "wg-obfuscator-v1.6-linux-s390x.tar.gz",
+            "wg-obfuscator-v1.6-linux-x64.tar.gz",
+            "wg-obfuscator-v1.6-linux-x86.tar.gz",
+            "wg-obfuscator-v1.6-macos-arm64.zip",
+            "wg-obfuscator-v1.6-macos-x64.zip",
+            "wg-obfuscator-v1.6-windows-x64.zip"
+          ]
+        },
+        {
+          "tag": "v1.5",
+          "published_at": "2025-09-21T19:38:11Z",
+          "assets": [
+            "wg-obfuscator-v1.5-docker-386.tar",
+            "wg-obfuscator-v1.5-docker-amd64.tar",
+            "wg-obfuscator-v1.5-docker-arm-v5.tar",
+            "wg-obfuscator-v1.5-docker-arm-v6.tar",
+            "wg-obfuscator-v1.5-docker-arm-v7.tar",
+            "wg-obfuscator-v1.5-docker-arm64.tar",
+            "wg-obfuscator-v1.5-docker-ppc64le.tar",
+            "wg-obfuscator-v1.5-docker-s390x.tar",
+            "wg-obfuscator-v1.5-linux-arm64.tar.gz",
+            "wg-obfuscator-v1.5-linux-armv5-sf.tar.gz",
+            "wg-obfuscator-v1.5-linux-armv6-softfp.tar.gz",
+            "wg-obfuscator-v1.5-linux-armv7-hf.tar.gz",
+            "wg-obfuscator-v1.5-linux-armv7-softfp.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips-mips1.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips-mips32.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips-mips32r2.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips64.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips64el.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips64elr2.tar.gz",
+            "wg-obfuscator-v1.5-linux-mips64r2.tar.gz",
+            "wg-obfuscator-v1.5-linux-mipsel-mips1.tar.gz",
+            "wg-obfuscator-v1.5-linux-mipsel-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.5-linux-mipsel-mips32.tar.gz",
+            "wg-obfuscator-v1.5-linux-mipsel-mips32r2.tar.gz",
+            "wg-obfuscator-v1.5-linux-powerpc.tar.gz",
+            "wg-obfuscator-v1.5-linux-ppc64le.tar.gz",
+            "wg-obfuscator-v1.5-linux-riscv32.tar.gz",
+            "wg-obfuscator-v1.5-linux-riscv64.tar.gz",
+            "wg-obfuscator-v1.5-linux-s390x.tar.gz",
+            "wg-obfuscator-v1.5-linux-x64.tar.gz",
+            "wg-obfuscator-v1.5-linux-x86.tar.gz",
+            "wg-obfuscator-v1.5-macos-arm64.zip",
+            "wg-obfuscator-v1.5-macos-x64.zip",
+            "wg-obfuscator-v1.5-windows-x64.zip"
+          ]
+        },
+        {
+          "tag": "v1.4",
+          "published_at": "2025-09-10T16:09:28Z",
+          "assets": [
+            "wg-obfuscator-v1.4-docker-386.tar",
+            "wg-obfuscator-v1.4-docker-amd64.tar",
+            "wg-obfuscator-v1.4-docker-arm-v5.tar",
+            "wg-obfuscator-v1.4-docker-arm-v6.tar",
+            "wg-obfuscator-v1.4-docker-arm-v7.tar",
+            "wg-obfuscator-v1.4-docker-arm64.tar",
+            "wg-obfuscator-v1.4-docker-ppc64le.tar",
+            "wg-obfuscator-v1.4-docker-s390x.tar",
+            "wg-obfuscator-v1.4-linux-arm64.tar.gz",
+            "wg-obfuscator-v1.4-linux-armv5-sf.tar.gz",
+            "wg-obfuscator-v1.4-linux-armv6-softfp.tar.gz",
+            "wg-obfuscator-v1.4-linux-armv7-hf.tar.gz",
+            "wg-obfuscator-v1.4-linux-armv7-softfp.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips-mips1.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips-mips32.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips-mips32r2.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips64.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips64el.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips64elr2.tar.gz",
+            "wg-obfuscator-v1.4-linux-mips64r2.tar.gz",
+            "wg-obfuscator-v1.4-linux-mipsel-mips1.tar.gz",
+            "wg-obfuscator-v1.4-linux-mipsel-mips32-sf.tar.gz",
+            "wg-obfuscator-v1.4-linux-mipsel-mips32.tar.gz",
+            "wg-obfuscator-v1.4-linux-mipsel-mips32r2.tar.gz",
+            "wg-obfuscator-v1.4-linux-powerpc.tar.gz",
+            "wg-obfuscator-v1.4-linux-ppc64le.tar.gz",
+            "wg-obfuscator-v1.4-linux-riscv32.tar.gz",
+            "wg-obfuscator-v1.4-linux-riscv64.tar.gz",
+            "wg-obfuscator-v1.4-linux-s390x.tar.gz",
+            "wg-obfuscator-v1.4-linux-x64.tar.gz",
+            "wg-obfuscator-v1.4-linux-x86.tar.gz",
+            "wg-obfuscator-v1.4-macos-arm64.zip",
+            "wg-obfuscator-v1.4-macos-x64.zip",
+            "wg-obfuscator-v1.4-windows-x64.zip"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "Ground-Zerro/Phobos",
+      "sha": "9c2901849af2aeda82d7171369db796ead0bb874",
+      "date": "2026-08-11T23:57:38+11:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "0.0.1",
+          "published_at": "2026-02-14T13:01:06Z",
+          "assets": []
+        }
+      ]
+    },
+    {
+      "repo": "hoaxisr/awg-manager",
+      "sha": "38899601091f67aaa105165a07cdd98117802046",
+      "date": "2026-10-09T16:14:37+02:00",
+      "branch": "develop",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "latest",
+          "published_at": "2026-10-09T14:30:35Z",
+          "assets": [
+            "awg-manager_2.19.13+r4_aarch64-3.10-kn.ipk",
+            "awg-manager_2.19.13+r4_mips-3.4-kn.ipk",
+            "awg-manager_2.19.13+r4_mipsel-3.4-kn.ipk",
+            "CHANGELOG.md",
+            "RELEASED_SHA",
+            "VERSION"
+          ]
+        },
+        {
+          "tag": "v2.19.13",
+          "published_at": "2026-10-07T16:29:08Z",
+          "assets": [
+            "awg-manager_2.19.13_aarch64-3.10-kn.ipk",
+            "awg-manager_2.19.13_mips-3.4-kn.ipk",
+            "awg-manager_2.19.13_mipsel-3.4-kn.ipk",
+            "CHANGELOG.md",
+            "VERSION"
+          ]
+        },
+        {
+          "tag": "v2.19.12",
+          "published_at": "2026-09-29T20:01:17Z",
+          "assets": [
+            "awg-manager_2.19.12_aarch64-3.10-kn.ipk",
+            "awg-manager_2.19.12_mips-3.4-kn.ipk",
+            "awg-manager_2.19.12_mipsel-3.4-kn.ipk",
+            "CHANGELOG.md",
+            "VERSION"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "hoaxisr/proxy-turn-vk-android",
+      "sha": "1110a75f76e42c23149b8e24f9182c1ff179e515",
+      "date": "2026-08-19T14:48:06Z",
+      "branch": "awg-client",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "awgm-server-v1.4.0-5",
+          "published_at": "2026-09-08T07:26:53Z",
+          "assets": [
+            "checksums.txt",
+            "wdtt-server-linux-arm64",
+            "wdtt-server-linux-mips-softfloat",
+            "wdtt-server-linux-mipsle-softfloat"
+          ]
+        },
+        {
+          "tag": "awgm-server-v1.4.0-4",
+          "published_at": "2026-08-28T17:45:46Z",
+          "assets": [
+            "checksums.txt",
+            "wdtt-server-linux-arm64",
+            "wdtt-server-linux-mips-softfloat",
+            "wdtt-server-linux-mipsle-softfloat"
+          ]
+        },
+        {
+          "tag": "awgm-client-v1.4.0-3",
+          "published_at": "2026-08-19T16:23:05Z",
+          "assets": [
+            "checksums.txt",
+            "wt-client-linux-arm64",
+            "wt-client-linux-mips-softfloat",
+            "wt-client-linux-mipsle-softfloat"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "ildarmaga/wdtt",
+      "sha": "ef697994bc7ac650b81623484933d930c5cd766b",
+      "date": "2026-08-12T10:24:42+06:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.5.76",
+          "published_at": "2026-10-07T18:16:46Z",
+          "assets": [
+            "pwdtt-client-linux-amd64",
+            "pwdtt-client-windows-amd64.exe",
+            "wdtt-linux-amd64",
+            "wdtt-linux-arm64"
+          ]
+        },
+        {
+          "tag": "v1.5.74",
+          "published_at": "2026-09-26T10:07:56Z",
+          "assets": [
+            "pwdtt-client-linux-amd64",
+            "pwdtt-client-windows-amd64.exe",
+            "wdtt-linux-amd64",
+            "wdtt-linux-arm64"
+          ]
+        },
+        {
+          "tag": "v1.5.73",
+          "published_at": "2026-09-21T10:33:14Z",
+          "assets": [
+            "pwdtt-client-linux-amd64",
+            "pwdtt-client-windows-amd64.exe",
+            "wdtt-linux-amd64",
+            "wdtt-linux-arm64"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "kkvoru/wdtt-server-entware",
+      "sha": "a61fdcfe206b9e00b89005e1c5c86f3e2d71abac",
+      "date": "2026-06-16T15:33:50+05:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v0.1.2",
+          "published_at": "2026-06-16T10:38:54Z",
+          "assets": [
+            "install_wdtt_entware.sh",
+            "SHA256SUMS.txt",
+            "wdtt-server-entware-all.zip",
+            "wdtt-server-entware-arm64",
+            "wdtt-server-entware-armv5",
+            "wdtt-server-entware-armv7",
+            "wdtt-server-entware-mips-softfloat",
+            "wdtt-server-entware-mipsel-softfloat",
+            "wdtt-server-entware-x64",
+            "wdtt-server-entware-x86"
+          ]
+        },
+        {
+          "tag": "v0.1.1",
+          "published_at": "2026-06-14T06:12:10Z",
+          "assets": [
+            "install_wdtt_entware.sh",
+            "SHA256SUMS.txt",
+            "wdtt-server-entware-all.zip",
+            "wdtt-server-entware-arm64",
+            "wdtt-server-entware-armv5",
+            "wdtt-server-entware-armv7",
+            "wdtt-server-entware-mips-softfloat",
+            "wdtt-server-entware-mipsel-softfloat",
+            "wdtt-server-entware-x64",
+            "wdtt-server-entware-x86"
+          ]
+        },
+        {
+          "tag": "v0.1.0",
+          "published_at": "2026-06-13T17:11:57Z",
+          "assets": [
+            "install_wdtt_entware.sh",
+            "SHA256SUMS.txt",
+            "wdtt-server-entware-all.zip",
+            "wdtt-server-entware-arm64",
+            "wdtt-server-entware-armv5",
+            "wdtt-server-entware-armv7",
+            "wdtt-server-entware-mips-softfloat",
+            "wdtt-server-entware-mipsel-softfloat",
+            "wdtt-server-entware-x64",
+            "wdtt-server-entware-x86"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "luminescq/focsq",
+      "sha": "9ad3bfb36e7ed5717b3ee2766e53a59ddf2fbad5",
+      "date": "2026-10-01T04:19:56+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.0.0",
+          "published_at": "2026-09-12T16:59:52Z",
+          "assets": [
+            "focsq-linux-x64.tar.gz",
+            "FOCSQ-Setup.exe",
+            "focsq-windows-x64.zip"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "SanityProtocol/swg-panel",
+      "sha": "e58d2a96ac88f06cfb349de542ab4c9b8eb6f747",
+      "date": "2026-09-29T06:16:25+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "wdtt-wdttplus-18-2",
+          "published_at": "2026-09-25T05:55:24Z",
+          "assets": [
+            "server-linux-amd64",
+            "server-linux-arm64"
+          ]
+        },
+        {
+          "tag": "wdtt-qwdtt-1.4.3-4",
+          "published_at": "2026-09-25T07:18:49Z",
+          "assets": [
+            "server-linux-amd64",
+            "server-linux-arm64"
+          ]
+        },
+        {
+          "tag": "wdtt-qwdtt-1.4.3-3",
+          "published_at": "2026-09-25T05:55:18Z",
+          "assets": [
+            "server-linux-amd64",
+            "server-linux-arm64"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/amnezia-mihomo-gateway",
+      "sha": "bcfa9f43b919e852086b0fffa281e98403235331",
+      "date": "2026-10-10T17:13:11+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v2.0.1",
+          "published_at": "2026-10-08T19:30:09Z",
+          "assets": []
+        },
+        {
+          "tag": "v2.0.0",
+          "published_at": "2026-09-29T15:48:54Z",
+          "assets": []
+        },
+        {
+          "tag": "v2.0.0-rc.1",
+          "published_at": "2026-09-29T12:07:45Z",
+          "assets": []
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/entware-go",
+      "sha": "2c44dd44d14ffaa1a0a29f2008507e1b392ae597",
+      "date": "2026-10-10T17:48:12+03:00",
+      "branch": "gh-action-build",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "latest",
+          "published_at": "2026-05-16T17:45:50Z",
+          "assets": [
+            "beszel-agent_0.18.7-1_aarch64-3.10.ipk",
+            "beszel-agent_0.18.7-1_mips-3.4.ipk",
+            "beszel-agent_0.18.7-1_mipsel-3.4.ipk",
+            "mihomo_1.19.32-2_aarch64-3.10.ipk",
+            "mihomo_1.19.32-2_armv7-3.2.ipk",
+            "mihomo_1.19.32-2_mips-3.4.ipk",
+            "mihomo_1.19.32-2_mipsel-3.4.ipk",
+            "mihomo_1.19.32-2_x64-3.2.ipk",
+            "mihomo_nohf_1.19.32-2_armv7-3.2.ipk",
+            "warpscout_0.16.0-1_aarch64-3.10.ipk"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/keenetic-auto-setup",
+      "sha": "ac959105509c56a5b4bfb080a64bf825880eb09b",
+      "date": "2026-10-10T23:21:21+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.8.1",
+          "published_at": "2026-10-08T19:31:02Z",
+          "assets": []
+        },
+        {
+          "tag": "v1.8.0",
+          "published_at": "2026-09-29T05:33:12Z",
+          "assets": []
+        },
+        {
+          "tag": "v1.7.2",
+          "published_at": "2026-09-27T20:37:10Z",
+          "assets": []
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/keenetic-knowledge-base",
+      "sha": "d77be9510740a24505aaa359da0f65a79b8ad2aa",
+      "date": "2026-10-11T11:25:27+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": []
+    },
+    {
+      "repo": "saymer-alt/link-generators",
+      "sha": "857da9ef723e97b1cfa01fd8ac5607880bfcb826",
+      "date": "2026-10-11T15:23:50+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.10.0",
+          "published_at": "2026-10-07T18:11:24Z",
+          "assets": []
+        },
+        {
+          "tag": "v1.9.0",
+          "published_at": "2026-10-06T16:47:05Z",
+          "assets": []
+        },
+        {
+          "tag": "v1.8.0",
+          "published_at": "2026-10-06T08:40:11Z",
+          "assets": []
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/mihomo-auto-build",
+      "sha": "f3fef398e023b2700e315093ac788b21c21342e7",
+      "date": "2026-10-11T14:04:50+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "mipsel-v1.19.32",
+          "published_at": "2026-10-01T09:49:47Z",
+          "assets": [
+            "mihomo-linux-mipsel-softfloat-v1.19.32",
+            "mihomo-linux-mipsel-softfloat-v1.19.32.LICENSE",
+            "mihomo-linux-mipsel-softfloat-v1.19.32.sha256",
+            "THIRD_PARTY_LICENSES-v1.19.32.txt",
+            "THIRD_PARTY_NOTICES-v1.19.32.txt"
+          ]
+        },
+        {
+          "tag": "mipsel-v1.19.31",
+          "published_at": "2026-09-15T08:26:18Z",
+          "assets": [
+            "mihomo-linux-mipsel-softfloat-v1.19.31",
+            "mihomo-linux-mipsel-softfloat-v1.19.31.LICENSE",
+            "mihomo-linux-mipsel-softfloat-v1.19.31.sha256",
+            "THIRD_PARTY_LICENSES-v1.19.31.txt",
+            "THIRD_PARTY_NOTICES-v1.19.31.txt"
+          ]
+        },
+        {
+          "tag": "mipsel-v1.19.30",
+          "published_at": "2026-08-17T03:50:44Z",
+          "assets": [
+            "mihomo-linux-mipsel-softfloat-v1.19.30",
+            "mihomo-linux-mipsel-softfloat-v1.19.30.LICENSE",
+            "mihomo-linux-mipsel-softfloat-v1.19.30.sha256",
+            "THIRD_PARTY_LICENSES-v1.19.30.txt",
+            "THIRD_PARTY_NOTICES-v1.19.30.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "saymer-alt/vps-gateway-bootstrap",
+      "sha": "1e41c29c1f35a9b092472d9b2bfc43fcbfbd0872",
+      "date": "2026-10-11T01:53:30+03:00",
+      "branch": "main",
+      "archived": false,
+      "releases": []
+    },
+    {
+      "repo": "SpaceNeuroX/proxy-turn-vk-android",
+      "sha": "a296c57eaba69bb9479a24f9157856490890e47d",
+      "date": "2026-09-13T12:18:03+02:00",
+      "branch": "master",
+      "archived": false,
+      "releases": [
+        {
+          "tag": "v1.4.4",
+          "published_at": "2026-09-13T10:30:42Z",
+          "assets": [
+            "qwdtt-1.4.4-arm64-v8a.apk",
+            "qwdtt-1.4.4-armeabi-v7a.apk",
+            "qwdtt-1.4.4-universal.apk",
+            "qwdtt-1.4.4-x86_64.apk",
+            "SHA256SUMS.txt"
+          ]
+        },
+        {
+          "tag": "v1.4.3",
+          "published_at": "2026-08-26T16:19:35Z",
+          "assets": [
+            "qwdtt-1.4.3-arm64-v8a.apk",
+            "qwdtt-1.4.3-armeabi-v7a.apk",
+            "qwdtt-1.4.3-universal.apk",
+            "qwdtt-1.4.3-x86_64.apk",
+            "SHA256SUMS.txt"
+          ]
+        },
+        {
+          "tag": "v1.4.2",
+          "published_at": "2026-08-19T12:31:19Z",
+          "assets": [
+            "qwdtt-1.4.2-arm64-v8a.apk",
+            "qwdtt-1.4.2-armeabi-v7a.apk",
+            "qwdtt-1.4.2-universal.apk",
+            "qwdtt-1.4.2-x86_64.apk",
+            "SHA256SUMS.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "ildarmaga/pwdtt-client",
+      "sha": "6dc50db35cfc93b3989463bd2ffda39d738d0141",
+      "date": "2026-10-07T23:00:30+05:00",
+      "scope": "additional checkout; inspect depth varies, see report"
+    },
+    {
+      "repo": "Ivan4537/WDTT-Plus",
+      "sha": "f706ccd373685bbde20cae33b2b7f400e8335ecc",
+      "date": "2026-10-11T13:00:40+03:00",
+      "scope": "additional checkout; inspect depth varies, see report"
+    },
+    {
+      "repo": "MetaCubeX/mihomo",
+      "sha": "88dcbf7f1614a67c3b36b848ee3592dfa92ada36",
+      "date": "2026-09-30T22:35:49+08:00",
+      "scope": "additional checkout; inspect depth varies, see report"
+    },
+    {
+      "repo": "saymer-alt/web4core",
+      "sha": "fea3cede102ca69137975b31a20317a4c42e052b",
+      "date": "2026-10-11T12:06:54+03:00",
+      "scope": "additional checkout; inspect depth varies, see report"
+    }
+  ],
+  "code_references": {
+    "K1": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/install.sh#L375-L407",
+    "K2": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/install.sh#L601-L700",
+    "K3": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/install.sh#L1124-L1140",
+    "K4": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/install.sh#L1450-L1588",
+    "K5": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/install.sh#L1793-L1823",
+    "K6": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/migrate-mihomo-tun.sh#L405-L415",
+    "K7": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/mihomo-watchdog.sh#L531-L634",
+    "K8": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/020-bypass-wa.sh#L12-L43",
+    "K9": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/AGENTS.md#L40-L76",
+    "K10": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/S00ubifs#L1-L100",
+    "K11": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/config-import.sh#L1-L85",
+    "K12": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/update-mihomo.sh#L1-L95",
+    "K13": "https://github.com/saymer-alt/keenetic-auto-setup/blob/ac959105509c56a5b4bfb080a64bf825880eb09b/mihomo-doctor.sh#L1-L85",
+    "W1": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/go.mod#L1-L41",
+    "W2": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/main.go#L138-L190",
+    "W3": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/main.go#L240-L265",
+    "W4": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/main.go#L380-L425",
+    "W5": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/awgm_control.go#L150-L175",
+    "W6": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/raw_tun.go#L247-L283",
+    "W7": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/socks5.go#L20-L126",
+    "W8": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/session.go#L130-L155",
+    "W9": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/session.go#L200-L290",
+    "W10": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/wrap.go#L1-L33",
+    "W11": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/obfs.go#L1-L115",
+    "W12": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/protocol.go#L1-L57",
+    "W13": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/protocol_raw.go#L1-L60",
+    "W14": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/listen.go#L1-L24",
+    "W15": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/server.go#L1719-L1735",
+    "W16": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/group.go#L160-L245",
+    "W17": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/flags_compat.go#L1-L32",
+    "W18": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/raw_session.go#L1-L95",
+    "Q1": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/blob/a296c57eaba69bb9479a24f9157856490890e47d/go_client/main.go#L160-L190",
+    "Q2": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/blob/a296c57eaba69bb9479a24f9157856490890e47d/go_client/session.go#L275-L325",
+    "Q3": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/blob/a296c57eaba69bb9479a24f9157856490890e47d/go_client/go.mod#L1-L30",
+    "C1": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/Cargo.toml#L1-L67",
+    "C2": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-server/Cargo.toml#L1-L66",
+    "C3": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-server/BUILD_NOTES.md#L1-L14",
+    "C4": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/main.rs#L78-L165",
+    "C5": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/dispatcher.rs#L445-L480",
+    "C6": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/tun.rs#L1-L110",
+    "C7": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/wrap.rs#L1-L65",
+    "C8": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/obfs.rs#L1-L55",
+    "C9": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/protocol.rs#L1-L65",
+    "C10": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/shared/wire_protocol.rs#L1-L6",
+    "C11": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/turn_core.rs#L330-L355",
+    "C12": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-server/build_linux.sh#L1-L85",
+    "C13": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/LICENSE#L1-L84",
+    "O1": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/Makefile#L1-L65",
+    "O2": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/Makefile#L100-L124",
+    "O3": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/obfuscation.c#L90-L130",
+    "O4": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/masking_stun.c#L1-L30",
+    "O5": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/masking_stun.c#L120-L155",
+    "O6": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/config.c#L14-L88",
+    "O7": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/wg-obfuscator.c#L1035-L1120",
+    "O8": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/wg-obfuscator.c#L1195-L1248",
+    "O9": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/wg-obfuscator.h#L27-L40",
+    "O10": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/.github/workflows/build.yml#L64-L140",
+    "M1": "https://github.com/MetaCubeX/mihomo/blob/88dcbf7f1614a67c3b36b848ee3592dfa92ada36/adapter/outbound/wireguard.go#L69-L145",
+    "M2": "https://github.com/MetaCubeX/mihomo/blob/88dcbf7f1614a67c3b36b848ee3592dfa92ada36/adapter/outbound/wireguard.go#L351-L383",
+    "M3": "https://github.com/MetaCubeX/mihomo/blob/88dcbf7f1614a67c3b36b848ee3592dfa92ada36/adapter/outbound/wireguard.go#L396-L444",
+    "M4": "https://github.com/MetaCubeX/mihomo/blob/88dcbf7f1614a67c3b36b848ee3592dfa92ada36/adapter/outbound/wireguard.go#L810-L830",
+    "G1": "https://github.com/saymer-alt/web4core/blob/fea3cede102ca69137975b31a20317a4c42e052b/src/core/wireguard.js#L3-L300",
+    "G2": "https://github.com/saymer-alt/web4core/blob/fea3cede102ca69137975b31a20317a4c42e052b/src/core/mihomo.js#L688-L745",
+    "G3": "https://github.com/saymer-alt/link-generators/blob/857da9ef723e97b1cfa01fd8ac5607880bfcb826/AGENTS.md#L1-L65",
+    "E1": "https://github.com/saymer-alt/entware-go/blob/2c44dd44d14ffaa1a0a29f2008507e1b392ae597/go_env.mk#L1-L85",
+    "E2": "https://github.com/saymer-alt/entware-go/blob/2c44dd44d14ffaa1a0a29f2008507e1b392ae597/.github/workflows/build-mihomo.yml#L97-L129",
+    "E3": "https://github.com/saymer-alt/mihomo-auto-build/blob/f3fef398e023b2700e315093ac788b21c21342e7/README.md#L1-L35",
+    "E4": "https://github.com/saymer-alt/mihomo-auto-build/blob/f3fef398e023b2700e315093ac788b21c21342e7/docs/GPL-SOURCE-AUDIT-2026-10-11.md#L36-L72",
+    "E5": "https://github.com/saymer-alt/amnezia-mihomo-gateway/blob/bcfa9f43b919e852086b0fffa281e98403235331/install.sh#L589-L610",
+    "E6": "https://github.com/saymer-alt/vps-gateway-bootstrap/blob/1e41c29c1f35a9b092472d9b2bfc43fcbfbd0872/tools/fileexperiment/main.go#L1-L21",
+    "E7": "https://github.com/saymer-alt/keenetic-knowledge-base/blob/d77be9510740a24505aaa359da0f65a79b8ad2aa/catalog/techno-bypass/topics/vpn-protocols.md#L75-L95",
+    "R1": "https://github.com/amurcanov/proxy-turn-vk-android/blob/f4f83bd5d22162ba25dd91ff1d1dc97ca9dd8fda/app/src/main/assets/android-client/go.mod#L1-L25",
+    "R2": "https://github.com/kkvoru/wdtt-server-entware/blob/a61fdcfe206b9e00b89005e1c5c86f3e2d71abac/build_server.bat#L15-L40",
+    "R3": "https://github.com/ildarmaga/wdtt/blob/ef697994bc7ac650b81623484933d930c5cd766b/go.mod#L1-L36",
+    "R4": "https://github.com/luminescq/focsq/blob/9ad3bfb36e7ed5717b3ee2766e53a59ddf2fbad5/backend/Cargo.toml#L1-L65",
+    "R5": "https://github.com/Ground-Zerro/Phobos/blob/9c2901849af2aeda82d7171369db796ead0bb874/src/server/phobos/templates/router-configure-wireguard.sh#L25-L70",
+    "R6": "https://github.com/hoaxisr/awg-manager/blob/38899601091f67aaa105165a07cdd98117802046/awgmproto/fd_linux.go#L1-L100",
+    "R7": "https://github.com/hoaxisr/awg-manager/blob/38899601091f67aaa105165a07cdd98117802046/internal/opkgtun/opkgtun.go#L1-L100",
+    "R8": "https://github.com/hoaxisr/awg-manager/blob/38899601091f67aaa105165a07cdd98117802046/internal/proxyrt/roles/netres/wdtt.go#L11-L60",
+    "R9": "https://github.com/SanityProtocol/swg-panel/blob/e58d2a96ac88f06cfb349de542ab4c9b8eb6f747/forks/csqtt/README.md#L182-L200",
+    "C14": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/udp_batch.rs#L525-L580",
+    "C15": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/dispatcher.rs#L625-L655",
+    "R10": "https://github.com/ildarmaga/wdtt/blob/ef697994bc7ac650b81623484933d930c5cd766b/server/go.mod#L1-L29",
+    "W19": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/creds_vkcalls.go#L130-L160",
+    "W20": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/creds_vkcalls.go#L270-L299",
+    "W21": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/creds.go#L112-L122",
+    "W22": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/creds.go#L231-L267",
+    "W23": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/go_client/vk_account.go#L188-L213",
+    "W24": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/server.go#L2040-L2145",
+    "C16": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/obfs.rs#L175-L275",
+    "C17": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/auth.rs#L122-L158",
+    "C18": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/auth.rs#L781-L815",
+    "C19": "https://github.com/amurcanov/csqtt/blob/71712b07dbabe16fa43f5a248dc69e1ab9f3a270/rust-client/udp_batch.rs#L641-L654",
+    "R11": "https://github.com/SanityProtocol/swg-panel/blob/e58d2a96ac88f06cfb349de542ab4c9b8eb6f747/forks/wdtt/build.sh#L1-L37",
+    "R12": "https://github.com/Ground-Zerro/Phobos/blob/9c2901849af2aeda82d7171369db796ead0bb874/src/phobos-obfuscator/config.c#L45-L85",
+    "R13": "https://github.com/ildarmaga/wdtt/blob/ef697994bc7ac650b81623484933d930c5cd766b/server/config.go#L41-L106",
+    "R14": "https://github.com/amurcanov/proxy-turn-vk-android/blob/f4f83bd5d22162ba25dd91ff1d1dc97ca9dd8fda/app/src/main/assets/android-client/protocol.go#L1-L46",
+    "Q4": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/blob/a296c57eaba69bb9479a24f9157856490890e47d/server/raw.go#L309-L342",
+    "L1": "https://github.com/hoaxisr/proxy-turn-vk-android/blob/1110a75f76e42c23149b8e24f9182c1ff179e515/LICENSE#L1-L30",
+    "L2": "https://github.com/ClusterM/wg-obfuscator/blob/7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f/LICENSE#L1-L30",
+    "L3": "https://github.com/Ground-Zerro/Phobos/blob/9c2901849af2aeda82d7171369db796ead0bb874/LICENSE#L1-L30",
+    "L4": "https://github.com/hoaxisr/awg-manager/blob/38899601091f67aaa105165a07cdd98117802046/LICENSE#L1-L21",
+    "L5": "https://github.com/SanityProtocol/swg-panel/blob/e58d2a96ac88f06cfb349de542ab4c9b8eb6f747/LICENSE#L1-L21",
+    "L6": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/blob/a296c57eaba69bb9479a24f9157856490890e47d/LICENSE#L1-L30",
+    "S1": "https://github.com/armon/go-socks5/blob/e75332964ef5/request.go#L235-L250",
+    "I1": "https://github.com/amurcanov/csqtt/issues/33",
+    "I2": "https://github.com/SpaceNeuroX/proxy-turn-vk-android/issues/46",
+    "I3": "https://github.com/ClusterM/wg-obfuscator/issues/54",
+    "I4": "https://github.com/hoaxisr/proxy-turn-vk-android/pull/1",
+    "I5": "https://github.com/amurcanov/csqtt/issues/42",
+    "I6": "https://github.com/amurcanov/csqtt/issues/41",
+    "I7": "https://github.com/amurcanov/csqtt/issues/40",
+    "I8": "https://github.com/ClusterM/wg-obfuscator/issues/48",
+    "D1": "https://go.dev/wiki/MinimumRequirements",
+    "D2": "https://doc.rust-lang.org/rustc/platform-support.html",
+    "D3": "https://github.com/cross-tools/musl-cross/releases/tag/20250520",
+    "D4": "https://github.com/bogdanfinn/fhttp/blob/ecfe905c2db9d1ec769a16a14191ec84553dd235/doc.go#L1-L4"
+  },
+  "wdtt_builds": [
+    {
+      "arch": "amd64",
+      "rc": 0,
+      "seconds": 92.6,
+      "cmd": [
+        "go",
+        "build",
+        "-mod=readonly",
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
+        "-o",
+        "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-amd64",
+        "."
+      ],
+      "bytes": 16740476,
+      "sha256": "8f6a65a9e617a65fe96edd8daeea999844919ce56ff410be3210c5d3b7599218"
+    },
+    {
+      "arch": "arm64",
+      "rc": 0,
+      "seconds": 41.8,
+      "cmd": [
+        "go",
+        "build",
+        "-mod=readonly",
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
+        "-o",
+        "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-arm64",
+        "."
+      ],
+      "bytes": 15597692,
+      "sha256": "79b0056ce192a8d86ca36649c22588d6c39086375030519787e1d993c172d609"
+    },
+    {
+      "arch": "mipsle",
+      "rc": 0,
+      "seconds": 39.9,
+      "cmd": [
+        "go",
+        "build",
+        "-mod=readonly",
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
+        "-o",
+        "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-mipsle",
+        "."
+      ],
+      "bytes": 18022555,
+      "sha256": "70ebfce7aa854d91965854d80fa80475003014192dd4924014db595f154032db"
+    },
+    {
+      "arch": "mips",
+      "rc": 0,
+      "seconds": 48.2,
+      "cmd": [
+        "go",
+        "build",
+        "-mod=readonly",
+        "-trimpath",
+        "-buildvcs=false",
+        "-ldflags=-s -w -buildid=",
+        "-o",
+        "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-mips",
+        "."
+      ],
+      "bytes": 18022555,
+      "sha256": "87ab1d771ea061b6fe24c86110dd6fbebece73b703f51e96562274d264286de4"
+    }
+  ],
+  "wdtt_extra": {
+    "repeat-client": {
+      "rc": 0,
+      "log_tail": "",
+      "bytes": 16740476,
+      "sha256": "8f6a65a9e617a65fe96edd8daeea999844919ce56ff410be3210c5d3b7599218",
+      "equal_first": true
+    },
+    "server": {
+      "rc": 0,
+      "log_tail": "go: downloading golang.org/x/crypto v0.51.0\ngo: downloading golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb\ngo: downloading golang.org/x/net v0.53.0\ngo: downloading golang.org/x/sys v0.44.0\n",
+      "bytes": 9252988,
+      "sha256": "118c5e70f3cc42f164437caf4364feb2411d936749646340785a588f34e735a2"
+    },
+    "server.go.mod": {
+      "sha256": "1db40641da46b6c9abd1e0179b7fa3e8111fd9d8387854e877a9c83416b0f201",
+      "text": "module wg-turn-client\n\ngo 1.25.0\n\nrequire (\n\tgithub.com/pion/dtls/v3 v3.1.2\n\tgithub.com/pion/transport/v4 v4.0.1\n\tgolang.org/x/crypto v0.51.0\n\tgolang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb\n)\n\nrequire (\n\tgithub.com/pion/logging v0.2.4 // indirect\n\tgolang.org/x/net v0.53.0 // indirect\n\tgolang.org/x/sys v0.44.0 // indirect\n\tgolang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect\n)\n"
+    },
+    "server.go.sum": {
+      "sha256": "d2dfc0782f9a7049cb593df7d8632b98896f46f1f4ddfac7e81e35c34163f1bf",
+      "text": "github.com/pion/dtls/v3 v3.1.2 h1:gqEdOUXLtCGW+afsBLO0LtDD8GnuBBjEy6HRtyofZTc=\ngithub.com/pion/dtls/v3 v3.1.2/go.mod h1:Hw/igcX4pdY69z1Hgv5x7wJFrUkdgHwAn/Q/uo7YHRo=\ngithub.com/pion/logging v0.2.4 h1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=\ngithub.com/pion/logging v0.2.4/go.mod h1:DffhXTKYdNZU+KtJ5pyQDjvOAh/GsNSyv1lbkFbe3so=\ngithub.com/pion/transport/v4 v4.0.1 h1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=\ngithub.com/pion/transport/v4 v4.0.1/go.mod h1:nEuEA4AD5lPdcIegQDpVLgNoDGreqM/YqmEx3ovP4jM=\ngolang.org/x/crypto v0.51.0 h1:IBPXwPfKxY7cWQZ38ZCIRPI50YLeevDLlLnyC5wRGTI=\ngolang.org/x/crypto v0.51.0/go.mod h1:8AdwkbraGNABw2kOX6YFPs3WM22XqI4EXEd8g+x7Oc8=\ngolang.org/x/net v0.53.0 h1:d+qAbo5L0orcWAr0a9JweQpjXF19LMXJE8Ey7hwOdUA=\ngolang.org/x/net v0.53.0/go.mod h1:JvMuJH7rrdiCfbeHoo3fCQU24Lf5JJwT9W3sJFulfgs=\ngolang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=\ngolang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=\ngolang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb h1:whnFRlWMcXI9d+ZbWg+4sHnLp52d5yiIPUxMBSt4X9A=\ngolang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb/go.mod h1:rpwXGsirqLqN2L0JDJQlwOboGHmptD5ZD6T2VmcqhTw=\n"
+    }
+  },
+  "wdtt_go_dependency_inventory": {
+    "target": "linux/arm64 CGO0",
+    "scope": "Actually imported Go dependency modules, root license file inventory; not legal compatibility approval or native/subdirectory audit",
+    "modules": [
+      {
+        "module": "github.com/andybalholm/brotli",
+        "version": "v1.2.0",
+        "go_mod_sha256": "9836ed7059e6b6be9d42e666c866deea8646d5815216fcf6216966074744cb1f",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/armon/go-socks5",
+        "version": "v0.0.0-20160902184237-e75332964ef5",
+        "go_mod_sha256": "787f5f98ab21174f71164cab8eea65125e60aa72f5d7517e12e08e7b8eecccd2",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "831892cd31b9eef0311bb1de9014527ef5d3592eed7add1f9f829510d2065e62",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bdandy/go-errors",
+        "version": "v1.2.2",
+        "go_mod_sha256": "18a907f51e7d3c74e5e165d98620a1e23ac95a13b1592d13fd28a43e4b4c1272",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "71ada5129d06db993e203bfb0b5e050a303bcd781a9ee039b78e1b114d829d92",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bdandy/go-socks4",
+        "version": "v1.2.3",
+        "go_mod_sha256": "a93e3c6c31818dd6b16837f9a1965dc13ab937268720a4778e05ccfc92ef8139",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "6b71997d78ed23a071c23063b1b9a4c81438587059b5ff23b625ad2865e82b08",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bogdanfinn/fhttp",
+        "version": "v0.6.8",
+        "go_mod_sha256": "7a12e81c7bd457169d6023ef90568ff09bd059caedf2d361e50a2911e1e873c2",
+        "licenses": []
+      },
+      {
+        "module": "github.com/bogdanfinn/quic-go-utls",
+        "version": "v1.0.9-utls",
+        "go_mod_sha256": "7f50706bdde1d590dff8a206c97c6df5756b75ac366dd0d1e86af10729e1b520",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "77d0b7b53e8abb84cf4dd3f9945a7fdf27044240d2e8023966a721a9a46fe96e",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bogdanfinn/tls-client",
+        "version": "v1.14.0",
+        "go_mod_sha256": "1f3e2ab3b1c2d62cb4fae205e59525cfd4f78e3bc487f87206989e81efb23903",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "7dab9a4dd66987fbe576d53c1ee047c193725df6f4fac67de315a127417fd151",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bogdanfinn/utls",
+        "version": "v1.7.7-barnius",
+        "go_mod_sha256": "10dce7d09181106ffd5e6cb396acc8c65981d94c46ff7e2f43ec0db3b1096b21",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/bogdanfinn/websocket",
+        "version": "v1.5.5-barnius",
+        "go_mod_sha256": "c00d03402aba46a2c448cfd6b2aa6d0baa1d14dd4eb0d267a7cf48b994c85950",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "2be1b548b0387ca8948e1bb9434e709126904d15f622cc2d0d8e7f186e4d122d",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/cbeuw/connutil",
+        "version": "v1.0.1",
+        "go_mod_sha256": "2eb931f72086692b84591c2e42318096b6b8708228f6aa3e023ebd14d7ae0e2b",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+            "first_pass_text_markers": [
+              "Apache-2.0"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/google/btree",
+        "version": "v1.1.2",
+        "go_mod_sha256": "671a2227c5628cbb94ce027ab4232858c4f0dd0cbb98aaa83d7a265d7ec194d7",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            "first_pass_text_markers": [
+              "Apache-2.0"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/google/uuid",
+        "version": "v1.6.0",
+        "go_mod_sha256": "73da47b6338b00a082fd451aa35a3273d3adc09b8e9bba98dab01091e402af6e",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/hoaxisr/awg-manager/awgmproto",
+        "version": "v0.1.1",
+        "go_mod_sha256": "64490b6d0aa44dcbe4a0775d98031180c2988a9a8e6bbcbb281f3fe8fac2cbe7",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "7edaedccfc5bb62f4764c2f673e234d1b05af30441410b0c59a3d8fd1a361ae3",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/klauspost/compress",
+        "version": "v1.18.2",
+        "go_mod_sha256": "a62dd291671bd2cbbe6e194312b641a7cdb3c62202fd1e48a16e6bf8c259c867",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "0d9e582ee4bff57bf1189c9e514e6da7ce277f9cd3bc2d488b22fbb39a6d87cf",
+            "first_pass_text_markers": [
+              "MIT",
+              "Apache-2.0",
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/dtls/v3",
+        "version": "v3.1.2",
+        "go_mod_sha256": "002a7671d9c05b7aae947a85efea4a2dd0f3ea816a20a1c952601710b9fce634",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "6483daf6c8aa2c8192528e60be098aa82dd18f6d7b96dc8246f4f7c3333fbf3f",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/logging",
+        "version": "v0.2.4",
+        "go_mod_sha256": "bfbce8d81a9eaf0b1ba6d3c4d0a58f7e7d6d1be06bec518db96f62f7feeb3d6f",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "87272dba8c4fcf57101a3195f4f53f7b010b6e153b9b0977bb1a3f91acddf691",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/randutil",
+        "version": "v0.1.0",
+        "go_mod_sha256": "2a2b0f630a629b3c9f4bfd02db3263a9b474bb8d48d19a52daeb98f5056dc321",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "badaf9bc72e71d5a70e7604c636b5b7adf79b9cafc188688438105d2b1e54722",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/stun/v3",
+        "version": "v3.1.1",
+        "go_mod_sha256": "91ce250dd49c793371dad8faeadc5fe04285f0d423251f2c30396a6d6f1669e6",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "87272dba8c4fcf57101a3195f4f53f7b010b6e153b9b0977bb1a3f91acddf691",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/transport/v4",
+        "version": "v4.0.1",
+        "go_mod_sha256": "7e8b6a9c16e30843f7f7962742c7b435b83b8d039cee052ac53651d2e5368a17",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "87272dba8c4fcf57101a3195f4f53f7b010b6e153b9b0977bb1a3f91acddf691",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/pion/turn/v5",
+        "version": "v5.0.2",
+        "go_mod_sha256": "1014edf5cc20f05e64379974ff7fac685d8576959adb35f0d399bda9e7357e05",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "6483daf6c8aa2c8192528e60be098aa82dd18f6d7b96dc8246f4f7c3333fbf3f",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/quic-go/qpack",
+        "version": "v0.6.0",
+        "go_mod_sha256": "7cdce4a0772f217deb859f405b7d58c84d909fcdab5e547e3e3d3aeb1148e641",
+        "licenses": [
+          {
+            "file": "LICENSE.md",
+            "sha256": "1b6a897efd39b20b3cdce8cd306160d115dbded39d855ceeffe21dc11e4d53df",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/tam7t/hpkp",
+        "version": "v0.0.0-20160821193359-2b70b4024ed5",
+        "go_mod_sha256": "3c46a0967ac872b7b3b4447172f12ec2e6f96a314c856431dd4b979ee32087e5",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "4bb26fa8c1309c72442dcd6f113951b493a725cb14b13a446a219dcdb219f21e",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "github.com/wlynxg/anet",
+        "version": "v0.0.5",
+        "go_mod_sha256": "369638e1ee3561f2601ea5552b1df7267cfe3bc68d41955f0d8176eac045ce8b",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "6b8970dbe36fe214fd02b438c06daee19897708e435d761ecd18adc9ef7e7a05",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.org/x/crypto",
+        "version": "v0.46.0",
+        "go_mod_sha256": "89305830a1cd4c1c42601b8d22b7f37b5166a092823fd195e9d41e79ac56d11e",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.org/x/net",
+        "version": "v0.48.0",
+        "go_mod_sha256": "6c73f852a18bfd280a960e8dae1fa9192c3d3c55f199371faedff56b666747d5",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.org/x/sys",
+        "version": "v0.45.0",
+        "go_mod_sha256": "57f4393ea18d5446a12363b35c23a616d843fa1669c7121a70a2bc3a9677d665",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.org/x/text",
+        "version": "v0.36.0",
+        "go_mod_sha256": "86c0688242bcb49da2542310eddd4294ad603455130410fe4870004cbb84fc2d",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.org/x/time",
+        "version": "v0.10.0",
+        "go_mod_sha256": "226a6cc982bae02ff1e168de8c3e45a2f3f986c69edbc1f416c58b6081ef262e",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+            "first_pass_text_markers": [
+              "BSD-style"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "golang.zx2c4.com/wireguard",
+        "version": "v0.0.0-20260522210424-ecfc5a8d5446",
+        "go_mod_sha256": "87e5574c17f1c8d3badd9195d933237c289c07b5813f4e60ceae36c7b270e288",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "91276db973f25602d1aa43491f59cbc84cb88e6f151e1d0cc82a755563ce0195",
+            "first_pass_text_markers": [
+              "MIT"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "gvisor.dev/gvisor",
+        "version": "v0.0.0-20250503011706-39ed1f5ac29c",
+        "go_mod_sha256": "f5b790d00657ce9be811d116ac1ea0cd99518e21da38d29c5659b1d4777d6e82",
+        "licenses": [
+          {
+            "file": "LICENSE",
+            "sha256": "5af94223052169198cfa2195455b7d87209d9aa0fff4705822f328b4b272facb",
+            "first_pass_text_markers": [
+              "MIT",
+              "Apache-2.0"
+            ],
+            "review": "Root text markers only; scope/version/vendor/exceptions require review"
+          }
+        ]
+      },
+      {
+        "module": "wg-turn-client",
+        "version": null,
+        "go_mod_sha256": "1b4fe8433da72474eab991bb10e15826442c21dca1708e288336b53d4ce30a90",
+        "licenses": []
+      }
+    ],
+    "module_count": 31,
+    "go_lzo_imports": [],
+    "packages_count": 408
+  },
+  "wg_obfuscator_builds": [
+    {
+      "arch": "amd64",
+      "source": "7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f",
+      "rc": 0,
+      "out": "",
+      "err": "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c: In function ‘main’:\n<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c:804:5: warning: ‘__builtin_strncpy’ output may be truncated copying 255 bytes from a string of length 255 [-Wstringop-truncation]\n  804 |     strncpy(resolve_target_host, target_host, sizeof(resolve_target_host) - 1);\n      |     ^\n/usr/bin/x86_64-linux-gnu-ld.bfd: /tmp/cclR1vEL.o: in function `resolve_hostname':\nwg-obfuscator.c:(.text+0x4b): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking\n",
+      "cmd": [
+        "gcc",
+        "-O2",
+        "-Wall",
+        "-pthread",
+        "-static",
+        "-s",
+        "-o",
+        "<WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-amd64",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/config.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking_stun.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/obfuscation.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/logging.c"
+      ],
+      "bytes": 1215968,
+      "sha256": "23ca46fbd489b315c6179868621a623f65f2110aecda76f4be55137712bc6813",
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x405280\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          1214304 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         11\n  Size of section headers:           64 (bytes)\n  Number of section headers:         26\n  Section header string table index: 25\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  LOAD           0x0000000000000000 0x0000000000400000 0x0000000000400000\n                 0x0000000000000588 0x0000000000000588  R      0x1000\n  LOAD           0x0000000000001000 0x0000000000401000 0x0000000000401000\n                 0x00000000000ecdcd 0x00000000000ecdcd  R E    0x1000\n  LOAD           0x00000000000ee000 0x00000000004ee000 0x00000000004ee000\n                 0x0000000000032638 0x0000000000032638  R      0x1000\n  LOAD           0x0000000000120740 0x0000000000521740 0x0000000000521740\n                 0x00000000000065c0 0x000000000000e748  RW     0x1000\n  NOTE           0x00000000000002a8 0x00000000004002a8 0x00000000004002a8\n                 0x0000000000000024 0x0000000000000024  R      0x4\n  NOTE           0x00000000001205e8 0x00000000005205e8 0x00000000005205e8\n                 0x0000000000000030 0x0000000000000030  R      0x8\n  NOTE           0x0000000000120618 0x0000000000520618 0x0000000000520618\n                 0x0000000000000020 0x0000000000000020  R      0x4\n  TLS            0x0000000000120740 0x0000000000521740 0x0000000000521740\n                 0x0000000000000040 0x0000000000000088  R      0x8\n  GNU_PROPERTY   0x00000000001205e8 0x00000000005205e8 0x00000000005205e8\n                 0x0000000000000030 0x0000000000000030  R      0x8\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x0000000000120740 0x0000000000521740 0x0000000000521740\n                 0x00000000000048c0 0x00000000000048c0  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .note.gnu.build-id .rela.plt \n   01     .init .plt .text .fini \n   02     .rodata .stapsdt.base rodata.cst32 .eh_frame .gcc_except_table .note.gnu.property .note.ABI-tag \n   03     .tdata .init_array .fini_array .data.rel.ro .got .got.plt .data .bss \n   04     .note.gnu.build-id \n   05     .note.gnu.property \n   06     .note.ABI-tag \n   07     .tdata .tbss \n   08     .note.gnu.property \n   09     \n   10     .tdata .init_array .fini_array .data.rel.ro .got \n",
+        "err": ""
+      }
+    },
+    {
+      "arch": "arm64",
+      "source": "7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f",
+      "toolchain_url": "https://github.com/cross-tools/musl-cross/releases/download/20250520/aarch64-unknown-linux-musl.tar.xz",
+      "toolchain_sha256": "76f0d71893f3864e91ad09feff71a719cdf94cccd4f14cc25d7deed395968b5b",
+      "rc": 0,
+      "out": "",
+      "err": "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c: In function 'main':\n<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c:804:5: warning: 'strncpy' output may be truncated copying 255 bytes from a string of length 255 [-Wstringop-truncation]\n  804 |     strncpy(resolve_target_host, target_host, sizeof(resolve_target_host) - 1);\n      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n",
+      "cmd": [
+        "<WORKSPACE>/work/lab/obfuscator/aarch64-unknown-linux-musl/bin/aarch64-unknown-linux-musl-gcc",
+        "-O2",
+        "-Wall",
+        "-pthread",
+        "-static",
+        "-s",
+        "-o",
+        "<WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-arm64",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/config.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking_stun.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/obfuscation.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/logging.c"
+      ],
+      "bytes": 133080,
+      "sha256": "5768b185b4ed5856f4c865b24a5b686d18df860269849268c522867a478a517d",
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           AArch64\n  Version:                           0x1\n  Entry point address:               0x403140\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          132120 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         5\n  Size of section headers:           64 (bytes)\n  Number of section headers:         15\n  Section header string table index: 14\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  LOAD           0x0000000000000000 0x0000000000400000 0x0000000000400000\n                 0x000000000001da50 0x000000000001da50  R E    0x10000\n  LOAD           0x000000000001ff78 0x000000000042ff78 0x000000000042ff78\n                 0x0000000000000408 0x0000000000002b98  RW     0x10000\n  TLS            0x000000000001ff78 0x000000000042ff78 0x000000000042ff78\n                 0x0000000000000000 0x0000000000000018  R      0x8\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x000000000001ff78 0x000000000042ff78 0x000000000042ff78\n                 0x0000000000000088 0x0000000000000088  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .init .text .fini .rodata .eh_frame \n   01     .init_array .fini_array .got .got.plt .data .bss \n   02     .tbss \n   03     \n   04     .init_array .fini_array .got .got.plt \n",
+        "err": ""
+      }
+    },
+    {
+      "arch": "mipsel",
+      "source": "7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f",
+      "toolchain_url": "https://github.com/cross-tools/musl-cross/releases/download/20250520/mipsel-unknown-linux-muslsf.tar.xz",
+      "toolchain_sha256": "36d8b864b3f6d27558d3f19695a4a39b79a873086edc60bebf733777df2b8359",
+      "rc": 0,
+      "out": "",
+      "err": "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c: In function 'main':\n<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c:804:5: warning: 'strncpy' output may be truncated copying 255 bytes from a string of length 255 [-Wstringop-truncation]\n  804 |     strncpy(resolve_target_host, target_host, sizeof(resolve_target_host) - 1);\n      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n",
+      "cmd": [
+        "<WORKSPACE>/work/lab/obfuscator/mipsel-unknown-linux-muslsf/bin/mipsel-unknown-linux-muslsf-gcc",
+        "-O2",
+        "-Wall",
+        "-pthread",
+        "-static",
+        "-s",
+        "-march=mips32",
+        "-mabi=32",
+        "-msoft-float",
+        "-o",
+        "<WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-mipsel",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/config.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking_stun.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/obfuscation.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/logging.c"
+      ],
+      "bytes": 187308,
+      "sha256": "3ef72e4c66bf618a5cf4a8879889497eb2ad9529944385c76ecb8e14501098ad",
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 01 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF32\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           MIPS R3000\n  Version:                           0x1\n  Entry point address:               0x405060\n  Start of program headers:          52 (bytes into file)\n  Start of section headers:          186428 (bytes into file)\n  Flags:                             0x50001007, noreorder, pic, cpic, o32, mips32\n  Size of this header:               52 (bytes)\n  Size of program headers:           32 (bytes)\n  Number of program headers:         6\n  Size of section headers:           40 (bytes)\n  Number of section headers:         22\n  Section header string table index: 21\n\nProgram Headers:\n  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n  ABIFLAGS       0x0000f8 0x004000f8 0x004000f8 0x00018 0x00018 R   0x8\n  REGINFO        0x000110 0x00400110 0x00400110 0x00018 0x00018 R   0x4\n  LOAD           0x000000 0x00400000 0x00400000 0x2a358 0x2a358 R E 0x10000\n  LOAD           0x02a358 0x0043a358 0x0043a358 0x00990 0x02668 RW  0x10000\n  TLS            0x02a358 0x0043a358 0x0043a358 0x00000 0x0000c R   0x4\n  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x10\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .MIPS.abiflags \n   01     .reginfo \n   02     .MIPS.abiflags .reginfo .rel.dyn .init .text .fini .rodata .eh_frame \n   03     .init_array .fini_array .data.rel.ro .data .got .sdata .bss \n   04     .tbss \n   05     \nAttribute Section: gnu\nFile Attributes\n  Tag_GNU_MIPS_ABI_FP: Soft float\n\nMIPS ABI Flags Version: 0\n\nISA: MIPS32\nGPR size: 32\nCPR1 size: 0\nCPR2 size: 0\nFP ABI: Soft float\nISA Extension: None\nASEs:\n\tNone\nFLAGS 1: 00000001\nFLAGS 2: 00000000\n\nStatic GOT:\n Canonical gp value: 004427d0\n\n Reserved entries:\n   Address     Access    Value\n  0043a7e0 -32752(gp) 00000000\n  0043a7e4 -32748(gp) 80000000\n\n Local entries:\n   Address     Access    Value\n  0043a7e8 -32744(gp) 004261c0\n  0043a7ec -32740(gp) 0040a24c\n  0043a7f0 -32736(gp) 00400168\n  0043a7f4 -32732(gp) 00400200\n  0043a7f8 -32728(gp) 0043a35c\n  0043a7fc -32724(gp) 0043a360\n  0043a800 -32720(gp) 0040a370\n  0043a804 -32716(gp) 0040a378\n  0043a808 -32712(gp) 00422664\n  0043a80c -32708(gp) 0041b520\n  0043a810 -32704(gp) 0040d390\n  0043a814 -32700(gp) 0040d260\n  0043a818 -32696(gp) 0040ab40\n  0043a81c -32692(gp) 0041aec8\n  0043a820 -32688(gp) 004098e0\n  0043a824 -32684(gp) 00400190\n  0043a828 -32680(gp) 0041b080\n  0043a82c -32676(gp) 00411e00\n  0043a830 -32672(gp) 0040a2c0\n  0043a834 -32668(gp) 0040d320\n  0043a838 -32664(gp) 00419db0\n  0043a83c -32660(gp) 00416a90\n  0043a840 -32656(gp) 0040db90\n  0043a844 -32652(gp) 0040fc00\n  0043a848 -32648(gp) 0040dc00\n  0043a84c -32644(gp) 0040d200\n  0043a850 -32640(gp) 0040a34c\n  0043a854 -32636(gp) 0040a9c8\n  0043a858 -32632(gp) 0040af54\n  0043a85c -32628(gp) 004170b0\n  0043a860 -32624(gp) 00409380\n  0043a864 -32620(gp) 004118e0\n  0043a868 -32616(gp) 00411d20\n  0043a86c -32612(gp) 0041b020\n  0043a870 -32608(gp) 0040cf10\n  0043a874 -32604(gp) 0043a4f0\n  0043a878 -32600(gp) 004129d0\n  0043a87c -32596(gp) 00406a9c\n  0043a880 -32592(gp) 00409c54\n  0043a884 -32588(gp) 00417430\n  0043a888 -32584(gp) 004171e0\n  0043a88c -32580(gp) 00417510\n  0043a890 -32576(gp) 004164e0\n  0043a894 -32572(gp) 0040d9a0\n  0043a898 -32568(gp) 00411e40\n  0043a89c -32564(gp) 00411790\n  0043a8a0 -32560(gp) 004115d0\n  0043a8a4 -32556(gp) 0040d980\n  0043a8a8 -32552(gp) 0040d1a0\n  0043a8ac -32548(gp) 0040a760\n  0043a8b0 -32544(gp) 0040a818\n  0043a8b4 -32540(gp) 00417cc0\n  0043a8b8 -32536(gp) 00406ed0\n  0043a8bc -32532(gp) 0040df20\n  0043a8c0 -32528(gp) 0041afe0\n  0043a8c4 -32524(gp) 0040a3f0\n  0043a8c8 -32520(gp) 004188fc\n  0043a8cc -32516(gp) 0040a934\n  0043a8d0 -32512(gp) 00419b08\n  0043a8d4 -32508(gp) 0040fc20\n  0043a8d8 -32504(gp) 0040fc60\n  0043a8dc -32500(gp) 00408254\n  0043a8e0 -32496(gp) 004085ec\n  0043a8e4 -32492(gp) 00409d9c\n  0043a8e8 -32488(gp) 00408568\n  0043a8ec -32484(gp) 00409a68\n  0043a8f0 -32480(gp) 004114d0\n  0043a8f4 -32476(gp) 00408158\n  0043a8f8 -32472(gp) 0040d8f0\n  0043a8fc -32468(gp) 00419140\n  0043a900 -32464(gp) 00408458\n  0043a904 -32460(gp) 004084e0\n  0043a908 -32456(gp) 00411570\n  0043a90c -32452(gp) 004081d4\n  0043a910 -32448(gp) 00416ad0\n  0043a914 -32444(gp) 00409eb0\n  0043a918 -32440(gp) 00417330\n  0043a91c -32436(gp) 0043a610\n  0043a920 -32432(gp) 00412b74\n  0043a924 -32428(gp) 00412890\n  0043a928 -32424(gp) 00412600\n  0043a92c -32420(gp) 004121c8\n  0043a930 -32416(gp) 004175b0\n  0043a934 -32412(gp) 00411970\n  0043a938 -32408(gp) 004067e8\n  0043a93c -32404(gp) 0043a510\n  0043a940 -32400(gp) 00416f50\n  0043a944 -32396(gp) 00412ea0\n  0043a948 -32392(gp) 004130c0\n  0043a94c -32388(gp) 00408090\n  0043a950 -32384(gp) 00417370\n  0043a954 -32380(gp) 004168a8\n  0043a958 -32376(gp) 004173b0\n  0043a95c -32372(gp) 00416570\n  0043a960 -32368(gp) 0043a620\n  0043a964 -32364(gp) 0040d950\n  0043a968 -32360(gp) 0041642c\n  0043a96c -32356(gp) 00419c90\n  0043a970 -32352(gp) 0041ae7c\n  0043a974 -32348(gp) 0040a640\n  0043a978 -32344(gp) 004068ac\n  0043a97c -32340(gp) 0043c800\n  0043a980 -32336(gp) 0043c08c\n  0043a984 -32332(gp) 0043c088\n  0043a988 -32328(gp) 0043c070\n  0043a98c -32324(gp) 0043c084\n  0043a990 -32320(gp) 0043c080\n  0043a994 -32316(gp) 00420000\n  0043a998 -32312(gp) 0041b2d4\n  0043a99c -32308(gp) 00409ef8\n  0043a9a0 -32304(gp) 00430000\n  0043a9a4 -32300(gp) 0043a358\n  0043a9a8 -32296(gp) 0040a168\n  0043a9ac -32292(gp) 00409f00\n  0043a9b0 -32288(gp) 00410000\n  0043a9b4 -32284(gp) 0040a978\n  0043a9b8 -32280(gp) 0040a2d0\n  0043a9bc -32276(gp) 0040a700\n  0043a9c0 -32272(gp) 00418054\n  0043a9c4 -32268(gp) 0040a858\n  0043a9c8 -32264(gp) 0040a970\n  0043a9cc -32260(gp) 0043c2f4\n  0043a9d0 -32256(gp) 0040cd34\n  0043a9d4 -32252(gp) 0040b58c\n  0043a9d8 -32248(gp) 00417d90\n  0043a9dc -32244(gp) 00440000\n  0043a9e0 -32240(gp) 0040cf38\n  0043a9e4 -32236(gp) 00417f50\n  0043a9e8 -32232(gp) 0040c720\n  0043a9ec -32228(gp) 0043c0f0\n  0043a9f0 -32224(gp) 0042952c\n  0043a9f4 -32220(gp) 0043c2e8\n  0043a9f8 -32216(gp) 0040d128\n  0043a9fc -32212(gp) 0040d0b0\n  0043aa00 -32208(gp) 0040b7d8\n  0043aa04 -32204(gp) 0041c620\n  0043aa08 -32200(gp) 004197e0\n  0043aa0c -32196(gp) 0040a994\n  0043aa10 -32192(gp) 0040f780\n  0043aa14 -32188(gp) 0040ed10\n  0043aa18 -32184(gp) 00419770\n  0043aa1c -32180(gp) 0040d9f0\n  0043aa20 -32176(gp) 004167e8\n  0043aa24 -32172(gp) 00413120\n  0043aa28 -32168(gp) 0040ffe0\n  0043aa2c -32164(gp) 0040fcc0\n  0043aa30 -32160(gp) 0041ce10\n  0043aa34 -32156(gp) 00417550\n  0043aa38 -32152(gp) 0041cc80\n  0043aa3c -32148(gp) 0041b0e0\n  0043aa40 -32144(gp) 00411ed0\n  0043aa44 -32140(gp) 00411ec0\n  0043aa48 -32136(gp) 00417a54\n  0043aa4c -32132(gp) 0041d000\n  0043aa50 -32128(gp) 0041ccf0\n  0043aa54 -32124(gp) 00410fa0\n  0043aa58 -32120(gp) 0041660c\n  0043aa5c -32116(gp) 004174c0\n  0043aa60 -32112(gp) 004180d8\n  0043aa64 -32108(gp) 0041d448\n  0043aa68 -32104(gp) 00411510\n  0043aa6c -32100(gp) 004180f4\n  0043aa70 -32096(gp) 00412db8\n  0043aa74 -32092(gp) 00411960\n  0043aa78 -32088(gp) 00411db0\n  0043aa7c -32084(gp) 0041d5dc\n  0043aa80 -32080(gp) 00418070\n  0043aa84 -32076(gp) 0040b760\n  0043aa88 -32072(gp) 00418194\n  0043aa8c -32068(gp) 0043a4f8\n  0043aa90 -32064(gp) 00418260\n  0043aa94 -32060(gp) 004180b0\n  0043aa98 -32056(gp) 00411de0\n  0043aa9c -32052(gp) 0041d8b4\n  0043aaa0 -32048(gp) 00412050\n  0043aaa4 -32044(gp) 004121a0\n  0043aaa8 -32040(gp) 00411fe8\n  0043aaac -32036(gp) 00411fe0\n  0043aab0 -32032(gp) 0041af50\n  0043aab4 -32028(gp) 00412380\n  0043aab8 -32024(gp) 0041dcf0\n  0043aabc -32020(gp) 0041de30\n  0043aac0 -32016(gp) 004121c0\n  0043aac4 -32012(gp) 00412e40\n  0043aac8 -32008(gp) 00412e80\n  0043aacc -32004(gp) 0043a710\n  0043aad0 -32000(gp) 0043a670\n  0043aad4 -31996(gp) 004169a0\n  0043aad8 -31992(gp) 0041e140\n  0043aadc -31988(gp) 0041dc10\n  0043aae0 -31984(gp) 0041d9c0\n  0043aae4 -31980(gp) 00416090\n  0043aae8 -31976(gp) 0041e0d0\n  0043aaec -31972(gp) 00412a20\n  0043aaf0 -31968(gp) 0043a678\n  0043aaf4 -31964(gp) 0041e30c\n  0043aaf8 -31960(gp) 0043a718\n  0043aafc -31956(gp) 00425000\n  0043ab00 -31952(gp) 0041cb70\n  0043ab04 -31948(gp) 00424750\n  0043ab08 -31944(gp) 004250a0\n  0043ab0c -31940(gp) 00425f80\n  0043ab10 -31936(gp) 004260c0\n  0043ab14 -31932(gp) 00425640\n  0043ab18 -31928(gp) 00425ef0\n  0043ab1c -31924(gp) 00426000\n  0043ab20 -31920(gp) 00424250\n  0043ab24 -31916(gp) 00423de0\n  0043ab28 -31912(gp) 0041ccc0\n  0043ab2c -31908(gp) 0041e8e8\n  0043ab30 -31904(gp) 0041bf50\n  0043ab34 -31900(gp) 0041b540\n  0043ab38 -31896(gp) 0041671c\n  0043ab3c -31892(gp) 00416650\n  0043ab40 -31888(gp) 00417230\n  0043ab44 -31884(gp) 0041ed60\n  0043ab48 -31880(gp) 0041ee00\n  0043ab4c -31876(gp) 0041ef20\n  0043ab50 -31872(gp) 00417ff0\n  0043ab54 -31868(gp) 00419750\n  0043ab58 -31864(gp) 00419430\n  0043ab5c -31860(gp) 00419670\n  0043ab60 -31856(gp) 004188cc\n  0043ab64 -31852(gp) 004188e8\n  0043ab68 -31848(gp) 0043c8dc\n  0043ab6c -31844(gp) 0041f330\n  0043ab70 -31840(gp) 0041818c\n  0043ab74 -31836(gp) 0041985c\n  0043ab78 -31832(gp) 00419894\n  0043ab7c -31828(gp) 00411d80\n  0043ab80 -31824(gp) 0041f490\n  0043ab84 -31820(gp) 004183d4\n  0043ab88 -31816(gp) 00418090\n  0043ab8c -31812(gp) 0043c790\n  0043ab90 -31808(gp) 0043c794\n  0043ab94 -31804(gp) 0043a7c4\n  0043ab98 -31800(gp) 0043a7c0\n  0043ab9c -31796(gp) 0043c798\n  0043aba0 -31792(gp) 0041b1e4\n  0043aba4 -31788(gp) 0041f4b0\n  0043aba8 -31784(gp) 004193d4\n  0043abac -31780(gp) 004197b8\n  0043abb0 -31776(gp) 0041f050\n  0043abb4 -31772(gp) 00418310\n  0043abb8 -31768(gp) 00419450\n  0043abbc -31764(gp) 00419600\n  0043abc0 -31760(gp) 0041f28c\n  0043abc4 -31756(gp) 0041f530\n  0043abc8 -31752(gp) 004197b0\n  0043abcc -31748(gp) 0041c120\n  0043abd0 -31744(gp) 00419cb0\n  0043abd4 -31740(gp) 00420d0c\n  0043abd8 -31736(gp) 0041f710\n  0043abdc -31732(gp) 00421a50\n  0043abe0 -31728(gp) 0041a3d4\n  0043abe4 -31724(gp) 0041c480\n  0043abe8 -31720(gp) 0041fb90\n  0043abec -31716(gp) 00419fb4\n  0043abf0 -31712(gp) 00421500\n  0043abf4 -31708(gp) 0041f020\n  0043abf8 -31704(gp) 0041b120\n  0043abfc -31700(gp) 0041bfac\n  0043ac00 -31696(gp) 0041cb98\n  0043ac04 -31692(gp) 00421d20\n  0043ac08 -31688(gp) 00421e20\n  0043ac0c -31684(gp) 004222c0\n  0043ac10 -31680(gp) 00422440\n  0043ac14 -31676(gp) 0041d230\n  0043ac18 -31672(gp) 0043c9a0\n  0043ac1c -31668(gp) 0041d4f8\n  0043ac20 -31664(gp) 0043c8e0\n  0043ac24 -31660(gp) 0041d6c0\n  0043ac28 -31656(gp) 0041deb0\n  0043ac2c -31652(gp) 0041e3a0\n  0043ac30 -31648(gp) 00422720\n  0043ac34 -31644(gp) 004224f0\n  0043ac38 -31640(gp) 0041f6d0\n  0043ac3c -31636(gp) 004233f0\n  0043ac40 -31632(gp) 00423920\n  0043ac44 -31628(gp) 00421610\n  0043ac48 -31624(gp) 00422920\n  0043ac4c -31620(gp) 00421c30\n  0043ac50 -31616(gp) 00429f5c\n  0043ac54 -31612(gp) 00422820\n  0043ac58 -31608(gp) 0040af38\n  0043ac5c -31604(gp) 0043c98c\n  0043ac60 -31600(gp) 0043c998\n  0043ac64 -31596(gp) 0043c994\n  0043ac68 -31592(gp) 0042a120\n  0043ac6c -31588(gp) 00422bc0\n  0043ac70 -31584(gp) 00422d40\n  0043ac74 -31580(gp) 00422d80\n  0043ac78 -31576(gp) 00423300\n  0043ac7c -31572(gp) 0042a1f0\n  0043ac80 -31568(gp) 00426160\n  0043ac84 -31564(gp) 00000000\n  0043ac88 -31560(gp) 00000000\n  0043ac8c -31556(gp) 00000000\n  0043ac90 -31552(gp) 00000000\n  0043ac94 -31548(gp) 00000000\n  0043ac98 -31544(gp) 00000000\n  0043ac9c -31540(gp) 00000000\n  0043aca0 -31536(gp) 00000000\n  0043aca4 -31532(gp) 00000000\n  0043aca8 -31528(gp) 00000000\n  0043acac -31524(gp) 00000000\n  0043acb0 -31520(gp) 00000000\n  0043acb4 -31516(gp) 00000000\n  0043acb8 -31512(gp) 00000000\n  0043acbc -31508(gp) 00000000\n  0043acc0 -31504(gp) 00000000\n  0043acc4 -31500(gp) 00000000\n  0043acc8 -31496(gp) 00000000\n  0043accc -31492(gp) 00000000\n  0043acd0 -31488(gp) 00000000\n  0043acd4 -31484(gp) 00000000\n  0043acd8 -31480(gp) 00000000\n  0043acdc -31476(gp) 00000000\n  0043ace0 -31472(gp) 00000000\n\n",
+        "err": ""
+      }
+    },
+    {
+      "arch": "mips",
+      "source": "7008e0ce1ea71a39ce4b50ec9c10d2ce50e9183f",
+      "toolchain_url": "https://github.com/cross-tools/musl-cross/releases/download/20250520/mips-unknown-linux-muslsf.tar.xz",
+      "toolchain_sha256": "cc87dcaeed29f970bddb4b572c40a4074b9ac3997ba254725e8a89e05485538a",
+      "rc": 0,
+      "out": "",
+      "err": "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c: In function 'main':\n<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c:804:5: warning: 'strncpy' output may be truncated copying 255 bytes from a string of length 255 [-Wstringop-truncation]\n  804 |     strncpy(resolve_target_host, target_host, sizeof(resolve_target_host) - 1);\n      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n",
+      "cmd": [
+        "<WORKSPACE>/work/lab/obfuscator/mips-unknown-linux-muslsf/bin/mips-unknown-linux-muslsf-gcc",
+        "-O2",
+        "-Wall",
+        "-pthread",
+        "-static",
+        "-s",
+        "-march=mips32",
+        "-mabi=32",
+        "-msoft-float",
+        "-o",
+        "<WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-mips",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/wg-obfuscator.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/config.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/masking_stun.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/obfuscation.c",
+        "<WORKSPACE>/work/repos/ClusterM__wg-obfuscator/logging.c"
+      ],
+      "bytes": 187180,
+      "sha256": "cb795c62b1ce087f3976d276ad10a207414297759f881b2d938c049ea452477f",
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 01 02 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF32\n  Data:                              2's complement, big endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           MIPS R3000\n  Version:                           0x1\n  Entry point address:               0x405000\n  Start of program headers:          52 (bytes into file)\n  Start of section headers:          186300 (bytes into file)\n  Flags:                             0x50001007, noreorder, pic, cpic, o32, mips32\n  Size of this header:               52 (bytes)\n  Size of program headers:           32 (bytes)\n  Number of program headers:         6\n  Size of section headers:           40 (bytes)\n  Number of section headers:         22\n  Section header string table index: 21\n\nProgram Headers:\n  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n  ABIFLAGS       0x0000f8 0x004000f8 0x004000f8 0x00018 0x00018 R   0x8\n  REGINFO        0x000110 0x00400110 0x00400110 0x00018 0x00018 R   0x4\n  LOAD           0x000000 0x00400000 0x00400000 0x2a2d8 0x2a2d8 R E 0x10000\n  LOAD           0x02a2d8 0x0043a2d8 0x0043a2d8 0x00990 0x02668 RW  0x10000\n  TLS            0x02a2d8 0x0043a2d8 0x0043a2d8 0x00000 0x0000c R   0x4\n  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x10\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .MIPS.abiflags \n   01     .reginfo \n   02     .MIPS.abiflags .reginfo .rel.dyn .init .text .fini .rodata .eh_frame \n   03     .init_array .fini_array .data.rel.ro .data .got .sdata .bss \n   04     .tbss \n   05     \nAttribute Section: gnu\nFile Attributes\n  Tag_GNU_MIPS_ABI_FP: Soft float\n\nMIPS ABI Flags Version: 0\n\nISA: MIPS32\nGPR size: 32\nCPR1 size: 0\nCPR2 size: 0\nFP ABI: Soft float\nISA Extension: None\nASEs:\n\tNone\nFLAGS 1: 00000001\nFLAGS 2: 00000000\n\nStatic GOT:\n Canonical gp value: 00442750\n\n Reserved entries:\n   Address     Access    Value\n  0043a760 -32752(gp) 00000000\n  0043a764 -32748(gp) 80000000\n\n Local entries:\n   Address     Access    Value\n  0043a768 -32744(gp) 00426140\n  0043a76c -32740(gp) 0040a2cc\n  0043a770 -32736(gp) 00400168\n  0043a774 -32732(gp) 00400200\n  0043a778 -32728(gp) 0043a2dc\n  0043a77c -32724(gp) 0043a2e0\n  0043a780 -32720(gp) 0040a3f0\n  0043a784 -32716(gp) 0040a3f8\n  0043a788 -32712(gp) 00422574\n  0043a78c -32708(gp) 0041b540\n  0043a790 -32704(gp) 0040d450\n  0043a794 -32700(gp) 0040d320\n  0043a798 -32696(gp) 0040abc0\n  0043a79c -32692(gp) 0041aee8\n  0043a7a0 -32688(gp) 00409960\n  0043a7a4 -32684(gp) 00400190\n  0043a7a8 -32680(gp) 0041b0a0\n  0043a7ac -32676(gp) 00411e50\n  0043a7b0 -32672(gp) 0040a340\n  0043a7b4 -32668(gp) 0040d3e0\n  0043a7b8 -32664(gp) 00419dd0\n  0043a7bc -32660(gp) 00416b00\n  0043a7c0 -32656(gp) 0040dc20\n  0043a7c4 -32652(gp) 0040fca0\n  0043a7c8 -32648(gp) 0040dc90\n  0043a7cc -32644(gp) 0040d2c0\n  0043a7d0 -32640(gp) 0040a3cc\n  0043a7d4 -32636(gp) 0040aa48\n  0043a7d8 -32632(gp) 0040afd4\n  0043a7dc -32628(gp) 00417120\n  0043a7e0 -32624(gp) 00409400\n  0043a7e4 -32620(gp) 00411930\n  0043a7e8 -32616(gp) 00411d70\n  0043a7ec -32612(gp) 0041b040\n  0043a7f0 -32608(gp) 0040cfd0\n  0043a7f4 -32604(gp) 0043a470\n  0043a7f8 -32600(gp) 00412a20\n  0043a7fc -32596(gp) 00406b5c\n  0043a800 -32592(gp) 00409cd4\n  0043a804 -32588(gp) 004174a0\n  0043a808 -32584(gp) 00417250\n  0043a80c -32580(gp) 00417580\n  0043a810 -32576(gp) 00416550\n  0043a814 -32572(gp) 0040da30\n  0043a818 -32568(gp) 00411e90\n  0043a81c -32564(gp) 004117e0\n  0043a820 -32560(gp) 00411620\n  0043a824 -32556(gp) 0040da20\n  0043a828 -32552(gp) 0040d260\n  0043a82c -32548(gp) 0040a7e0\n  0043a830 -32544(gp) 0040a898\n  0043a834 -32540(gp) 00417cd0\n  0043a838 -32536(gp) 00406f90\n  0043a83c -32532(gp) 0040dfb0\n  0043a840 -32528(gp) 0041b000\n  0043a844 -32524(gp) 0040a470\n  0043a848 -32520(gp) 0041890c\n  0043a84c -32516(gp) 0040a9b4\n  0043a850 -32512(gp) 00419b28\n  0043a854 -32508(gp) 0040fcb0\n  0043a858 -32504(gp) 0040fcf0\n  0043a85c -32500(gp) 00408314\n  0043a860 -32496(gp) 00409e1c\n  0043a864 -32492(gp) 00408628\n  0043a868 -32488(gp) 00409ae8\n  0043a86c -32484(gp) 00411520\n  0043a870 -32480(gp) 00408218\n  0043a874 -32476(gp) 0040d9b0\n  0043a878 -32472(gp) 00419160\n  0043a87c -32468(gp) 00408518\n  0043a880 -32464(gp) 004086ac\n  0043a884 -32460(gp) 004085a0\n  0043a888 -32456(gp) 004115c0\n  0043a88c -32452(gp) 00408294\n  0043a890 -32448(gp) 00416b40\n  0043a894 -32444(gp) 00409f30\n  0043a898 -32440(gp) 004173a0\n  0043a89c -32436(gp) 0043a590\n  0043a8a0 -32432(gp) 00412bc4\n  0043a8a4 -32428(gp) 004128e0\n  0043a8a8 -32424(gp) 00412650\n  0043a8ac -32420(gp) 00412218\n  0043a8b0 -32416(gp) 00417620\n  0043a8b4 -32412(gp) 004119c0\n  0043a8b8 -32408(gp) 004068a8\n  0043a8bc -32404(gp) 0043a490\n  0043a8c0 -32400(gp) 00416fc0\n  0043a8c4 -32396(gp) 00412ef0\n  0043a8c8 -32392(gp) 00413110\n  0043a8cc -32388(gp) 00408150\n  0043a8d0 -32384(gp) 004173e0\n  0043a8d4 -32380(gp) 00416918\n  0043a8d8 -32376(gp) 00417420\n  0043a8dc -32372(gp) 004165e0\n  0043a8e0 -32368(gp) 0043a5a0\n  0043a8e4 -32364(gp) 0040da10\n  0043a8e8 -32360(gp) 0041649c\n  0043a8ec -32356(gp) 00419cb0\n  0043a8f0 -32352(gp) 0041ae9c\n  0043a8f4 -32348(gp) 0040a6c0\n  0043a8f8 -32344(gp) 0040696c\n  0043a8fc -32340(gp) 0043c780\n  0043a900 -32336(gp) 0043c00c\n  0043a904 -32332(gp) 0043c008\n  0043a908 -32328(gp) 0043bff0\n  0043a90c -32324(gp) 0043c004\n  0043a910 -32320(gp) 0043c000\n  0043a914 -32316(gp) 00420000\n  0043a918 -32312(gp) 0041b2f4\n  0043a91c -32308(gp) 00409f78\n  0043a920 -32304(gp) 00430000\n  0043a924 -32300(gp) 0043a2d8\n  0043a928 -32296(gp) 0040a1e8\n  0043a92c -32292(gp) 00409f80\n  0043a930 -32288(gp) 00410000\n  0043a934 -32284(gp) 0040a9f8\n  0043a938 -32280(gp) 0040a350\n  0043a93c -32276(gp) 0040a780\n  0043a940 -32272(gp) 00418064\n  0043a944 -32268(gp) 0040a8d8\n  0043a948 -32264(gp) 0040a9f0\n  0043a94c -32260(gp) 0043c274\n  0043a950 -32256(gp) 0040cde4\n  0043a954 -32252(gp) 0040b61c\n  0043a958 -32248(gp) 00417da0\n  0043a95c -32244(gp) 00440000\n  0043a960 -32240(gp) 0040cff8\n  0043a964 -32236(gp) 00417f60\n  0043a968 -32232(gp) 0040c7c8\n  0043a96c -32228(gp) 0043c070\n  0043a970 -32224(gp) 004294ac\n  0043a974 -32220(gp) 0043c268\n  0043a978 -32216(gp) 0040d1e8\n  0043a97c -32212(gp) 0040d170\n  0043a980 -32208(gp) 0040b868\n  0043a984 -32204(gp) 0041c640\n  0043a988 -32200(gp) 00419800\n  0043a98c -32196(gp) 0040aa14\n  0043a990 -32192(gp) 0040f820\n  0043a994 -32188(gp) 0040eda0\n  0043a998 -32184(gp) 00419790\n  0043a99c -32180(gp) 0040da80\n  0043a9a0 -32176(gp) 00416858\n  0043a9a4 -32172(gp) 00413170\n  0043a9a8 -32168(gp) 00410060\n  0043a9ac -32164(gp) 0040fd50\n  0043a9b0 -32160(gp) 0041ce30\n  0043a9b4 -32156(gp) 004175c0\n  0043a9b8 -32152(gp) 0041cca0\n  0043a9bc -32148(gp) 0041b100\n  0043a9c0 -32144(gp) 00411f20\n  0043a9c4 -32140(gp) 00411f10\n  0043a9c8 -32136(gp) 00417ac4\n  0043a9cc -32132(gp) 0041d020\n  0043a9d0 -32128(gp) 0041cd10\n  0043a9d4 -32124(gp) 00410ff0\n  0043a9d8 -32120(gp) 0041667c\n  0043a9dc -32116(gp) 00417530\n  0043a9e0 -32112(gp) 004180e8\n  0043a9e4 -32108(gp) 0041d478\n  0043a9e8 -32104(gp) 00411560\n  0043a9ec -32100(gp) 00418104\n  0043a9f0 -32096(gp) 00412e08\n  0043a9f4 -32092(gp) 004119b0\n  0043a9f8 -32088(gp) 00411e00\n  0043a9fc -32084(gp) 0041d60c\n  0043aa00 -32080(gp) 00418080\n  0043aa04 -32076(gp) 0040b7f0\n  0043aa08 -32072(gp) 004181a4\n  0043aa0c -32068(gp) 0043a478\n  0043aa10 -32064(gp) 00418270\n  0043aa14 -32060(gp) 004180c0\n  0043aa18 -32056(gp) 00411e30\n  0043aa1c -32052(gp) 0041d8e4\n  0043aa20 -32048(gp) 004120a0\n  0043aa24 -32044(gp) 004121f0\n  0043aa28 -32040(gp) 00412038\n  0043aa2c -32036(gp) 00412030\n  0043aa30 -32032(gp) 0041af70\n  0043aa34 -32028(gp) 004123d0\n  0043aa38 -32024(gp) 0041dd20\n  0043aa3c -32020(gp) 0041de60\n  0043aa40 -32016(gp) 00412210\n  0043aa44 -32012(gp) 00412e90\n  0043aa48 -32008(gp) 00412ed0\n  0043aa4c -32004(gp) 0043a690\n  0043aa50 -32000(gp) 0043a5f0\n  0043aa54 -31996(gp) 00416a10\n  0043aa58 -31992(gp) 0041e170\n  0043aa5c -31988(gp) 0041dc40\n  0043aa60 -31984(gp) 0041d9f0\n  0043aa64 -31980(gp) 00416104\n  0043aa68 -31976(gp) 0041e100\n  0043aa6c -31972(gp) 00412a70\n  0043aa70 -31968(gp) 0043a5f8\n  0043aa74 -31964(gp) 0041e33c\n  0043aa78 -31960(gp) 0043a698\n  0043aa7c -31956(gp) 00424f70\n  0043aa80 -31952(gp) 0041cb90\n  0043aa84 -31948(gp) 004246c0\n  0043aa88 -31944(gp) 00425010\n  0043aa8c -31940(gp) 00425f00\n  0043aa90 -31936(gp) 00426040\n  0043aa94 -31932(gp) 004255b0\n  0043aa98 -31928(gp) 00425e70\n  0043aa9c -31924(gp) 00425f80\n  0043aaa0 -31920(gp) 00424260\n  0043aaa4 -31916(gp) 00423df0\n  0043aaa8 -31912(gp) 0041cce0\n  0043aaac -31908(gp) 0041e918\n  0043aab0 -31904(gp) 0041bf70\n  0043aab4 -31900(gp) 0041b560\n  0043aab8 -31896(gp) 0041678c\n  0043aabc -31892(gp) 004166c0\n  0043aac0 -31888(gp) 004172a0\n  0043aac4 -31884(gp) 0041ed90\n  0043aac8 -31880(gp) 0041ee30\n  0043aacc -31876(gp) 0041ef50\n  0043aad0 -31872(gp) 00418000\n  0043aad4 -31868(gp) 00419770\n  0043aad8 -31864(gp) 00419450\n  0043aadc -31860(gp) 00419690\n  0043aae0 -31856(gp) 004188dc\n  0043aae4 -31852(gp) 004188f8\n  0043aae8 -31848(gp) 0043c85c\n  0043aaec -31844(gp) 0041f360\n  0043aaf0 -31840(gp) 0041819c\n  0043aaf4 -31836(gp) 0041987c\n  0043aaf8 -31832(gp) 004198b4\n  0043aafc -31828(gp) 00411dd0\n  0043ab00 -31824(gp) 0041f4c0\n  0043ab04 -31820(gp) 004183e4\n  0043ab08 -31816(gp) 004180a0\n  0043ab0c -31812(gp) 0043c710\n  0043ab10 -31808(gp) 0043c714\n  0043ab14 -31804(gp) 0043a744\n  0043ab18 -31800(gp) 0043a740\n  0043ab1c -31796(gp) 0043c718\n  0043ab20 -31792(gp) 0041b204\n  0043ab24 -31788(gp) 0041f4e0\n  0043ab28 -31784(gp) 004193f4\n  0043ab2c -31780(gp) 004197d8\n  0043ab30 -31776(gp) 0041f080\n  0043ab34 -31772(gp) 00418320\n  0043ab38 -31768(gp) 00419470\n  0043ab3c -31764(gp) 00419620\n  0043ab40 -31760(gp) 0041f2bc\n  0043ab44 -31756(gp) 0041f560\n  0043ab48 -31752(gp) 004197d0\n  0043ab4c -31748(gp) 0041c140\n  0043ab50 -31744(gp) 00419cd0\n  0043ab54 -31740(gp) 00420ce0\n  0043ab58 -31736(gp) 0041f740\n  0043ab5c -31732(gp) 00421960\n  0043ab60 -31728(gp) 0041a3f4\n  0043ab64 -31724(gp) 0041c4a0\n  0043ab68 -31720(gp) 0041fbc0\n  0043ab6c -31716(gp) 00419fd4\n  0043ab70 -31712(gp) 00421404\n  0043ab74 -31708(gp) 0041f050\n  0043ab78 -31704(gp) 0041b140\n  0043ab7c -31700(gp) 0041bfcc\n  0043ab80 -31696(gp) 0041cbb8\n  0043ab84 -31692(gp) 00421c30\n  0043ab88 -31688(gp) 00421d30\n  0043ab8c -31684(gp) 004221d0\n  0043ab90 -31680(gp) 00422350\n  0043ab94 -31676(gp) 0041d260\n  0043ab98 -31672(gp) 0043c920\n  0043ab9c -31668(gp) 0041d528\n  0043aba0 -31664(gp) 0043c860\n  0043aba4 -31660(gp) 0041d6f0\n  0043aba8 -31656(gp) 0041dee0\n  0043abac -31652(gp) 0041e3d0\n  0043abb0 -31648(gp) 00422630\n  0043abb4 -31644(gp) 00422400\n  0043abb8 -31640(gp) 0041f700\n  0043abbc -31636(gp) 00423300\n  0043abc0 -31632(gp) 00423880\n  0043abc4 -31628(gp) 00421510\n  0043abc8 -31624(gp) 00422830\n  0043abcc -31620(gp) 00421b40\n  0043abd0 -31616(gp) 00429edc\n  0043abd4 -31612(gp) 00422730\n  0043abd8 -31608(gp) 0040afb8\n  0043abdc -31604(gp) 0043c90c\n  0043abe0 -31600(gp) 0043c918\n  0043abe4 -31596(gp) 0043c914\n  0043abe8 -31592(gp) 0042a0a0\n  0043abec -31588(gp) 00422ad0\n  0043abf0 -31584(gp) 00422c50\n  0043abf4 -31580(gp) 00422c90\n  0043abf8 -31576(gp) 00423210\n  0043abfc -31572(gp) 0042a170\n  0043ac00 -31568(gp) 004260e0\n  0043ac04 -31564(gp) 00000000\n  0043ac08 -31560(gp) 00000000\n  0043ac0c -31556(gp) 00000000\n  0043ac10 -31552(gp) 00000000\n  0043ac14 -31548(gp) 00000000\n  0043ac18 -31544(gp) 00000000\n  0043ac1c -31540(gp) 00000000\n  0043ac20 -31536(gp) 00000000\n  0043ac24 -31532(gp) 00000000\n  0043ac28 -31528(gp) 00000000\n  0043ac2c -31524(gp) 00000000\n  0043ac30 -31520(gp) 00000000\n  0043ac34 -31516(gp) 00000000\n  0043ac38 -31512(gp) 00000000\n  0043ac3c -31508(gp) 00000000\n  0043ac40 -31504(gp) 00000000\n  0043ac44 -31500(gp) 00000000\n  0043ac48 -31496(gp) 00000000\n  0043ac4c -31492(gp) 00000000\n  0043ac50 -31488(gp) 00000000\n  0043ac54 -31484(gp) 00000000\n  0043ac58 -31480(gp) 00000000\n  0043ac5c -31476(gp) 00000000\n  0043ac60 -31472(gp) 00000000\n\n",
+        "err": ""
+      }
+    }
+  ],
+  "runtime_probes": {
+    "wdtt-amd64": {
+      "rc": 0,
+      "help": "Usage of <WORKSPACE>/work/lab/wdtt/wt-client-linux-amd64:\n  -captcha-mode string\n    \tрежим обхода капчи (auto/wv/rjs) (default \"auto\")\n  -check-hashes\n    \tпроверить VK-хеши и выйти\n  -device-id string\n    \tуникальный ID устройства (default \"unknown\")\n  -fingerprint string\n    \tсовместимость с awg-manager (игнорируется)\n  -go-dns string\n    \tDNS для VK (yandex/cloudflare/google, doh-yandex/doh-cloudflare/doh-google, custom:IP или doh:URL) (default \"yandex\")\n  -listen string\n    \tлокальный адрес (default \"127.0.0.1:9000\")\n  -mode string\n    \tрежим клиента (vpn|socks|rawtun) (default \"vpn\")\n  -n int\n    \tколичество воркеров (кратно 12) (default 24)\n  -obfs string\n    \tрежим обфускации (audio/video) (default \"audio\")\n  -password string\n    \tпароль подключения\n  -peer string\n    \tадрес:порт VPS сервера\n  -ping-only\n    \tзапустить только замер задержки и выйти\n  -port string\n    \tпереопределить порт TURN\n  -socks string\n    \tлокальный SOCKS5 (только -mode socks) (default \"127.0.0.1:1080\")\n  -tun-name string\n    \tkernel TUN для rawtun при ручном запуске (без awg-manager)\n  -turn string\n    \tпереопределить IP TURN\n  -vk string\n    \tхеши VK-звонков (через запятую)\n  -vk-anon-path string\n    \tанонимный путь VK TURN (vkcalls/legacy) (default \"vkcalls\")\n  -vk-auth string\n    \tрежим VK авторизации (account/anonymous) (default \"anonymous\")\n  -vk-auth-mode string\n    \talias для -vk-auth (awg-manager)\n  -vk-creds-file string\n    \tфайл с TURN кредами от аккаунта VK\n"
+    },
+    "protocol-amd64": {
+      "rc": 0,
+      "out": "{\"v\":1,\"impl\":\"wt-client\",\"role\":\"client\",\"modes\":[\"raw\",\"wg\"],\"commands\":[\"state\",\"attach-tun\",\"detach-tun\"]}\n"
+    },
+    "wdtt-arm64": {
+      "rc": 0,
+      "help": "Usage of <WORKSPACE>/work/lab/wdtt/wt-client-linux-arm64:\n  -captcha-mode string\n    \tрежим обхода капчи (auto/wv/rjs) (default \"auto\")\n  -check-hashes\n    \tпроверить VK-хеши и выйти\n  -device-id string\n    \tуникальный ID устройства (default \"unknown\")\n  -fingerprint string\n    \tсовместимость с awg-manager (игнорируется)\n  -go-dns string\n    \tDNS для VK (yandex/cloudflare/google, doh-yandex/doh-cloudflare/doh-google, custom:IP или doh:URL) (default \"yandex\")\n  -listen string\n    \tлокальный адрес (default \"127.0.0.1:9000\")\n  -mode string\n    \tрежим клиента (vpn|socks|rawtun) (default \"vpn\")\n  -n int\n    \tколичество воркеров (кратно 12) (default 24)\n  -obfs string\n    \tрежим обфускации (audio/video) (default \"audio\")\n  -password string\n    \tпароль подключения\n  -peer string\n    \tадрес:порт VPS сервера\n  -ping-only\n    \tзапустить только замер задержки и выйти\n  -port string\n    \tпереопределить порт TURN\n  -socks string\n    \tлокальный SOCKS5 (только -mode socks) (default \"127.0.0.1:1080\")\n  -tun-name string\n    \tkernel TUN для rawtun при ручном запуске (без awg-manager)\n  -turn string\n    \tпереопределить IP TURN\n  -vk string\n    \tхеши VK-звонков (через запятую)\n  -vk-anon-path string\n    \tанонимный путь VK TURN (vkcalls/legacy) (default \"vkcalls\")\n  -vk-auth string\n    \tрежим VK авторизации (account/anonymous) (default \"anonymous\")\n  -vk-auth-mode string\n    \talias для -vk-auth (awg-manager)\n  -vk-creds-file string\n    \tфайл с TURN кредами от аккаунта VK\n"
+    },
+    "protocol-arm64": {
+      "rc": 0,
+      "out": "{\"v\":1,\"impl\":\"wt-client\",\"role\":\"client\",\"modes\":[\"raw\",\"wg\"],\"commands\":[\"state\",\"attach-tun\",\"detach-tun\"]}\n"
+    },
+    "wdtt-mipsle": {
+      "rc": 0,
+      "help": "Usage of <WORKSPACE>/work/lab/wdtt/wt-client-linux-mipsle:\n  -captcha-mode string\n    \tрежим обхода капчи (auto/wv/rjs) (default \"auto\")\n  -check-hashes\n    \tпроверить VK-хеши и выйти\n  -device-id string\n    \tуникальный ID устройства (default \"unknown\")\n  -fingerprint string\n    \tсовместимость с awg-manager (игнорируется)\n  -go-dns string\n    \tDNS для VK (yandex/cloudflare/google, doh-yandex/doh-cloudflare/doh-google, custom:IP или doh:URL) (default \"yandex\")\n  -listen string\n    \tлокальный адрес (default \"127.0.0.1:9000\")\n  -mode string\n    \tрежим клиента (vpn|socks|rawtun) (default \"vpn\")\n  -n int\n    \tколичество воркеров (кратно 12) (default 24)\n  -obfs string\n    \tрежим обфускации (audio/video) (default \"audio\")\n  -password string\n    \tпароль подключения\n  -peer string\n    \tадрес:порт VPS сервера\n  -ping-only\n    \tзапустить только замер задержки и выйти\n  -port string\n    \tпереопределить порт TURN\n  -socks string\n    \tлокальный SOCKS5 (только -mode socks) (default \"127.0.0.1:1080\")\n  -tun-name string\n    \tkernel TUN для rawtun при ручном запуске (без awg-manager)\n  -turn string\n    \tпереопределить IP TURN\n  -vk string\n    \tхеши VK-звонков (через запятую)\n  -vk-anon-path string\n    \tанонимный путь VK TURN (vkcalls/legacy) (default \"vkcalls\")\n  -vk-auth string\n    \tрежим VK авторизации (account/anonymous) (default \"anonymous\")\n  -vk-auth-mode string\n    \talias для -vk-auth (awg-manager)\n  -vk-creds-file string\n    \tфайл с TURN кредами от аккаунта VK\n"
+    },
+    "protocol-mipsle": {
+      "rc": 0,
+      "out": "{\"v\":1,\"impl\":\"wt-client\",\"role\":\"client\",\"modes\":[\"raw\",\"wg\"],\"commands\":[\"state\",\"attach-tun\",\"detach-tun\"]}\n"
+    },
+    "wdtt-mips": {
+      "rc": 0,
+      "help": "Usage of <WORKSPACE>/work/lab/wdtt/wt-client-linux-mips:\n  -captcha-mode string\n    \tрежим обхода капчи (auto/wv/rjs) (default \"auto\")\n  -check-hashes\n    \tпроверить VK-хеши и выйти\n  -device-id string\n    \tуникальный ID устройства (default \"unknown\")\n  -fingerprint string\n    \tсовместимость с awg-manager (игнорируется)\n  -go-dns string\n    \tDNS для VK (yandex/cloudflare/google, doh-yandex/doh-cloudflare/doh-google, custom:IP или doh:URL) (default \"yandex\")\n  -listen string\n    \tлокальный адрес (default \"127.0.0.1:9000\")\n  -mode string\n    \tрежим клиента (vpn|socks|rawtun) (default \"vpn\")\n  -n int\n    \tколичество воркеров (кратно 12) (default 24)\n  -obfs string\n    \tрежим обфускации (audio/video) (default \"audio\")\n  -password string\n    \tпароль подключения\n  -peer string\n    \tадрес:порт VPS сервера\n  -ping-only\n    \tзапустить только замер задержки и выйти\n  -port string\n    \tпереопределить порт TURN\n  -socks string\n    \tлокальный SOCKS5 (только -mode socks) (default \"127.0.0.1:1080\")\n  -tun-name string\n    \tkernel TUN для rawtun при ручном запуске (без awg-manager)\n  -turn string\n    \tпереопределить IP TURN\n  -vk string\n    \tхеши VK-звонков (через запятую)\n  -vk-anon-path string\n    \tанонимный путь VK TURN (vkcalls/legacy) (default \"vkcalls\")\n  -vk-auth string\n    \tрежим VK авторизации (account/anonymous) (default \"anonymous\")\n  -vk-auth-mode string\n    \talias для -vk-auth (awg-manager)\n  -vk-creds-file string\n    \tфайл с TURN кредами от аккаунта VK\n"
+    },
+    "protocol-mips": {
+      "rc": 0,
+      "out": "{\"v\":1,\"impl\":\"wt-client\",\"role\":\"client\",\"modes\":[\"raw\",\"wg\"],\"commands\":[\"state\",\"attach-tun\",\"detach-tun\"]}\n"
+    },
+    "obfuscator-amd64": {
+      "rc": 0,
+      "help": "Usage: <WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-amd64 [options]\n  -?, --help                 Give this help list\n\nMain settings:\n  -c, --config=<config_file> Read configuration from file\n                             (can be used instead of the rest arguments)\n  -i, --source-if=<ip>       Source interface to listen on\n                             (optional, default - 0.0.0.0, e.g. all)\n  -p, --source-lport=<port>  Source port to listen\n  -t, --target=<ip>:<port>   Target IP and port\n  -k, --key=<key>            Obfuscation key \n                             (required, must be 1-255 characters long)\n  -a, --masking=<type>       Masking type (optional, default - AUTO)\n                             Supported values: STUN, AUTO, NONE\n  -b, --static-bindings=<ip>:<port>:<port>,...\n                             Comma-separated static bindings for two-way mode\n                             as <client_ip>:<client_port>:<forward_port>\n                             You can also repeat this option.\n  -f, --fwmark=<mark>        Firewall mark to set on all packets\n                             (optional, default - 0, e.g. disabled)\n  -v, --verbose=<level>      Verbosity level (optional, default - INFO)\n                             ERRORS (critical errors only)\n                             WARNINGS (important messages)\n                             2 - INFO (informational messages: status messages,\n                                      connection established, etc.)\n                             3 - DEBUG (detailed debug messages)\n                             4 - TRACE (very detailed debug messages, including\n                                       packet dumps)\n  -L, --log-file=<path>      Write the log to this file instead of stderr\n                             (optional, the file is reopened on SIGHUP)\n  -T, --log-timestamps=<val> Prefix log lines with a timestamp\n                             (optional, default - AUTO, e.g. only when\n                             writing to a log file)\n                             Supported values: AUTO, TRUE, FALSE\n\nAdditional options:\n  -m, --max-clients=<number> Maximum number of clients (default: 1024)\n  -l, --idle-timeout=<sec>   Idle timeout in seconds (default: 300)\n  -n, --in-timeout=<sec>     Incoming timeout in seconds (default: 0 - disabled)\n  -d, --max-dummy=<bytes>    Maximum length of dummy bytes for data packets\n                             (default: 4)\n  -e, --allow-clean          For servers, allow non-obfuscated incoming connections\n  -R, --resolve-interval=<sec>\n                             Re-resolve target and static-binding hostnames\n                             every N seconds (default: 0 - disabled).\n                             SIGHUP always triggers a refresh.\n                             If non-zero, a failed resolve at startup is retried\n                             instead of exiting.\nStarting WireGuard Obfuscator v1.6\n"
+    },
+    "obfuscator-arm64": {
+      "rc": 0,
+      "help": "Usage: <WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-arm64 [options]\n  -?, --help                 Give this help list\n\nMain settings:\n  -c, --config=<config_file> Read configuration from file\n                             (can be used instead of the rest arguments)\n  -i, --source-if=<ip>       Source interface to listen on\n                             (optional, default - 0.0.0.0, e.g. all)\n  -p, --source-lport=<port>  Source port to listen\n  -t, --target=<ip>:<port>   Target IP and port\n  -k, --key=<key>            Obfuscation key \n                             (required, must be 1-255 characters long)\n  -a, --masking=<type>       Masking type (optional, default - AUTO)\n                             Supported values: STUN, AUTO, NONE\n  -b, --static-bindings=<ip>:<port>:<port>,...\n                             Comma-separated static bindings for two-way mode\n                             as <client_ip>:<client_port>:<forward_port>\n                             You can also repeat this option.\n  -f, --fwmark=<mark>        Firewall mark to set on all packets\n                             (optional, default - 0, e.g. disabled)\n  -v, --verbose=<level>      Verbosity level (optional, default - INFO)\n                             ERRORS (critical errors only)\n                             WARNINGS (important messages)\n                             2 - INFO (informational messages: status messages,\n                                      connection established, etc.)\n                             3 - DEBUG (detailed debug messages)\n                             4 - TRACE (very detailed debug messages, including\n                                       packet dumps)\n  -L, --log-file=<path>      Write the log to this file instead of stderr\n                             (optional, the file is reopened on SIGHUP)\n  -T, --log-timestamps=<val> Prefix log lines with a timestamp\n                             (optional, default - AUTO, e.g. only when\n                             writing to a log file)\n                             Supported values: AUTO, TRUE, FALSE\n\nAdditional options:\n  -m, --max-clients=<number> Maximum number of clients (default: 1024)\n  -l, --idle-timeout=<sec>   Idle timeout in seconds (default: 300)\n  -n, --in-timeout=<sec>     Incoming timeout in seconds (default: 0 - disabled)\n  -d, --max-dummy=<bytes>    Maximum length of dummy bytes for data packets\n                             (default: 4)\n  -e, --allow-clean          For servers, allow non-obfuscated incoming connections\n  -R, --resolve-interval=<sec>\n                             Re-resolve target and static-binding hostnames\n                             every N seconds (default: 0 - disabled).\n                             SIGHUP always triggers a refresh.\n                             If non-zero, a failed resolve at startup is retried\n                             instead of exiting.\nStarting WireGuard Obfuscator v1.6\n"
+    },
+    "obfuscator-mipsel": {
+      "rc": 0,
+      "help": "Usage: <WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-mipsel [options]\n  -?, --help                 Give this help list\n\nMain settings:\n  -c, --config=<config_file> Read configuration from file\n                             (can be used instead of the rest arguments)\n  -i, --source-if=<ip>       Source interface to listen on\n                             (optional, default - 0.0.0.0, e.g. all)\n  -p, --source-lport=<port>  Source port to listen\n  -t, --target=<ip>:<port>   Target IP and port\n  -k, --key=<key>            Obfuscation key \n                             (required, must be 1-255 characters long)\n  -a, --masking=<type>       Masking type (optional, default - AUTO)\n                             Supported values: STUN, AUTO, NONE\n  -b, --static-bindings=<ip>:<port>:<port>,...\n                             Comma-separated static bindings for two-way mode\n                             as <client_ip>:<client_port>:<forward_port>\n                             You can also repeat this option.\n  -f, --fwmark=<mark>        Firewall mark to set on all packets\n                             (optional, default - 0, e.g. disabled)\n  -v, --verbose=<level>      Verbosity level (optional, default - INFO)\n                             ERRORS (critical errors only)\n                             WARNINGS (important messages)\n                             2 - INFO (informational messages: status messages,\n                                      connection established, etc.)\n                             3 - DEBUG (detailed debug messages)\n                             4 - TRACE (very detailed debug messages, including\n                                       packet dumps)\n  -L, --log-file=<path>      Write the log to this file instead of stderr\n                             (optional, the file is reopened on SIGHUP)\n  -T, --log-timestamps=<val> Prefix log lines with a timestamp\n                             (optional, default - AUTO, e.g. only when\n                             writing to a log file)\n                             Supported values: AUTO, TRUE, FALSE\n\nAdditional options:\n  -m, --max-clients=<number> Maximum number of clients (default: 1024)\n  -l, --idle-timeout=<sec>   Idle timeout in seconds (default: 300)\n  -n, --in-timeout=<sec>     Incoming timeout in seconds (default: 0 - disabled)\n  -d, --max-dummy=<bytes>    Maximum length of dummy bytes for data packets\n                             (default: 4)\n  -e, --allow-clean          For servers, allow non-obfuscated incoming connections\n  -R, --resolve-interval=<sec>\n                             Re-resolve target and static-binding hostnames\n                             every N seconds (default: 0 - disabled).\n                             SIGHUP always triggers a refresh.\n                             If non-zero, a failed resolve at startup is retried\n                             instead of exiting.\nStarting WireGuard Obfuscator v1.6\n"
+    },
+    "obfuscator-mips": {
+      "rc": 0,
+      "help": "Usage: <WORKSPACE>/work/lab/obfuscator/wg-obfuscator-linux-mips [options]\n  -?, --help                 Give this help list\n\nMain settings:\n  -c, --config=<config_file> Read configuration from file\n                             (can be used instead of the rest arguments)\n  -i, --source-if=<ip>       Source interface to listen on\n                             (optional, default - 0.0.0.0, e.g. all)\n  -p, --source-lport=<port>  Source port to listen\n  -t, --target=<ip>:<port>   Target IP and port\n  -k, --key=<key>            Obfuscation key \n                             (required, must be 1-255 characters long)\n  -a, --masking=<type>       Masking type (optional, default - AUTO)\n                             Supported values: STUN, AUTO, NONE\n  -b, --static-bindings=<ip>:<port>:<port>,...\n                             Comma-separated static bindings for two-way mode\n                             as <client_ip>:<client_port>:<forward_port>\n                             You can also repeat this option.\n  -f, --fwmark=<mark>        Firewall mark to set on all packets\n                             (optional, default - 0, e.g. disabled)\n  -v, --verbose=<level>      Verbosity level (optional, default - INFO)\n                             ERRORS (critical errors only)\n                             WARNINGS (important messages)\n                             2 - INFO (informational messages: status messages,\n                                      connection established, etc.)\n                             3 - DEBUG (detailed debug messages)\n                             4 - TRACE (very detailed debug messages, including\n                                       packet dumps)\n  -L, --log-file=<path>      Write the log to this file instead of stderr\n                             (optional, the file is reopened on SIGHUP)\n  -T, --log-timestamps=<val> Prefix log lines with a timestamp\n                             (optional, default - AUTO, e.g. only when\n                             writing to a log file)\n                             Supported values: AUTO, TRUE, FALSE\n\nAdditional options:\n  -m, --max-clients=<number> Maximum number of clients (default: 1024)\n  -l, --idle-timeout=<sec>   Idle timeout in seconds (default: 300)\n  -n, --in-timeout=<sec>     Incoming timeout in seconds (default: 0 - disabled)\n  -d, --max-dummy=<bytes>    Maximum length of dummy bytes for data packets\n                             (default: 4)\n  -e, --allow-clean          For servers, allow non-obfuscated incoming connections\n  -R, --resolve-interval=<sec>\n                             Re-resolve target and static-binding hostnames\n                             every N seconds (default: 0 - disabled).\n                             SIGHUP always triggers a refresh.\n                             If non-zero, a failed resolve at startup is retried\n                             instead of exiting.\nStarting WireGuard Obfuscator v1.6\n"
+    },
+    "obfuscator-loopback": {
+      "checks": [
+        {
+          "size": 32,
+          "equal": true
+        },
+        {
+          "size": 148,
+          "equal": true
+        },
+        {
+          "size": 512,
+          "equal": true
+        },
+        {
+          "size": 1200,
+          "equal": true
+        },
+        {
+          "size": 1420,
+          "equal": true
+        }
+      ],
+      "synthetic_reply_type": "02000000",
+      "scope": "synthetic WireGuard-shaped headers and UDP echo through STUN/AUTO pair; no authenticated WireGuard handshake, no VK, no external network",
+      "initial_probe": "Uninitialized type-4 UDP echo timed out; state requires type-1/type-2 header sequence.",
+      "process_logs": [
+        "Starting WireGuard Obfuscator v1.6\n[main][I] Listening on port 127.0.0.1:37374 for source\n[main][D] Resolved target hostname '127.0.0.1' to 127.0.0.1\n[main][I] Target: 127.0.0.1:53814\n[main][I] WireGuard obfuscator successfully started\n[main][D] Received WireGuard handshake from 127.0.0.1:48159 to 127.0.0.1:53814 (148 bytes, obfuscated=yes)\n[main][D] Added binding: 127.0.0.1:48159:44020\n[main][D] Received WireGuard handshake response from 127.0.0.1:53814 to 127.0.0.1:48159 (92 bytes, obfuscated=no)\n[main][I] Handshake established with 127.0.0.1:48159 to 127.0.0.1:53814 (direct)\n[main][I] Autodetected masking handler for client 127.0.0.1:48159: STUN\n[main][I] Stopped.\n",
+        "Starting WireGuard Obfuscator v1.6\n[main][I] Listening on port 127.0.0.1:40741 for source\n[main][I] Using masking type: STUN\n[main][D] Resolved target hostname '127.0.0.1' to 127.0.0.1\n[main][I] Target: 127.0.0.1:37374\n[main][I] WireGuard obfuscator successfully started\n[main][D] Received WireGuard handshake from 127.0.0.1:35626 to 127.0.0.1:37374 (148 bytes, obfuscated=no)\n[main][D] Added binding: 127.0.0.1:35626:48159\n[main][D] Received WireGuard handshake response from 127.0.0.1:37374 to 127.0.0.1:35626 (92 bytes, obfuscated=yes)\n[main][I] Handshake established with 127.0.0.1:35626 to 127.0.0.1:37374 (direct)\n[main][I] Stopped.\n"
+      ],
+      "prior_attempts": [
+        "data-only before type1/type2: timeout",
+        "first synthetic type1/type2 run: timeout, insufficient diagnostics, cause unverified",
+        "final DEBUG diagnostic run: success"
+      ]
+    }
+  },
+  "socks_dependency_probe": {
+    "rc": 0,
+    "out": "{\"connect_reply\":0,\"scope\":\"exact armon dependency; loopback TCP only; not VPN test\",\"tcp_equal\":true,\"udp_associate_reply\":7}\n",
+    "err": "go: finding module for package golang.org/x/net/context\ngo: downloading golang.org/x/net v0.61.0\ngo: found golang.org/x/net/context in golang.org/x/net v0.61.0\n"
+  },
+  "csqtt_native": {
+    "rc": 0,
+    "target": "x86_64-unknown-linux-gnu",
+    "log_tail": "mp-tokio-rustls v0.26.5\n   Compiling proc-macro2 v1.0.107\n   Compiling unicode-ident v1.0.24\n   Compiling quote v1.0.47\n   Compiling libc v0.2.189\n   Compiling shlex v2.0.1\n   Compiling find-msvc-tools v0.1.11\n   Compiling pkg-config v0.3.34\n   Compiling stable_deref_trait v1.2.1\n   Compiling cfg-if v1.0.4\n   Compiling syn v3.0.3\n   Compiling syn v2.0.119\n   Compiling jobserver v0.1.35\n   Compiling cc v1.4.3\n   Compiling pin-project-lite v0.2.17\n   Compiling bytes v1.12.1\n   Compiling zstd-sys v2.0.16+zstd.1.5.7\n   Compiling errno v0.3.14\n   Compiling smallvec v1.15.2\n   Compiling synstructure v0.13.2\n   Compiling futures-core v0.3.34\n   Compiling typenum v1.20.1\n   Compiling hybrid-array v0.4.14\n   Compiling zerovec-derive v0.11.5\n   Compiling zerofrom-derive v0.1.7\n   Compiling yoke-derive v0.8.2\n   Compiling displaydoc v0.2.7\n   Compiling zerofrom v0.1.8\n   Compiling tokio-macros v2.7.2\n   Compiling yoke v0.8.3\n   Compiling zerovec v0.11.7\n   Compiling signal-hook-registry v1.4.8\n   Compiling cmake v0.1.58\n   Compiling mio v1.2.2\n   Compiling tinystr v0.8.4\n   Compiling socket2 v0.6.5\n   Compiling writeable v0.6.4\n   Compiling fs_extra v1.3.0\n   Compiling dunce v1.0.5\n   Compiling itoa v1.0.18\n   Compiling litemap v0.8.3\n   Compiling aws-lc-sys v0.44.0\n   Compiling icu_locale_core v2.3.0\n   Compiling tokio v1.53.1\n   Compiling potential_utf v0.1.6\n   Compiling zerotrie v0.2.5\n   Compiling zeroize_derive v1.5.0\n   Compiling zstd-safe v7.2.4\n   Compiling utf8_iter v1.0.4\n   Compiling icu_normalizer_data v2.3.0\n   Compiling icu_properties_data v2.3.0\n   Compiling alloc-no-stdlib v2.0.4\n   Compiling icu_collections v2.3.0\n   Compiling alloc-stdlib v0.2.4\n   Compiling zeroize v1.9.0\n   Compiling icu_provider v2.3.0\n   Compiling once_cell v1.21.4\n   Compiling brotli-decompressor v5.0.3\n   Compiling http v1.5.0\n   Compiling crypto-common v0.2.2\n   Compiling block-buffer v0.12.1\n   Compiling slab v0.4.12\n   Compiling percent-encoding v2.3.2\n   Compiling autocfg v1.5.1\n   Compiling aws-lc-rs v1.18.0\n   Compiling icu_properties v2.3.0\n   Compiling icu_normalizer v2.3.0\n   Compiling brotli v8.0.4\n   Compiling rustls-pki-types v1.15.1\n   Compiling futures-sink v0.3.34\n   Compiling crc32fast v1.5.0\n   Compiling tokio-util v0.7.19\n   Compiling idna_adapter v1.2.2\n   Compiling http-body v1.1.0\n   Compiling tracing-core v0.1.36\n   Compiling adler2 v2.0.1\n   Compiling httparse v1.10.1\n   Compiling untrusted v0.7.1\n   Compiling memchr v2.8.3\n   Compiling cmov v0.5.4\n   Compiling serde_core v1.0.229\n   Compiling equivalent v1.0.2\n   Compiling futures-task v0.3.34\n   Compiling simd-adler32 v0.3.10\n   Compiling hashbrown v0.17.1\n   Compiling miniz_oxide v0.8.9\n   Compiling indexmap v2.14.0\n   Compiling futures-util v0.3.34\n   Compiling ctutils v0.4.2\n   Compiling tracing v0.1.44\n   Compiling idna v1.1.0\n   Compiling num-conv v0.2.2\n   Compiling const-oid v0.10.2\n   Compiling zmij v1.0.23\n   Compiling log v0.4.33\n   Compiling try-lock v0.2.5\n   Compiling atomic-waker v1.1.2\n   Compiling cpufeatures v0.3.0\n   Compiling primp-rustls v0.23.40\n   Compiling version_check v0.9.5\n   Compiling fnv v1.0.7\n   Compiling untrusted v0.9.0\n   Compiling tower-service v0.3.3\n   Compiling time-core v0.1.9\n   Compiling cookie v0.18.2\n   Compiling time-macros v0.2.32\n   Compiling primp-h2 v0.4.15\n   Compiling want v0.3.1\n   Compiling digest v0.11.3\n   Compiling flate2 v1.1.9\n   Compiling form_urlencoded v1.2.2\n   Compiling futures-channel v0.3.34\n   Compiling rand_core v0.10.1\n   Compiling compression-core v0.4.32\n   Compiling serde_json v1.0.151\n   Compiling serde v1.0.229\n   Compiling powerfmt v0.2.0\n   Compiling subtle v2.6.1\n   Compiling getrandom v0.4.3\n   Compiling deranged v0.5.8\n   Compiling zlib-rs v0.6.7\n   Compiling time v0.3.55\n   Compiling primp-hyper v1.9.1\n   Compiling url v2.5.8\n   Compiling num-traits v0.2.19\n   Compiling serde_derive v1.0.229\n   Compiling sync_wrapper v1.0.2\n   Compiling ipnet v2.12.1\n   Compiling tower-layer v0.3.3\n   Compiling openssl-probe v0.2.1\n   Compiling litrs v1.0.0\n   Compiling bitflags v2.13.1\n   Compiling base64 v0.22.1\n   Compiling psl-types v2.0.11\n   Compiling publicsuffix v2.3.0\n   Compiling primp-hyper-util v0.1.22\n   Compiling document-features v0.2.12\n   Compiling rustls-native-certs v0.8.4\n   Compiling tower v0.5.3\n   Compiling http-body-util v0.1.5\n   Compiling memoffset v0.9.1\n   Compiling inout v0.2.2\n   Compiling rustversion v1.0.23\n   Compiling cfg_aliases v0.2.2\n   Compiling crossbeam-utils v0.8.22\n   Compiling nix v0.31.3\n   Compiling cipher v0.5.2\n   Compiling cookie_store v0.22.1\n   Compiling chacha20 v0.10.1\n   Compiling webpki-roots v1.0.9\n   Compiling anyhow v1.0.104\n   Compiling clap_lex v1.1.0\n   Compiling heck v0.5.0\n   Compiling anstyle v1.0.14\n   Compiling pxfm v0.1.30\n   Compiling zune-core v0.5.3\n   Compiling zune-jpeg v0.5.15\n   Compiling zstd v0.13.3\n   Compiling compression-codecs v0.4.38\n   Compiling clap_builder v4.6.6\n   Compiling async-compression v0.4.43\n   Compiling moxcms v0.8.1\n   Compiling tower-http v0.6.11\n   Compiling clap_derive v4.6.4\n   Compiling rand v0.10.2\n   Compiling hmac v0.13.0\n   Compiling cpubits v0.1.1\n   Compiling bytemuck v1.25.2\n   Compiling byteorder-lite v0.1.0\n   Compiling image v0.25.10\n   Compiling arc-swap v1.9.2\n   Compiling aes v0.9.2\n   Compiling hkdf v0.13.0\n   Compiling crossbeam-queue v0.3.13\n   Compiling clap v4.6.6\n   Compiling ctr v0.10.1\n   Compiling uuid v1.24.1\n   Compiling sha2 v0.11.0\n   Compiling sha1 v0.11.0\n   Compiling md-5 v0.11.0\n   Compiling regex-lite v0.1.9\n   Compiling base64 v0.23.1\n   Compiling hex v0.4.3\n   Compiling rustls-webpki v0.103.13\n   Compiling primp-tokio-rustls v0.26.5\n   Compiling primp-hyper-rustls v0.27.9\n   Compiling primp-reqwest v0.13.4\n   Compiling primp v1.3.1 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client/vendor/primp)\n   Compiling csqtt-client v2.1.9 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client)\nwarning: constant `CLIENT_WORKER_PACKET_CHUNK` is never used\n  --> dispatcher.rs:42:18\n   |\n42 | pub(crate) const CLIENT_WORKER_PACKET_CHUNK: usize =\n   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: method `begin_with_count` is never used\n   --> dispatcher.rs:133:8\n    |\n109 | impl FastPathScheduler {\n    | ---------------------- method in this implementation\n...\n133 |     fn begin_with_count(&mut self, worker_count: usize, packet: &[u8]) -> Option<DispatchTicket> {\n    |        ^^^^^^^^^^^^^^^^\n\nwarning: method `suspend` is never used\n   --> dispatcher.rs:305:8\n    |\n253 | impl PacketReceiver {\n    | ------------------- method in this implementation\n...\n305 |     fn suspend(&self) {\n    |        ^^^^^^^\n\nwarning: `csqtt-client` (bin \"client\") generated 3 warnings\n    Finished `release` profile [optimized] target(s) in 11m 59s\n",
+    "bytes": 10366208,
+    "sha256": "736a410a8f094a21f8273fcbdb8595e66c340d7032ceeecbff72dfd0a1550d34"
+  },
+  "csqtt_arm64": {
+    "rc": 101,
+    "target": "aarch64-unknown-linux-musl",
+    "rust_std": {
+      "url": "https://static.rust-lang.org/dist/2026-07-16/rust-std-1.97.1-aarch64-unknown-linux-musl.tar.xz",
+      "sha256": "49ff0879d94e2e8e86d5e85eb15a9215943e8c78b51363d6553443598cab5d31"
+    },
+    "log_tail": "Compiling crc32fast v1.5.0\n   Compiling tokio-util v0.7.19\n   Compiling idna_adapter v1.2.2\n   Compiling http-body v1.1.0\n   Compiling tracing-core v0.1.36\n   Compiling simd-adler32 v0.3.10\n   Compiling futures-task v0.3.34\n   Compiling hashbrown v0.17.1\n   Compiling untrusted v0.7.1\n   Compiling memchr v2.8.3\n   Compiling adler2 v2.0.1\n   Compiling equivalent v1.0.2\n   Compiling cmov v0.5.4\n   Compiling ctutils v0.4.2\n   Compiling indexmap v2.14.0\n   Compiling httparse v1.10.1\n   Compiling miniz_oxide v0.8.9\n   Compiling futures-util v0.3.34\n   Compiling serde_core v1.0.229\n   Compiling tracing v0.1.44\n   Compiling idna v1.1.0\n   Compiling try-lock v0.2.5\n   Compiling fnv v1.0.7\n   Compiling atomic-waker v1.1.2\n   Compiling untrusted v0.9.0\n   Compiling log v0.4.33\n   Compiling tower-service v0.3.3\n   Compiling const-oid v0.10.2\n   Compiling primp-h2 v0.4.15\n   Compiling digest v0.11.3\n   Compiling zmij v1.0.23\n   Compiling want v0.3.1\n   Compiling flate2 v1.1.9\n   Compiling form_urlencoded v1.2.2\n   Compiling futures-channel v0.3.34\n   Compiling deranged v0.5.8\n   Compiling num-conv v0.2.2\n   Compiling powerfmt v0.2.0\n   Compiling rand_core v0.10.1\n   Compiling zlib-rs v0.6.7\n   Compiling time-core v0.1.9\n   Compiling subtle v2.6.1\n   Compiling compression-core v0.4.32\n   Compiling time v0.3.55\n   Compiling getrandom v0.4.3\n   Compiling serde_json v1.0.151\n   Compiling serde v1.0.229\n   Compiling primp-hyper v1.9.1\n   Compiling url v2.5.8\n   Compiling cookie v0.18.2\n   Compiling serde_derive v1.0.229\n   Compiling sync_wrapper v1.0.2\n   Compiling bitflags v2.13.1\n   Compiling openssl-probe v0.2.1\n   Compiling psl-types v2.0.11\n   Compiling ipnet v2.12.1\n   Compiling tower-layer v0.3.3\n   Compiling base64 v0.22.1\n   Compiling primp-hyper-util v0.1.22\n   Compiling tower v0.5.3\n   Compiling publicsuffix v2.3.0\n   Compiling rustls-native-certs v0.8.4\n   Compiling num-traits v0.2.19\n   Compiling http-body-util v0.1.5\n   Compiling inout v0.2.2\n   Compiling cpufeatures v0.3.0\n   Compiling crossbeam-utils v0.8.22\n   Compiling rustversion v1.0.23\n   Compiling cipher v0.5.2\n   Compiling memoffset v0.9.1\n   Compiling cookie_store v0.22.1\n   Compiling chacha20 v0.10.1\n   Compiling webpki-roots v1.0.9\n   Compiling anstyle v1.0.14\n   Compiling pxfm v0.1.30\n   Compiling clap_lex v1.1.0\n   Compiling zune-core v0.5.3\n   Compiling zune-jpeg v0.5.15\n   Compiling clap_builder v4.6.6\n   Compiling moxcms v0.8.1\n   Compiling clap_derive v4.6.4\n   Compiling anyhow v1.0.104\n   Compiling rand v0.10.2\n   Compiling nix v0.31.3\n   Compiling hmac v0.13.0\n   Compiling cpubits v0.1.1\n   Compiling bytemuck v1.25.2\n   Compiling byteorder-lite v0.1.0\n   Compiling image v0.25.10\n   Compiling aes v0.9.2\n   Compiling hkdf v0.13.0\n   Compiling crossbeam-queue v0.3.13\n   Compiling arc-swap v1.9.2\n   Compiling clap v4.6.6\n   Compiling ctr v0.10.1\n   Compiling sha1 v0.11.0\n   Compiling sha2 v0.11.0\n   Compiling uuid v1.24.1\n   Compiling md-5 v0.11.0\n   Compiling regex-lite v0.1.9\n   Compiling hex v0.4.3\n   Compiling base64 v0.23.1\n   Compiling zstd-safe v7.2.4\n   Compiling zstd v0.13.3\n   Compiling compression-codecs v0.4.38\n   Compiling async-compression v0.4.43\n   Compiling tower-http v0.6.11\n   Compiling aws-lc-rs v1.18.0\n   Compiling primp-rustls v0.23.40\n   Compiling rustls-webpki v0.103.13\n   Compiling primp-tokio-rustls v0.26.5\n   Compiling primp-hyper-rustls v0.27.9\n   Compiling primp-reqwest v0.13.4\n   Compiling primp v1.3.1 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client/vendor/primp)\n   Compiling csqtt-client v2.1.9 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client)\nerror[E0308]: mismatched types\n   --> udp_batch.rs:553:58\n    |\n553 |             unsafe { libc::recvmmsg(fd, messages, count, flags, timeout) }\n    |                      --------------                      ^^^^^ expected `u32`, found `i32`\n    |                      |\n    |                      arguments to this function are incorrect\n    |\nnote: function defined here\n   --> <WORKSPACE>/work/lab/csqtt/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/src/new/musl/sys/socket.rs:45:12\n    |\n 45 |     pub fn recvmmsg(\n    |            ^^^^^^^^\nhelp: you can convert an `i32` to a `u32` and panic if the converted value doesn't fit\n    |\n553 |             unsafe { libc::recvmmsg(fd, messages, count, flags.try_into().unwrap(), timeout) }\n    |                                                               ++++++++++++++++++++\n\nerror[E0308]: mismatched types\n   --> udp_batch.rs:577:58\n    |\n577 |             unsafe { libc::sendmmsg(fd, messages, count, flags) }\n    |                      --------------                      ^^^^^ expected `u32`, found `i32`\n    |                      |\n    |                      arguments to this function are incorrect\n    |\nnote: function defined here\n   --> <WORKSPACE>/work/lab/csqtt/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.189/src/new/musl/sys/socket.rs:38:12\n    |\n 38 |     pub fn sendmmsg(\n    |            ^^^^^^^^\nhelp: you can convert an `i32` to a `u32` and panic if the converted value doesn't fit\n    |\n577 |             unsafe { libc::sendmmsg(fd, messages, count, flags.try_into().unwrap()) }\n    |                                                               ++++++++++++++++++++\n\nerror: cannot construct `msghdr` with struct literal syntax due to private fields\n   --> udp_batch.rs:643:22\n    |\n643 |             msg_hdr: libc::msghdr {\n    |                      ^^^^^^^^^^^^\n    |\n    = note: ...and other private fields `__pad1` and `__pad2` that were not provided\n\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `csqtt-client` (bin \"client\") due to 3 previous errors\n"
+  },
+  "csqtt_unit_tamper": {
+    "rc": 0,
+    "out": "\nrunning 2 tests\ntest obfs::tests::video_wire_rejects_every_single_byte_tamper ... ok\ntest obfs::tests::authenticated_audio_region_rejects_every_single_byte_tamper ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.01s\n\n",
+    "err_tail": "nloaded bit-vec v0.8.0\n  Downloaded fastrand v2.5.0\n  Downloaded getrandom v0.3.4\n  Downloaded linux-raw-sys v0.12.1\n  Downloaded ppv-lite86 v0.2.21\n  Downloaded proptest v1.11.0\n  Downloaded quick-error v1.2.3\n  Downloaded rand v0.9.5\n  Downloaded rand_chacha v0.9.0\n  Downloaded rand_core v0.9.5\n  Downloaded rand_xorshift v0.4.0\n  Downloaded regex-syntax v0.8.11\n  Downloaded rustix v1.1.4\n  Downloaded rusty-fork v0.3.1\n  Downloaded tempfile v3.27.0\n  Downloaded unarray v0.1.4\n  Downloaded wait-timeout v0.2.1\n  Downloaded zerocopy v0.8.56\n    Blocking waiting for file lock on build directory\n   Compiling libc v0.2.189\n   Compiling zerofrom v0.1.8\n   Compiling yoke v0.8.3\n   Compiling zerovec v0.11.7\n   Compiling zstd-sys v2.0.16+zstd.1.5.7\n   Compiling errno v0.3.14\n   Compiling signal-hook-registry v1.4.8\n   Compiling socket2 v0.6.5\n   Compiling mio v1.2.2\n   Compiling tinystr v0.8.4\n   Compiling icu_locale_core v2.3.0\n   Compiling tokio v1.53.1\n   Compiling zerotrie v0.2.5\n   Compiling potential_utf v0.1.6\n   Compiling icu_collections v2.3.0\n   Compiling zeroize v1.9.0\n   Compiling icu_provider v2.3.0\n   Compiling aws-lc-sys v0.44.0\n   Compiling zstd-safe v7.2.4\n   Compiling icu_properties v2.3.0\n   Compiling icu_normalizer v2.3.0\n   Compiling zstd v0.13.3\n   Compiling rustls-pki-types v1.15.1\n   Compiling bitflags v2.13.1\n   Compiling tokio-util v0.7.19\n   Compiling crc32fast v1.5.0\n   Compiling idna_adapter v1.2.2\n   Compiling getrandom v0.3.4\n   Compiling idna v1.1.0\n   Compiling getrandom v0.4.3\n   Compiling primp-h2 v0.4.15\n   Compiling flate2 v1.1.9\n   Compiling zerocopy v0.8.56\n   Compiling rustix v1.1.4\n   Compiling compression-codecs v0.4.38\n   Compiling primp-hyper v1.9.1\n   Compiling url v2.5.8\n   Compiling rand_core v0.9.5\n   Compiling linux-raw-sys v0.12.1\n   Compiling primp-hyper-util v0.1.22\n   Compiling publicsuffix v2.3.0\n   Compiling tower v0.5.3\n   Compiling rustls-native-certs v0.8.4\n   Compiling serde v1.0.229\n   Compiling async-compression v0.4.43\n   Compiling fastrand v2.5.0\n   Compiling crossbeam-utils v0.8.22\n   Compiling tempfile v3.27.0\n   Compiling tower-http v0.6.11\n   Compiling ppv-lite86 v0.2.21\n   Compiling cookie_store v0.22.1\n   Compiling webpki-roots v1.0.9\n   Compiling wait-timeout v0.2.1\n   Compiling bit-vec v0.8.0\n   Compiling quick-error v1.2.3\n   Compiling rusty-fork v0.3.1\n   Compiling bit-set v0.8.0\n   Compiling rand v0.10.2\n   Compiling rand_chacha v0.9.0\n   Compiling rand v0.9.5\n   Compiling rand_xorshift v0.4.0\n   Compiling regex-syntax v0.8.11\n   Compiling unarray v0.1.4\n   Compiling proptest v1.11.0\n   Compiling crossbeam-queue v0.3.13\n   Compiling nix v0.31.3\n   Compiling arc-swap v1.9.2\n   Compiling clap v4.6.6\n   Compiling uuid v1.24.1\n   Compiling aws-lc-rs v1.18.0\n   Compiling primp-rustls v0.23.40\n   Compiling rustls-webpki v0.103.13\n   Compiling primp-tokio-rustls v0.26.5\n   Compiling primp-hyper-rustls v0.27.9\n   Compiling primp-reqwest v0.13.4\n   Compiling primp v1.3.1 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client/vendor/primp)\n   Compiling csqtt-client v2.1.9 (<WORKSPACE>/work/repos/amurcanov__csqtt/rust-client)\n    Finished `release` profile [optimized] target(s) in 12m 56s\n     Running unittests main.rs (<WORKSPACE>/work/lab/csqtt/target/release/deps/client-b1fccea91a546e62)\n",
+    "scope": "upstream two single-byte tamper unit tests, not independent crypto audit"
+  },
+  "csqtt_arm64_lab_patch": {
+    "rc": 0,
+    "target": "aarch64-unknown-linux-musl",
+    "rust_std": {
+      "url": "https://static.rust-lang.org/dist/2026-07-16/rust-std-1.97.1-aarch64-unknown-linux-musl.tar.xz",
+      "sha256": "49ff0879d94e2e8e86d5e85eb15a9215943e8c78b51363d6553443598cab5d31"
+    },
+    "log_tail": "    Blocking waiting for file lock on build directory\n   Compiling zstd-sys v2.0.16+zstd.1.5.7\n   Compiling zstd-safe v7.2.4\n   Compiling zstd v0.13.3\n   Compiling primp-rustls v0.23.40\n   Compiling compression-codecs v0.4.38\n   Compiling async-compression v0.4.43\n   Compiling tower-http v0.6.11\n   Compiling primp-tokio-rustls v0.26.5\n   Compiling primp-hyper-rustls v0.27.9\n   Compiling primp-reqwest v0.13.4\n   Compiling primp v1.3.1 (<WORKSPACE>/work/lab/csqtt/port-probe/rust-client/vendor/primp)\n   Compiling csqtt-client v2.1.9 (<WORKSPACE>/work/lab/csqtt/port-probe/rust-client)\nwarning: constant `CLIENT_WORKER_PACKET_CHUNK` is never used\n  --> dispatcher.rs:42:18\n   |\n42 | pub(crate) const CLIENT_WORKER_PACKET_CHUNK: usize =\n   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: method `begin_with_count` is never used\n   --> dispatcher.rs:133:8\n    |\n109 | impl FastPathScheduler {\n    | ---------------------- method in this implementation\n...\n133 |     fn begin_with_count(&mut self, worker_count: usize, packet: &[u8]) -> Option<DispatchTicket> {\n    |        ^^^^^^^^^^^^^^^^\n\nwarning: method `suspend` is never used\n   --> dispatcher.rs:305:8\n    |\n253 | impl PacketReceiver {\n    | ------------------- method in this implementation\n...\n305 |     fn suspend(&self) {\n    |        ^^^^^^^\n\nwarning: `csqtt-client` (bin \"client\") generated 3 warnings\n    Finished `release` profile [optimized] target(s) in 8m 25s\n",
+    "bytes": 8592288,
+    "sha256": "d9beeb126f785cf40a1bd63db7460a1082dae2619093ee3ac8a05c4c55a55bca",
+    "elf": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           AArch64\n  Version:                           0x1\n  Entry point address:               0x4194d8\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          8591136 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         6\n  Size of section headers:           64 (bytes)\n  Number of section headers:         18\n  Section header string table index: 17\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  LOAD           0x0000000000000000 0x0000000000400000 0x0000000000400000\n                 0x00000000007f9aa0 0x00000000007f9aa0  R E    0x10000\n  LOAD           0x00000000007fcdf8 0x0000000000c0cdf8 0x0000000000c0cdf8\n                 0x0000000000034828 0x0000000000038e30  RW     0x10000\n  TLS            0x00000000007fcdf8 0x0000000000c0cdf8 0x0000000000c0cdf8\n                 0x0000000000000070 0x00000000000000f8  R      0x8\n  GNU_EH_FRAME   0x0000000000735e3c 0x0000000000b35e3c 0x0000000000b35e3c\n                 0x000000000001110c 0x000000000001110c  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x10\n  GNU_RELRO      0x00000000007fcdf8 0x0000000000c0cdf8 0x0000000000c0cdf8\n                 0x0000000000033208 0x0000000000033208  R      0x1\n\n Section to Segment mapping:\n  Segment Sections...\n   00     .init .text .fini .rodata .eh_frame_hdr .eh_frame .gcc_except_table \n   01     .tdata .init_array .fini_array .data.rel.ro .got .data .bss \n   02     .tdata .tbss \n   03     .eh_frame_hdr \n   04     \n   05     .tdata .init_array .fini_array .data.rel.ro .got \n",
+    "startup": {
+      "rc": 2,
+      "out": "error: unexpected argument '--help' found\n\nUsage: client [OPTIONS]\n",
+      "scope": "CLI parser only; --help disabled in upstream clap build"
+    },
+    "scope": "Lab-only copied source plus three-site libc ABI patch. Not applied to KAS or upstream. No real router/network acceptance.",
+    "patch_sha256": "5df2248cd709ba3b228a7caf9141db4cab55bef712331dc7251c8760b8d901fa",
+    "patch": "--- a/rust-client/udp_batch.rs\n+++ b/rust-client/udp_batch.rs\n@@ -550,7 +550,7 @@\n         }\n         #[cfg(target_os = \"linux\")]\n         {\n-            unsafe { libc::recvmmsg(fd, messages, count, flags, timeout) }\n+            unsafe { libc::recvmmsg(fd, messages, count, flags as _, timeout) }\n         }\n     }\n \n@@ -574,7 +574,7 @@\n         }\n         #[cfg(target_os = \"linux\")]\n         {\n-            unsafe { libc::sendmmsg(fd, messages, count, flags) }\n+            unsafe { libc::sendmmsg(fd, messages, count, flags as _) }\n         }\n     }\n \n@@ -639,18 +639,12 @@\n     }\n \n     fn mmsg_header(iovec: *mut libc::iovec) -> libc::mmsghdr {\n-        libc::mmsghdr {\n-            msg_hdr: libc::msghdr {\n-                msg_name: ptr::null_mut(),\n-                msg_namelen: 0,\n-                msg_iov: iovec,\n-                msg_iovlen: 1,\n-                msg_control: ptr::null_mut(),\n-                msg_controllen: 0,\n-                msg_flags: 0,\n-            },\n-            msg_len: 0,\n-        }\n+        // Lab portability probe: libc POD fields permit all-zero initialization.\n+        // This initializes musl's private padding without naming those fields.\n+        let mut header: libc::mmsghdr = unsafe { std::mem::zeroed() };\n+        header.msg_hdr.msg_iov = iovec;\n+        header.msg_hdr.msg_iovlen = 1;\n+        header\n     }\n }\n \n",
+    "upstream_source_file_sha256": "53d586a44f42edfa55b652d8e3a7a7cbb2007e5ce4dfd7276a09094d4a832e1a",
+    "patched_source_file_sha256": "a7c60998752bf60c3ccb68b72773e0b9a8b4576db51ff13a4b2a3a7ba8be220b"
+  },
+  "rust_toolchain": [
+    {
+      "component": "rustc",
+      "url": "https://static.rust-lang.org/dist/2026-07-16/rustc-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "9819d0a32d56bd339585319c80260e332779f5541fd66838ab7e016d6c814819",
+      "dir": "rustc-1.97.1-x86_64-unknown-linux-gnu"
+    },
+    {
+      "component": "cargo",
+      "url": "https://static.rust-lang.org/dist/2026-07-16/cargo-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "e1be5f5ff7f7f80ca506fb65770b759edbdc6d303781ed71c5de8ec8a8394779",
+      "dir": "cargo-1.97.1-x86_64-unknown-linux-gnu"
+    },
+    {
+      "component": "rust-std",
+      "url": "https://static.rust-lang.org/dist/2026-07-16/rust-std-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "1c1e704ae80126b7de34f72ea2825f7fd01736dec20732faed47374b95282fba",
+      "dir": "rust-std-1.97.1-x86_64-unknown-linux-gnu"
+    }
+  ],
+  "recipe_sha256": {
+    "build_wdtt.py": "780d78c04b64c90b293e933e85f765776c665f44792208514bad103b5d948aa9",
+    "build_extra.py": "0a14506a3379a5b0ff118d4e0cb4311da4733a206f261531eac249e04d9651c8",
+    "build_obfuscator.py": "302509df1caf51b50f7af7baa38070bbb07944ff61583ba4d95bed114974453b",
+    "build_csqtt.py": "96a578ade0a544449584bab46e32d725a1a2f72f60fa6fba30ceb420c122414b",
+    "build_csqtt_arm64.py": "4073fd26e05e4c8eded42f77052865b4720bd5ecaa5c76065dd6be0c3243d1ce",
+    "probe_csqtt_musl_patch.py": "5dc03206d660218b60a8f20d4f29d4a3b14ec6d1d2df66ab2f846e9b649ee432",
+    "test_csqtt.py": "423fe658c55ee8cd8fb4f18ebda4d730e7bd60336dfea027461edba7536e7c8f",
+    "run_socks_probe.py": "65580fc1e4ddeeef5bb546f33e58c4d0f7ff9d99ca3d73c2beda343844636862",
+    "socks_probe.go": "6a43d1b48cea9ae61060128f8720cea197153ef237a6852cd997fbedc74a8c48",
+    "probe_runtime.py": "956a6f46e3d535aa71f1debaea99ed3b5068d1dc5073854653b9702ef170f0b3",
+    "capture_elf.py": "10942b24f8a35f035825766249c48734526b408709006ac29452c8cdffc50097",
+    "inspect_go_deps.py": "0f86e1301437600787610368f065160aa7413a56e67a6ff3e3beefe32058ff52"
+  },
+  "source_tree_status": {
+    "amurcanov/csqtt": "",
+    "amurcanov/proxy-turn-vk-android": "",
+    "ClusterM/wg-obfuscator": "",
+    "Ground-Zerro/Phobos": "",
+    "hoaxisr/awg-manager": "",
+    "hoaxisr/proxy-turn-vk-android": "",
+    "ildarmaga/pwdtt-client": "",
+    "ildarmaga/wdtt": "",
+    "Ivan4537/WDTT-Plus": "",
+    "kkvoru/wdtt-server-entware": "",
+    "luminescq/focsq": "",
+    "MetaCubeX/mihomo": "",
+    "SanityProtocol/swg-panel": "",
+    "saymer-alt/amnezia-mihomo-gateway": "",
+    "saymer-alt/entware-go": "",
+    "saymer-alt/keenetic-auto-setup": "?? docs/research/",
+    "saymer-alt/keenetic-knowledge-base": "",
+    "saymer-alt/link-generators": "",
+    "saymer-alt/mihomo-auto-build": "",
+    "saymer-alt/vps-gateway-bootstrap": "",
+    "saymer-alt/web4core": "",
+    "SpaceNeuroX/proxy-turn-vk-android": ""
+  },
+  "unverified": [
+    "Keenetic/VPS runtime",
+    "actual VK TURN allocation/auth/refresh",
+    "DPI/whitelist bypass",
+    "CPU/RSS/throughput",
+    "packet-level no-direct-leak",
+    "NDMS/RCI lifecycle",
+    "full transitive license compatibility",
+    "cross-host reproducible build"
+  ],
+  "rust_channel_manifest_sha256": "03569b1886ceb5c05276b50c8431ab111de944cd6140fe1fa7d821dd8e0f29cf",
+  "elf_probes": {
+    "go_version": {
+      "rc": 0,
+      "out": "go version go1.27.0 windows/amd64\n",
+      "err": ""
+    },
+    "kernel": {
+      "rc": 0,
+      "out": "Linux 6.18.40.1-microsoft-standard-WSL2\n",
+      "err": ""
+    },
+    "gcc": {
+      "rc": 0,
+      "out": "gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+      "err": ""
+    },
+    "wt-client-amd64": {
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x48ec20\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          344 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         5\n  Size of section headers:           64 (bytes)\n  Number of section headers:         14\n  Section header string table index: 13\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000400040 0x0000000000400040\n                 0x0000000000000118 0x0000000000000118  R      0x1000\n  LOAD           0x0000000000000000 0x0000000000400000 0x0000000000400000\n                 0x00000000007468d1 0x00000000007468d1  R E    0x1000\n  LOAD           0x0000000000747000 0x0000000000b47000 0x0000000000b47000\n                 0x00000000007e99d0 0x00000000007e99d0  R      0x1000\n  LOAD           0x0000000000f31000 0x0000000001331000 0x0000000001331000\n                 0x00000000000c5080 0x000000000210f9d0  RW     0x1000\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x8\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .text \n   02     .rodata .gopclntab .go.type .go.func \n   03     .go.buildinfo .go.fipsinfo .go.module .noptrdata .data .bss .noptrbss \n   04     \n",
+        "err": ""
+      },
+      "go_buildinfo": {
+        "rc": 0,
+        "out": "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-amd64: go1.27.0\n\tpath\twg-turn-client\n\tmod\twg-turn-client\t(devel)\t\n\tdep\tgithub.com/andybalholm/brotli\tv1.2.0\th1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=\n\tdep\tgithub.com/armon/go-socks5\tv0.0.0-20160902184237-e75332964ef5\th1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=\n\tdep\tgithub.com/bdandy/go-errors\tv1.2.2\th1:WdFv/oukjTJCLa79UfkGmwX7ZxONAihKu4V0mLIs11Q=\n\tdep\tgithub.com/bdandy/go-socks4\tv1.2.3\th1:Q6Y2heY1GRjCtHbmlKfnwrKVU/k81LS8mRGLRlmDlic=\n\tdep\tgithub.com/bogdanfinn/fhttp\tv0.6.8\th1:LiQyHOY3i0QoxxNB7nq27/nGNNbtPj0fuBPozhR7Ws4=\n\tdep\tgithub.com/bogdanfinn/quic-go-utls\tv1.0.9-utls\th1:tV6eDEiRbRCcepALSzxR94JUVD3N3ACIiRLgyc2Ep8s=\n\tdep\tgithub.com/bogdanfinn/tls-client\tv1.14.0\th1:vyk7Cn4BIvLAGVuMfb0tP22OqogfO1lYamquQNEZU1A=\n\tdep\tgithub.com/bogdanfinn/utls\tv1.7.7-barnius\th1:OuJ497cc7F3yKNVHRsYPQdGggmk5x6+V5ZlrCR7fOLU=\n\tdep\tgithub.com/bogdanfinn/websocket\tv1.5.5-barnius\th1:bY+qnxpai1qe7Jmjx+Sds/cmOSpuuLoR8x61rWltjOI=\n\tdep\tgithub.com/cbeuw/connutil\tv1.0.1\th1:LWuNYjwm7JEDYG/ISAO1TfU4G+q2dA5NhR97eq2roCA=\n\tdep\tgithub.com/google/btree\tv1.1.2\th1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/hoaxisr/awg-manager/awgmproto\tv0.1.1\th1:DMlHh9+dNe6/U+2LUnH+vmM8h6CqFCf1YvHCN/bU1ns=\n\tdep\tgithub.com/klauspost/compress\tv1.18.2\th1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=\n\tdep\tgithub.com/pion/dtls/v3\tv3.1.2\th1:gqEdOUXLtCGW+afsBLO0LtDD8GnuBBjEy6HRtyofZTc=\n\tdep\tgithub.com/pion/logging\tv0.2.4\th1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=\n\tdep\tgithub.com/pion/randutil\tv0.1.0\th1:CFG1UdESneORglEsnimhUjf33Rwjubwj6xfiOXBa3mA=\n\tdep\tgithub.com/pion/stun/v3\tv3.1.1\th1:CkQxveJ4xGQjulGSROXbXq94TAWu8gIX2dT+ePhUkqw=\n\tdep\tgithub.com/pion/transport/v4\tv4.0.1\th1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=\n\tdep\tgithub.com/pion/turn/v5\tv5.0.2\th1:GHlDk+fiegz+yibb3ch+tK+iPFokoVWiM+aVJakySqA=\n\tdep\tgithub.com/quic-go/qpack\tv0.6.0\th1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=\n\tdep\tgithub.com/tam7t/hpkp\tv0.0.0-20160821193359-2b70b4024ed5\th1:YqAladjX7xpA6BM04leXMWAEjS0mTZ5kUU9KRBriQJc=\n\tdep\tgithub.com/wlynxg/anet\tv0.0.5\th1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=\n\tdep\tgolang.org/x/crypto\tv0.46.0\th1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=\n\tdep\tgolang.org/x/net\tv0.48.0\th1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=\n\tdep\tgolang.org/x/sys\tv0.45.0\th1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=\n\tdep\tgolang.org/x/text\tv0.36.0\th1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=\n\tdep\tgolang.org/x/time\tv0.10.0\th1:3usCWA8tQn0L8+hFJQNgzpWbd89begxN66o1Ojdn5L4=\n\tdep\tgolang.zx2c4.com/wireguard\tv0.0.0-20260522210424-ecfc5a8d5446\th1:cqHQ3AycTHvM2R7ikgyX57D+XvtcSnGylsLkOVhta/w=\n\tdep\tgvisor.dev/gvisor\tv0.0.0-20250503011706-39ed1f5ac29c\th1:m/r7OM+Y2Ty1sgBQ7Qb27VgIMBW8ZZhT4gLnUyDIhzI=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+        "err": ""
+      }
+    },
+    "wt-client-arm64": {
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           AArch64\n  Version:                           0x1\n  Entry point address:               0x988c0\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          344 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         5\n  Size of section headers:           64 (bytes)\n  Number of section headers:         14\n  Section header string table index: 13\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000010040 0x0000000000010040\n                 0x0000000000000118 0x0000000000000118  R      0x10000\n  LOAD           0x0000000000000000 0x0000000000010000 0x0000000000010000\n                 0x0000000000644344 0x0000000000644344  R E    0x10000\n  LOAD           0x0000000000650000 0x0000000000660000 0x0000000000660000\n                 0x00000000007bc9e0 0x00000000007bc9e0  R      0x10000\n  LOAD           0x0000000000e10000 0x0000000000e20000 0x0000000000e20000\n                 0x00000000000c50e0 0x00000000021164a0  RW     0x10000\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x8\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .text \n   02     .rodata .gopclntab .go.type .go.func \n   03     .go.buildinfo .go.fipsinfo .go.module .noptrdata .data .bss .noptrbss \n   04     \n",
+        "err": ""
+      },
+      "go_buildinfo": {
+        "rc": 0,
+        "out": "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-arm64: go1.27.0\n\tpath\twg-turn-client\n\tmod\twg-turn-client\t(devel)\t\n\tdep\tgithub.com/andybalholm/brotli\tv1.2.0\th1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=\n\tdep\tgithub.com/armon/go-socks5\tv0.0.0-20160902184237-e75332964ef5\th1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=\n\tdep\tgithub.com/bdandy/go-errors\tv1.2.2\th1:WdFv/oukjTJCLa79UfkGmwX7ZxONAihKu4V0mLIs11Q=\n\tdep\tgithub.com/bdandy/go-socks4\tv1.2.3\th1:Q6Y2heY1GRjCtHbmlKfnwrKVU/k81LS8mRGLRlmDlic=\n\tdep\tgithub.com/bogdanfinn/fhttp\tv0.6.8\th1:LiQyHOY3i0QoxxNB7nq27/nGNNbtPj0fuBPozhR7Ws4=\n\tdep\tgithub.com/bogdanfinn/quic-go-utls\tv1.0.9-utls\th1:tV6eDEiRbRCcepALSzxR94JUVD3N3ACIiRLgyc2Ep8s=\n\tdep\tgithub.com/bogdanfinn/tls-client\tv1.14.0\th1:vyk7Cn4BIvLAGVuMfb0tP22OqogfO1lYamquQNEZU1A=\n\tdep\tgithub.com/bogdanfinn/utls\tv1.7.7-barnius\th1:OuJ497cc7F3yKNVHRsYPQdGggmk5x6+V5ZlrCR7fOLU=\n\tdep\tgithub.com/bogdanfinn/websocket\tv1.5.5-barnius\th1:bY+qnxpai1qe7Jmjx+Sds/cmOSpuuLoR8x61rWltjOI=\n\tdep\tgithub.com/cbeuw/connutil\tv1.0.1\th1:LWuNYjwm7JEDYG/ISAO1TfU4G+q2dA5NhR97eq2roCA=\n\tdep\tgithub.com/google/btree\tv1.1.2\th1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/hoaxisr/awg-manager/awgmproto\tv0.1.1\th1:DMlHh9+dNe6/U+2LUnH+vmM8h6CqFCf1YvHCN/bU1ns=\n\tdep\tgithub.com/klauspost/compress\tv1.18.2\th1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=\n\tdep\tgithub.com/pion/dtls/v3\tv3.1.2\th1:gqEdOUXLtCGW+afsBLO0LtDD8GnuBBjEy6HRtyofZTc=\n\tdep\tgithub.com/pion/logging\tv0.2.4\th1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=\n\tdep\tgithub.com/pion/randutil\tv0.1.0\th1:CFG1UdESneORglEsnimhUjf33Rwjubwj6xfiOXBa3mA=\n\tdep\tgithub.com/pion/stun/v3\tv3.1.1\th1:CkQxveJ4xGQjulGSROXbXq94TAWu8gIX2dT+ePhUkqw=\n\tdep\tgithub.com/pion/transport/v4\tv4.0.1\th1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=\n\tdep\tgithub.com/pion/turn/v5\tv5.0.2\th1:GHlDk+fiegz+yibb3ch+tK+iPFokoVWiM+aVJakySqA=\n\tdep\tgithub.com/quic-go/qpack\tv0.6.0\th1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=\n\tdep\tgithub.com/tam7t/hpkp\tv0.0.0-20160821193359-2b70b4024ed5\th1:YqAladjX7xpA6BM04leXMWAEjS0mTZ5kUU9KRBriQJc=\n\tdep\tgithub.com/wlynxg/anet\tv0.0.5\th1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=\n\tdep\tgolang.org/x/crypto\tv0.46.0\th1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=\n\tdep\tgolang.org/x/net\tv0.48.0\th1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=\n\tdep\tgolang.org/x/sys\tv0.45.0\th1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=\n\tdep\tgolang.org/x/text\tv0.36.0\th1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=\n\tdep\tgolang.org/x/time\tv0.10.0\th1:3usCWA8tQn0L8+hFJQNgzpWbd89begxN66o1Ojdn5L4=\n\tdep\tgolang.zx2c4.com/wireguard\tv0.0.0-20260522210424-ecfc5a8d5446\th1:cqHQ3AycTHvM2R7ikgyX57D+XvtcSnGylsLkOVhta/w=\n\tdep\tgvisor.dev/gvisor\tv0.0.0-20250503011706-39ed1f5ac29c\th1:m/r7OM+Y2Ty1sgBQ7Qb27VgIMBW8ZZhT4gLnUyDIhzI=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=arm64\n\tbuild\tGOOS=linux\n\tbuild\tGOARM64=v8.0\n",
+        "err": ""
+      }
+    },
+    "wt-client-mipsle": {
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 01 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF32\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           MIPS R3000\n  Version:                           0x1\n  Entry point address:               0xd926c\n  Start of program headers:          52 (bytes into file)\n  Start of section headers:          244 (bytes into file)\n  Flags:                             0x50001004, cpic, o32, mips32\n  Size of this header:               52 (bytes)\n  Size of program headers:           32 (bytes)\n  Number of program headers:         6\n  Size of section headers:           40 (bytes)\n  Number of section headers:         16\n  Section header string table index: 15\n\nProgram Headers:\n  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n  PHDR           0x000034 0x00010034 0x00010034 0x000c0 0x000c0 R   0x10000\n  LOAD           0x000000 0x00010000 0x00010000 0x94ca78 0x94ca78 R E 0x10000\n  LOAD           0x950000 0x00960000 0x00960000 0x712460 0x712460 R   0x10000\n  LOAD           0x1070000 0x01080000 0x01080000 0xb4860 0x20e7958 RW  0x10000\n  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x4\n  ABIFLAGS       0x000fe8 0x00010fe8 0x00010fe8 0x00018 0x00018 R   0x8\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .MIPS.abiflags .text \n   02     .rodata .gopclntab .go.type .go.func \n   03     .go.buildinfo .go.fipsinfo .go.module .noptrdata .data .bss .noptrbss \n   04     \n   05     .MIPS.abiflags \nAttribute Section: gnu\nFile Attributes\n  Tag_GNU_MIPS_ABI_FP: Soft float\n\nMIPS ABI Flags Version: 0\n\nISA: MIPS32\nGPR size: 32\nCPR1 size: 32\nCPR2 size: 0\nFP ABI: Soft float\nISA Extension: None\nASEs:\n\tNone\nFLAGS 1: 00000000\nFLAGS 2: 00000000\n",
+        "err": ""
+      },
+      "go_buildinfo": {
+        "rc": 0,
+        "out": "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-mipsle: go1.27.0\n\tpath\twg-turn-client\n\tmod\twg-turn-client\t(devel)\t\n\tdep\tgithub.com/andybalholm/brotli\tv1.2.0\th1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=\n\tdep\tgithub.com/armon/go-socks5\tv0.0.0-20160902184237-e75332964ef5\th1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=\n\tdep\tgithub.com/bdandy/go-errors\tv1.2.2\th1:WdFv/oukjTJCLa79UfkGmwX7ZxONAihKu4V0mLIs11Q=\n\tdep\tgithub.com/bdandy/go-socks4\tv1.2.3\th1:Q6Y2heY1GRjCtHbmlKfnwrKVU/k81LS8mRGLRlmDlic=\n\tdep\tgithub.com/bogdanfinn/fhttp\tv0.6.8\th1:LiQyHOY3i0QoxxNB7nq27/nGNNbtPj0fuBPozhR7Ws4=\n\tdep\tgithub.com/bogdanfinn/quic-go-utls\tv1.0.9-utls\th1:tV6eDEiRbRCcepALSzxR94JUVD3N3ACIiRLgyc2Ep8s=\n\tdep\tgithub.com/bogdanfinn/tls-client\tv1.14.0\th1:vyk7Cn4BIvLAGVuMfb0tP22OqogfO1lYamquQNEZU1A=\n\tdep\tgithub.com/bogdanfinn/utls\tv1.7.7-barnius\th1:OuJ497cc7F3yKNVHRsYPQdGggmk5x6+V5ZlrCR7fOLU=\n\tdep\tgithub.com/bogdanfinn/websocket\tv1.5.5-barnius\th1:bY+qnxpai1qe7Jmjx+Sds/cmOSpuuLoR8x61rWltjOI=\n\tdep\tgithub.com/cbeuw/connutil\tv1.0.1\th1:LWuNYjwm7JEDYG/ISAO1TfU4G+q2dA5NhR97eq2roCA=\n\tdep\tgithub.com/google/btree\tv1.1.2\th1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/hoaxisr/awg-manager/awgmproto\tv0.1.1\th1:DMlHh9+dNe6/U+2LUnH+vmM8h6CqFCf1YvHCN/bU1ns=\n\tdep\tgithub.com/klauspost/compress\tv1.18.2\th1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=\n\tdep\tgithub.com/pion/dtls/v3\tv3.1.2\th1:gqEdOUXLtCGW+afsBLO0LtDD8GnuBBjEy6HRtyofZTc=\n\tdep\tgithub.com/pion/logging\tv0.2.4\th1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=\n\tdep\tgithub.com/pion/randutil\tv0.1.0\th1:CFG1UdESneORglEsnimhUjf33Rwjubwj6xfiOXBa3mA=\n\tdep\tgithub.com/pion/stun/v3\tv3.1.1\th1:CkQxveJ4xGQjulGSROXbXq94TAWu8gIX2dT+ePhUkqw=\n\tdep\tgithub.com/pion/transport/v4\tv4.0.1\th1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=\n\tdep\tgithub.com/pion/turn/v5\tv5.0.2\th1:GHlDk+fiegz+yibb3ch+tK+iPFokoVWiM+aVJakySqA=\n\tdep\tgithub.com/quic-go/qpack\tv0.6.0\th1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=\n\tdep\tgithub.com/tam7t/hpkp\tv0.0.0-20160821193359-2b70b4024ed5\th1:YqAladjX7xpA6BM04leXMWAEjS0mTZ5kUU9KRBriQJc=\n\tdep\tgithub.com/wlynxg/anet\tv0.0.5\th1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=\n\tdep\tgolang.org/x/crypto\tv0.46.0\th1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=\n\tdep\tgolang.org/x/net\tv0.48.0\th1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=\n\tdep\tgolang.org/x/sys\tv0.45.0\th1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=\n\tdep\tgolang.org/x/text\tv0.36.0\th1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=\n\tdep\tgolang.org/x/time\tv0.10.0\th1:3usCWA8tQn0L8+hFJQNgzpWbd89begxN66o1Ojdn5L4=\n\tdep\tgolang.zx2c4.com/wireguard\tv0.0.0-20260522210424-ecfc5a8d5446\th1:cqHQ3AycTHvM2R7ikgyX57D+XvtcSnGylsLkOVhta/w=\n\tdep\tgvisor.dev/gvisor\tv0.0.0-20250503011706-39ed1f5ac29c\th1:m/r7OM+Y2Ty1sgBQ7Qb27VgIMBW8ZZhT4gLnUyDIhzI=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=mipsle\n\tbuild\tGOOS=linux\n\tbuild\tGOMIPS=softfloat\n",
+        "err": ""
+      }
+    },
+    "wt-client-mips": {
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 01 02 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF32\n  Data:                              2's complement, big endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              EXEC (Executable file)\n  Machine:                           MIPS R3000\n  Version:                           0x1\n  Entry point address:               0xd9844\n  Start of program headers:          52 (bytes into file)\n  Start of section headers:          244 (bytes into file)\n  Flags:                             0x50001004, cpic, o32, mips32\n  Size of this header:               52 (bytes)\n  Size of program headers:           32 (bytes)\n  Number of program headers:         6\n  Size of section headers:           40 (bytes)\n  Number of section headers:         16\n  Section header string table index: 15\n\nProgram Headers:\n  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n  PHDR           0x000034 0x00010034 0x00010034 0x000c0 0x000c0 R   0x10000\n  LOAD           0x000000 0x00010000 0x00010000 0x94dfd8 0x94dfd8 R E 0x10000\n  LOAD           0x950000 0x00960000 0x00960000 0x712950 0x712950 R   0x10000\n  LOAD           0x1070000 0x01080000 0x01080000 0xb4840 0x20e7938 RW  0x10000\n  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x4\n  ABIFLAGS       0x000fe8 0x00010fe8 0x00010fe8 0x00018 0x00018 R   0x8\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .MIPS.abiflags .text \n   02     .rodata .gopclntab .go.type .go.func \n   03     .go.buildinfo .go.fipsinfo .go.module .noptrdata .data .bss .noptrbss \n   04     \n   05     .MIPS.abiflags \nAttribute Section: gnu\nFile Attributes\n  Tag_GNU_MIPS_ABI_FP: Soft float\n\nMIPS ABI Flags Version: 0\n\nISA: MIPS32\nGPR size: 32\nCPR1 size: 32\nCPR2 size: 0\nFP ABI: Soft float\nISA Extension: None\nASEs:\n\tNone\nFLAGS 1: 00000000\nFLAGS 2: 00000000\n",
+        "err": ""
+      },
+      "go_buildinfo": {
+        "rc": 0,
+        "out": "<WORKSPACE>\\work\\lab\\wdtt\\wt-client-linux-mips: go1.27.0\n\tpath\twg-turn-client\n\tmod\twg-turn-client\t(devel)\t\n\tdep\tgithub.com/andybalholm/brotli\tv1.2.0\th1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=\n\tdep\tgithub.com/armon/go-socks5\tv0.0.0-20160902184237-e75332964ef5\th1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=\n\tdep\tgithub.com/bdandy/go-errors\tv1.2.2\th1:WdFv/oukjTJCLa79UfkGmwX7ZxONAihKu4V0mLIs11Q=\n\tdep\tgithub.com/bdandy/go-socks4\tv1.2.3\th1:Q6Y2heY1GRjCtHbmlKfnwrKVU/k81LS8mRGLRlmDlic=\n\tdep\tgithub.com/bogdanfinn/fhttp\tv0.6.8\th1:LiQyHOY3i0QoxxNB7nq27/nGNNbtPj0fuBPozhR7Ws4=\n\tdep\tgithub.com/bogdanfinn/quic-go-utls\tv1.0.9-utls\th1:tV6eDEiRbRCcepALSzxR94JUVD3N3ACIiRLgyc2Ep8s=\n\tdep\tgithub.com/bogdanfinn/tls-client\tv1.14.0\th1:vyk7Cn4BIvLAGVuMfb0tP22OqogfO1lYamquQNEZU1A=\n\tdep\tgithub.com/bogdanfinn/utls\tv1.7.7-barnius\th1:OuJ497cc7F3yKNVHRsYPQdGggmk5x6+V5ZlrCR7fOLU=\n\tdep\tgithub.com/bogdanfinn/websocket\tv1.5.5-barnius\th1:bY+qnxpai1qe7Jmjx+Sds/cmOSpuuLoR8x61rWltjOI=\n\tdep\tgithub.com/cbeuw/connutil\tv1.0.1\th1:LWuNYjwm7JEDYG/ISAO1TfU4G+q2dA5NhR97eq2roCA=\n\tdep\tgithub.com/google/btree\tv1.1.2\th1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/hoaxisr/awg-manager/awgmproto\tv0.1.1\th1:DMlHh9+dNe6/U+2LUnH+vmM8h6CqFCf1YvHCN/bU1ns=\n\tdep\tgithub.com/klauspost/compress\tv1.18.2\th1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=\n\tdep\tgithub.com/pion/dtls/v3\tv3.1.2\th1:gqEdOUXLtCGW+afsBLO0LtDD8GnuBBjEy6HRtyofZTc=\n\tdep\tgithub.com/pion/logging\tv0.2.4\th1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=\n\tdep\tgithub.com/pion/randutil\tv0.1.0\th1:CFG1UdESneORglEsnimhUjf33Rwjubwj6xfiOXBa3mA=\n\tdep\tgithub.com/pion/stun/v3\tv3.1.1\th1:CkQxveJ4xGQjulGSROXbXq94TAWu8gIX2dT+ePhUkqw=\n\tdep\tgithub.com/pion/transport/v4\tv4.0.1\th1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=\n\tdep\tgithub.com/pion/turn/v5\tv5.0.2\th1:GHlDk+fiegz+yibb3ch+tK+iPFokoVWiM+aVJakySqA=\n\tdep\tgithub.com/quic-go/qpack\tv0.6.0\th1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=\n\tdep\tgithub.com/tam7t/hpkp\tv0.0.0-20160821193359-2b70b4024ed5\th1:YqAladjX7xpA6BM04leXMWAEjS0mTZ5kUU9KRBriQJc=\n\tdep\tgithub.com/wlynxg/anet\tv0.0.5\th1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=\n\tdep\tgolang.org/x/crypto\tv0.46.0\th1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=\n\tdep\tgolang.org/x/net\tv0.48.0\th1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=\n\tdep\tgolang.org/x/sys\tv0.45.0\th1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=\n\tdep\tgolang.org/x/text\tv0.36.0\th1:JfKh3XmcRPqZPKevfXVpI1wXPTqbkE5f7JA92a55Yxg=\n\tdep\tgolang.org/x/time\tv0.10.0\th1:3usCWA8tQn0L8+hFJQNgzpWbd89begxN66o1Ojdn5L4=\n\tdep\tgolang.zx2c4.com/wireguard\tv0.0.0-20260522210424-ecfc5a8d5446\th1:cqHQ3AycTHvM2R7ikgyX57D+XvtcSnGylsLkOVhta/w=\n\tdep\tgvisor.dev/gvisor\tv0.0.0-20250503011706-39ed1f5ac29c\th1:m/r7OM+Y2Ty1sgBQ7Qb27VgIMBW8ZZhT4gLnUyDIhzI=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=mips\n\tbuild\tGOOS=linux\n\tbuild\tGOMIPS=softfloat\n",
+        "err": ""
+      }
+    },
+    "csqtt-amd64": {
+      "elf": {
+        "rc": 0,
+        "out": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              DYN (Position-Independent Executable file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x290500\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          10364096 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         12\n  Size of section headers:           64 (bytes)\n  Number of section headers:         33\n  Section header string table index: 32\n\nProgram Headers:\n  Type           Offset             VirtAddr           PhysAddr\n                 FileSiz            MemSiz              Flags  Align\n  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040\n                 0x00000000000002a0 0x00000000000002a0  R      0x8\n  INTERP         0x00000000000002e0 0x00000000000002e0 0x00000000000002e0\n                 0x000000000000001c 0x000000000000001c  R      0x1\n      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]\n  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x000000000028f4fc 0x000000000028f4fc  R      0x1000\n  LOAD           0x000000000028f500 0x0000000000290500 0x0000000000290500\n                 0x000000000071d600 0x000000000071d600  R E    0x1000\n  LOAD           0x00000000009acb00 0x00000000009aeb00 0x00000000009aeb00\n                 0x0000000000034390 0x0000000000034500  RW     0x1000\n  LOAD           0x00000000009e0e90 0x00000000009e3e90 0x00000000009e3e90\n                 0x000000000000143c 0x0000000000004345  RW     0x1000\n  TLS            0x00000000009acb00 0x00000000009aeb00 0x00000000009aeb00\n                 0x0000000000000070 0x00000000000000f8  R      0x8\n  DYNAMIC        0x00000000009e00c0 0x00000000009e20c0 0x00000000009e20c0\n                 0x00000000000001d0 0x00000000000001d0  RW     0x8\n  GNU_RELRO      0x00000000009acb00 0x00000000009aeb00 0x00000000009aeb00\n                 0x0000000000034390 0x0000000000034500  R      0x1\n  GNU_EH_FRAME   0x00000000002018a0 0x00000000002018a0 0x00000000002018a0\n                 0x00000000000118bc 0x00000000000118bc  R      0x4\n  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000\n                 0x0000000000000000 0x0000000000000000  RW     0x0\n  NOTE           0x00000000000002fc 0x00000000000002fc 0x00000000000002fc\n                 0x0000000000000044 0x0000000000000044  R      0x4\n\n Section to Segment mapping:\n  Segment Sections...\n   00     \n   01     .interp \n   02     .interp .note.ABI-tag .note.gnu.build-id .dynsym .gnu.version .gnu.version_r .gnu.hash .dynstr .rela.dyn .rela.plt .gcc_except_table .rodata .eh_frame_hdr .eh_frame \n   03     .text .init .fini .plt \n   04     .tdata .fini_array .init_array .data.rel.ro .dynamic .got .got.plt .relro_padding \n   05     .tm_clone_table .data .bss \n   06     .tdata .tbss \n   07     .dynamic \n   08     .tdata .fini_array .init_array .data.rel.ro .dynamic .got .got.plt .relro_padding \n   09     .eh_frame_hdr \n   10     \n   11     .note.ABI-tag .note.gnu.build-id \n\nDynamic section at offset 0x9e00c0 contains 29 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000007 (RELA)               0x1e20\n 0x0000000000000008 (RELASZ)             304512 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000006ffffff9 (RELACOUNT)          12557\n 0x0000000000000017 (JMPREL)             0x4c3a0\n 0x0000000000000002 (PLTRELSZ)           1344 (bytes)\n 0x0000000000000003 (PLTGOT)             0x9e2cb8\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000006 (SYMTAB)             0x340\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0x151c\n 0x000000000000000a (STRSZ)              2308 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x1500\n 0x0000000000000019 (INIT_ARRAY)         0x9aeb88\n 0x000000000000001b (INIT_ARRAYSZ)       24 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x9aeb70\n 0x000000000000001c (FINI_ARRAYSZ)       24 (bytes)\n 0x000000000000000c (INIT)               0x9ad738\n 0x000000000000000d (FINI)               0x9ad754\n 0x000000006ffffff0 (VERSYM)             0x1210\n 0x000000006ffffffe (VERNEED)            0x134c\n 0x000000006fffffff (VERNEEDNUM)         3\n 0x0000000000000000 (NULL)               0x0\n\nVersion symbols section '.gnu.version' contains 158 entries:\n Addr: 0x0000000000001210  Offset: 0x00001210  Link: 4 (.dynsym)\n  000:   0 (*local*)       2 (GLIBC_2.34)    0 (*local*)       0 (*local*)    \n  004:   0 (*local*)       3 (GLIBC_2.2.5)   4 (GCC_3.0)       3 (GLIBC_2.2.5)\n  008:   3 (GLIBC_2.2.5)   5 (GLIBC_2.14)    3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  00c:   3 (GLIBC_2.2.5)   6 (GLIBC_2.3.2)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  010:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  014:   7 (GLIBC_2.29)    8 (GLIBC_2.17)    3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  018:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   9 (GLIBC_2.12) \n  01c:   5 (GLIBC_2.14)    3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  020:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   a (GLIBC_2.33)    3 (GLIBC_2.2.5)\n  024:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  028:   2 (GLIBC_2.34)    3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  02c:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   2 (GLIBC_2.34)    3 (GLIBC_2.2.5)\n  030:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  034:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   b (GLIBC_2.32)    2 (GLIBC_2.34) \n  038:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  03c:   4 (GCC_3.0)       c (GLIBC_2.27)    3 (GLIBC_2.2.5)   2 (GLIBC_2.34) \n  040:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   4 (GCC_3.0)       4 (GCC_3.0)    \n  044:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   4 (GCC_3.0)    \n  048:   d (GCC_4.2.0)     4 (GCC_3.0)       4 (GCC_3.0)       4 (GCC_3.0)    \n  04c:   e (GLIBC_2.30)    f (GCC_3.3)       3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  050:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)  10 (GLIBC_2.3)     a (GLIBC_2.33) \n  054:  11 (GLIBC_2.28)    3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  058:  12 (GLIBC_2.18)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34) \n  05c:   3 (GLIBC_2.2.5)   4 (GCC_3.0)       4 (GCC_3.0)       8 (GLIBC_2.17) \n  060:  13 (GLIBC_2.3.4)   3 (GLIBC_2.2.5)   2 (GLIBC_2.34)    2 (GLIBC_2.34) \n  064:   2 (GLIBC_2.34)    2 (GLIBC_2.34)    3 (GLIBC_2.2.5)  14 (GLIBC_2.16) \n  068:   3 (GLIBC_2.2.5)   f (GCC_3.3)       f (GCC_3.3)       3 (GLIBC_2.2.5)\n  06c:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)  15 (GLIBC_2.25)    3 (GLIBC_2.2.5)\n  070:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  074:  16 (GLIBC_2.9)    17 (GLIBC_2.7)     3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  078:  13 (GLIBC_2.3.4)   7 (GLIBC_2.29)    6 (GLIBC_2.3.2)   3 (GLIBC_2.2.5)\n  07c:  18 (GLIBC_2.4)     3 (GLIBC_2.2.5)  13 (GLIBC_2.3.4)  13 (GLIBC_2.3.4)\n  080:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)  19 (GLIBC_2.38)    3 (GLIBC_2.2.5)\n  084:  13 (GLIBC_2.3.4)  19 (GLIBC_2.38)    0 (*local*)       0 (*local*)    \n  088:   0 (*local*)       0 (*local*)       0 (*local*)       3 (GLIBC_2.2.5)\n  08c:   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)   3 (GLIBC_2.2.5)\n  090:   2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34) \n  094:   2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    3 (GLIBC_2.2.5)\n  098:   3 (GLIBC_2.2.5)   a (GLIBC_2.33)    0 (*local*)       0 (*local*)    \n  09c:   0 (*local*)       0 (*local*)    \n\nVersion needs section '.gnu.version_r' contains 3 entries:\n Addr: 0x000000000000134c  Offset: 0x0000134c  Link: 8 (.dynstr)\n  000000: Version: 1  File: libgcc_s.so.1  Cnt: 3\n  0x0030:   Name: GCC_3.0  Flags: none  Version: 4\n  0x0040:   Name: GCC_3.3  Flags: none  Version: 15\n  0x0050:   Name: GCC_4.2.0  Flags: none  Version: 13\n  0x0010: Version: 1  File: libm.so.6  Cnt: 2\n  0x0060:   Name: GLIBC_2.27  Flags: none  Version: 12\n  0x0070:   Name: GLIBC_2.29  Flags: none  Version: 7\n  0x0020: Version: 1  File: libc.so.6  Cnt: 19\n  0x0080:   Name: GLIBC_2.2.5  Flags: none  Version: 3\n  0x0090:   Name: GLIBC_2.3  Flags: none  Version: 16\n  0x00a0:   Name: GLIBC_2.3.2  Flags: none  Version: 6\n  0x00b0:   Name: GLIBC_2.3.4  Flags: none  Version: 19\n  0x00c0:   Name: GLIBC_2.4  Flags: none  Version: 24\n  0x00d0:   Name: GLIBC_2.7  Flags: none  Version: 23\n  0x00e0:   Name: GLIBC_2.9  Flags: none  Version: 22\n  0x00f0:   Name: GLIBC_2.12  Flags: none  Version: 9\n  0x0100:   Name: GLIBC_2.14  Flags: none  Version: 5\n  0x0110:   Name: GLIBC_2.16  Flags: none  Version: 20\n  0x0120:   Name: GLIBC_2.17  Flags: none  Version: 8\n  0x0130:   Name: GLIBC_2.18  Flags: none  Version: 18\n  0x0140:   Name: GLIBC_2.25  Flags: none  Version: 21\n  0x0150:   Name: GLIBC_2.28  Flags: none  Version: 17\n  0x0160:   Name: GLIBC_2.30  Flags: none  Version: 14\n  0x0170:   Name: GLIBC_2.32  Flags: none  Version: 11\n  0x0180:   Name: GLIBC_2.33  Flags: none  Version: 10\n  0x0190:   Name: GLIBC_2.34  Flags: none  Version: 2\n  0x01a0:   Name: GLIBC_2.38  Flags: none  Version: 25\n",
+        "err": ""
+      },
+      "parser": {
+        "rc": 2,
+        "out": "",
+        "err": "error: unexpected argument '--help' found\n\nUsage: client [OPTIONS]\n"
+      }
+    }
+  }
+}
