@@ -217,6 +217,8 @@ opt_storage_class() {
 echo "=== Keenetic Auto Setup — Simple Installer ==="
 
 command -v opkg >/dev/null 2>&1 || err "Entware/OPKG not found. Install Entware first."
+# BusyBox wget in KeeneticOS may expose HTTP/FTP only, so cannot safely
+# bootstrap HTTPS downloads from GitHub. curl is the documented prerequisite.
 command -v curl >/dev/null 2>&1 || err "curl not found. Run: opkg update && opkg install curl"
 
 OPT_CLASS=$(opt_storage_class /opt)

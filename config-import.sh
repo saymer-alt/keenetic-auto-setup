@@ -280,6 +280,9 @@ SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
 CONFIG_COMMIT_STARTED=0
+# Saved terminal settings while the interactive reader enforces ICRNL
+# (restored by cleanup); empty when the terminal was not touched.
+CI_TTY_STTY_SAVE=""
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -324,6 +327,10 @@ resolve_mihomo() {
 }
 
 cleanup() {
+    if [ -n "$CI_TTY_STTY_SAVE" ]; then
+        stty -F /dev/tty "$CI_TTY_STTY_SAVE" 2>/dev/null || true
+        CI_TTY_STTY_SAVE=""
+    fi
     rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
     ml_lifecycle_release || true
 }
@@ -495,29 +502,69 @@ else
     echo "Open the generator if needed:"
     echo "  https://saymer-alt.github.io/link-generators/"
     echo
-    echo "Paste the COMPLETE Mihomo YAML starting with its first line."
-    echo "When the paste is finished, press Ctrl+D once."
-    echo "To skip import, type only: s"
+    echo "=== CONFIG IMPORT MODE (NOT A SHELL PROMPT) ==="
+    echo "Paste the COMPLETE Mihomo YAML, not Linux/Entware commands."
+    echo "Example start: mixed-port: 7890"
+    status_out "$COLOR_CYAN" "[INFO] When the paste is finished, press Ctrl+D once."
+    status_out "$COLOR_CYAN" "[INFO] To return to the shell without importing, type only: s"
     echo "Nothing will be changed until the candidate passes validation."
     echo
     printf "YAML (or s to skip): " > /dev/tty
 
-    if ! IFS= read -r _ci_first_line < /dev/tty; then
-        echo
-        log "No configuration entered; import skipped."
-        exit 0
+    # Field NC-1812 (2026-10-18): some SSH terminals deliver keyboard Enter
+    # as CR with ICRNL disabled, so `read` never receives a newline and both
+    # the skip command and pasted YAML appear swallowed while the terminal
+    # keeps echoing (BusyBox shell line editing treats CR itself, which is
+    # why the outer shell still worked). Enable ICRNL for the reader and
+    # restore the saved settings through cleanup; additionally strip CR from
+    # every delivered line so CRLF terminals and pasted CRLF text cannot
+    # poison the skip match. Both helpers are best-effort: without stty or
+    # without a writable tty the reader still works for LF input.
+    if command -v stty >/dev/null 2>&1; then
+        CI_TTY_STTY_SAVE=$(stty -g -F /dev/tty 2>/dev/null) || CI_TTY_STTY_SAVE=""
+        if [ -n "$CI_TTY_STTY_SAVE" ]; then
+            stty -F /dev/tty icrnl 2>/dev/null || CI_TTY_STTY_SAVE=""
+        fi
     fi
 
-    case "$_ci_first_line" in
-        s|S|skip|SKIP)
-            log "Config import skipped."
+    # Ignore accidental blank Enter lines before the actual first YAML line.
+    # A previously queued empty line could bypass the `s` skip selection
+    # and drop into `cat`, which would then wait indefinitely for Ctrl+D.
+    # Keep all nonblank YAML exactly as supplied, including the first line.
+    while :; do
+        if ! IFS= read -r _ci_first_line < /dev/tty; then
+            echo
+            log "No configuration entered; import skipped."
             exit 0
-            ;;
-    esac
+        fi
+        _ci_first_line=$(printf '%s\n' "$_ci_first_line" | tr -d '\r')
+
+        case "$_ci_first_line" in
+            s|S|skip|SKIP)
+                log "Config import skipped."
+                exit 0
+                ;;
+            *[![:space:]]*)
+                break
+                ;;
+            *)
+                # Blank/whitespace-only line is not a YAML decision.
+                printf "YAML (or s to skip): " > /dev/tty
+                ;;
+        esac
+    done
 
     printf '%s\n' "$_ci_first_line" > "$STAGE_CONFIG"
     cat < /dev/tty >> "$STAGE_CONFIG"
     echo
+    # Wait for the operator's explicit Ctrl+D before rejecting a pasted
+    # command. Exiting on the first line would release queued paste lines to
+    # the parent shell, where they could execute as real commands.
+    case "$_ci_first_line" in
+        "opkg "*|"curl "*|"wget "*|"nano "*|"vi "*|"sed "*|"sh "*|"ndmc "*)
+            error "Shell commands were pasted into the YAML importer, not a shell. No commands were executed by the importer and config.yaml was not changed. Re-run the importer, paste Mihomo YAML, or type s to skip."
+            ;;
+    esac
     log "Configuration received."
 fi
 
