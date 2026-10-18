@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.17 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.18 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.17"
+DOCTOR_VERSION="1.2.18"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
