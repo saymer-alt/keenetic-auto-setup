@@ -505,7 +505,7 @@ else
     echo "=== CONFIG IMPORT MODE (NOT A SHELL PROMPT) ==="
     echo "Paste the COMPLETE Mihomo YAML, not Linux/Entware commands."
     echo "Example start: mixed-port: 7890"
-    echo "When the paste is finished, press Ctrl+D once."
+    status_out "$COLOR_CYAN" "[INFO] When the paste is finished, press Ctrl+D once."
     echo "To return to the shell without importing, type only: s"
     echo "Nothing will be changed until the candidate passes validation."
     echo
