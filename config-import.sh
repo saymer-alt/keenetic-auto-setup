@@ -495,9 +495,11 @@ else
     echo "Open the generator if needed:"
     echo "  https://saymer-alt.github.io/link-generators/"
     echo
-    echo "Paste the COMPLETE Mihomo YAML starting with its first line."
+    echo "=== CONFIG IMPORT MODE (NOT A SHELL PROMPT) ==="
+    echo "Paste the COMPLETE Mihomo YAML, not Linux/Entware commands."
+    echo "Example start: mixed-port: 7890"
     echo "When the paste is finished, press Ctrl+D once."
-    echo "To skip import, type only: s"
+    echo "To return to the shell without importing, type only: s"
     echo "Nothing will be changed until the candidate passes validation."
     echo
     printf "YAML (or s to skip): " > /dev/tty
@@ -518,6 +520,14 @@ else
     printf '%s\n' "$_ci_first_line" > "$STAGE_CONFIG"
     cat < /dev/tty >> "$STAGE_CONFIG"
     echo
+    # Wait for the operator's explicit Ctrl+D before rejecting a pasted
+    # command. Exiting on the first line would release queued paste lines to
+    # the parent shell, where they could execute as real commands.
+    case "$_ci_first_line" in
+        "opkg "*|"curl "*|"wget "*|"nano "*|"vi "*|"sed "*|"sh "*|"ndmc "*)
+            error "Shell commands were pasted into the YAML importer, not a shell. No commands were executed by the importer and config.yaml was not changed. Re-run the importer, paste Mihomo YAML, or type s to skip."
+            ;;
+    esac
     log "Configuration received."
 fi
 
