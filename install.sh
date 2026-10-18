@@ -355,6 +355,12 @@ installer_cleanup() {
     [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
     [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
     rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE" "${WRAPPER_STAGE:-}" "${CRONTAB_STAGE:-}" "${CRON_CANDIDATE:-}"
+    # The interface may have been temporarily disabled to fire the native
+    # netfilter.d callback. Restore it on every handled exit/signal.
+    if [ -n "${PROXY_RESTORE_PENDING:-}" ]; then
+        ndmc -c "interface ${PROXY_RESTORE_PENDING} up" >/dev/null 2>&1 || true
+        PROXY_RESTORE_PENDING=""
+    fi
     ml_lifecycle_release || true
 }
 trap installer_cleanup EXIT
@@ -855,6 +861,46 @@ require_project_keeneticos_components() {
 require_project_keeneticos_components
 ml_lifecycle_acquire || err "Mihomo lifecycle is busy or unverifiable; installation not started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 mp_known || err "Mihomo runtime UNKNOWN; installation not started."
+
+# Determine clean Entware BEFORE this installer populates it.
+# KeeneticOS interfaces/policies survive an Entware reinstall, so existing
+# canonical Proxy0 is not proof of an actively used project service.
+# Fail closed if either package inventory or listener state is unavailable.
+PROXY_FRESH_ENTWARE=0
+PROXY_CREATED_THIS_RUN=0
+PROXY_RESTORE_PENDING=""
+detect_fresh_entware_stack() {
+    _fs_packages=$(opkg list-installed 2>/dev/null) || return 1
+    if printf '%s\n' "$_fs_packages" | grep -Eq '^(mihomo|magitrickle) '; then
+        return 1
+    fi
+    for _fs_path in /opt/bin/mihomo /opt/sbin/mihomo \
+        /opt/bin/magitrickled /opt/etc/init.d/S99mihomo \
+        /opt/etc/init.d/S99magitrickle \
+        /opt/bin/mihomo_watchdog.sh \
+        /opt/etc/cron.5mins/mihomo_watchdog \
+        /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; do
+        [ ! -e "$_fs_path" ] && [ ! -L "$_fs_path" ] || return 1
+    done
+    # Missing or empty YAML only. Never infer freshness from a short but
+    # nonempty config: it may be a deliberately small user profile.
+    [ ! -s /opt/etc/mihomo/config.yaml ] || return 1
+    [ ! -L /opt/etc/mihomo/config.yaml ] || return 1
+    mp_stopped || return 1
+    command -v netstat >/dev/null 2>&1 || return 1
+    _fs_listeners=$(netstat -tln 2>/dev/null) || return 1
+    # Don't toggle a proxy if another daemon is already serving port 7890.
+    if printf '%s\n' "$_fs_listeners" | awk '$4 ~ /[.:]7890$/ { found=1 } END { exit !found }'; then
+        return 1
+    fi
+    return 0
+}
+if detect_fresh_entware_stack; then
+    PROXY_FRESH_ENTWARE=1
+    log "Fresh Entware project stack detected before package installation; existing canonical Proxy0 may be safely reactivated after hook delivery"
+else
+    log "Existing or unverified Entware project stack; automatic reactivation of reused ProxyN is disabled"
+fi
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
@@ -1663,6 +1709,7 @@ select_project_proxy() {
         if ! proxy_is_canonical "Proxy0" "0"; then
             err "Proxy0 appeared in running-config but the required project profile (mihomo t2s0 / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
         fi
+        PROXY_CREATED_THIS_RUN=1
         log "Project proxy Proxy0 created and verified"
         return 0
     fi
@@ -1702,6 +1749,7 @@ select_project_proxy() {
     if ! proxy_is_canonical "Proxy${_n}" "$_n"; then
         err "Proxy${_n} appeared in running-config but the required project profile (mihomo t2s${_n} / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
     fi
+    PROXY_CREATED_THIS_RUN=1
     log "Project proxy Proxy${_n} created and verified"
 }
 
@@ -1834,6 +1882,67 @@ if project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypa
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 else
     warn "bypass download failed after raw/curl, raw/wget and GitHub API fallbacks"
+fi
+
+# On a first install, the KeeneticOS proxy configuration may survive a
+# wiped/reinstalled Entware. Re-applying a verified project-owned ProxyN UP
+# transition may trigger native netfilter.d hook application without reboot.
+# On an existing Entware stack, never bounce reused ProxyN automatically.
+# This is deliberately placed after hook delivery and before Mihomo startup.
+activate_bypass_on_fresh_proxy() {
+    [ -n "$PROXY_IFACE" ] || return 0
+    if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then
+        log "Skipping proxy activation: existing project stack and reused interface"
+        return 0
+    fi
+    if ! load_rc_dump; then
+        warn "Cannot re-check project ProxyN before activation; no interface toggle"
+        return 0
+    fi
+    proxy_state "$PROXY_IFACE"
+    if [ "$PROXY_STATE" != "FOUND" ] ||
+       ! proxy_is_canonical "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
+        warn "ProxyN is not a verified canonical project interface; no interface toggle"
+        return 0
+    fi
+    # Do not change an intentionally disabled proxy to UP. An existing
+    # canonical proxy must explicitly have 'up' in running-config.
+    if ! printf '%s\n' "$RC_DUMP" | awk -v iface="$PROXY_IFACE" '
+        $0 == "interface " iface {block=1; next}
+        block && /^!/ {exit !enabled}
+        block && /^ *up *$/ {enabled=1}
+        END {if (!enabled) exit 1}
+    '; then
+        warn "Project proxy is not explicitly UP; activation skipped to preserve owner configuration"
+        return 0
+    fi
+
+    # A non-empty pending marker makes the EXIT/TERM/INT cleanup attempt
+    # to re-enable the interface if anything fails after the DOWN step.
+    PROXY_RESTORE_PENDING="$PROXY_IFACE"
+    log "Reapplying newly installed bypass hook via project ${PROXY_IFACE} down/up (first-install profile)"
+    if ! ndmc -c "interface ${PROXY_IFACE} down" >/dev/null 2>&1; then
+        ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1 || true
+        PROXY_RESTORE_PENDING=""
+        warn "ProxyN DOWN transition failed; Netfilter hook readiness still needs verification"
+        return 0
+    fi
+    _ap_up_ok=0
+    for _ap_attempt in 1 2 3; do
+        if ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1; then
+            _ap_up_ok=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$_ap_up_ok" -ne 1 ]; then
+        err "Unable to restore ${PROXY_IFACE} UP after Netfilter hook trigger; installer will retry during cleanup"
+    fi
+    PROXY_RESTORE_PENDING=""
+    log "Project ${PROXY_IFACE} UP restored; verifying bypass Netfilter in self-check"
+}
+if [ -x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
+    activate_bypass_on_fresh_proxy
 fi
 
 # ---------------------------
