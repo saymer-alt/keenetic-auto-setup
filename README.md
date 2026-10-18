@@ -14,62 +14,62 @@
 
 **1. Установить KAS (Mihomo + MagiTrickle)**
 
-~~~sh
+```bash
 opkg update && opkg install curl && \
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
-~~~
+```
 
 **2. Открыть конфигурацию Mihomo**
 
-~~~sh
+```bash
 nano /opt/etc/mihomo/config.yaml
-~~~
+```
 
 **3. Сохранить копию, очистить конфиг и открыть nano**
 
 ⚠️ Текущий файл очищается **до открытия редактора**; старая версия сохраняется в `config.yaml.bak` (существующая `.bak` будет перезаписана).
 
-~~~sh
+```bash
 cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
-~~~
+```
 
 **4. Очистить конфиг без резервной копии и открыть nano**
 
 ⚠️ **Опасно:** содержимое `config.yaml` будет потеряно. Не перезапускайте Mihomo, пока не сохраните исправный YAML.
 
-~~~sh
+```bash
 : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
-~~~
+```
 
 **5. Безопасно импортировать новый YAML (предпочтительно вместо очистки)**
 
-~~~sh
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
-~~~
+```
 
 **6. Проверить систему — Doctor**
 
-~~~sh
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
-~~~
+```
 
 **7. Перезапустить Mihomo**
 
-~~~sh
+```bash
 /opt/etc/init.d/S99mihomo restart
-~~~
+```
 
 **8. Проверить статус Mihomo**
 
-~~~sh
+```bash
 /opt/etc/init.d/S99mihomo status
-~~~
+```
 
 **9. Обновить Mihomo**
 
-~~~sh
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
-~~~
+```
 
 ---
 
