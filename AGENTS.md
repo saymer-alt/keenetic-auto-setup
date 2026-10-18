@@ -1,5 +1,23 @@
 # AGENTS.md — keenetic-auto-setup
 
+## Модель мышления владельца: атомарные кирпичики, сложная композиция
+
+Владелец любит проектировать **сложные схемы из простых независимых компонентов**. «Кирпичик» делает свою небольшую работу и не обязан понимать весь результат; общую логику соединений и отказов проектирует архитектор. Это подход из дачного водопровода и трёхфазного щита, из цепи камеры → NVR/кольцевой буфер → трансляция → приставка → ЭЛТ и из схемы Keenetic/ProxyN/Mihomo/VPS.
+
+Для агента KAS: сначала выделять атомы (MagiTrickle, policy, ProxyN, Mihomo, Entware, watchdog), затем **явные стыки и границы владения**, затем проверять локальные функции и общую цепь. Сложность целой схемы не означает, что нужно свести все слои в один «умный» скрипт. Не вмешиваться в соседний кирпичик без задачи; если контракт неясен — спросить владельца.
+
+## Owner architecture principle: independently operating layers (2026-10-18)
+
+The owner is an architect of **complex autonomous abstraction layers**. KAS is one independently operated layer and must not become a manager of the entire VPS estate.
+
+- Keenetic/MagiTrickle decides **which traffic** should enter the proxy bridge; ProxyN/SOCKS 127.0.0.1:7890 delivers that traffic to the **independent Mihomo routing layer**. Mihomo's local GLOBAL and proxy rules decide the transport/egress; bridge, routing, DNS and service watchdog have separate contracts.
+- The owner already has a suitable home-router Mihomo configuration from link-generators v1.11.1. When discussing VPS improvements do **not** rewrite the router config, Netcraze/Keenetic interface policies or unrelated segments.
+- Each remote VPS (SE, SE2, EE, MSK) is **autonomous** with its own inbound services and independent Mihomo GLOBAL→EXIT_STRATEGY/fallback→url-test egress hierarchy. KAS and the client need only the remote endpoints, not knowledge of their internal tiers.
+- Inbound services on VPS (Xray/3x-ui, Mieru, AmneziaWG) and Mihomo are intentionally loosely coupled through networking, not centrally co-managed. MSK→EE is an optional network hop.
+- Preserve fail-secure within the managed proxy path without outlawing legitimate ordinary router networking, management traffic or independent service-plane bootstrap. Test behavior at each boundary.
+
+Agent: maintain autonomy, avoid destructive 'simplification' by merging responsibilities or disabling useful modes. Ask before altering an unrelated layer or production target. This is an architecture guideline only; no implied permission to change live routers or stable.
+
 ## ⚑ Решение владельца от 2026-10-11: WORKING-FIRST / LICENSE AUDIT DEFERRED
 
 **ПРОЕКТЫ ВЕДУТСЯ В ПЕРВУЮ ОЧЕРЕДЬ ДЛЯ ЛИЧНОГО НЕКОММЕРЧЕСКОГО ИСПОЛЬЗОВАНИЯ. РЕПОЗИТОРИИ ПУБЛИЧНЫЕ.**
