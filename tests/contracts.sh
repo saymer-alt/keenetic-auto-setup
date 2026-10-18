@@ -47,6 +47,31 @@ grep -Fq "jq -er '[.[] | select(.description == \"bypass_wa\") | .mark]" "$ROOT/
 grep -Fq "case \"\$mark_id_\" in" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must validate hexadecimal mark before Netfilter mutation"
 pass "bypass hook fails closed instead of using mark=1"
 
+# Fresh Entware is evaluated BEFORE opkg populates it; even an existing
+# canonical Proxy0 may be re-activated only when the original stack was empty.
+grep -Fq 'detect_fresh_entware_stack() {' "$ROOT/install.sh" || fail "installer must implement fresh Entware detection"
+grep -Fq 'PROXY_FRESH_ENTWARE=1' "$ROOT/install.sh" || fail "installer must retain initial fresh Entware result"
+grep -Fq 'opkg list-installed 2>/dev/null' "$ROOT/install.sh" || fail "installer must check original Mihomo/MagiTrickle package inventory"
+grep -Fq 'mp_stopped || return 1' "$ROOT/install.sh" || fail "installer must prove no running Mihomo before reactivating a reused proxy"
+grep -Fq 'netstat -tln' "$ROOT/install.sh" || fail "installer must verify no existing 7890 service before reactivation"
+grep -Fq 'PROXY_CREATED_THIS_RUN=1' "$ROOT/install.sh" || fail "installer must track newly-created project proxy separately from reused"
+grep -Fq 'if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then' "$ROOT/install.sh" || fail "repeated install must not toggle reused ProxyN"
+grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must refuse toggling foreign/legacy proxy"
+grep -Fq 'PROXY_RESTORE_PENDING="$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must mark interface restoration pending before DOWN"
+grep -Fq 'ndmc -c "interface ${PROXY_IFACE} up"' "$ROOT/install.sh" || fail "installer must restore project proxy UP"
+grep -Fq 'check_bypass_netfilter_runtime() {' "$ROOT/install.sh" || fail "installer must verify actual Netfilter runtime after post-hook activation"
+grep -Fq 'iptables -t mangle -C "$_br_chain" -p udp -m multiport' "$ROOT/install.sh" || fail "installer must check actual live multiport rules"
+grep -Fq 'CONNMARK --save-mark' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
+grep -Fq 'check_fail "bypass_wa runtime chain unavailable:' "$ROOT/install.sh" || fail "installer must report absent chain as FAIL"
+_fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_opkg_line=$(grep -nF 'log "Updating opkg..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_hook_line=$(grep -nF 'log "Installing bypass rules..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_bounce_line=$(grep -nF 'activate_bypass_on_fresh_proxy() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_mihomo_service_line=$(grep -nF 'MIHOMO_SERVICE_ACTION=none' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+[ "$_fresh_line" -lt "$_opkg_line" ] && [ "$_hook_line" -lt "$_bounce_line" ] && [ "$_bounce_line" -lt "$_mihomo_service_line" ] || fail "freshness must be captured pre-install; hook delivered before bounce; service started after bounce"
+pass "clean Entware proxy activation is guarded, reversible and runtime-verified"
+
+
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
 PROFILE_CONTRACT=20261012_1
