@@ -2284,10 +2284,8 @@ check_bypass_netfilter_runtime() {
         check_fail "bypass_wa runtime cannot be verified: iptables not found"
         return 0
     fi
-    _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1)
-    _br_rc=$?
-    if [ "$_br_rc" -ne 0 ]; then
-        check_fail "bypass_wa runtime chain unavailable (iptables rc=$_br_rc): $_br_chain — hook may not have been applied after installation; check native Netfilter rebuild"
+    if ! _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1); then
+        check_fail "bypass_wa runtime chain unavailable: $_br_chain — hook may not have been applied after installation; check native Netfilter rebuild"
         return 0
     fi
     if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
