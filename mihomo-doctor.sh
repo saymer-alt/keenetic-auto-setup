@@ -539,7 +539,12 @@ print_finding_group() {
     [ -n "$_pfg_data" ] || return 0
     printf '%s\n' "$_pfg_data" | while IFS= read -r _pfg_msg; do
         [ -n "$_pfg_msg" ] || continue
-        printf '[%s] %s\n' "$_pfg_kind" "$_pfg_msg"
+        case "$_pfg_kind" in
+            FAIL) _pfg_color="$COLOR_RED" ;;
+            WARN) _pfg_color="$COLOR_YELLOW" ;;
+            *)    _pfg_color="$COLOR_CYAN" ;;
+        esac
+        status_out "$_pfg_color" "[$_pfg_kind] $_pfg_msg"
         printf '       Next: %s\n' "$(finding_action "$_pfg_msg")"
     done
 }
@@ -553,7 +558,8 @@ print_human_result() {
     fi
 
     if [ "$N_FAIL" -gt 0 ]; then
-        printf '\nFAIL findings (%d):\n' "$N_FAIL"
+        echo
+        status_out "$COLOR_RED" "FAIL findings ($N_FAIL):"
         print_finding_group FAIL "$FAIL_MESSAGES"
         case "$FAIL_MESSAGES" in
             *"Required KeeneticOS component missing:"*|*"Required secure-DNS KeeneticOS component missing:"*|*"Required external-storage KeeneticOS component missing:"*)
@@ -562,15 +568,16 @@ print_human_result() {
         esac
     fi
     if [ "$N_WARN" -gt 0 ]; then
-        printf '\nWarnings (%d):\n' "$N_WARN"
+        echo
+        status_out "$COLOR_YELLOW" "Warnings ($N_WARN):"
         print_finding_group WARN "$WARN_MESSAGES"
     fi
 
     echo
     if [ "$N_FAIL" -gt 0 ]; then
-        printf 'Result: %d FAIL finding(s) and %d warning(s) need attention.\n' "$N_FAIL" "$N_WARN"
+        status_out "$COLOR_RED" "[FAIL] Result: $N_FAIL FAIL finding(s) and $N_WARN warning(s) need attention."
     else
-        printf 'Result: no FAIL findings; %d warning(s) should be reviewed.\n' "$N_WARN"
+        status_out "$COLOR_YELLOW" "[WARN] Result: no FAIL findings; $N_WARN warning(s) should be reviewed."
     fi
 }
 
@@ -2920,18 +2927,26 @@ info "Doctor is read-only: no files, services or settings were changed."
 print_human_result
 echo
 echo "=== Mihomo Doctor Summary ==="
-printf 'OK:   %d\n' "$N_OK"
-printf 'WARN: %d\n' "$N_WARN"
-printf 'FAIL: %d\n' "$N_FAIL"
-printf 'INFO: %d\n' "$N_INFO"
+status_out "$COLOR_GREEN" "OK:   $N_OK"
+if [ "$N_WARN" -gt 0 ]; then
+    status_out "$COLOR_YELLOW" "WARN: $N_WARN"
+else
+    printf 'WARN: %d\n' "$N_WARN"
+fi
+if [ "$N_FAIL" -gt 0 ]; then
+    status_out "$COLOR_RED" "FAIL: $N_FAIL"
+else
+    printf 'FAIL: %d\n' "$N_FAIL"
+fi
+status_out "$COLOR_CYAN" "INFO: $N_INFO"
 echo
 if [ "$N_FAIL" -gt 0 ]; then
-    echo "Overall status: FAIL"
+    status_out "$COLOR_RED" "[FAIL] Overall status: FAIL"
     exit 2
 elif [ "$N_WARN" -gt 0 ]; then
-    echo "Overall status: WARN"
+    status_out "$COLOR_YELLOW" "[WARN] Overall status: WARN"
     exit 1
 else
-    echo "Overall status: OK"
+    status_out "$COLOR_GREEN" "[OK] Overall status: OK"
     exit 0
 fi
