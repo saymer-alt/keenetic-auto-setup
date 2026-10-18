@@ -78,4 +78,4 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 ## 📚 Подробная документация
 
-[Установка](docs/03-install.md) · [Обновления и откат](docs/12-updates.md) · [Диагностика](docs/08-troubleshooting.md) · [Архитектура](ARCHITECTURE.md) · [Полный HOWTO](docs/HOWTO_RU.md) · [Все скрипты](docs/02-quick-start.md) · [CHANGELOG](CHANGELOG.md) · [Лицензия](LICENSE)
+[Установка](docs/03-install.md) · [Обновления и откат](docs/12-updates.md) · [Диагностика](docs/08-troubleshooting.md) · [Архитектура](ARCHITECTURE.md) · [Полный HOWTO](docs/HOWTO_RU.md) · [Краткий старт](docs/02-quick-start.md) · [CHANGELOG](CHANGELOG.md) · [Лицензия](LICENSE)
