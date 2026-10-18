@@ -705,11 +705,11 @@ done
 pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
 # Simple front-end must remain a thin selector/delegator, not a second installer.
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
-grep -Fq 'if ! command -v curl >/dev/null 2>&1; then' "$ROOT/setup.sh" || fail "simple setup must support no-curl clean Entware bootstrap"
-grep -Fq 'command -v wget >/dev/null 2>&1 ||' "$ROOT/setup.sh" || fail "simple setup must require a usable secure bootstrap downloader"
-grep -Fq 'command -v curl >/dev/null 2>&1 || return 1' "$ROOT/setup.sh" || fail "curl retries must skip immediately when curl is absent"
-! grep -Fq 'curl not found. Run: opkg update && opkg install curl' "$ROOT/setup.sh" || fail "simple setup must not demand manual curl installation when wget can bootstrap"
-grep -Fq 'pkg_ensure curl' "$ROOT/install.sh" || fail "canonical installer must install curl automatically after wget-only bootstrap"
+# The built-in Keenetic BusyBox wget may not support HTTPS; do not rely on
+# it to fetch GitHub setup.sh before Entware curl has been installed.
+grep -Fq 'command -v curl >/dev/null 2>&1 || err "curl not found. Run: opkg update && opkg install curl"' "$ROOT/setup.sh" || fail "simple setup must require HTTPS-capable curl for initial GitHub bootstrap"
+grep -Fq 'pkg_ensure curl' "$ROOT/install.sh" || fail "canonical installer must continue to ensure curl is installed"
+grep -Fq 'pkg_ensure iptables' "$ROOT/install.sh" || fail "canonical installer must own iptables installation; user never preinstalls it for normal setup"
 grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"' "$ROOT/setup.sh" || fail "simple setup installer staging path must use the shell PID ($$) and remain process-unique"
 grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"' "$ROOT/setup.sh" || fail "simple setup importer staging path must use the shell PID ($$) and remain process-unique"
 grep -Fq 'PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"' "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
