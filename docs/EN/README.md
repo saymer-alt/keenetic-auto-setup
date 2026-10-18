@@ -1,6 +1,6 @@
-# 🛡️ Keenetic Auto-Setup Suite
+# 🛡️ Keenetic Auto-Setup Suite — Mihomo + MagiTrickle
 
-Automated installation of Mihomo and supporting components on Keenetic + Entware.
+Automated installation and integration of **[Mihomo](https://github.com/MetaCubeX/mihomo) + [MagiTrickle](https://magitrickle.dev/)** on Keenetic with Entware. **Mihomo** provides proxy connections and routes to your servers; **MagiTrickle** manages DNS/domain-based traffic groups and routing decisions. Both are essential parts of this setup.
 
 [Русский](../../README.md)
 
@@ -80,7 +80,7 @@ If Config Import is skipped with `s`, the minimal bootstrap config keeps only th
 
 > **MagiTrickle itself is installed automatically, but your user `.mtrickle` configuration is not.** `setup.sh`/`install.sh` add the repository, install the MagiTrickle package, start the service, and configure the required system integration. Exported groups, rules, interfaces, and other user settings from a `.mtrickle` file are intentionally not imported by the installer. After a clean install, open MagiTrickle at `http://<router-IP>:8080/` and import your saved configuration manually if you need to restore it.
 
-Practical example: [real MagiTrickle field sample — 8 groups / 287 rules](MAGITRICKLE_FIELD_LISTS.md). It is a dated user export, not an official or universal service-domain list.
+For the original rule model and interface, see the [official MagiTrickle documentation](https://magitrickle.dev/). Practical example: [real MagiTrickle field sample — 8 groups / 287 rules](MAGITRICKLE_FIELD_LISTS.md). It is a dated user export, not an official or universal service-domain list.
 
 For the first MetaCubeXD open after importing the full config, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` in both links.
 
