@@ -60,7 +60,10 @@ grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "install
 grep -Fq 'PROXY_RESTORE_PENDING="$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must mark interface restoration pending before DOWN"
 grep -Fq 'ndmc -c "interface ${PROXY_IFACE} up"' "$ROOT/install.sh" || fail "installer must restore project proxy UP"
 grep -Fq 'check_bypass_netfilter_runtime() {' "$ROOT/install.sh" || fail "installer must verify actual Netfilter runtime after post-hook activation"
-grep -Fq 'iptables -t mangle -C "$_br_chain" -p udp -m multiport' "$ROOT/install.sh" || fail "installer must check actual live multiport rules"
+grep -Fq 'iptables -t mangle -S "$_br_chain"' "$ROOT/install.sh" || fail "installer must inspect actual live Netfilter chain with iptables -S"
+! grep -Fq 'iptables -t mangle -C "$_br_chain"' "$ROOT/install.sh" || fail "installer must not misclassify serialized rules via extension-sensitive iptables -C"
+grep -Fq 'good_mark==1 && good_connmark==1 && good_return==1' "$ROOT/install.sh" || fail "installer must prove all three ordered live Netfilter rules"
+grep -Fq 'tolower($12)==wanted "/0xffffffff"' "$ROOT/install.sh" || fail "installer must support normalized --set-xmark output and validate full mask"
 grep -Fq 'CONNMARK --save-mark' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
 grep -Fq 'check_fail "bypass_wa runtime chain unavailable:' "$ROOT/install.sh" || fail "installer must report absent chain as FAIL"
 _fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
