@@ -37,6 +37,7 @@ grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] Overall status: WARN"' "$ROOT/mihom
 grep -Fq 'status_out "$COLOR_GREEN" "[OK] Overall status: OK"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final OK must be green and explicitly prefixed"
 grep -Fq 'status_out "$_pfg_color" "[$_pfg_kind] $_pfg_msg"' "$ROOT/mihomo-doctor.sh" || fail "Doctor human findings must have matching severity color"
 grep -Fq 'CONFIG IMPORT MODE (NOT A SHELL PROMPT)' "$ROOT/config-import.sh" || fail "config importer must distinguish YAML prompt from root shell"
+grep -Fq 'status_out "$COLOR_CYAN" "[INFO] When the paste is finished, press Ctrl+D once."' "$ROOT/config-import.sh" || fail "config importer must highlight Ctrl+D as cyan informational guidance"
 grep -Fq 'Shell commands were pasted into the YAML importer, not a shell' "$ROOT/config-import.sh" || fail "config importer must reject shell commands as YAML"
 grep -Fq "_ci_first_line=\$(printf '%s\\n' \"\$_ci_first_line\" | tr -d '\\r')" "$ROOT/config-import.sh" || fail "config importer must strip CR from delivered lines (ICRNL-off terminals deliver s^M)"
 grep -Fq 'stty -F /dev/tty icrnl' "$ROOT/config-import.sh" || fail "config importer must enforce ICRNL for keyboard Enter delivery"
