@@ -2309,20 +2309,66 @@ check_bypass_netfilter_runtime() {
             ;;
     esac
 
-    _br_missing=""
-    iptables -t mangle -C PREROUTING -m mark --mark 0x0 -j "$_br_chain" >/dev/null 2>&1 ||
-        _br_missing="$_br_missing PREROUTING-link"
-    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j MARK --set-mark "0x$_br_mark" >/dev/null 2>&1 ||
-        _br_missing="$_br_missing MARK(0x$_br_mark)"
-    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j CONNMARK --save-mark >/dev/null 2>&1 ||
-        _br_missing="$_br_missing CONNMARK-save"
-    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j RETURN >/dev/null 2>&1 ||
-        _br_missing="$_br_missing RETURN"
-    if [ -n "$_br_missing" ]; then
-        check_fail "bypass_wa live Netfilter rules incomplete or unverified:$_br_missing; required policy mark=0x$_br_mark"
-    else
-        check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified"
+    # -C and -S can disagree for extension matches on some Keenetic
+    # xtables builds: the NC-1812 field A/B proved all three mangle rules
+    # while -C returned negative. Read-only -S is also what Doctor uses.
+    # Validate the complete serialized chain, including exact policy mark,
+    # full mark masks and MARK -> CONNMARK -> RETURN order. Do not accept an
+    # empty chain, partial rules, duplicates or unrelated extra rules.
+    if ! _br_pre=$(iptables -t mangle -S PREROUTING 2>&1); then
+        check_fail "bypass_wa PREROUTING cannot be inspected (iptables -S failed)"
+        return 0
     fi
+    if ! printf '%s\n' "$_br_pre" | awk -v chain="$_br_chain" '
+        $1=="-A" && $2=="PREROUTING" && $3=="-m" &&
+        $4=="mark" && $5=="--mark" && ($6=="0x0" || $6=="0x0/0xffffffff") &&
+        $7=="-j" && $8==chain && NF==8 {hits++}
+        END {exit !(hits==1)}
+    '; then
+        check_fail "bypass_wa live PREROUTING link to $_br_chain missing or ambiguous"
+        return 0
+    fi
+
+    if ! printf '%s\n' "$_br_chain_dump" | awk -v chain="$_br_chain" -v ports="$_br_ports" -v mark="$_br_mark" '
+        BEGIN {wanted=tolower("0x" mark)}
+        function base() {
+            return NF>=10 && $1=="-A" && $2==chain &&
+                $3=="-p" && $4=="udp" && $5=="-m" &&
+                $6=="multiport" && $7=="--dports" &&
+                $8==ports && $9=="-j"
+        }
+        $1=="-N" && $2==chain && NF==2 {headers++; next}
+        $1=="-A" && $2==chain {
+            rules++
+            if (!base()) {bad++; next}
+            if (rules==1 && $10=="MARK" && NF==12 &&
+                (($11=="--set-mark" && tolower($12)==wanted) ||
+                 ($11=="--set-xmark" &&
+                  (tolower($12)==wanted || tolower($12)==wanted "/0xffffffff")))) {
+                good_mark++; next
+            }
+            if (rules==2 && $10=="CONNMARK" && $11=="--save-mark" &&
+                (NF==11 || (NF==15 && $12=="--nfmask" &&
+                 tolower($13)=="0xffffffff" && $14=="--ctmask" &&
+                 tolower($15)=="0xffffffff"))) {
+                good_connmark++; next
+            }
+            if (rules==3 && $10=="RETURN" && NF==10) {
+                good_return++; next
+            }
+            bad++
+            next
+        }
+        NF {bad++}
+        END {
+            exit !(headers==1 && rules==3 && bad==0 &&
+                   good_mark==1 && good_connmark==1 && good_return==1)
+        }
+    '; then
+        check_fail "bypass_wa live Netfilter rules incomplete, wrong mark/mask, wrong order or unverified via iptables -S; required policy mark=0x$_br_mark"
+        return 0
+    fi
+    check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified via iptables -S"
 }
 check_bypass_netfilter_runtime
 
