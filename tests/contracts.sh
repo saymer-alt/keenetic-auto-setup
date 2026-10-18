@@ -67,7 +67,10 @@ grep -Fq 'tolower($12)==wanted "/0xffffffff"' "$ROOT/install.sh" || fail "instal
 grep -Fq '$10=="CONNMARK" && $11=="--save-mark"' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
 grep -Fq '$12=="--nfmask"' "$ROOT/install.sh" || fail "installer must require full --nfmask on normalized connmark"
 grep -Fq '$14=="--ctmask"' "$ROOT/install.sh" || fail "installer must require full --ctmask on normalized connmark"
-grep -Fq 'check_fail "bypass_wa runtime chain unavailable:' "$ROOT/install.sh" || fail "installer must report absent chain as FAIL"
+grep -Fq '_br_last_fault="chain cannot be inspected"' "$ROOT/install.sh" || fail "installer must record an unreadable or missing chain"
+grep -Fq 'check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks:' "$ROOT/install.sh" || fail "installer must fail after bounded Netfilter readiness retries"
+grep -Fq '_br_max_rounds=8' "$ROOT/install.sh" || fail "installer Netfilter readiness retries must be bounded"
+grep -Fq 'if _br_probe_once; then' "$ROOT/install.sh" || fail "installer Netfilter retries must test a complete atomic attempt"
 _fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_line=$(grep -nF 'log "Updating opkg..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _hook_line=$(grep -nF 'log "Installing bypass rules..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
