@@ -214,6 +214,20 @@ sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
     fail "Doctor Entware storage / internal-flash protection fixtures failed"
 pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
 
+# NAND/UBI health must be independent of /opt placement, strictly read-only.
+grep -Fq '# BEGIN DOCTOR UBI HEALTH v1' "$ROOT/mihomo-doctor.sh" || fail "Doctor must retain UBI health reporter"
+grep -Fq 'DOC_UBI_ROOT="${DOCTOR_UBI_ROOT:-/sys/class/ubi}"' "$ROOT/mihomo-doctor.sh" || fail "Doctor UBI sysfs path must default to native sysfs and allow offline fixtures"
+grep -Fq '_doc_report_ubi_health' "$ROOT/mihomo-doctor.sh" || fail "Doctor must invoke UBI health reporter for internal and external Entware"
+grep -Fq 'fail "UBI $_doc_ubi_name: read-only mode reported (ro_mode=1)' "$ROOT/mihomo-doctor.sh" || fail "UBI read-only flag must be a real FAIL"
+! grep -Fq 'ubi0_0/ro_mode' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not confuse UBI volume and UBI device"
+sh "$ROOT/tests/doctor-ubi-regression.sh" "$ROOT" ||
+    fail "Doctor NAND/UBI sysfs field-fixture regressions failed under POSIX sh"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/doctor-ubi-regression.sh" "$ROOT" ||
+        fail "Doctor NAND/UBI fixture regressions failed under BusyBox ash"
+fi
+pass "Doctor reports UBI/NAND counters with no writes and correct read-only severity"
+
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q '^MIHOMO_STAGE_MARGIN_KB=4096$' "$ROOT/$_f" || fail "$_f must use the shared 4 MB Mihomo staging margin"
 done
