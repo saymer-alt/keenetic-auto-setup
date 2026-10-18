@@ -504,18 +504,31 @@ else
     echo
     printf "YAML (or s to skip): " > /dev/tty
 
-    if ! IFS= read -r _ci_first_line < /dev/tty; then
-        echo
-        log "No configuration entered; import skipped."
-        exit 0
-    fi
-
-    case "$_ci_first_line" in
-        s|S|skip|SKIP)
-            log "Config import skipped."
+    # Ignore accidental blank Enter lines before the actual first YAML line.
+    # A previously queued empty line could bypass the `s` skip selection
+    # and drop into `cat`, which would then wait indefinitely for Ctrl+D.
+    # Keep all nonblank YAML exactly as supplied, including the first line.
+    while :; do
+        if ! IFS= read -r _ci_first_line < /dev/tty; then
+            echo
+            log "No configuration entered; import skipped."
             exit 0
-            ;;
-    esac
+        fi
+
+        case "$_ci_first_line" in
+            s|S|skip|SKIP)
+                log "Config import skipped."
+                exit 0
+                ;;
+            *[![:space:]]*)
+                break
+                ;;
+            *)
+                # Blank/whitespace-only line is not a YAML decision.
+                printf "YAML (or s to skip): " > /dev/tty
+                ;;
+        esac
+    done
 
     printf '%s\n' "$_ci_first_line" > "$STAGE_CONFIG"
     cat < /dev/tty >> "$STAGE_CONFIG"
