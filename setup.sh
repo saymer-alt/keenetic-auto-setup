@@ -80,9 +80,6 @@ curl_to_file_once() {
 }
 
 retry_curl_to_file() {
-    # Fresh Entware can have wget but not curl yet. The canonical installer
-    # installs curl; permit bootstrapping setup.sh without manual opkg work.
-    command -v curl >/dev/null 2>&1 || return 1
     _rc_url="$1"
     _rc_dst="$2"
     _rc_api="${3:-0}"
@@ -220,11 +217,9 @@ opt_storage_class() {
 echo "=== Keenetic Auto Setup — Simple Installer ==="
 
 command -v opkg >/dev/null 2>&1 || err "Entware/OPKG not found. Install Entware first."
-if ! command -v curl >/dev/null 2>&1; then
-    command -v wget >/dev/null 2>&1 ||
-        err "Neither curl nor wget is available for secure initial script download. Install curl first, then retry."
-    log "curl not present in fresh Entware; using wget to fetch the installer (install.sh installs curl automatically)"
-fi
+# BusyBox wget in KeeneticOS may expose HTTP/FTP only, so cannot safely
+# bootstrap HTTPS downloads from GitHub. curl is the documented prerequisite.
+command -v curl >/dev/null 2>&1 || err "curl not found. Run: opkg update && opkg install curl"
 
 OPT_CLASS=$(opt_storage_class /opt)
 case "$OPT_CLASS" in
