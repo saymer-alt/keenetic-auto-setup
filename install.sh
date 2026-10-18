@@ -2267,12 +2267,65 @@ else
     check_fail "DNS transit interception (dns-proxy intercept enable) not found"
 fi
 
-# Bypass rules
-if [ -x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
-    check_ok "bypass rules: 020-bypass_wa.sh present"
-else
-    check_fail "bypass rules: /opt/etc/ndm/netfilter.d/020-bypass_wa.sh missing or not executable"
-fi
+# Bypass rules: prove the live Netfilter capability, not merely a file.
+# -C is a read-only exact rule check and is independent of iptables -S print
+# normalization (--set-mark vs --set-xmark). Keep a bounded policy API probe.
+check_bypass_netfilter_runtime() {
+    _br_hook=/opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+    _br_chain=_CUST_BYPASS_WA_
+    _br_ports=1400,3478,3482
+    if [ ! -x "$_br_hook" ]; then
+        check_fail "bypass_wa hook missing or not executable ($_br_hook)"
+        return 0
+    fi
+    check_ok "bypass_wa hook installed and executable (does not prove live rules)"
+
+    if ! command -v iptables >/dev/null 2>&1; then
+        check_fail "bypass_wa runtime cannot be verified: iptables not found"
+        return 0
+    fi
+    _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1)
+    _br_rc=$?
+    if [ "$_br_rc" -ne 0 ]; then
+        check_fail "bypass_wa runtime chain unavailable (iptables rc=$_br_rc): $_br_chain — hook may not have been applied after installation; check native Netfilter rebuild"
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        check_fail "bypass_wa runtime policy mark cannot be verified: curl/jq missing"
+        return 0
+    fi
+    if ! _br_api=$(curl -fSs --connect-timeout 3 --max-time 5 http://localhost:79/rci/show/ip/policy 2>/dev/null); then
+        check_fail "bypass_wa runtime policy mark unavailable: Keenetic API query failed"
+        return 0
+    fi
+    if ! _br_mark=$(printf '%s\n' "$_br_api" |
+        jq -er '[.[] | select(.description == "bypass_wa") | .mark] | if length == 1 then .[0] else empty end' 2>/dev/null); then
+        check_fail "bypass_wa runtime policy mark unavailable or ambiguous"
+        return 0
+    fi
+    case "$_br_mark" in
+        ''|*[!0123456789abcdefABCDEF]*)
+            check_fail "bypass_wa runtime policy mark is invalid (expected hexadecimal)"
+            return 0
+            ;;
+    esac
+
+    _br_missing=""
+    iptables -t mangle -C PREROUTING -m mark --mark 0x0 -j "$_br_chain" >/dev/null 2>&1 ||
+        _br_missing="$_br_missing PREROUTING-link"
+    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j MARK --set-mark "0x$_br_mark" >/dev/null 2>&1 ||
+        _br_missing="$_br_missing MARK(0x$_br_mark)"
+    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j CONNMARK --save-mark >/dev/null 2>&1 ||
+        _br_missing="$_br_missing CONNMARK-save"
+    iptables -t mangle -C "$_br_chain" -p udp -m multiport --dports "$_br_ports" -j RETURN >/dev/null 2>&1 ||
+        _br_missing="$_br_missing RETURN"
+    if [ -n "$_br_missing" ]; then
+        check_fail "bypass_wa live Netfilter rules incomplete or unverified:$_br_missing; required policy mark=0x$_br_mark"
+    else
+        check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified"
+    fi
+}
+check_bypass_netfilter_runtime
 
 # bypass_wa policy exit: report specifically whether the selected project
 # proxy is permitted; other permits (e.g. a manually bound VPN) are fine and
