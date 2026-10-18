@@ -58,7 +58,7 @@ def main() -> None:
         fake.chmod(0o700)
         expect_failure(invoke(path), "opkg update && opkg install curl")
         assert not sentinel.exists(), "Unexpected OPKG execution"
-        print("PASS: missing curl fails with a copyable next step; no OPKG calls")
+        print("PASS: missing curl fails with an actionable next step; no OPKG calls")
 
     print("OWNER EXPERIENCE GATE: setup first-run refusals PASS (no network/device)")
 

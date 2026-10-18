@@ -30,6 +30,74 @@ grep -Fq 'status_out "$COLOR_GREEN" "[OK]   $1"' "$ROOT/mihomo-doctor.sh" || fai
 grep -Fq 'status_out "$COLOR_CYAN" "[INFO] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor INFO must be cyan"
 grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor WARN must be yellow"
 grep -Fq 'status_out "$COLOR_RED" "[FAIL] $1"' "$ROOT/mihomo-doctor.sh" || fail "Doctor FAIL must be red"
+# Human-readable Doctor summaries must preserve the same severity as individual
+# diagnostic lines. A FAIL must never appear like a neutral/green success.
+grep -Fq 'status_out "$COLOR_RED" "[FAIL] Overall status: FAIL"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final FAIL must be red and explicitly prefixed"
+grep -Fq 'status_out "$COLOR_YELLOW" "[WARN] Overall status: WARN"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final WARN must be yellow and explicitly prefixed"
+grep -Fq 'status_out "$COLOR_GREEN" "[OK] Overall status: OK"' "$ROOT/mihomo-doctor.sh" || fail "Doctor final OK must be green and explicitly prefixed"
+grep -Fq 'status_out "$_pfg_color" "[$_pfg_kind] $_pfg_msg"' "$ROOT/mihomo-doctor.sh" || fail "Doctor human findings must have matching severity color"
+grep -Fq 'CONFIG IMPORT MODE (NOT A SHELL PROMPT)' "$ROOT/config-import.sh" || fail "config importer must distinguish YAML prompt from root shell"
+grep -Fq 'status_out "$COLOR_CYAN" "[INFO] When the paste is finished, press Ctrl+D once."' "$ROOT/config-import.sh" || fail "config importer must highlight Ctrl+D as cyan informational guidance"
+grep -Fq 'status_out "$COLOR_CYAN" "[INFO] To return to the shell without importing, type only: s"' "$ROOT/config-import.sh" || fail "config importer must highlight skip as cyan informational guidance"
+grep -Fq 'Shell commands were pasted into the YAML importer, not a shell' "$ROOT/config-import.sh" || fail "config importer must reject shell commands as YAML"
+grep -Fq "_ci_first_line=\$(printf '%s\\n' \"\$_ci_first_line\" | tr -d '\\r')" "$ROOT/config-import.sh" || fail "config importer must strip CR from delivered lines (ICRNL-off terminals deliver s^M)"
+grep -Fq 'stty -F /dev/tty icrnl' "$ROOT/config-import.sh" || fail "config importer must enforce ICRNL for keyboard Enter delivery"
+grep -Fq 'stty -F /dev/tty "$CI_TTY_STTY_SAVE"' "$ROOT/config-import.sh" || fail "config importer must restore the saved terminal settings on exit"
+pass "Doctor human summary severity and config-import terminal guidance are pinned"
+
+# A missing policy mark must never silently route VoIP using a guessed "1".
+! grep -Eq 'mark_id_=1([[:space:]]|$)' "$ROOT/020-bypass-wa.sh" || fail "bypass hook must not substitute a guessed mark"
+grep -Fq 'refusing to change Netfilter rules' "$ROOT/020-bypass-wa.sh" || fail "bypass hook must fail closed on missing policy mark"
+grep -Fq "jq -er '[.[] | select(.description == \"bypass_wa\") | .mark]" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must require a unique API-derived mark"
+grep -Fq "case \"\$mark_id_\" in" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must validate hexadecimal mark before Netfilter mutation"
+pass "bypass hook fails closed instead of using mark=1"
+
+# Fresh Entware is evaluated BEFORE opkg populates it; even an existing
+# canonical Proxy0 may be re-activated only when the original stack was empty.
+grep -Fq 'detect_fresh_entware_stack() {' "$ROOT/install.sh" || fail "installer must implement fresh Entware detection"
+grep -Fq 'PROXY_FRESH_ENTWARE=1' "$ROOT/install.sh" || fail "installer must retain initial fresh Entware result"
+grep -Fq 'opkg list-installed 2>/dev/null' "$ROOT/install.sh" || fail "installer must check original Mihomo/MagiTrickle package inventory"
+grep -Fq 'mp_stopped || return 1' "$ROOT/install.sh" || fail "installer must prove no running Mihomo before reactivating a reused proxy"
+grep -Fq 'netstat -tln' "$ROOT/install.sh" || fail "installer must verify no existing 7890 service before reactivation"
+grep -Fq 'PROXY_CREATED_THIS_RUN=1' "$ROOT/install.sh" || fail "installer must track newly-created project proxy separately from reused"
+grep -Fq 'if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then' "$ROOT/install.sh" || fail "repeated install must not toggle reused ProxyN"
+grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must refuse toggling foreign/legacy proxy"
+grep -Fq 'PROXY_RESTORE_PENDING="$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must mark interface restoration pending before DOWN"
+grep -Fq 'ndmc -c "interface ${PROXY_IFACE} up"' "$ROOT/install.sh" || fail "installer must restore project proxy UP"
+grep -Fq 'check_bypass_netfilter_runtime() {' "$ROOT/install.sh" || fail "installer must verify actual Netfilter runtime after post-hook activation"
+grep -Fq 'iptables -t mangle -S "$_br_chain"' "$ROOT/install.sh" || fail "installer must inspect actual live Netfilter chain with iptables -S"
+! grep -Fq 'iptables -t mangle -C "$_br_chain"' "$ROOT/install.sh" || fail "installer must not misclassify serialized rules via extension-sensitive iptables -C"
+grep -Fq 'good_mark==1 && good_connmark==1 && good_return==1' "$ROOT/install.sh" || fail "installer must prove all three ordered live Netfilter rules"
+grep -Fq 'tolower($12)==wanted "/0xffffffff"' "$ROOT/install.sh" || fail "installer must support normalized --set-xmark output and validate full mask"
+grep -Fq '$10=="CONNMARK" && $11=="--save-mark"' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
+grep -Fq '$12=="--nfmask"' "$ROOT/install.sh" || fail "installer must require full --nfmask on normalized connmark"
+grep -Fq '$14=="--ctmask"' "$ROOT/install.sh" || fail "installer must require full --ctmask on normalized connmark"
+grep -Fq '_br_last_fault="chain cannot be inspected"' "$ROOT/install.sh" || fail "installer must record an unreadable or missing chain"
+grep -Fq 'check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks:' "$ROOT/install.sh" || fail "installer must fail after bounded Netfilter readiness retries"
+grep -Fq '_br_max_rounds=8' "$ROOT/install.sh" || fail "installer Netfilter readiness retries must be bounded"
+grep -Fq 'if _br_probe_once; then' "$ROOT/install.sh" || fail "installer Netfilter retries must test a complete atomic attempt"
+_fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_opkg_line=$(grep -nF 'log "Updating opkg..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_hook_line=$(grep -nF 'log "Installing bypass rules..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_bounce_line=$(grep -nF 'activate_bypass_on_fresh_proxy() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_mihomo_service_line=$(grep -nF 'MIHOMO_SERVICE_ACTION=none' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+[ "$_fresh_line" -lt "$_opkg_line" ] && [ "$_hook_line" -lt "$_bounce_line" ] && [ "$_bounce_line" -lt "$_mihomo_service_line" ] || fail "freshness must be captured pre-install; hook delivered before bounce; service started after bounce"
+# Truly clean Entware must receive the iptables userspace utility, including
+# its Keenetic-specific feed build, before any netfilter.d hook can apply.
+grep -Fq 'pkg_ensure iptables' "$ROOT/install.sh" || fail "KAS must install iptables on clean Entware"
+_ipt_pkg=$(grep -nF 'pkg_ensure iptables' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+[ "$_ipt_pkg" -lt "$_hook_line" ] || fail "iptables must be installed before bypass hook delivery"
+pass "clean Entware proxy activation is guarded, reversible and runtime-verified"
+
+sh "$ROOT/tests/netfilter-live-regression.sh" "$ROOT" ||
+    fail "installer live Netfilter rules must pass the NC-1812 serialized snapshot and reject missing, partial or wrong-mark rules"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/netfilter-live-regression.sh" "$ROOT" ||
+        fail "BusyBox ash installer live Netfilter rule fixtures failed"
+fi
+pass "installer live Netfilter verification rejects false positives and handles serialized iptables matches"
+
+
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
 PROFILE_CONTRACT=20261012_1
@@ -43,7 +111,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
-grep -Fq 'DOCTOR_VERSION="1.2.17"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
+grep -Fq 'DOCTOR_VERSION="1.2.18"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
@@ -151,6 +219,20 @@ sh "$ROOT/tests/doctor-storage-regression.sh" "$ROOT" ||
     fail "Doctor Entware storage / internal-flash protection fixtures failed"
 pass "Doctor reports Entware location and enforces active internal-flash tmpfs protection"
 
+# NAND/UBI health must be independent of /opt placement, strictly read-only.
+grep -Fq '# BEGIN DOCTOR UBI HEALTH v1' "$ROOT/mihomo-doctor.sh" || fail "Doctor must retain UBI health reporter"
+grep -Fq 'DOC_UBI_ROOT="${DOCTOR_UBI_ROOT:-/sys/class/ubi}"' "$ROOT/mihomo-doctor.sh" || fail "Doctor UBI sysfs path must default to native sysfs and allow offline fixtures"
+grep -Fq '_doc_report_ubi_health' "$ROOT/mihomo-doctor.sh" || fail "Doctor must invoke UBI health reporter for internal and external Entware"
+grep -Fq 'fail "UBI $_doc_ubi_name: read-only mode reported (ro_mode=1)' "$ROOT/mihomo-doctor.sh" || fail "UBI read-only flag must be a real FAIL"
+! grep -Fq 'ubi0_0/ro_mode' "$ROOT/mihomo-doctor.sh" || fail "Doctor must not confuse UBI volume and UBI device"
+sh "$ROOT/tests/doctor-ubi-regression.sh" "$ROOT" ||
+    fail "Doctor NAND/UBI sysfs field-fixture regressions failed under POSIX sh"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/doctor-ubi-regression.sh" "$ROOT" ||
+        fail "Doctor NAND/UBI fixture regressions failed under BusyBox ash"
+fi
+pass "Doctor reports UBI/NAND counters with no writes and correct read-only severity"
+
 for _f in install.sh mihomo-doctor.sh update-mihomo.sh; do
     grep -q '^MIHOMO_STAGE_MARGIN_KB=4096$' "$ROOT/$_f" || fail "$_f must use the shared 4 MB Mihomo staging margin"
 done
@@ -251,7 +333,7 @@ _mt_action_line=$(grep -nF '*"MagiTrickle"*|*"magitrickled"*|*"Port 53 remap"*|*
 [ -n "$_dns_action_line" ] && [ -n "$_mt_action_line" ] && [ "$_dns_action_line" -lt "$_mt_action_line" ] || fail "DNS-interception finding must resolve before the generic MagiTrickle action"
 grep -Fq '/proc/PID/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output must use markdown-safe /proc/PID/exe wording"
 ! grep -Fq '/proc/<pid>/exe' "$ROOT/mihomo-doctor.sh" || fail "doctor output/comments must avoid markdown-eaten <pid> placeholder"
-grep -Fq 'FAIL findings (%d):' "$ROOT/mihomo-doctor.sh" || fail "doctor summary must not call every FAIL a current blocking outage"
+grep -Fq 'status_out "$COLOR_RED" "FAIL findings ($N_FAIL):"' "$ROOT/mihomo-doctor.sh" || fail "doctor summary must retain the scoped FAIL findings section and present it as red"
 grep -Fq 'Legacy-profile note: direct component FAILs are reserved for prerequisites whose current runtime capability is not separately proven by Doctor.' "$ROOT/mihomo-doctor.sh" || fail "doctor must explain capability-correlated legacy component semantics"
 pass "doctor summarizes WARN/FAIL findings with precise legacy-safe next steps"
 
@@ -642,6 +724,11 @@ done
 pass "RU/EN HOWTOs mirror storage-mode, external EXT4 and ProxyN contracts"
 # Simple front-end must remain a thin selector/delegator, not a second installer.
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/setup.sh" || fail "simple setup wrapper must default to stable"
+# The built-in Keenetic BusyBox wget may not support HTTPS; do not rely on
+# it to fetch GitHub setup.sh before Entware curl has been installed.
+grep -Fq 'command -v curl >/dev/null 2>&1 || err "curl not found. Run: opkg update && opkg install curl"' "$ROOT/setup.sh" || fail "simple setup must require HTTPS-capable curl for initial GitHub bootstrap"
+grep -Fq 'pkg_ensure curl' "$ROOT/install.sh" || fail "canonical installer must continue to ensure curl is installed"
+grep -Fq 'pkg_ensure iptables' "$ROOT/install.sh" || fail "canonical installer must own iptables installation; user never preinstalls it for normal setup"
 grep -Fq 'INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"' "$ROOT/setup.sh" || fail "simple setup installer staging path must use the shell PID ($$) and remain process-unique"
 grep -Fq 'CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"' "$ROOT/setup.sh" || fail "simple setup importer staging path must use the shell PID ($$) and remain process-unique"
 grep -Fq 'PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"' "$ROOT/setup.sh" || fail "simple setup wrapper must keep injectable mount detection for focused tests"
@@ -685,6 +772,10 @@ grep -Fq 'read -r _ci_first_line < /dev/tty' "$ROOT/config-import.sh" || fail "i
 grep -Fq "printf '%s\\n' \"\$_ci_first_line\" > \"\$STAGE_CONFIG\"" "$ROOT/config-import.sh" || fail "interactive importer must preserve the first pasted YAML line"
 grep -Fq 'cat < /dev/tty >> "$STAGE_CONFIG"' "$ROOT/config-import.sh" || fail "interactive importer must append the remaining YAML from /dev/tty"
 grep -Fq 's|S|skip|SKIP)' "$ROOT/config-import.sh" || fail "interactive importer must offer an explicit skip path"
+grep -Fq 'while :; do' "$ROOT/config-import.sh" || fail "importer must tolerate blank terminal input before first decision"
+grep -Fq '*[![:space:]]*)' "$ROOT/config-import.sh" || fail "importer must skip whitespace-only terminal lines before first YAML/skip decision"
+grep -Fq 'printf "YAML (or s to skip): " > /dev/tty' "$ROOT/config-import.sh" || fail "importer must re-prompt after blank input"
+grep -Fq 'log "Config import skipped."' "$ROOT/config-import.sh" || fail "importer skip must exit cleanly without config mutation"
 grep -Fq "mixed-port:[[:space:]]*7890" "$ROOT/config-import.sh" || fail "config importer must enforce project port 7890 before downtime"
 grep -Fq '"$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t' "$ROOT/config-import.sh" || fail "candidate config must be tested before commit"
 grep -Fq 'mv -f "$STAGE_CONFIG" "$CONFIG_PATH"' "$ROOT/config-import.sh" || fail "config commit must be a same-filesystem atomic rename"

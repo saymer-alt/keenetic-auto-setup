@@ -355,6 +355,12 @@ installer_cleanup() {
     [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
     [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
     rm -f "$TMP_DIR/mihomo.ipk" "$TMP_DIR/mihomo-watchdog.new" "$WATCHDOG_STAGE" "$MAGITRICKLE_REPO_STAGE" "${WRAPPER_STAGE:-}" "${CRONTAB_STAGE:-}" "${CRON_CANDIDATE:-}"
+    # The interface may have been temporarily disabled to fire the native
+    # netfilter.d callback. Restore it on every handled exit/signal.
+    if [ -n "${PROXY_RESTORE_PENDING:-}" ]; then
+        ndmc -c "interface ${PROXY_RESTORE_PENDING} up" >/dev/null 2>&1 || true
+        PROXY_RESTORE_PENDING=""
+    fi
     ml_lifecycle_release || true
 }
 trap installer_cleanup EXIT
@@ -855,6 +861,46 @@ require_project_keeneticos_components() {
 require_project_keeneticos_components
 ml_lifecycle_acquire || err "Mihomo lifecycle is busy or unverifiable; installation not started. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 mp_known || err "Mihomo runtime UNKNOWN; installation not started."
+
+# Determine clean Entware BEFORE this installer populates it.
+# KeeneticOS interfaces/policies survive an Entware reinstall, so existing
+# canonical Proxy0 is not proof of an actively used project service.
+# Fail closed if either package inventory or listener state is unavailable.
+PROXY_FRESH_ENTWARE=0
+PROXY_CREATED_THIS_RUN=0
+PROXY_RESTORE_PENDING=""
+detect_fresh_entware_stack() {
+    _fs_packages=$(opkg list-installed 2>/dev/null) || return 1
+    if printf '%s\n' "$_fs_packages" | grep -Eq '^(mihomo|magitrickle) '; then
+        return 1
+    fi
+    for _fs_path in /opt/bin/mihomo /opt/sbin/mihomo \
+        /opt/bin/magitrickled /opt/etc/init.d/S99mihomo \
+        /opt/etc/init.d/S99magitrickle \
+        /opt/bin/mihomo_watchdog.sh \
+        /opt/etc/cron.5mins/mihomo_watchdog \
+        /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; do
+        [ ! -e "$_fs_path" ] && [ ! -L "$_fs_path" ] || return 1
+    done
+    # Missing or empty YAML only. Never infer freshness from a short but
+    # nonempty config: it may be a deliberately small user profile.
+    [ ! -s /opt/etc/mihomo/config.yaml ] || return 1
+    [ ! -L /opt/etc/mihomo/config.yaml ] || return 1
+    mp_stopped || return 1
+    command -v netstat >/dev/null 2>&1 || return 1
+    _fs_listeners=$(netstat -tln 2>/dev/null) || return 1
+    # Don't toggle a proxy if another daemon is already serving port 7890.
+    if printf '%s\n' "$_fs_listeners" | awk '$4 ~ /[.:]7890$/ { found=1 } END { exit !found }'; then
+        return 1
+    fi
+    return 0
+}
+if detect_fresh_entware_stack; then
+    PROXY_FRESH_ENTWARE=1
+    log "Fresh Entware project stack detected before package installation; existing canonical Proxy0 may be safely reactivated after hook delivery"
+else
+    log "Existing or unverified Entware project stack; automatic reactivation of reused ProxyN is disabled"
+fi
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
@@ -890,6 +936,7 @@ pkg_ensure() {
 pkg_ensure ca-bundle
 pkg_ensure curl
 pkg_ensure jq
+pkg_ensure iptables
 pkg_ensure nano
 pkg_ensure cron
 
@@ -1663,6 +1710,7 @@ select_project_proxy() {
         if ! proxy_is_canonical "Proxy0" "0"; then
             err "Proxy0 appeared in running-config but the required project profile (mihomo t2s0 / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
         fi
+        PROXY_CREATED_THIS_RUN=1
         log "Project proxy Proxy0 created and verified"
         return 0
     fi
@@ -1702,6 +1750,7 @@ select_project_proxy() {
     if ! proxy_is_canonical "Proxy${_n}" "$_n"; then
         err "Proxy${_n} appeared in running-config but the required project profile (mihomo t2s${_n} / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
     fi
+    PROXY_CREATED_THIS_RUN=1
     log "Project proxy Proxy${_n} created and verified"
 }
 
@@ -1834,6 +1883,67 @@ if project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypa
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
 else
     warn "bypass download failed after raw/curl, raw/wget and GitHub API fallbacks"
+fi
+
+# On a first install, the KeeneticOS proxy configuration may survive a
+# wiped/reinstalled Entware. Re-applying a verified project-owned ProxyN UP
+# transition may trigger native netfilter.d hook application without reboot.
+# On an existing Entware stack, never bounce reused ProxyN automatically.
+# This is deliberately placed after hook delivery and before Mihomo startup.
+activate_bypass_on_fresh_proxy() {
+    [ -n "$PROXY_IFACE" ] || return 0
+    if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then
+        log "Skipping proxy activation: existing project stack and reused interface"
+        return 0
+    fi
+    if ! load_rc_dump; then
+        warn "Cannot re-check project ProxyN before activation; no interface toggle"
+        return 0
+    fi
+    proxy_state "$PROXY_IFACE"
+    if [ "$PROXY_STATE" != "FOUND" ] ||
+       ! proxy_is_canonical "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
+        warn "ProxyN is not a verified canonical project interface; no interface toggle"
+        return 0
+    fi
+    # Do not change an intentionally disabled proxy to UP. An existing
+    # canonical proxy must explicitly have 'up' in running-config.
+    if ! printf '%s\n' "$RC_DUMP" | awk -v iface="$PROXY_IFACE" '
+        $0 == "interface " iface {block=1; next}
+        block && /^!/ {exit !enabled}
+        block && /^ *up *$/ {enabled=1}
+        END {if (!enabled) exit 1}
+    '; then
+        warn "Project proxy is not explicitly UP; activation skipped to preserve owner configuration"
+        return 0
+    fi
+
+    # A non-empty pending marker makes the EXIT/TERM/INT cleanup attempt
+    # to re-enable the interface if anything fails after the DOWN step.
+    PROXY_RESTORE_PENDING="$PROXY_IFACE"
+    log "Reapplying newly installed bypass hook via project ${PROXY_IFACE} down/up (first-install profile)"
+    if ! ndmc -c "interface ${PROXY_IFACE} down" >/dev/null 2>&1; then
+        ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1 || true
+        PROXY_RESTORE_PENDING=""
+        warn "ProxyN DOWN transition failed; Netfilter hook readiness still needs verification"
+        return 0
+    fi
+    _ap_up_ok=0
+    for _ap_attempt in 1 2 3; do
+        if ndmc -c "interface ${PROXY_IFACE} up" >/dev/null 2>&1; then
+            _ap_up_ok=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$_ap_up_ok" -ne 1 ]; then
+        err "Unable to restore ${PROXY_IFACE} UP after Netfilter hook trigger; installer will retry during cleanup"
+    fi
+    PROXY_RESTORE_PENDING=""
+    log "Project ${PROXY_IFACE} UP restored; verifying bypass Netfilter in self-check"
+}
+if [ -x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
+    activate_bypass_on_fresh_proxy
 fi
 
 # ---------------------------
@@ -2158,12 +2268,131 @@ else
     check_fail "DNS transit interception (dns-proxy intercept enable) not found"
 fi
 
-# Bypass rules
-if [ -x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then
-    check_ok "bypass rules: 020-bypass_wa.sh present"
-else
-    check_fail "bypass rules: /opt/etc/ndm/netfilter.d/020-bypass_wa.sh missing or not executable"
-fi
+# Bypass rules: prove the live Netfilter capability, not merely a file.
+# -C is a read-only exact rule check and is independent of iptables -S print
+# normalization (--set-mark vs --set-xmark). Keep a bounded policy API probe.
+check_bypass_netfilter_runtime() {
+    _br_hook=/opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+    _br_chain=_CUST_BYPASS_WA_
+    _br_ports=1400,3478,3482
+    if [ ! -x "$_br_hook" ]; then
+        check_fail "bypass_wa hook missing or not executable ($_br_hook)"
+        return 0
+    fi
+    check_ok "bypass_wa hook installed and executable (does not prove live rules)"
+
+    if ! command -v iptables >/dev/null 2>&1; then
+        check_fail "bypass_wa runtime cannot be verified: iptables not found"
+        return 0
+    fi
+    if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        check_fail "bypass_wa runtime policy mark cannot be verified: curl/jq missing"
+        return 0
+    fi
+    if ! _br_api=$(curl -fSs --connect-timeout 3 --max-time 5 http://localhost:79/rci/show/ip/policy 2>/dev/null); then
+        check_fail "bypass_wa runtime policy mark unavailable: Keenetic API query failed"
+        return 0
+    fi
+    if ! _br_mark=$(printf '%s\n' "$_br_api" |
+        jq -er '[.[] | select(.description == "bypass_wa") | .mark] | if length == 1 then .[0] else empty end' 2>/dev/null); then
+        check_fail "bypass_wa runtime policy mark unavailable or ambiguous"
+        return 0
+    fi
+    case "$_br_mark" in
+        ''|*[!0123456789abcdefABCDEF]*)
+            check_fail "bypass_wa runtime policy mark is invalid (expected hexadecimal)"
+            return 0
+            ;;
+    esac
+
+    # -C and -S can disagree for extension matches on some Keenetic
+    # xtables builds: the NC-1812 field A/B proved all three mangle rules
+    # while -C returned negative. Read-only -S is also what Doctor uses.
+    # Validate the complete serialized chain, including exact policy mark,
+    # full mark masks and MARK -> CONNMARK -> RETURN order. Do not accept an
+    # empty chain, partial rules, duplicates or unrelated extra rules.
+    # Netfilter rewrite callbacks are asynchronous on some devices.
+    # Bound the read-only verification to eight snapshots (~14 seconds max).
+    # A real missing/incomplete chain remains a hard FAIL; no firewall writes,
+    # reloads or interface toggles occur during these retries.
+    _br_probe_once() {
+    if ! _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1); then
+        _br_last_fault="chain cannot be inspected"
+        return 1
+    fi
+    if ! _br_pre=$(iptables -t mangle -S PREROUTING 2>&1); then
+        _br_last_fault="PREROUTING cannot be inspected"
+        return 1
+    fi
+    if ! printf '%s\n' "$_br_pre" | awk -v chain="$_br_chain" '
+        $1=="-A" && $2=="PREROUTING" && $3=="-m" &&
+        $4=="mark" && $5=="--mark" && ($6=="0x0" || $6=="0x0/0xffffffff") &&
+        $7=="-j" && $8==chain && NF==8 {hits++}
+        END {exit !(hits==1)}
+    '; then
+        _br_last_fault="PREROUTING link missing or ambiguous"
+        return 1
+    fi
+
+    if ! printf '%s\n' "$_br_chain_dump" | awk -v chain="$_br_chain" -v ports="$_br_ports" -v mark="$_br_mark" '
+        BEGIN {wanted=tolower("0x" mark)}
+        function base() {
+            return NF>=10 && $1=="-A" && $2==chain &&
+                $3=="-p" && $4=="udp" && $5=="-m" &&
+                $6=="multiport" && $7=="--dports" &&
+                $8==ports && $9=="-j"
+        }
+        $1=="-N" && $2==chain && NF==2 {headers++; next}
+        $1=="-A" && $2==chain {
+            rules++
+            if (!base()) {bad++; next}
+            if (rules==1 && $10=="MARK" && NF==12 &&
+                (($11=="--set-mark" && tolower($12)==wanted) ||
+                 ($11=="--set-xmark" &&
+                  (tolower($12)==wanted || tolower($12)==wanted "/0xffffffff")))) {
+                good_mark++; next
+            }
+            if (rules==2 && $10=="CONNMARK" && $11=="--save-mark" &&
+                (NF==11 || (NF==15 && $12=="--nfmask" &&
+                 tolower($13)=="0xffffffff" && $14=="--ctmask" &&
+                 tolower($15)=="0xffffffff"))) {
+                good_connmark++; next
+            }
+            if (rules==3 && $10=="RETURN" && NF==10) {
+                good_return++; next
+            }
+            bad++
+            next
+        }
+        NF {bad++}
+        END {
+            exit !(headers==1 && rules==3 && bad==0 &&
+                   good_mark==1 && good_connmark==1 && good_return==1)
+        }
+    '; then
+        _br_last_fault="chain incomplete, wrong mark/mask, wrong order or unverified"
+        return 1
+    fi
+        return 0
+    }
+    _br_round=1
+    _br_max_rounds=8
+    while :; do
+        if _br_probe_once; then
+            check_ok "bypass_wa LIVE Netfilter: PREROUTING + UDP multiport MARK(0x$_br_mark)/CONNMARK-save/RETURN verified via iptables -S"
+            if [ "$_br_round" -gt 1 ]; then
+                check_info "bypass_wa live rules became ready after $_br_round read-only checks (2s interval)"
+            fi
+            return 0
+        fi
+        [ "$_br_round" -lt "$_br_max_rounds" ] || break
+        sleep 2
+        _br_round=$((_br_round + 1))
+    done
+    check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks: $_br_last_fault; required policy mark=0x$_br_mark"
+
+}
+check_bypass_netfilter_runtime
 
 # bypass_wa policy exit: report specifically whether the selected project
 # proxy is permitted; other permits (e.g. a manually bound VPN) are fine and
