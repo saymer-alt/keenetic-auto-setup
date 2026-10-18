@@ -64,7 +64,9 @@ grep -Fq 'iptables -t mangle -S "$_br_chain"' "$ROOT/install.sh" || fail "instal
 ! grep -Fq 'iptables -t mangle -C "$_br_chain"' "$ROOT/install.sh" || fail "installer must not misclassify serialized rules via extension-sensitive iptables -C"
 grep -Fq 'good_mark==1 && good_connmark==1 && good_return==1' "$ROOT/install.sh" || fail "installer must prove all three ordered live Netfilter rules"
 grep -Fq 'tolower($12)==wanted "/0xffffffff"' "$ROOT/install.sh" || fail "installer must support normalized --set-xmark output and validate full mask"
-grep -Fq 'CONNMARK --save-mark' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
+grep -Fq '$10=="CONNMARK" && $11=="--save-mark"' "$ROOT/install.sh" || fail "installer must verify connection mark action, not only chain"
+grep -Fq '$12=="--nfmask"' "$ROOT/install.sh" || fail "installer must require full --nfmask on normalized connmark"
+grep -Fq '$14=="--ctmask"' "$ROOT/install.sh" || fail "installer must require full --ctmask on normalized connmark"
 grep -Fq 'check_fail "bypass_wa runtime chain unavailable:' "$ROOT/install.sh" || fail "installer must report absent chain as FAIL"
 _fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_line=$(grep -nF 'log "Updating opkg..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
