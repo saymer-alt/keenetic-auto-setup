@@ -55,7 +55,11 @@ jq() {
     printf '%s\n' "$MOCK_MARK"
 }
 check_ok() { RESULT_OK=$((RESULT_OK+1)); }
+check_info() { :; }
 check_fail() { RESULT_FAIL=$((RESULT_FAIL+1)); }
+# Production retries are bounded, but mock tests must not sleep 14 seconds
+# for each deliberately missing/incomplete Netfilter snapshot.
+sleep() { :; }
 check_info() { RESULT_INFO=$((RESULT_INFO+1)); }
 # Avoid waiting 14s per expected-failure fixture: test retry counts, not wall time.
 sleep() { :; }
