@@ -280,6 +280,9 @@ SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
 CONFIG_COMMIT_STARTED=0
+# Saved terminal settings while the interactive reader enforces ICRNL
+# (restored by cleanup); empty when the terminal was not touched.
+CI_TTY_STTY_SAVE=""
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -324,6 +327,10 @@ resolve_mihomo() {
 }
 
 cleanup() {
+    if [ -n "$CI_TTY_STTY_SAVE" ]; then
+        stty -F /dev/tty "$CI_TTY_STTY_SAVE" 2>/dev/null || true
+        CI_TTY_STTY_SAVE=""
+    fi
     rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
     ml_lifecycle_release || true
 }
@@ -504,6 +511,22 @@ else
     echo
     printf "YAML (or s to skip): " > /dev/tty
 
+    # Field NC-1812 (2026-10-18): some SSH terminals deliver keyboard Enter
+    # as CR with ICRNL disabled, so `read` never receives a newline and both
+    # the skip command and pasted YAML appear swallowed while the terminal
+    # keeps echoing (BusyBox shell line editing treats CR itself, which is
+    # why the outer shell still worked). Enable ICRNL for the reader and
+    # restore the saved settings through cleanup; additionally strip CR from
+    # every delivered line so CRLF terminals and pasted CRLF text cannot
+    # poison the skip match. Both helpers are best-effort: without stty or
+    # without a writable tty the reader still works for LF input.
+    if command -v stty >/dev/null 2>&1; then
+        CI_TTY_STTY_SAVE=$(stty -g -F /dev/tty 2>/dev/null) || CI_TTY_STTY_SAVE=""
+        if [ -n "$CI_TTY_STTY_SAVE" ]; then
+            stty -F /dev/tty icrnl 2>/dev/null || CI_TTY_STTY_SAVE=""
+        fi
+    fi
+
     # Ignore accidental blank Enter lines before the actual first YAML line.
     # A previously queued empty line could bypass the `s` skip selection
     # and drop into `cat`, which would then wait indefinitely for Ctrl+D.
@@ -514,6 +537,7 @@ else
             log "No configuration entered; import skipped."
             exit 0
         fi
+        _ci_first_line=$(printf '%s\n' "$_ci_first_line" | tr -d '\r')
 
         case "$_ci_first_line" in
             s|S|skip|SKIP)
