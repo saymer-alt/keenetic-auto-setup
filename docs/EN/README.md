@@ -1,8 +1,10 @@
-# 🛡️ Keenetic Auto-Setup Suite
+# 🛡️ Keenetic Auto-Setup Suite — Mihomo + MagiTrickle
 
-Automated installation of Mihomo and supporting components on Keenetic + Entware.
+Automated installation and integration of **[Mihomo](https://github.com/MetaCubeX/mihomo) + [MagiTrickle](https://magitrickle.dev/)** on Keenetic with Entware. **Mihomo** provides proxy connections and routes to your servers; **MagiTrickle** manages DNS/domain-based traffic groups and routing decisions. Both are essential parts of this setup.
 
 [Русский](../../README.md)
+
+**Quick links:** [Install](#1-installation) · [Configure](#2-mihomo-configuration) · [Check](#3-check-and-start) · [Update](#4-updates) · [More commands](#5-additional-commands)
 
 ---
 
@@ -16,6 +18,8 @@ Automated installation of Mihomo and supporting components on Keenetic + Entware
 - For the normal internal-`/opt` profile the project uses **S00ubifs**: `/opt/tmp`, `/opt/var/log`, and `/opt/var/run` are moved to `tmpfs` (RAM), reducing continuous writes to internal flash while configs and packages stay persistent
 
 If Entware is not installed yet and `/opt` will be placed on USB/SSD → [prepare external EXT4 storage and install Entware](ENTWARE_EXTERNAL_STORAGE.md).
+
+**`opkg update` cannot download packages?** See the [Entware recovery guide (Russian): existing VPN, upstream router or NJU mirror](../22-entware-feed-fallback.md).
 
 Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md) · [RAM / storage / limitations](../09-limitations.md) · [S00ubifs flash-write reduction and RAM mode](../06-s00ubifs.md)
 
@@ -40,6 +44,8 @@ Normal TLS remains the primary path. `X25519` is only a compatibility fallback f
 
 If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
 
+> **CRITICAL:** native KeeneticOS zRAM and external storage-backed SWAP must never be active together, regardless of RAM class. **Installer — ERROR, Doctor — FAIL, Updater — ERROR**; no automatic bypass. [Safety constitution](../CONSTITUTION.md).
+
 > **512 MB-class note:** bare 512 MB physical RAM is no longer a supported project baseline. A new install requires active KeeneticOS zRAM **or** verified external storage-backed swap; with neither present the installer stops with ERROR and Doctor reports FAIL. There is no access-point exception.
 
 Advanced/manual installation, explicit `ram|disk` selection, offline/SCP delivery, and storage overrides are documented separately.
@@ -57,7 +63,11 @@ After installation, `setup.sh` automatically continues into **Mihomo Config Impo
 
 The importer runs real `mihomo -t` validation, preserves the one-Mihomo invariant, saves the previous config as `config.yaml.bak`, commits atomically, and rolls back automatically if Mihomo fails to start or port 7890 does not become ready.
 
-If you do not want to import a config yet, type `s` at the importer prompt and run it later.
+If you do not want to import a config yet, type **`s` and Enter**. To import later, run:
+
+```bash
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+```
 
 After importing a full generated `config.yaml`, the two main web interfaces are:
 
@@ -70,7 +80,7 @@ If Config Import is skipped with `s`, the minimal bootstrap config keeps only th
 
 > **MagiTrickle itself is installed automatically, but your user `.mtrickle` configuration is not.** `setup.sh`/`install.sh` add the repository, install the MagiTrickle package, start the service, and configure the required system integration. Exported groups, rules, interfaces, and other user settings from a `.mtrickle` file are intentionally not imported by the installer. After a clean install, open MagiTrickle at `http://<router-IP>:8080/` and import your saved configuration manually if you need to restore it.
 
-Practical example: [real MagiTrickle field sample — 8 groups / 287 rules](MAGITRICKLE_FIELD_LISTS.md). It is a dated user export, not an official or universal service-domain list.
+For the original rule model and interface, see the [official MagiTrickle documentation](https://magitrickle.dev/). Practical example: [real MagiTrickle field sample — 8 groups / 287 rules](MAGITRICKLE_FIELD_LISTS.md). It is a dated user export, not an official or universal service-domain list.
 
 For the first MetaCubeXD open after importing the full config, use the base `/ui/` path rather than `#/overview` or another hash route. If your router uses a different LAN IP, replace `192.168.1.1` in both links.
 
@@ -86,7 +96,7 @@ nano /opt/etc/mihomo/config.yaml
 
 After a manual edit, restart Mihomo and check its status.
 
-Doctor:
+**Doctor — full read-only diagnostics, including NAND/UBI since v1.8.3:**
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
