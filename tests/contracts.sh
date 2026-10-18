@@ -79,6 +79,14 @@ _ipt_pkg=$(grep -nF 'pkg_ensure iptables' "$ROOT/install.sh" | head -1 | cut -d:
 [ "$_ipt_pkg" -lt "$_hook_line" ] || fail "iptables must be installed before bypass hook delivery"
 pass "clean Entware proxy activation is guarded, reversible and runtime-verified"
 
+sh "$ROOT/tests/netfilter-live-regression.sh" "$ROOT" ||
+    fail "installer live Netfilter rules must pass the NC-1812 serialized snapshot and reject missing, partial or wrong-mark rules"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/netfilter-live-regression.sh" "$ROOT" ||
+        fail "BusyBox ash installer live Netfilter rule fixtures failed"
+fi
+pass "installer live Netfilter verification rejects false positives and handles serialized iptables matches"
+
 
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
