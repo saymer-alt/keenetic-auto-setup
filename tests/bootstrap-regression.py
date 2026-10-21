@@ -67,7 +67,7 @@ else:
 """
 
 
-def exercise(shell, title, plan, want_calls, want_exit, want_run):
+def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=()):
     with tempfile.TemporaryDirectory(prefix="kas-bootstrap-test-") as tmp:
         lab = Path(tmp)
         fakebin = lab / "bin"
@@ -88,7 +88,7 @@ def exercise(shell, title, plan, want_calls, want_exit, want_run):
             "TERM": "dumb",
         })
         r = subprocess.run(
-            shell + [str(ROOT / "bootstrap.sh")],
+            shell + [str(ROOT / "bootstrap.sh"), *cli_args],
             text=True,
             capture_output=True,
             timeout=12,
@@ -103,9 +103,11 @@ def exercise(shell, title, plan, want_calls, want_exit, want_run):
         assert calls == want_calls, (title, calls, want_calls, r.stdout, r.stderr)
         assert ("SETUP_RAN" in r.stdout) == want_run, (
             title, r.stdout, r.stderr)
+        if title == "safe_check_only":
+            assert "CHECK_ONLY" in r.stdout and "nothing executed" in r.stdout
         assert not list(lab.glob("kas-setup.*")), (title, "staged secret not removed")
         assert "PARTIAL_SHOULD_NEVER_RUN" not in r.stdout, title
-        assert "Could not fetch valid KAS setup.sh" in r.stderr if not want_run and title != "invalid_ref" else True
+        if want_exit == 1 and not want_run:\n            assert "Could not fetch valid KAS setup.sh" in r.stderr, (title, r.stderr)
         print("PASS", shell, title)
 
 
@@ -116,6 +118,8 @@ def main():
         shells.append([bb, "ash"])
     for shell in shells:
         exercise(shell, "raw_good", {"raw": "good"}, ["raw"], 0, True)
+        exercise(shell, "safe_check_only", {"raw": "good"}, ["raw"], 0, False,
+                 cli_args=("--check",))
         exercise(shell, "invalid_raw_then_ipv4_good", {"raw": "html", "ipv4": "good"},
                  ["raw", "ipv4"], 0, True)
         exercise(shell, "raw_ipv4_fail_api_good", {"api": "good"},
