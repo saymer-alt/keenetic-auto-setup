@@ -15,10 +15,10 @@ Frequently used SSH commands in one place. **Copy one block at a time.** More de
 **1. Install KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-Short HTTPS launch with visible curl progress and 7/25-second timeouts. **Accepted trade-off:** the initial `bootstrap.sh` is streamed to `sh` without pre-execution file validation; bootstrap itself still validates `setup.sh` before running it. For a failed first GitHub raw download, use the [advanced staged fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
+Short HTTPS launch using familiar `curl -fSsL`: errors remain visible, transfer progress is hidden, and no extra overall download timeout is imposed. **Accepted trade-off:** the initial `bootstrap.sh` is streamed to `sh` without pre-execution file validation; bootstrap itself still validates `setup.sh` before running it. For a failed first GitHub raw download, use the [advanced staged fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
 
 **2. Edit the Mihomo configuration**
 
@@ -96,7 +96,7 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 **Copy this entire command into the Keenetic SSH shell with Entware installed:**
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives and delegates the EXT4, KeeneticOS component, RAM/swap, and other safety checks to the canonical installer. After installation, it starts the Mihomo configuration importer.

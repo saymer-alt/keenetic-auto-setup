@@ -314,7 +314,7 @@ ssh admin@192.168.1.1
 и только после этого переходите к установке проекта (краткий HTTPS-запуск; [проверяемый резервный вариант](03-install.md#расширенная-установка-с-проверкой-первой-загрузки)):
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 Дальше `setup.sh` и `install.sh` самостоятельно проверят фактический `/opt`,

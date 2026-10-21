@@ -748,8 +748,9 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 # to staging + validating the initial file. Bootstrap -> setup remains staged.
 PUBLIC_BOOTSTRAP_URL='https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh'
 for _f in README.md docs/EN/README.md docs/02-quick-start.md docs/03-install.md docs/14-setup.md docs/EN/SETUP.md docs/HOWTO_RU.md docs/HOWTO.md docs/16-entware-external-storage.md docs/EN/ENTWARE_EXTERNAL_STORAGE.md; do
-    grep -Fq "opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 $PUBLIC_BOOTSTRAP_URL | sh" "$ROOT/$_f" || fail "$_f must publish the agreed short HTTPS launcher"
+    grep -Fq "opkg update && opkg install curl && curl -fSsL $PUBLIC_BOOTSTRAP_URL | sh" "$ROOT/$_f" || fail "$_f must publish the agreed short HTTPS launcher"
     ! grep -Fq 'stable/setup.sh | sh' "$ROOT/$_f" || fail "$_f must keep setup.sh behind validated bootstrap stage"
+    ! grep -Eq "^opkg update && opkg install curl && curl .* (--max-time|--connect-timeout| -m )" "$ROOT/$_f" || fail "$_f standard quick installer must not include timeout flags"
     ! grep -Eq "^opkg update && opkg install curl && curl .* (--insecure|-k) " "$ROOT/$_f" || fail "$_f quick installer must not disable TLS verification"
 done
 # Advanced three-source first-fetch still validates the initial file.
