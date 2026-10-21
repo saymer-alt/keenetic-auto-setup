@@ -80,6 +80,7 @@ def extract():
         cmd = found[0]
         assert all(candidate == cmd for candidate in found), (path, 'inconsistent repeated install commands')
         if is_readme:
+            assert len(text) <= 8000, (path, 'README grew beyond the owner-approved quick-start budget', len(text))
             headings = ('## Частые команды', '## 1. Установка') if path == 'README.md' else ('## Common commands', '## 1. Installation')
             first, second = (text.index(heading) for heading in headings)
             assert first < second, (path, 'readme section order changed')
