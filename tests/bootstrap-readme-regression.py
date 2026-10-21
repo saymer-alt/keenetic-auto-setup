@@ -46,16 +46,35 @@ if kind=='fail':sys.exit(28)
 """
 
 def extract():
+    """Full installer remains identical in all ten guides; README shortcuts are short and fail closed."""
     source = None
+    quick_source = None
     for path in DOCS:
         text=(ROOT/path).read_text()
         matches=COMMAND.findall(text)
         assert matches, (path,'no install command')
+        if path in ("README.md", "docs/EN/README.md"):
+            assert len(matches) == 2, (path,'expected compact cheatsheet plus full fallback installer')
+            quick, full = matches
+            assert len(quick.splitlines()) <= 7, (path,'command cheat sheet became too long again')
+            for required in (
+                'opkg update && opkg install curl',
+                'umask 077', 'mktemp /tmp/kas.', 'trap ', '--connect-timeout 7 --max-time 25',
+                '[ -s "$f" ]', 'head -n 1 "$f"', 'KAS_FIRSTFETCH_V1',
+                'sh -n "$f"', 'sh "$f"'
+            ):
+                assert required in quick, (path,'unsafe or missing compact first-fetch check',required)
+            assert ' | sh' not in quick and '--insecure' not in quick
+            assert 'full' not in quick
+            assert 'GitHub API' in text or 'GitHub Contents API' in text
+            if quick_source is None: quick_source = quick
+            assert quick_source == quick, (path,'RU/EN compact installer differ')
+            matches = [full]
         if source is None: source=matches[0]
-        assert all(x==source for x in matches), (path,'different install command')
+        assert all(x==source for x in matches), (path,'detailed full-fallback installer differs')
     assert 'fetch -4 --curves X25519 "$RAW"' in source
     assert 'sh -n "$f"' in source
-    return source
+    return source, quick_source
 
 def trial(sh,source,plan,calls,works):
     with tempfile.TemporaryDirectory(prefix='kas-readme-') as d:
@@ -77,15 +96,17 @@ def trial(sh,source,plan,calls,works):
         print('PASS',sh,plan)
 
 def main():
-    source=extract()
+    source, quick = extract()
     shells=[['/bin/sh']]
     if shutil.which('busybox'):shells.append([shutil.which('busybox'),'ash'])
     for sh in shells:
+        for kind, works in [('good',True),('html',False),('json',False),('bad',False),('fail',False)]:
+            trial(sh,quick,{'raw':kind},['raw'],works)
         trial(sh,source,{'raw':'good'},['raw'],True)
         trial(sh,source,{'raw':'html','ipv4':'good'},['raw','ipv4'],True)
         trial(sh,source,{'api':'good'},['raw','ipv4','api'],True)
         trial(sh,source,{'raw':'bad','ipv4':'bad','api':'bad'},['raw','ipv4','api'],False)
         trial(sh,source,{},['raw','ipv4','api'],False)
-    print('PASS: all 10 documents and first-hop failover in offline shell')
+    print('PASS: RU/EN safe compact command + full three-path fallback across all 10 docs')
 
 if __name__=='__main__':main()
