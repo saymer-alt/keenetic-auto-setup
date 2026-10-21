@@ -97,7 +97,11 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-`setup.sh` автоматически определяет профиль хранения (`ram`/`disk`), выполняет проверки через основной установщик и после успешной установки открывает безопасный импорт конфигурации Mihomo.
+**Что запускает команда:** первым выполняется [`bootstrap.sh`](bootstrap.sh) — небольшой загрузчик, который скачивает [`setup.sh`](setup.sh) с резервными способами получения файла (GitHub raw → IPv4/X25519 → GitHub API), проверяет содержимое и синтаксис, затем запускает его. **`bootstrap.sh` сам Mihomo не устанавливает.**
+
+Дальше `setup.sh` определяет профиль хранения (`ram`/`disk`) и передаёт установку [`install.sh`](install.sh), где выполняются проверки компонентов KeeneticOS, RAM/swap и хранилища. После успешной установки `setup.sh` предлагает безопасный импорт конфигурации через [`config-import.sh`](config-import.sh).
+
+**Цепочка:** `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` (после успешной установки, если доступен интерактивный ввод).
 
 Если первая загрузка GitHub raw не удалась, используйте [расширенный резервный вариант с проверкой файла](docs/03-install.md#расширенная-установка-с-проверкой-первой-загрузки). Внутри `bootstrap.sh` сохраняются попытки raw → IPv4/X25519 → GitHub Contents API для получения `setup.sh`. Для скачивания остальных компонентов предусмотрены дополнительные резервные способы. Обычная команда работает по HTTPS; её первая загрузка исполняется потоком `curl | sh` без предварительной проверки файла — принятый компромисс ради простоты.
 
@@ -266,7 +270,8 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Назначение / документация |
 | --- | --- |
-| [`setup.sh`](setup.sh) | [Рекомендуемая установка проекта](docs/14-setup.md) |
+| [`bootstrap.sh`](bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](docs/14-setup.md#зачем-нужен-bootstrapsh) |
+| [`setup.sh`](setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](docs/14-setup.md) |
 | [`install.sh`](install.sh) | [Основной установщик с ручным выбором профиля](docs/03-install.md) |
 | [`config-import.sh`](config-import.sh) | [Импорт и безопасная замена `config.yaml`](docs/13-config-import.md) |
 | [`migrate-mihomo-tun.sh`](migrate-mihomo-tun.sh) | [Добавить TUN/`mitun0` в legacy-конфиг без секции `tun:`](docs/12-updates.md#legacy-config-добавление-tun--mitun0) |

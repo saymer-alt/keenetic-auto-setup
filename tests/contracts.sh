@@ -758,6 +758,15 @@ grep -Fq "opkg update && opkg install curl && sh -c '" "$ROOT/docs/03-install.md
 grep -Fq 'sh -n "$f"' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain shell validation"
 grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must check identity"
 grep -Fq 'api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain API fallback"
+# Public onboarding must describe the exact four-script chain and the missing
+# bootstrap.sh entry must never disappear from the RU/EN script inventories.
+for _f in README.md docs/EN/README.md; do
+    grep -Fq '| [`bootstrap.sh`](' "$ROOT/$_f" || fail "$_f must list bootstrap.sh and its purpose in the scripts table"
+    grep -Fq '`bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh`' "$ROOT/$_f" || fail "$_f must explain the actual initial fetch and install chain"
+done
+grep -Fq '## Зачем нужен bootstrap.sh' "$ROOT/docs/14-setup.md" || fail "RU setup guide must explain bootstrap.sh"
+grep -Fq '## Why bootstrap.sh exists' "$ROOT/docs/EN/SETUP.md" || fail "EN setup guide must explain bootstrap.sh"
+! grep -Fq 'This script itself must be downloaded into a private file and validated.' "$ROOT/bootstrap.sh" || fail "bootstrap header must not contradict the owner-approved curl pipe"
 grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/bootstrap.sh" || fail "the staged launcher must carry expected identity"
 grep -Fq 'sh -n "$STAGE"' "$ROOT/bootstrap.sh" || fail "launcher must check actual setup.sh syntax before execution"
 grep -Fq 'PROJECT_API_CONTENTS=' "$ROOT/bootstrap.sh" || fail "launcher must verify setup.sh project identity"
