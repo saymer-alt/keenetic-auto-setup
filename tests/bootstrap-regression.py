@@ -107,7 +107,8 @@ def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=()):
             assert "CHECK_ONLY" in r.stdout and "nothing executed" in r.stdout
         assert not list(lab.glob("kas-setup.*")), (title, "staged secret not removed")
         assert "PARTIAL_SHOULD_NEVER_RUN" not in r.stdout, title
-        if want_exit == 1 and not want_run:\n            assert "Could not fetch valid KAS setup.sh" in r.stderr, (title, r.stderr)
+        if want_exit == 1 and not want_run:
+            assert "Could not fetch valid KAS setup.sh" in r.stderr, (title, r.stderr)
         print("PASS", shell, title)
 
 
