@@ -13,10 +13,10 @@
 Для обычной установки рекомендуется тонкий front-end [`setup.sh`](14-setup.md):
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-Первая передача `bootstrap.sh` напрямую в `sh` — осознанный компромисс ради короткого запуска. HTTPS и стандартная проверка сертификата сохраняются; `curl` выводит прогресс, соединение ограничено 7 секундами, загрузка — 25 секундами. При обрыве потока shell может получить неполный скрипт, а код возврата `curl` не передаётся через pipe в POSIX sh. Внутренний `bootstrap.sh` продолжает предварительно проверять скачанный `setup.sh`.
+Первая передача `bootstrap.sh` напрямую в `sh` — осознанный компромисс ради короткого запуска. HTTPS и стандартная проверка сертификата сохраняются; `-fSsL` показывает ошибки, но скрывает индикатор прогресса. Дополнительных тайм-аутов у первой загрузки нет, поэтому ожидание при сетевых проблемах может быть долгим. При обрыве потока shell может получить неполный скрипт, а код возврата `curl` не передаётся через pipe в POSIX sh. Внутренний `bootstrap.sh` продолжает предварительно проверять скачанный `setup.sh`.
 
 ### Расширенная установка с проверкой первой загрузки
 

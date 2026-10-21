@@ -26,10 +26,10 @@
 `setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. После запуска `setup.sh` дочерние project-скрипты скачиваются через устойчивую fallback-цепочку bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API.
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-Короткая команда загружает первый `bootstrap.sh` по HTTPS и передаёт его в `sh` потоком (принятый компромисс: без предварительной проверки этого первого файла). Прогресс curl виден, тайм-ауты ограничены. Сам `bootstrap.sh` скачивает и проверяет `setup.sh` через raw → IPv4/X25519 → GitHub Contents API. При сбое первой загрузки используйте [расширенную команду](03-install.md#расширенная-установка-с-проверкой-первой-загрузки); `opkg update` может зависать независимо от тайм-аутов curl.
+Короткая команда загружает первый `bootstrap.sh` по HTTPS и передаёт его в `sh` потоком (принятый компромисс: без предварительной проверки этого первого файла). `curl -fSsL` показывает ошибки, но скрывает индикатор прогресса; дополнительное ограничение в 25 секунд не задаётся. Сам `bootstrap.sh` скачивает и проверяет `setup.sh` через raw → IPv4/X25519 → GitHub Contents API. При сбое первой загрузки используйте [расширенную команду](03-install.md#расширенная-установка-с-проверкой-первой-загрузки); при сетевых сбоях ожидание первой загрузки может быть долгим.
 
 Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 

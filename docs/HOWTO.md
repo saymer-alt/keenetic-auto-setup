@@ -325,7 +325,7 @@ If `opkg update` fails: check DNS first (`cat /opt/etc/resolv.conf` — usually 
 You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.

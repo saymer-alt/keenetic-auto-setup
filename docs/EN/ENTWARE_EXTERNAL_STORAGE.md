@@ -261,7 +261,7 @@ Only after the system log confirms `[5/5] "Entware" installed!`, enter the
 Entware shell and run the quick HTTPS installer ([staged fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки)):
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 The project installer then performs its own storage, EXT4, KeeneticOS component,

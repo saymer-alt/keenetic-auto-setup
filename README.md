@@ -15,10 +15,10 @@
 **1. Установить KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-Короткий вариант по HTTPS, с видимым прогрессом curl и тайм-аутами 7/25 секунд. **Компромисс:** первый `bootstrap.sh` передаётся в `sh` потоком и до запуска не проверяется. Зато сам `bootstrap.sh` скачивает и проверяет `setup.sh` до исполнения. Если raw GitHub недоступен — см. [резервный вариант](docs/03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
+Короткий вариант по HTTPS с привычным `curl -fSsL`: сетевые ошибки выводятся, индикатор прогресса скрыт, дополнительного общего тайм-аута нет. **Компромисс:** первый `bootstrap.sh` передаётся в `sh` потоком и до запуска не проверяется. Зато сам `bootstrap.sh` скачивает и проверяет `setup.sh` до исполнения. Если raw GitHub недоступен — см. [резервный вариант](docs/03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
 
 **2. Открыть конфигурацию Mihomo**
 
@@ -94,7 +94,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 **Скопируйте команду целиком в SSH роутера Keenetic с установленным Entware:**
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 `setup.sh` автоматически определяет профиль хранения (`ram`/`disk`), выполняет проверки через основной установщик и после успешной установки открывает безопасный импорт конфигурации Mihomo.

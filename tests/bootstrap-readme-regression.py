@@ -20,7 +20,7 @@ DOCS = [
     "docs/HOWTO_RU.md", "docs/HOWTO.md", "docs/16-entware-external-storage.md",
     "docs/EN/ENTWARE_EXTERNAL_STORAGE.md",
 ]
-QUICK = re.compile(r"(?m)^opkg update && opkg install curl && curl -fSL[^\n]* \| sh$")
+QUICK = re.compile(r"(?m)^opkg update && opkg install curl && curl -fSsL[^\n]* \| sh$")
 ADVANCED = re.compile(
     r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '\n[\s\S]*?\n')\n\x60{3}"
 )
@@ -29,9 +29,12 @@ MOCK = r"""#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
 a = sys.argv[1:]
-assert ('-fSL' in a or '-fSsL' in a) and '--connect-timeout' in a
-assert a[a.index('--connect-timeout')+1] == '7'
-assert a[a.index('--max-time')+1] == '25'
+assert '-fSsL' in a
+if '-o' in a:
+    assert '--connect-timeout' in a and a[a.index('--connect-timeout')+1] == '7'
+    assert '--max-time' in a and a[a.index('--max-time')+1] == '25'
+else:
+    assert '--connect-timeout' not in a and '--max-time' not in a
 assert '--insecure' not in a and '-k' not in a
 url = next(x for x in a if x.startswith('https://'))
 assert url.endswith('/stable/bootstrap.sh') or url.endswith('/contents/bootstrap.sh?ref=stable')
@@ -43,7 +46,7 @@ if phase == 'api':
 if '-o' in a:
     assert '-fSsL' in a
 else:
-    assert '-fSL' in a
+    assert '-fSsL' in a
 lab = Path(os.environ['LAB'])
 f = lab/'calls.json'
 log = json.loads(f.read_text()) if f.exists() else []
@@ -83,10 +86,11 @@ def extract():
             assert cmd in text[first:second], (path, 'missing command under Common commands')
             assert cmd in text[second:text.index('## 2.', second)], (path, 'missing command in Installation section')
         assert len(cmd) <= 190, (path, len(cmd))
-        for item in ('opkg update && opkg install curl', '--connect-timeout 7',
-                     '--max-time 25', '/stable/bootstrap.sh', ' | sh'):
+        for item in ('opkg update && opkg install curl', 'curl -fSsL https://',
+                     '/stable/bootstrap.sh', ' | sh'):
             assert item in cmd, (path, 'missing', item)
         assert 'https://' in cmd and '--insecure' not in cmd and 'http://' not in cmd
+        assert '--connect-timeout' not in cmd and '--max-time' not in cmd and ' -m ' not in cmd, (path, 'quick command must not use explicit timeouts')
         if quick is None: quick = cmd
         assert quick == cmd, (path, 'inconsistent quick command')
         if path != 'docs/03-install.md':
