@@ -15,7 +15,8 @@ DOCS = [
     "docs/HOWTO_RU.md", "docs/HOWTO.md", "docs/16-entware-external-storage.md",
     "docs/EN/ENTWARE_EXTERNAL_STORAGE.md",
 ]
-COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[\s\S]*?\n')\n\x60{3}")
+COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '\n[\s\S]*?\n')\n\x60{3}")
+QUICK_COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[^\n]*')\n\x60{3}")
 GOOD = "#!/bin/sh\n# KAS_FIRSTFETCH_V1\nprintf 'LAUNCHER_RAN\\n'\n"
 MOCK = r"""#!/usr/bin/env python3
 import json,os,sys
@@ -46,16 +47,38 @@ if kind=='fail':sys.exit(28)
 """
 
 def extract():
+    """Full installer remains identical in all ten guides; README shortcuts are short and fail closed."""
     source = None
+    quick_source = None
     for path in DOCS:
         text=(ROOT/path).read_text()
         matches=COMMAND.findall(text)
         assert matches, (path,'no install command')
+        if path in ("README.md", "docs/EN/README.md"):
+            assert len(matches) == 1, (path,'expected full fallback installer')
+            compact = QUICK_COMMAND.findall(text)
+            assert len(compact) == 1, (path,'must have exactly one single-line quick install')
+            quick = compact[0]
+            full = matches[0]
+            assert '\\n' not in quick and len(quick) <= 400, (path,'quick install must be one reasonable line')
+            for required in (
+                'opkg update && opkg install curl',
+                'umask 077', 'mktemp /tmp/kas.', 'trap ', '--connect-timeout 7 --max-time 25',
+                '[ -s "$f" ]', 'head -n 1 "$f"', 'KAS_FIRSTFETCH_V1',
+                'sh -n "$f"', 'sh "$f"'
+            ):
+                assert required in quick, (path,'unsafe or missing compact first-fetch check',required)
+            assert ' | sh' not in quick and '--insecure' not in quick
+            assert 'full' not in quick
+            assert 'GitHub API' in text or 'GitHub Contents API' in text
+            if quick_source is None: quick_source = quick
+            assert quick_source == quick, (path,'RU/EN compact installer differ')
+            matches = [full]
         if source is None: source=matches[0]
-        assert all(x==source for x in matches), (path,'different install command')
+        assert all(x==source for x in matches), (path,'detailed full-fallback installer differs')
     assert 'fetch -4 --curves X25519 "$RAW"' in source
     assert 'sh -n "$f"' in source
-    return source
+    return source, quick_source
 
 def trial(sh,source,plan,calls,works):
     with tempfile.TemporaryDirectory(prefix='kas-readme-') as d:
@@ -77,15 +100,17 @@ def trial(sh,source,plan,calls,works):
         print('PASS',sh,plan)
 
 def main():
-    source=extract()
+    source, quick = extract()
     shells=[['/bin/sh']]
     if shutil.which('busybox'):shells.append([shutil.which('busybox'),'ash'])
     for sh in shells:
+        for kind, works in [('good',True),('html',False),('json',False),('bad',False),('fail',False)]:
+            trial(sh,quick,{'raw':kind},['raw'],works)
         trial(sh,source,{'raw':'good'},['raw'],True)
         trial(sh,source,{'raw':'html','ipv4':'good'},['raw','ipv4'],True)
         trial(sh,source,{'api':'good'},['raw','ipv4','api'],True)
         trial(sh,source,{'raw':'bad','ipv4':'bad','api':'bad'},['raw','ipv4','api'],False)
         trial(sh,source,{},['raw','ipv4','api'],False)
-    print('PASS: all 10 documents and first-hop failover in offline shell')
+    print('PASS: RU/EN safe compact command + full three-path fallback across all 10 docs')
 
 if __name__=='__main__':main()

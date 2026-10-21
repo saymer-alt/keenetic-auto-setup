@@ -144,16 +144,21 @@ a real `raw.githubusercontent.com` reset during installation:
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
 - the public fresh-install **happy path must stay concise and copy-pasteable** while never
-  piping remote bytes into a shell (safe first-fetch, #165): `opkg update && opkg install curl && sh -c '<bounded first-fetch>'`
-  as pinned in README, Quick Start, HOWTO and the Entware guides. The first hop downloads
-  `bootstrap.sh` into a private temp file and validates a non-empty body, the `#!/bin/sh`
-  shebang, the `KAS_FIRSTFETCH_V1` identity marker and `sh -n` **before execution**, under a
-  bounded `curl --connect-timeout 7 --max-time 25` per attempt with fallbacks
-  GitHub raw → IPv4/X25519 → GitHub Contents API (TLS/CA verification mandatory, never
-  `--insecure`); `bootstrap.sh` then applies the same staged validation to `setup.sh`.
-  Do not regress these documents to `curl .../stable/setup.sh | sh` or strip the fallback
-  chain to make the command shorter. If the network still fails after the built-in fallbacks,
-  point users to the documented offline/SCP recovery path instead of widening the primary command;
+  piping remote bytes into a shell (safe first-fetch, #165). The RU/EN README
+  **Common commands** shortcut is deliberately **one copyable shell line**: after `opkg update && opkg install curl`,
+  it stages `bootstrap.sh` into a private `mktemp` file using bounded CA-verified HTTPS,
+  checks non-empty/shebang/`KAS_FIRSTFETCH_V1`/`sh -n`, and runs it only after validation.
+  The compact shortcut uses **one** bounded raw GitHub request; if that path fails it must
+  fail closed and direct users to the full three-path fallback in README's detailed
+  Installation section. The detailed command in both READMEs, Quick Start, HOWTO,
+  and Entware guides retains the full first-hop fallback sequence
+  GitHub raw → IPv4/X25519 → GitHub Contents API (each attempt uses
+  `--connect-timeout 7 --max-time 25`, TLS/CA enabled; never `--insecure`).
+  `bootstrap.sh` independently validates and fetches `setup.sh` with the same staged
+  checks and fallback sequence. Do not regress any instruction to
+  `curl .../stable/setup.sh | sh` or strip fallback behavior from the **full installer**
+  just to shorten the quick command. Both short and full examples have offline
+  executable tests; if the full fallback chain also fails, point to offline/SCP recovery;
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the
