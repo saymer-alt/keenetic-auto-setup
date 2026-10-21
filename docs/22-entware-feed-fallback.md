@@ -118,18 +118,32 @@ opkg update
 Обычная установка KAS:
 
 ```sh
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
+fi
+sh "$f"
+'
 ```
 
-Если зависание случилось **до появления первого вывода установщика**, попробуйте штатный совместимый TLS-вариант:
-
-```sh
-curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 \
-  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
-```
-
-После запуска `setup.sh` у KAS есть отдельная цепочка резервных способов получения дочерних скриптов. Она **не спасает первый download `setup.sh`**, если тот вообще не скачался. При полной недоступности GitHub используйте [документированный offline/SCP-сценарий](03-install.md), а не отключение TLS-проверки. Подробности: [мастер установки](14-setup.md), [устранение неполадок](08-troubleshooting.md).
+Команда сама скачивает `bootstrap.sh` в закрытый временный файл, проверяет содержимое и `sh -n` **до запуска** и при недоступности raw GitHub пробует IPv4/X25519, затем GitHub Contents API. `bootstrap.sh` применяет ту же схему (raw → IPv4/X25519 → Contents API) к `setup.sh`. Отдельный ручной TLS-вариант больше не нужен. Если все три транспорта недоступны, используйте [документированный offline/SCP-сценарий](03-install.md), а не отключение TLS-проверки. Подробности: [мастер установки](14-setup.md), [устранение неполадок](08-troubleshooting.md).
 
 ## 6. Чего делать не стоит
 
