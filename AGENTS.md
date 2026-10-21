@@ -235,6 +235,7 @@ Default working rules:
 ## 8. Documentation
 
 - README.md is the concise Russian project entry point; `docs/EN/README.md` is its synchronized English counterpart. Keep both task-oriented and move detailed behavior to HOWTO/docs instead of duplicating long explanations in the entry pages.
+- **README brevity decision (2026-10-22):** the RU and EN READMEs are copy/paste-oriented landing pages, not long HOWTOs. Preserve the nine Common commands and the exact copyable stable installer *in both Common commands and Installation*, plus concise prerequisites, critical zRAM/SWAP and 512-MB gates, first-run config import and links to detailed guides. Target <=8000 characters for each README (enforced by `tests/bootstrap-readme-regression.py`). Do not restate curl transport details, retries, TLS internals, or long safety reasoning in the Common commands block; use `docs/03-install.md` and `docs/14-setup.md` instead. The full script inventories live in `docs/SCRIPTS.md` and `docs/EN/SCRIPTS.md` rather than repeated in landing pages.
 - docs/HOWTO.md and docs/HOWTO_RU.md are the complete step-by-step guide (preparation,
   installation, modes, configuration, MagiTrickle, watchdog, update, rollback,
   diagnostics, MT7621, common problems). Keep README and HOWTO aligned with each other
