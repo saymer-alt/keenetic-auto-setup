@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/saymer-alt/keenetic-auto-setup/docs/research/multitransport/schemas/status-v0.schema.json",
+  "title": "MultiTransport provider local status v0",
+  "description": "Redacted local diagnostic status of one provider (MT-001, design only). Written only by the provider adapter after the ownership checks of KAS PR #125 (starttime/zombie/exe/argv); this schema checks syntax only — it does NOT re-verify PID ownership, listener ownership, route safety or E2E truth. No credentials, tokens, HWIDs, private URIs or command lines may appear anywhere in a conforming document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider_id",
+    "state",
+    "pid_verified",
+    "observed_at",
+    "freshness_ttl_sec"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "provider_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "state": {
+      "enum": ["not_installed", "installed", "starting", "running", "stopping", "stopped", "failed"]
+    },
+    "pid": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 4194304
+    },
+    "pid_verified": {
+      "type": "boolean",
+      "description": "True only after the full owned_running() identity match of KAS PR #125 service.sh."
+    },
+    "started_at": { "type": ["string", "null"], "format": "date-time" },
+    "listener": { "$ref": "#/$defs/loopbackBindOrNull" },
+    "listener_state": { "enum": ["LISTEN", "NOT_LISTENING", "UNKNOWN"] },
+    "listener_owner_verified": {
+      "type": "boolean",
+      "description": "True only when the listening socket is attributed to the PID that passed ownership checks."
+    },
+    "transport_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "turn": { "$ref": "#/$defs/verdict" },
+        "dtls": { "$ref": "#/$defs/verdict" },
+        "wg": { "$ref": "#/$defs/verdict" }
+      }
+    },
+    "tcp_e2e": { "$ref": "#/$defs/verdict" },
+    "udp_e2e": { "$ref": "#/$defs/verdict" },
+    "egress": {
+      "enum": ["SOCKS_LISTEN_ONLY", "TCP_E2E_READY", "UDP_E2E_READY", "FAIL_CLOSED", "UNKNOWN"],
+      "description": "SOCKS_LISTEN_ONLY is never a claim of working internet; FAIL_CLOSED means bound traffic is refused, never routed to direct WAN."
+    },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "freshness_ttl_sec": { "type": "integer", "minimum": 1, "maximum": 86400 },
+    "resources": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "rss_kb": { "type": ["integer", "null"], "minimum": 0 },
+        "vsz_kb": { "type": ["integer", "null"], "minimum": 0 },
+        "fd_count": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "last_exit_reason": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+      "description": "Uppercase machine reason, e.g. OWNERSHIP_MISMATCH, TIME_LIMIT, CREDENTIALS_FATAL, SIGNAL, CRASH. Free-text prose and any secret material are forbidden."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "running" } } },
+      "then": {
+        "properties": {
+          "pid": { "type": "integer" },
+          "pid_verified": { "const": true }
+        },
+        "required": ["pid"]
+      },
+      "description": "A running state must carry an ownership-verified PID; unverifiable identity is never reported as running."
+    }
+  ],
+  "$defs": {
+    "verdict": {
+      "enum": ["PASS", "FAIL", "UNKNOWN", "NOT_TESTED", "UNSUPPORTED", "STALE"],
+      "description": "UNKNOWN/STALE/UNSUPPORTED/NOT_TESTED are never PASS substitutes."
+    },
+    "loopbackBindOrNull": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^127\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3})$"
+        }
+      ]
+    }
+  }
+}

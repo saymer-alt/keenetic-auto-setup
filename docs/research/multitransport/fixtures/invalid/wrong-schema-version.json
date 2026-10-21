@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "provider_id": "wdtt",
+  "adapter_version": "0.1.0",
+  "server_wire": "synthetic-wdtt-qwdtt-vkturn-dtls-wg-1",
+  "server_class": "synthetic-wdtt-exit-vps",
+  "architecture": [{ "arch": "aarch64", "abi": "musl-static" }],
+  "capabilities": { "socks_tcp": { "code": "PRESENT", "build": "PRESENT" } },
+  "inbound_bind": "127.0.0.1:1081",
+  "resource_requirements": { "admission_min_mb": null, "admission_source": null, "measured": false, "measurement_ref": null },
+  "artifact_provenance": { "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "source_commit": "0123456789abcdef0123456789abcdef01234567", "artifact_path": "versions/0.1.0/worker" },
+  "configuration_reference": "synthetic-docs/wdtt-owner-config-v0.md"
+}

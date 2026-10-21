@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "provider_id": "wdtt",
+  "state": "running",
+  "pid": 4242,
+  "pid_verified": true,
+  "started_at": "2026-10-21T12:00:00Z",
+  "listener": "127.0.0.1:1081",
+  "listener_state": "LISTEN",
+  "listener_owner_verified": true,
+  "tcp_e2e": "PASS",
+  "udp_e2e": "UNSUPPORTED",
+  "egress": "TCP_E2E_READY",
+  "observed_at": "2026-10-21T12:05:00Z",
+  "freshness_ttl_sec": 120,
+  "resources": { "rss_kb": 27000, "vsz_kb": 0, "fd_count": 35 },
+  "last_exit_reason": null
+}

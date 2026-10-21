@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "provider_id": "wdtt",
+  "artifact_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "adapter_version": "0.1.0",
+  "device_id": "SYNTHETIC-NC4210-LAB-01",
+  "platform_arch": "aarch64",
+  "profile_label": "synthetic-18x1-short",
+  "test_type": "TCP_E2E",
+  "started_at": "2026-10-21T12:01:00Z",
+  "duration_sec": 70,
+  "result": "PASS",
+  "metrics": { "peak_rss_kb": 26900 },
+  "evidence_ref": "synthetic-lab-archive/2026-10-21/tcp-smoke",
+  "notes": "Short TCP smoke only; does not imply long-session evidence."
+}
