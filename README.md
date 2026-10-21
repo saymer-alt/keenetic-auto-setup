@@ -270,7 +270,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 | Скрипт | Назначение / документация |
 | --- | --- |
-| [`bootstrap.sh`](bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](docs/14-setup.md#зачем-нужен-bootstraps​h) |
+| [`bootstrap.sh`](bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](docs/14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](docs/14-setup.md) |
 | [`install.sh`](install.sh) | [Основной установщик с ручным выбором профиля](docs/03-install.md) |
 | [`config-import.sh`](config-import.sh) | [Импорт и безопасная замена `config.yaml`](docs/13-config-import.md) |
