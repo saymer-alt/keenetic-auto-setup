@@ -47,7 +47,7 @@ valid_script() {
 fetch() {
     _label=$1
     shift
-    rm -f "$STAGE"
+    : > "$STAGE" || return 1
     printf '[bootstrap] Downloading setup.sh via %s (connect 7s, total 25s)...\n' "$_label"
     curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$STAGE"
     _rc=$?
