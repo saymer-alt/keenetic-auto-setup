@@ -17,7 +17,7 @@ PROJECT_API_CONTENTS='https://api.github.com/repos/test/contents'
 download_project_script() { :; }
 printf 'SETUP_RAN\\n'
 """
-BAD_SYNTAX = GOOD + "if then\\n"
+BAD_SYNTAX = GOOD + "if then\n"
 MOCK = r"""#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -27,7 +27,7 @@ assert args[args.index('--connect-timeout')+1]=='7'
 assert args[args.index('--max-time')+1]=='25'
 assert '-k' not in args and '--insecure' not in args
 assert '-o' in args
-url=args[-1]
+url=next(a for a in args if a.startswith('https://'))
 dst=Path(args[args.index('-o')+1])
 lab=Path(os.environ['LAB'])
 count=lab/'curl_calls.json'
