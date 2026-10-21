@@ -147,7 +147,8 @@ a real `raw.githubusercontent.com` reset during installation:
   piping remote bytes into a shell (safe first-fetch, #165). The RU/EN README
   **Common commands** shortcut is deliberately **one copyable shell line**: after `opkg update && opkg install curl`,
   it stages `bootstrap.sh` into a private `mktemp` file using bounded CA-verified HTTPS,
-  checks non-empty/shebang/`KAS_FIRSTFETCH_V1`/`sh -n`, and runs it only after validation.
+  requires the `KAS_FIRSTFETCH_V1` marker and `sh -n` before execution, and cleans up
+  the staged file. The detailed full installer retains additional non-empty/shebang checks.
   The compact shortcut uses **one** bounded raw GitHub request; if that path fails it must
   fail closed and direct users to the full three-path fallback in README's detailed
   Installation section. The detailed command in both READMEs, Quick Start, HOWTO,
