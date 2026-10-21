@@ -143,11 +143,17 @@ a real `raw.githubusercontent.com` reset during installation:
 - do not reuse the short metadata/script total timeout for package assets. Live KN-1010 acceptance on 2026-09-28 showed that the ~12.8 MB mipsel IPK can exceed a 20 s total transfer window even when the path is otherwise healthy. Metadata/project scripts keep the short bounded window; large asset downloads in installer/updater use a separate 180 s bounded transfer window while retaining the 5 s connect/TLS gate and IPv4+X25519 compatibility retry;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
-- the public fresh-install **happy path must stay concise and copy-pasteable**:
-  `opkg update && opkg install curl && curl .../stable/setup.sh | sh`. Do not inline a
-  long temp-file/API fallback transaction into README, Quick Start, HOWTO, Entware guides,
-  or the normal setup command. The hardened multi-transport/validation contract begins once
-  `setup.sh` is running. If the initial raw fetch stalls during TLS before script output, document the short `-4 --connect-timeout 5 --max-time 20 --curves X25519` recovery command; if it still fails, point users to the documented offline/SCP recovery path instead of making the primary command unreadable;
+- the public fresh-install **happy path must stay concise and copy-pasteable** while never
+  piping remote bytes into a shell (safe first-fetch, #165): `opkg update && opkg install curl && sh -c '<bounded first-fetch>'`
+  as pinned in README, Quick Start, HOWTO and the Entware guides. The first hop downloads
+  `bootstrap.sh` into a private temp file and validates a non-empty body, the `#!/bin/sh`
+  shebang, the `KAS_FIRSTFETCH_V1` identity marker and `sh -n` **before execution**, under a
+  bounded `curl --connect-timeout 7 --max-time 25` per attempt with fallbacks
+  GitHub raw → IPv4/X25519 → GitHub Contents API (TLS/CA verification mandatory, never
+  `--insecure`); `bootstrap.sh` then applies the same staged validation to `setup.sh`.
+  Do not regress these documents to `curl .../stable/setup.sh | sh` or strip the fallback
+  chain to make the command shorter. If the network still fails after the built-in fallbacks,
+  point users to the documented offline/SCP recovery path instead of widening the primary command;
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the
