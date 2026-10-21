@@ -6,10 +6,10 @@
 
 ## Обычный запуск
 
-Первая загрузка `bootstrap.sh` выполняется потоком по HTTPS (виден прогресс `curl`); более строгий и резервный вариант — в [подробной инструкции](03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
+Первая загрузка `bootstrap.sh` выполняется потоком по HTTPS (`curl -fSsL`: ошибки видны, прогресс скрыт); более строгий и резервный вариант — в [подробной инструкции](03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 ## Что делает мастер
@@ -27,7 +27,7 @@ opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Начальная команда запуска теперь скачивает `bootstrap.sh` в закрытый временный файл и проверяет ненулевое содержимое, маркер и `sh -n` **до исполнения**, с bounded timeout и резервными вариантами IPv4/X25519 и GitHub Contents API. Сам `bootstrap.sh` безопасно скачивает `setup.sh` (raw → IPv4/X25519 → GitHub Contents API), проверяет project markers + shebang + `sh -n`, и только затем запускает `setup.sh`. Для дочерних project-managed файлов `setup.sh` сохраняет существующий bounded curl/wget/API fallback. Сетевые ошибки до этапа `opkg install curl` диагностируются отдельно, см. [подробную установку](03-install.md).
+Короткая команда получает первый `bootstrap.sh` напрямую через HTTPS `curl -fSsL | sh`: перед запуском полный первый файл не проверяется, дополнительного общего тайм-аута нет. При сетевых ошибках сообщение `curl` видно на stderr, но итоговый статус pipeline может отражать только `sh`. После запуска `bootstrap.sh` скачивает `setup.sh` в отдельный временный файл (raw → IPv4/X25519 → GitHub Contents API), проверяет project markers, shebang и `sh -n`, и лишь затем выполняет `setup.sh`. Для остальных project-managed файлов `setup.sh` сохраняет bounded curl/wget/API fallback. Усиленный первый этап (с проверкой файла и резервными источниками) доступен в [подробной установке](03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
 
 ## Почему setup.sh не выбирает режим «на глаз»
 
