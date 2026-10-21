@@ -261,8 +261,20 @@ Only after the system log confirms `[5/5] "Entware" installed!`, enter the
 Entware shell and run:
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 The project installer then performs its own storage, EXT4, KeeneticOS component,
