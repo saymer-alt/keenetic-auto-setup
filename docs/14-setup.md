@@ -7,8 +7,20 @@
 ## Обычный запуск
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 ## Что делает мастер
@@ -26,7 +38,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Обычная команда запуска намеренно остаётся короткой и читаемой. Устойчивый multi-transport downloader включается уже **после запуска `setup.sh`**: `install.sh`, `config-import.sh` и остальные project-managed файлы получают bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API fallback с очисткой частичных файлов и проверкой shell-кандидатов. Если первая загрузка `setup.sh` зависает на TLS handshake до вывода скрипта, повторите команду с `-4 --connect-timeout 5 --max-time 20 --curves X25519`. Если raw-хост всё равно недоступен, используйте documented offline/SCP-путь из [расширенной установки](03-install.md), а не длинную bootstrap-транзакцию в README.
+Начальная команда запуска теперь скачивает `bootstrap.sh` в закрытый временный файл и проверяет ненулевое содержимое, маркер и `sh -n` **до исполнения**, с bounded timeout и резервом GitHub Contents API. Сам `bootstrap.sh` безопасно скачивает `setup.sh` (raw → IPv4/X25519 → GitHub Contents API), проверяет project markers + shebang + `sh -n`, и только затем запускает `setup.sh`. Для дочерних project-managed файлов `setup.sh` сохраняет существующий bounded curl/wget/API fallback. Сетевые ошибки до этапа `opkg install curl` диагностируются отдельно, см. [подробную установку](03-install.md).
 
 ## Почему setup.sh не выбирает режим «на глаз»
 
