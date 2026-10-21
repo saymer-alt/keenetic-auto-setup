@@ -1,8 +1,16 @@
 # setup.sh — simple installation wizard
 
-`setup.sh` is the recommended entry point for a normal installation on Keenetic + Entware.
+The normal KAS installation command starts **`bootstrap.sh`**, not `setup.sh` directly. The latter is the next-stage wizard automatically invoked by the launcher.
 
 It does not replace `install.sh`. It classifies the real `/opt` storage, selects the normal profile, delegates all safety gates to the canonical installer, then starts safe Mihomo config import.
+
+## Why bootstrap.sh exists
+
+`bootstrap.sh` is a small first-stage loader for networks where GitHub raw fetches can fail. It does **not** install Mihomo or MagiTrickle, and does not change KeeneticOS settings. It downloads `setup.sh` over GitHub raw, retries through IPv4/X25519 and GitHub Contents API if needed, checks that the file is non-empty, has a `#!/bin/sh` header and expected project markers, passes `sh -n`, then runs it and propagates its exit status.
+
+Full sequence: `bootstrap.sh` → `setup.sh` (select `ram`/`disk`) → `install.sh` (installation and safety gates) → `config-import.sh` (on success, with interactive input available).
+
+The initial HTTPS **bootstrap.sh** itself is piped directly to `sh` by the short public command; this stream is not prevalidated. A [staged and validated alternative](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки) is available for failed initial fetches or stricter first-hop validation.
 
 ## Run
 
