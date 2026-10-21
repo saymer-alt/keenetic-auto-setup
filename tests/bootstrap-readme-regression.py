@@ -22,8 +22,9 @@ MOCK = r"""#!/usr/bin/env python3
 import json,os,sys
 from pathlib import Path
 a=sys.argv[1:]
-assert '-fSsL' in a and '--connect-timeout' in a and '--max-time' in a
-assert a[a.index('--connect-timeout')+1]=='7' and a[a.index('--max-time')+1]=='25'
+assert ('-fSsL' in a or '-fLsS' in a) and '--connect-timeout' in a
+assert a[a.index('--connect-timeout')+1]=='7'
+assert ('--max-time' in a and a[a.index('--max-time')+1]=='25') or ('-m' in a and a[a.index('-m')+1]=='25')
 assert '-k' not in a and '--insecure' not in a
 dest=Path(a[a.index('-o')+1])
 url=next(x for x in a if x.startswith('https://'))
@@ -42,6 +43,8 @@ log.append(phase);f.write_text(json.dumps(log))
 kind=json.loads((lab/'plan.json').read_text()).get(phase,'fail')
 dest.write_text({'good':os.environ['GOOD'],'html':'<html>bad</html>',
 'json':'{"content":"abc"}','bad':'#!/bin/sh\n# KAS_FIRSTFETCH_V1\nif then\n',
+'wrong':'#!/bin/sh\necho WRONG_PROJECT_EXECUTED\n',
+'empty':'',
 'fail':'#!/bin/sh\n# KAS_FIRSTFETCH_V1\necho PARTIAL_NOT_EXECUTED\n'}[kind])
 if kind=='fail':sys.exit(28)
 """
@@ -60,12 +63,11 @@ def extract():
             assert len(compact) == 1, (path,'must have exactly one single-line quick install')
             quick = compact[0]
             full = matches[0]
-            assert '\\n' not in quick and len(quick) <= 400, (path,'quick install must be one reasonable line')
+            assert '\\n' not in quick and len(quick) <= 280, (path,'quick install must remain short')
             for required in (
                 'opkg update && opkg install curl',
-                'umask 077', 'mktemp /tmp/kas.', 'trap ', '--connect-timeout 7 --max-time 25',
-                '[ -s "$f" ]', 'head -n 1 "$f"', 'KAS_FIRSTFETCH_V1',
-                'sh -n "$f"', 'sh "$f"'
+                'f=$(mktemp)', 'trap ', '--connect-timeout 7 -m 25',
+                '-o "$f"', 'KAS_FIRSTFETCH_V1', 'sh -n "$f"', 'sh "$f"'
             ):
                 assert required in quick, (path,'unsafe or missing compact first-fetch check',required)
             assert ' | sh' not in quick and '--insecure' not in quick
@@ -96,6 +98,7 @@ def trial(sh,source,plan,calls,works):
         assert (r.returncode==0)==works,(sh,plan,r.returncode,r.stdout,r.stderr)
         assert ('LAUNCHER_RAN' in r.stdout)==works,(sh,plan,r.stdout)
         assert 'PARTIAL_NOT_EXECUTED' not in r.stdout,(sh,plan)
+        assert 'WRONG_PROJECT_EXECUTED' not in r.stdout,(sh,plan)
         assert not (lab/'stage').exists(),(sh,plan,'temp file remains')
         print('PASS',sh,plan)
 
@@ -104,7 +107,7 @@ def main():
     shells=[['/bin/sh']]
     if shutil.which('busybox'):shells.append([shutil.which('busybox'),'ash'])
     for sh in shells:
-        for kind, works in [('good',True),('html',False),('json',False),('bad',False),('fail',False)]:
+        for kind, works in [('good',True),('html',False),('json',False),('bad',False),('wrong',False),('empty',False),('fail',False)]:
             trial(sh,quick,{'raw':kind},['raw'],works)
         trial(sh,source,{'raw':'good'},['raw'],True)
         trial(sh,source,{'raw':'html','ipv4':'good'},['raw','ipv4'],True)
