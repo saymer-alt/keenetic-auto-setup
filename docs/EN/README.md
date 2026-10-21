@@ -99,7 +99,11 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives and delegates the EXT4, KeeneticOS component, RAM/swap, and other safety checks to the canonical installer. After installation, it starts the Mihomo configuration importer.
+**What the command actually starts:** [`bootstrap.sh`](../../bootstrap.sh) runs first. This small launcher downloads [`setup.sh`](../../setup.sh) with fallback GitHub transports (raw → IPv4/X25519 → GitHub API), validates the downloaded file and its shell syntax, and executes it. **`bootstrap.sh` does not install Mihomo itself.**
+
+Then `setup.sh` detects whether `/opt` needs the `ram` or `disk` profile and delegates installation and safety checks to [`install.sh`](../../install.sh). After a successful installation, it offers safe Mihomo configuration import via [`config-import.sh`](../../config-import.sh).
+
+**Sequence:** `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` (after success, when an interactive terminal is available).
 
 If the initial GitHub raw download fails, use the [advanced staged first-fetch fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки). Inside `bootstrap.sh`, raw → IPv4/X25519 → GitHub Contents API fallback and validation remain in place for downloading `setup.sh`. Other project files have their own fallback download logic. This default HTTPS command intentionally streams the first `bootstrap.sh` into `sh` without validating the entire file beforehand — an accepted usability trade-off.
 
@@ -256,7 +260,8 @@ Details → [Proxy Selection Watch](../11-proxy-selection-watch.md)
 
 | Script | Purpose / documentation |
 | --- | --- |
-| [`setup.sh`](../../setup.sh) | [Recommended project installation](SETUP.md) |
+| [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` with GitHub fallbacks before starting the wizard](SETUP.md#why-bootstrapsh-exists) |
+| [`setup.sh`](../../setup.sh) | [Setup wizard: detects `ram`/`disk`, delegates to `install.sh`, offers configuration import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
 | [`migrate-mihomo-tun.sh`](../../migrate-mihomo-tun.sh) | [Add TUN/`mitun0` to a legacy config with no `tun:` block](UPDATES.md#legacy-config-add-tun--mitun0) |
