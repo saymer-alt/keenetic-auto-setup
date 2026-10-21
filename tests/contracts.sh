@@ -743,25 +743,26 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 ! grep -Fq '_setup_import_answer' "$ROOT/setup.sh" || fail "simple setup must not consume the first YAML line in a separate confirmation prompt"
 ! grep -q 'dns-proxy intercept enable' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate persistent router configuration"
 ! grep -q 'ip policy bypass_wa' "$ROOT/setup.sh" || fail "simple setup wrapper must not duplicate policy mutations"
-# First-fetch must never execute unchecked raw HTTP bytes as shell input.
+# Owner decision 2026-10-22 (#180): the *first* HTTPS bootstrap stream uses
+# a short curl | sh command. This is a documented risk acceptance, not equivalent
+# to staging + validating the initial file. Bootstrap -> setup remains staged.
 PUBLIC_BOOTSTRAP_URL='https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh'
 for _f in README.md docs/EN/README.md docs/02-quick-start.md docs/03-install.md docs/14-setup.md docs/EN/SETUP.md docs/HOWTO_RU.md docs/HOWTO.md docs/16-entware-external-storage.md docs/EN/ENTWARE_EXTERNAL_STORAGE.md; do
-    # Preserve the established clean-Entware prerequisite from the original KAS contract.
-    # This must happen before any bootstrap curl and must not be silently delegated to setup.sh.
-    grep -Fq "opkg update && opkg install curl && sh -c '" "$ROOT/$_f" || fail "$_f must bootstrap curl from a clean Entware first"
-    grep -Fq "$PUBLIC_BOOTSTRAP_URL" "$ROOT/$_f" || fail "$_f must use checked bootstrap.sh first-fetch"
-    grep -Fq 'sh -n "$f"' "$ROOT/$_f" || fail "$_f must validate staged launcher syntax"
-    grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/$_f" || fail "$_f must check bootstrap identity before execution"
-    grep -Fq -- '--connect-timeout 7 --max-time 25' "$ROOT/$_f" || fail "$_f must bound first network request"
-    grep -Fq 'api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable' "$ROOT/$_f" || fail "$_f must keep first fetch API fallback"
-    ! grep -Fq 'stable/setup.sh | sh' "$ROOT/$_f" || fail "$_f must not execute raw remote setup.sh via pipe"
+    grep -Fq "opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 $PUBLIC_BOOTSTRAP_URL | sh" "$ROOT/$_f" || fail "$_f must publish the agreed short HTTPS launcher"
+    ! grep -Fq 'stable/setup.sh | sh' "$ROOT/$_f" || fail "$_f must keep setup.sh behind validated bootstrap stage"
+    ! grep -Fq -- '--insecure' "$ROOT/$_f" || fail "$_f must not suggest disabling TLS verification"
 done
+# Advanced three-source first-fetch still validates the initial file.
+grep -Fq "opkg update && opkg install curl && sh -c '" "$ROOT/docs/03-install.md" || fail "advanced first-fetch must remain documented"
+grep -Fq 'sh -n "$f"' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain shell validation"
+grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must check identity"
+grep -Fq 'api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain API fallback"
 grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/bootstrap.sh" || fail "the staged launcher must carry expected identity"
 grep -Fq 'sh -n "$STAGE"' "$ROOT/bootstrap.sh" || fail "launcher must check actual setup.sh syntax before execution"
 grep -Fq 'PROJECT_API_CONTENTS=' "$ROOT/bootstrap.sh" || fail "launcher must verify setup.sh project identity"
 grep -Fq 'GitHub Contents API' "$ROOT/bootstrap.sh" || fail "launcher must preserve API fallback"
 ! grep -Eq 'curl.*[|][[:space:]]*sh' "$ROOT/bootstrap.sh" || fail "launcher must never pipe network content into shell"
-pass "RU/EN onboarding uses staged, verified, bounded firstfetch instead of curl pipe sh"
+pass "RU/EN onboarding uses owner-approved short HTTPS launcher; staged advanced fallback and validated setup remain"
 
 grep -Fq 'nano /opt/etc/mihomo/config.yaml' "$ROOT/README.md" || fail "README must keep the quick manual config edit command visible"
 ! grep -Fq 'stable/install.sh | sh -s -- disk' "$ROOT/README.md" || fail "README must keep advanced manual install commands in detailed documentation"
