@@ -13,12 +13,21 @@ f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
 trap "rm -f $f" 0
 valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
     grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
-echo "[bootstrap] Downloading launcher (25s timeout)..."
-if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
-    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
-    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
 fi
-valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
 sh "$f"
 '
 ```
@@ -38,7 +47,7 @@ sh "$f"
 7. После успешной установки тем же устойчивым способом скачивает и запускает `config-import.sh`.
 8. В конце показывает команду запуска Doctor.
 
-Начальная команда запуска теперь скачивает `bootstrap.sh` в закрытый временный файл и проверяет ненулевое содержимое, маркер и `sh -n` **до исполнения**, с bounded timeout и резервом GitHub Contents API. Сам `bootstrap.sh` безопасно скачивает `setup.sh` (raw → IPv4/X25519 → GitHub Contents API), проверяет project markers + shebang + `sh -n`, и только затем запускает `setup.sh`. Для дочерних project-managed файлов `setup.sh` сохраняет существующий bounded curl/wget/API fallback. Сетевые ошибки до этапа `opkg install curl` диагностируются отдельно, см. [подробную установку](03-install.md).
+Начальная команда запуска теперь скачивает `bootstrap.sh` в закрытый временный файл и проверяет ненулевое содержимое, маркер и `sh -n` **до исполнения**, с bounded timeout и резервными вариантами IPv4/X25519 и GitHub Contents API. Сам `bootstrap.sh` безопасно скачивает `setup.sh` (raw → IPv4/X25519 → GitHub Contents API), проверяет project markers + shebang + `sh -n`, и только затем запускает `setup.sh`. Для дочерних project-managed файлов `setup.sh` сохраняет существующий bounded curl/wget/API fallback. Сетевые ошибки до этапа `opkg install curl` диагностируются отдельно, см. [подробную установку](03-install.md).
 
 ## Почему setup.sh не выбирает режим «на глаз»
 

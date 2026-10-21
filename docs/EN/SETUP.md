@@ -13,12 +13,21 @@ f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
 trap "rm -f $f" 0
 valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
     grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
-echo "[bootstrap] Downloading launcher (25s timeout)..."
-if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
-    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
-    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
 fi
-valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
 sh "$f"
 '
 ```
@@ -34,7 +43,7 @@ sh "$f"
 7. Download and start `config-import.sh` through the same resilient chain when an interactive TTY is available.
 8. Print the Doctor command.
 
-The first command now downloads `bootstrap.sh` to a 0600 temporary file using bounded curl; if the raw host fails or returns an invalid candidate, the GitHub Contents API is tried. Before execution the launcher must have a valid shebang, project marker, and pass `sh -n`. The launcher then downloads `setup.sh` with bounded raw → IPv4/X25519 → Contents API and validates its content. The existing `setup.sh` downstream downloader still handles install.sh and the config importer. An offline/SCP alternative is described in the [advanced installation guide](../03-install.md). No HTTPS certificate checks are disabled.
+The first command now downloads `bootstrap.sh` to a 0600 temporary file using bounded curl; if the raw host fails or returns an invalid candidate, IPv4/X25519 raw and then the GitHub Contents API are tried. Before execution the launcher must have a valid shebang, project marker, and pass `sh -n`. The launcher then downloads `setup.sh` with bounded raw → IPv4/X25519 → Contents API and validates its content. The existing `setup.sh` downstream downloader still handles install.sh and the config importer. An offline/SCP alternative is described in the [advanced installation guide](../03-install.md). No HTTPS certificate checks are disabled.
 
 The wrapper never bypasses installer contracts for components, RAM/swap, EXT4, ProxyN, DNS interception, or other safety checks.
 

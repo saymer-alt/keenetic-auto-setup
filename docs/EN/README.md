@@ -21,12 +21,21 @@ f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
 trap "rm -f $f" 0
 valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
     grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
-echo "[bootstrap] Downloading launcher (25s timeout)..."
-if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
-    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
-    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
 fi
-valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
 sh "$f"
 '
 ```
@@ -113,12 +122,21 @@ f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
 trap "rm -f $f" 0
 valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
     grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
-echo "[bootstrap] Downloading launcher (25s timeout)..."
-if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
-    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
-    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
 fi
-valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
 sh "$f"
 '
 ```
@@ -127,7 +145,7 @@ If `curl` stalls **before setup/Doctor prints anything** during the TLS handshak
 
 ```bash
 # No special manual retry is needed: bootstrap.sh tests raw, IPv4/X25519, GitHub API internally.
-# For the initial launcher, the copied install block above also has a separate GitHub API fallback.
+# For the initial launcher, the copied install block above also has IPv4/X25519 and GitHub API fallbacks.
 ```
 
 Normal TLS remains the primary path. `X25519` is only a compatibility fallback for paths where the larger OpenSSL 3.5 ClientHello is dropped; once the project downloader is running it tries normal TLS → X25519 → wget/API fallback.
