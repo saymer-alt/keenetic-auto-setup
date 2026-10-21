@@ -71,8 +71,17 @@ def extract():
     for path in DOCS:
         text = (ROOT/path).read_text()
         found = QUICK.findall(text)
-        assert len(found) == 1, (path, 'expected exactly one normal quick command', found)
+        is_readme = path in ('README.md', 'docs/EN/README.md')
+        expected_count = 2 if is_readme else 1
+        assert len(found) == expected_count, (path, 'missing or duplicated install command', found)
         cmd = found[0]
+        assert all(candidate == cmd for candidate in found), (path, 'inconsistent repeated install commands')
+        if is_readme:
+            headings = ('## Частые команды', '## 1. Установка') if path == 'README.md' else ('## Common commands', '## 1. Installation')
+            first, second = (text.index(heading) for heading in headings)
+            assert first < second, (path, 'readme section order changed')
+            assert cmd in text[first:second], (path, 'missing command under Common commands')
+            assert cmd in text[second:text.index('## 2.', second)], (path, 'missing command in Installation section')
         assert len(cmd) <= 190, (path, len(cmd))
         for item in ('opkg update && opkg install curl', '--connect-timeout 7',
                      '--max-time 25', '/stable/bootstrap.sh', ' | sh'):
