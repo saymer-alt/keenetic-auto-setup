@@ -15,7 +15,7 @@
 **1. Установить KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && sh -c 'umask 077; f=$(mktemp /tmp/kas.XXXXXXXX) || exit 1; trap "rm -f $f" 0; curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh && [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] && grep -Fq KAS_FIRSTFETCH_V1 "$f" && sh -n "$f" && sh "$f"'
+opkg update && opkg install curl && sh -c 'f=$(mktemp) || exit; trap "rm -f $f" 0; curl -fLsS --connect-timeout 7 -m 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh && grep -Fq KAS_FIRSTFETCH_V1 "$f" && sh -n "$f" && sh "$f"'
 ```
 
 Это короткий вариант с проверкой загруженного файла **до исполнения**. Если первый запрос GitHub raw недоступен, см. [полную установку с резервными способами загрузки](#1-установка) (IPv4/X25519 и GitHub API).
