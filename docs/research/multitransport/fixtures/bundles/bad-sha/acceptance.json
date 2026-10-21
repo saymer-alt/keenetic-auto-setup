@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "provider_id": "wdtt",
+  "artifact_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "device_id": "SYNTHETIC-NC4210-LAB-01",
+  "profile_label": "synthetic-18x1-short",
+  "test_type": "TCP_E2E",
+  "started_at": "2026-10-21T12:01:00Z",
+  "result": "PASS"
+}

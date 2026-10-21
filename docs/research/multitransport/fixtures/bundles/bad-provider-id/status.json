@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "provider_id": "csqtt",
+  "state": "running",
+  "pid": 1,
+  "pid_verified": true,
+  "observed_at": "2026-10-21T12:00:00Z",
+  "freshness_ttl_sec": 120
+}
