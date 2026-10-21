@@ -758,11 +758,18 @@ grep -Fq "opkg update && opkg install curl && sh -c '" "$ROOT/docs/03-install.md
 grep -Fq 'sh -n "$f"' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain shell validation"
 grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must check identity"
 grep -Fq 'api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable' "$ROOT/docs/03-install.md" || fail "advanced first-fetch must retain API fallback"
-# Public onboarding must describe the exact four-script chain and the missing
-# bootstrap.sh entry must never disappear from the RU/EN script inventories.
+# Public READMEs must stay short and link to the complete external script
+# inventory, without duplicating the entire script table.
 for _f in README.md docs/EN/README.md; do
-    grep -Fq '| [`bootstrap.sh`](' "$ROOT/$_f" || fail "$_f must list bootstrap.sh and its purpose in the scripts table"
-    grep -Fq '`bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh`' "$ROOT/$_f" || fail "$_f must explain the actual initial fetch and install chain"
+    grep -Fq '`bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh`' "$ROOT/$_f" || fail "$_f must explain the install chain"
+done
+grep -Fq 'docs/SCRIPTS.md' "$ROOT/README.md" || fail "RU README must link the script inventory"
+grep -Fq '(SCRIPTS.md)' "$ROOT/docs/EN/README.md" || fail "EN README must link the script inventory"
+for _f in docs/SCRIPTS.md docs/EN/SCRIPTS.md; do
+    grep -Fq '| [`bootstrap.sh`](' "$ROOT/$_f" || fail "$_f must document bootstrap.sh"
+    grep -Fq '| [`setup.sh`](' "$ROOT/$_f" || fail "$_f must document setup.sh"
+    grep -Fq '| [`install.sh`](' "$ROOT/$_f" || fail "$_f must document install.sh"
+    grep -Fq '| [`config-import.sh`](' "$ROOT/$_f" || fail "$_f must document config import"
 done
 grep -Fq '## Зачем нужен bootstrap.sh' "$ROOT/docs/14-setup.md" || fail "RU setup guide must explain bootstrap.sh"
 grep -Fq '## Why bootstrap.sh exists' "$ROOT/docs/EN/SETUP.md" || fail "EN setup guide must explain bootstrap.sh"
