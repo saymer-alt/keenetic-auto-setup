@@ -4,6 +4,13 @@
 # This script itself must be downloaded into a private file and validated.
 set -u
 
+CHECK_ONLY=0
+case "${1:-}" in
+    '') ;;
+    --check) CHECK_ONLY=1 ;;
+    *) printf '[ERROR] Usage: bootstrap.sh [--check]\n' >&2; exit 2 ;;
+esac
+
 REF=${KAS_BOOTSTRAP_REF:-stable}
 case "$REF" in
     ''|/*|*/|*..*|*[!A-Za-z0-9._/-]*)
@@ -67,6 +74,10 @@ if fetch 'GitHub raw' "$RAW" ||
    fetch 'GitHub raw IPv4/X25519' -4 --curves X25519 "$RAW" ||
    fetch 'GitHub Contents API' -4 -H 'Accept: application/vnd.github.raw+json' \
        -H 'X-GitHub-Api-Version: 2022-11-28' "$API"; then
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+        printf '[bootstrap] CHECK_ONLY: setup.sh verified for ref %s; nothing executed\n' "$REF"
+        exit 0
+    fi
     printf '[bootstrap] Executing validated setup.sh (ref: %s)\n' "$REF"
     sh "$STAGE"
     _rc=$?
