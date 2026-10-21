@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Подготовлено к KAS v1.8.4 (P0 #165, Draft PR #168)
+- Первая команда установки на **чистой Entware** сохраняет обязательный `opkg update && opkg install curl`, но больше не исполняет сетевой `setup.sh` напрямую через `curl | sh`: приватный staging `mktemp`, проверка ненулевого содержимого, маркера проекта и `sh -n` до исполнения.
+- Обе последовательные загрузки (`bootstrap.sh`, затем `setup.sh`) ограничены `curl --connect-timeout 7 --max-time 25` на попытку и используют fallback **GitHub raw HTTPS → IPv4/X25519 → GitHub Contents API**, сохраняя проверку TLS/CA (без `--insecure`), отказ от HTML/JSON/неполных ответов и очистку временных файлов.
+- Режим `bootstrap.sh --check` проверяет загрузку и синтаксис `setup.sh` без установки или изменения системы. Диагностика источника загрузки показывает использованный путь.
+- В RU/EN README, Quick Start, HOWTO и инструкциях по Entware приведена единая безопасная команда установки. Offline-тесты с имитацией сбоев проверяют **саму команду из документации** и `bootstrap.sh` на POSIX sh/BusyBox ash; контракт чистой Entware дополнительно закреплён в CI.
+
+### Полевые проверки 2026-10-21
+- NC-4210: два успешных read-only `--check` для `stable` и тестовой ветки. KN-1010 (MIPS, 248 МБ RAM, внешний EXT4 /opt, SWAP 468 МБ, zRAM off): `--check` и чистая установка через тестовый bootstrap; основной installer `[OK] Done` с Mihomo 1.19.32-2, MagiTrickle 0.8.2-1, Proxy1, живыми правилами Netfilter, watchdog.
+- Doctor 1.2.18 на KN-1010: **OK 35 / WARN 0 / FAIL 0**. Повторный полный `setup.sh`: **exit 0**, импортёр `s` → `Config import skipped`, SHA-256 `config.yaml` и PID Mihomo не изменились; лишний restart, обновление Mihomo, создание Proxy2 и повторный `opkg update` после неизменившегося MagiTrickle repo пропущены.
+- В **первой** сессии после успешной основной установки интегрированный импортёр получил неверный/лишний ввод и завершился с **exit 1**; при отдельном вводе `s` и повторном штатном запуске дефект не воспроизведён. Причина прежнего некорректного ввода не доказана, подробно отслеживается в [#170](https://github.com/saymer-alt/keenetic-auto-setup/issues/170). Нельзя заявлять, что первый полный `setup.sh` завершился с кодом 0.
+
+### Не входит в v1.8.4
+- [#169](https://github.com/saymer-alt/keenetic-auto-setup/issues/169): тайм-ауты **внутренних** wget/curl после первого bootstrap; [#166](https://github.com/saymer-alt/keenetic-auto-setup/issues/166): offline Doctor; [#167](https://github.com/saymer-alt/keenetic-auto-setup/issues/167): дополнительные аппаратные профили и оптимизация opkg; [#170](https://github.com/saymer-alt/keenetic-auto-setup/issues/170): защитa от попавшего в очередь ввода. Историческая причина intermittent TLS/DNS на NC-4210 не локализована; новая цепочка делает первый запрос ограниченным по времени и безопаснее, но не гарантирует доступность любого провайдера.
+
 ## [1.8.3] - 2026-10-18
 
 ### Исправлено
