@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "provider_id": "wdtt",
+  "state": "running",
+  "pid": 4242,
+  "pid_verified": true,
+  "observed_at": "2026-10-21T12:00:05Z",
+  "freshness_ttl_sec": 120,
+  "tcp_e2e": "UNKNOWN",
+  "udp_e2e": "UNKNOWN",
+  "egress": "TCP_E2E_READY"
+}

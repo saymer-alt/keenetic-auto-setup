@@ -1,0 +1,14 @@
+{
+  "profile": "synthetic-chaining-test (not part of provider-v0; exists only to test the self-loop detector)",
+  "providers": [
+    {
+      "id": "wdtt",
+      "inbound_bind": "127.0.0.1:1081"
+    },
+    {
+      "id": "synthetic-chain",
+      "inbound_bind": "127.0.0.1:1082",
+      "upstream": "127.0.0.1:1081"
+    }
+  ]
+}
