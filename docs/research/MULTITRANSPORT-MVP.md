@@ -25,7 +25,8 @@ KAS Core (setup.sh, Mihomo, Doctor)                  wdtt-suite/server.go
    │
    └─ transport.d/
         └── wdtt/ (адаптер PR #125, layout НЕ меняется)
-             ├── manifest.json        (НОВОЕ: возможности, provenance)
+             ├── manifest.json        (НОВОЕ: возможности бинарника, provenance)
+             ├── acceptance.json      (НОВОЕ: redacted полевые доказательства, по SHA)
              ├── status.json          (НОВОЕ: redacted, пишет только adapter)
              ├── versions/<v>/worker  (как в PR #125, SHA256-pinned)
              ├── STATE/               (pid+time+version — как в PR #125)
@@ -91,63 +92,87 @@ Exit-codes контракта: `0` ok; `10` not installed; `11` admission fail (
 | `server_wire` | да | точная строка варианта | wire-протокол **с точным вариантом**; разные wire не взаимозаменяемы |
 | `server_class` | да | класс сервера | какой тип сервера совместим (`wdtt-exit-vps`, `openflux-exit-l4`, …) |
 | `architecture` | да | массив `{arch, abi}` | целевые архитектуры артефакта (`aarch64`/…); admission сверяет с устройством |
-| `capabilities` | да | карта feature → 4 уровня | см. ниже |
+| `capabilities` | да | карта feature → `{code, build}` | статические уровни бинарника; полевые результаты — в `acceptance.json` (§2.4), не здесь |
 | `inbound_bind` | да | `127.0.0.1:<port>` | только loopback; порт резервируется после runtime-проверки коллизий |
-| `resource_requirements` | да | см. ниже | требования RAM с честным basis |
+| `resource_requirements` | да | см. ниже | порог допуска + его источник + наличие измерений (три независимых факта) |
 | `artifact_provenance` | да | см. ниже | pin артефакта |
 | `configuration_reference` | да | строка-ссылка | где описан формат owner-конфига (template/docs); самих секретов здесь нет |
 
-**Четыре уровня capabilities** — принципиальное разделение (не один булев статус):
+**Уровни доказанности — принципиальное разделение (не один булев статус).** Каждый уровень отвечает на свой вопрос и живёт в своём файле:
 
-| Уровень | Вопрос | Кто подтверждает | Где живёт |
-|---|---|---|---|
-| `code` | функция реализована в исходниках провайдера | source audit | манифест |
-| `build` | функция присутствует/включена в данном артефакте (ELF/сборка) | admission при install | манифест |
-| `field` | подтверждено физическим E2E на устройстве (SHA+дата) | физический тест, owner | манифест (после теста) |
-| `live` | доступно прямо сейчас, в этот момент | только runtime | **только status.json**, никогда не манифест |
+| Уровень | Вопрос | Значения | Кто подтверждает | Где живёт |
+|---|---|---|---|---|
+| `code` | функция реализована в исходниках провайдера | `PRESENT / ABSENT / UNKNOWN` | source audit | manifest.json (immutable) |
+| `build` | функция присутствует/включена в данном артефакте | `PRESENT / ABSENT / UNKNOWN` | admission при install | manifest.json (immutable) |
+| `field` | подтверждено физическим тестом — и с каким результатом | `PASS / FAIL / UNKNOWN / NOT_TESTED` (+ scope) | физический тест, owner | **acceptance.json** (mutable, §2.4) |
+| `live` | доступно прямо сейчас, в этот момент | вердикт-набор статуса | только runtime | **только status.json** |
 
-Значение уровня: `YES` / `NO` / `UNKNOWN`. Правило монотонности: `field=YES` требует `build=YES` требует `code=YES`; нарушение = манифест невалиден. Пример для текущего WDTT (честно): `socks_tcp {code:YES, build:YES, field:NO}`, `socks_udp {code:UNKNOWN, build:UNKNOWN, field:NO}` — UDP нет в default-ветке, статус кандидата PR #34 не проверялся этим исследованием.
+Правила:
+1. `field` **вынесен из манифеста**: полевые результаты появляются после установки на конкретном устройстве и меняются во времени, поэтому они не могут жить в immutable-манифесте pinned-пакета (иначе каждый тест требовал бы переупаковки артефакта).
+2. В `field` нет значения `NO`: отсутствие испытаний — `NOT_TESTED`; испытание не дало определённого результата — `UNKNOWN`; отрицательный результат — `FAIL`. Это не даёт Doctor'у трактовать «нет данных» как «функция отсутствует».
+3. **Scope полевого результата** обязателен в acceptance-записи: SHA артефакта, платформа/устройство, профиль, операция, длительность теста (короткий TCP-smoke не доказывает долгосрочную работу). Доказательства **не переносятся автоматически** на другой бинарник, другое устройство или другой профиль.
+4. Монотонность позитивного доказательства: `field=PASS` допустим только при `build=PRESENT` и `code=PRESENT`; нарушение — невалидная запись.
 
-`resource_requirements`: `{ "mem_min_mb": 512, "mem_scope": "combined_with_kas" | "standalone", "mem_basis": "MEASURED" | "DOCUMENTED" | "UNKNOWN", "notes": "…" }`. `mem_basis=UNKNOWN` допустим и обязан сопровождаться `mem_min_mb=null` (admission тогда требует явного owner-GO). Порог KAS+WDTT ≥512 MB (#137) не наследуется другими провайдерами автоматически.
+`resource_requirements` — три независимых факта, не смешивать: (1) **документированный минимальный порог допуска** `admission_min_mb` (может быть `null`, если порог ещё не определён); (2) **источник этого порога** `admission_source` (обязателен при ненулевом пороге — например, контракт #137); (3) **наличие реальных измерений потребления памяти** `measured` (boolean) + ссылка на измерения `measurement_ref` (обязательна при `measured=true`). Документированный порог — это политика допуска, а **не доказанная достаточность для любой нагрузки**; при `admission_min_mb=null` старт требует явного owner-GO. Порог KAS+WDTT ≥512 MB (#137) не наследуется другими провайдерами автоматически.
 
 `artifact_provenance`: `{ "sha256": "…", "source_commit": "…", "build_ref": "CI-run/tag/URL", "artifact_path": "versions/<v>/worker" }` — обязательны `sha256` и `source_commit`.
 
 **Что не берётся из недоверенного источника.** `server_wire`, `server_class`, `architecture`, `capabilities`, `inbound_bind`, `resource_requirements`, `artifact_provenance` приходят только из манифеста доверенного пакета. Профиль/конфиг от сервера, share-link или ручной правки может заполнять **только** runtime-параметры, описанные в `configuration_reference` (адрес/ключи/вариант соединения), и не может ни добавлять capability, ни менять bind, ни «переквалифицировать» wire-протокол.
 
-**Пример корректного манифеста (иллюстративный, не рабочий конфиг):**
+**Пример корректного манифеста (иллюстративный, не рабочий конфиг; все идентификаторы синтетические):**
 
 ```json
 {
   "schema_version": 1,
   "provider_id": "wdtt",
   "adapter_version": "0.1.0",
-  "server_wire": "wdtt/qwdtt-vkturn-dtls-wg (точный вариант из owner-профиля)",
+  "server_wire": "synthetic-wdtt-qwdtt-vkturn-dtls-wg-1",
   "server_class": "wdtt-exit-vps",
   "architecture": [{ "arch": "aarch64", "abi": "musl-static" }],
   "capabilities": {
-    "socks_tcp": { "code": "YES", "build": "YES", "field": "NO" },
-    "socks_udp": { "code": "UNKNOWN", "build": "UNKNOWN", "field": "NO" },
-    "tun":       { "code": "NO",  "build": "NO",  "field": "NO" }
+    "socks_tcp": { "code": "PRESENT", "build": "PRESENT" },
+    "socks_udp": { "code": "UNKNOWN", "build": "UNKNOWN" },
+    "tun":       { "code": "ABSENT",  "build": "ABSENT" }
   },
   "inbound_bind": "127.0.0.1:1081",
-  "resource_requirements": { "mem_min_mb": 512, "mem_scope": "combined_with_kas",
-                             "mem_basis": "UNKNOWN",
-                             "notes": "требует замера A/B (MT-004) до любых заявлений" },
+  "resource_requirements": {
+    "admission_min_mb": 512,
+    "admission_source": "KAS-#137-combined-admission-policy",
+    "measured": false,
+    "measurement_ref": null,
+    "notes": "512 MB — документированный порог допуска, НЕ доказанная достаточность; измерения A/B (MT-004) отсутствуют"
+  },
   "artifact_provenance": { "sha256": "<pinned-digest>", "source_commit": "<pinned-commit>",
                            "build_ref": "<ci-run-or-tag>", "artifact_path": "versions/<v>/worker" },
   "configuration_reference": "docs/wdtt-owner-config-v0.md (template: client.json.template)"
 }
 ```
 
+Пояснение к `server_wire`: значение — **явный синтетический идентификатор** варианта wire-протокола (и не действующий); свободный поясняющий текст вместо идентификатора контракт запрещает. Точный реальный вариант фиксируется owner-профилем при приёмке артефакта.
+
 **Примеры некорректных манифестов (fixture INVALID):**
-- `socks_udp: {code:UNKNOWN, build:YES, …}` — нарушена монотонность (build=YES без code=YES).
+- `socks_udp: {code:UNKNOWN, build:PRESENT, …}` — нарушена монотонность (build=PRESENT без code=PRESENT).
 - `inbound_bind: "0.0.0.0:1081"` — не loopback → отказ install/старта.
-- `server_wire: "auto"` / отсутствует — wire должен быть точным вариантом.
-- `resource_requirements.mem_basis: "MEASURED"` без ссылки на замер, либо `mem_basis: "DOCUMENTED"` при `mem_min_mb: 256` для WDTT — противоречит #137.
+- `server_wire: "auto"` / отсутствует / поясняющий текст вместо идентификатора — wire должен быть явным id варианта.
+- `resource_requirements.measured=true` без `measurement_ref`, либо `admission_min_mb` задан без `admission_source`; `admission_min_mb: 256` для WDTT — противоречит политике #137.
+- поле `field` внутри манифеста — полевые результаты живут только в `acceptance.json` (§2.4).
 - `artifact_provenance.sha256` не совпадает с фактическим файлом → install отказ.
 - манифест, лежащий рядом с артефактом, но не покрытый проверкой целостности пакета → недоверенный, игнорируется.
 
-### 2.4 Статусы: формат, правила, redaction
+### 2.4 Acceptance-записи (полевые доказательства, mutable)
+
+`acceptance.json` — отдельно от immutable-манифеста: redacted, машиночитаемые результаты физических тестов, добавляемые по мере проведения испытаний. Каждая запись самодостаточна и привязана к конкретному артефакту:
+
+- `artifact_sha256` — запись относится **только** к бинарнику с этим дайджестом; при update/rollback записи других версий не наследуются автоматически (совпадение SHA — единственный ключ);
+- `device_id` — синтетический идентификатор платформы/стенда (без серийников и приватных адресов);
+- `profile_label` — синтетическая метка профиля (воркеры/вариант), `test_type` — тип проверки (`TCP_E2E`, `UDP_E2E`, `RAM_BASELINE`, `FAIL_CLOSED`, `REBOOT`, …), `started_at`/`duration_sec` — время и длительность (короткий smoke ≠ долгий soak);
+- `result` — `PASS / FAIL / UNKNOWN`; отсутствие записи = `NOT_TESTED` по умолчанию — её никогда не «додумывают»;
+- `metrics` — только числовые redacted метрики (VmHWM/RSS/MemAvailable и т.п.); **никаких owner-конфигов, токенов, приватных URI**;
+- правило чтения: `field`-статус capability = результат последней подходящей по scope записи; нет записи → `NOT_TESTED`. Проверка из неподписанных subscription/share-link источников не принимается.
+
+Манифест от этого файла не зависит и не меняется; Doctor на этапе v0 только читает обе структуры и показывает их вместе с разделением «документировано / измерено / проверено в поле».
+
+### 2.5 Статусы: формат, правила, redaction
 
 Единый вердикт-набор для всех осей: `PASS / FAIL / UNKNOWN / NOT_TESTED / UNSUPPORTED / STALE`. Оси статуса: `process` (ownership-проверенный), `listener` (с владельцем), `transport_state{turn, dtls, wg}` (только если провайдер экспонирует), `tcp_e2e`, `udp_e2e`, `resources` (RSS/VmHWM/FD). Разделение уровней как в манифесте: `UNSUPPORTED` приходит из capabilities (`build:NO`), `NOT_TESTED` — поле не проверяли, `UNKNOWN` — проверяли/стартовали, результата нет, `STALE` — `observed_at` старше `freshness_ttl_sec`.
 
@@ -187,7 +212,7 @@ Exit-codes контракта: `0` ok; `10` not installed; `11` admission fail (
 
 | Этап | Содержимое | Выход / стоп-точка |
 |---|---|---|
-| **MT-001 (сейчас, только docs)** | JSON Schema манифеста + статуса; VALID/INVALID fixtures; redacted sample status; сверка с PR #125 и WDTT ADR #18. **Без runtime-кода, без `kill -0`-логики, без нового supervisor** | схема и fixtures в `docs/research/`; ревью владельца |
+| **MT-001 (сейчас, по отдельному разрешению владельца)** | JSON Schema provider-v0 / status-v0 / acceptance-v0 (Draft 2020-12); VALID/INVALID/semantic fixtures; краткий README с границами гарантий схемы. **Без runtime-кода, без supervisor-изменений, без CI на роутере** | каталог `docs/research/multitransport/`; отдельный Draft PR от актуального `main` (не смешивать с docs-PR #171) |
 | **MT-002 (после GO, только синтетика)** | BusyBox ash/dash проверка schemas/fixtures offline: все INVALID-манифесты отклоняются, монотонность capabilities, non-loopback bind, wrong SHA, wrong arch, zombie/foreign PID fixtures, insufficient MemAvailable, partial install, rollback; максимально переиспользовать существующие тесты PR #125 (`tests/wdtt-*.py`), не дублировать | зелёный offline-CI, wt-client не запускается |
 | **MT-003 (после физической приёмки WDTT PR #34)** | минимальный wdtt-провайдер = **расширение PR #125**: добавить manifest.json + status/doctor в контракт v0; никаких новых клиентов/стеков; layout и ownership — без изменений | owner-lab NC-4210, ручной старт |
 | **MT-004 (после MT-003)** | A/B: (A) wt-client standalone baseline vs (B) под контрактом, одинаковый профиль/нагрузка/длительность; RSS/VmHWM/CPU/MemAvailable/FD; **сравнимые нагрузки — обязательное условие** (урок WDTT #25) | воспроизводимый baseline → числа вписываются в feasibility как «измерено» |
@@ -202,7 +227,7 @@ Exit-codes контракта: `0` ok; `10` not installed; `11` admission fail (
 2. **Артефакт:** wrong SHA256 / wrong ELF-arch / усечённый файл → отказ (гейты PR #125 — прогнать, не переписать).
 3. **Ownership (на fixture-процессах):** PID переиспользован (starttime не совпал) → `stopped`, сигнала нет; zombie → `stopped`; чужой exe при верном PID → `OWNERSHIP_MISMATCH`, сигнала нет; argv не совпал → отказ; cmdline никогда не попадает в вывод.
 4. **Lifecycle на POSIX sh/BusyBox:** install→install (no-op); start без сети → `12`; stop при отсутствии подтверждённого PID → чисто; partial install → `uninstall` дочищает; rollback возвращает прежнюю версию и выключает автозапуск.
-5. **Admission:** MemAvailable ниже порога → `11`; для обычного KAS 256 MB порог **не** повышается (проверка отсутствия регрессии); `mem_basis=UNKNOWN` блокирует старт без owner-GO.
+5. **Admission:** MemAvailable ниже порога → `11`; для обычного KAS 256 MB порог **не** повышается (проверка отсутствия регрессии); `admission_min_mb=null` (порог не определён) блокирует старт без owner-GO.
 6. **Статус/redaction:** после stop `state=stopped`, порт свободен и владелец не числится; `observed_at` старше TTL → оси E2E `STALE`; grep-тест фикстурных секретов (токены/cookies/HWID/URI/cmdline) в status.json и логах — ноль совпадений.
 7. **Doctor (синтетика):** TCP E2E через поднятый dummy-SOCKS fixture → `PASS`; недоступный порт → `FAIL`, не «DIRECT»; `socks_udp.build != YES` → UDP-проба не выполняется (`UNSUPPORTED`), а не «попытка и UNKNOWN».
 8. **Физические (после GO, owner-lab NC-4210):** ручной start → HTTPS 200 через SOCKS → doctor TCP `PASS`; stop → fail-closed (тестовая политика падает, прямого WAN нет, DNS/IPv6 не текут); перезагрузка роутера → транспорт не поднимается сам.
@@ -221,7 +246,7 @@ Exit-codes контракта: `0` ok; `10` not installed; `11` admission fail (
 Сверка спецификации с `experimental/wdtt/` ветки PR #125 (service.sh 529 строк, install.sh, init.d, preflight, sandbox-lifecycle, tests/wdtt-*.py):
 
 1. **Ownership:** `owned_running()` уже делает starttime/zombie/exe/argv-сверки (§2.2) — спецификация **переиспользует** их и явно запрещает упрощения. Противоречия нет.
-2. **Layout:** первая редакция MVP упоминала `state.json`/`config.json` вне контекста — уточнено: авторитетный layout PR #125 (`versions/<v>/worker`, `STATE/pid`, `init.d`, `install.sh`, `config.json`) сохраняется; `manifest.json`/`status.json` — **аддитивные** файлы. Минимальное решение против расхождения — принято в этой редакции (переименование и отображение полей на существующий layout), переписывать адаптер не требуется.
+2. **Layout:** первая редакция MVP упоминала `state.json`/`config.json` вне контекста — уточнено: авторитетный layout PR #125 (`versions/<v>/worker`, `STATE/pid`, `init.d`, `install.sh`, `config.json`) сохраняется; `manifest.json`/`acceptance.json`/`status.json` — **аддитивные** файлы. Минимальное решение против расхождения — принято в этой редакции (переименование и отображение полей на существующий layout), переписывать адаптер не требуется.
 3. **argv-контракт:** service.sh сверяет точный шаблон `worker -config-file <path>` и не печатает cmdline — doctor/status не должны требовать новых argv-паттернов у существующего воркера (иначе это изменение lifecycle WDTT, запрещённое скоупом).
 4. **Порты/admission/rollback:** 1081, MemAvailable-гейты, отключение автозапуска при rollback — совпадают с PR #125 без правок.
 5. **Открытый пункт (не противоречие, фиксация):** `status.json` — новый файл; место его записи (каталог STATE или отдельный run-dir) и права 0600 фиксируются в MT-001 при написании схемы, чтобы не конфликтовать с transactional-логикой PR #125.
