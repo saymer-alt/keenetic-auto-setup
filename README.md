@@ -15,8 +15,20 @@
 **1. Установить KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 **2. Открыть конфигурацию Mihomo**
@@ -93,14 +105,27 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Для обычной установки нужен один запуск. `setup.sh` сам определит профиль хранения (`ram`/`disk`), передаст все проверки каноническому installer и после успешной установки **сразу запустит безопасный импорт конфигурации Mihomo**.
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 Если `curl` зависает **до первого вывода setup/Doctor** на TLS handshake с `raw.githubusercontent.com`, используйте совместимый повтор (сертификат по-прежнему проверяется):
 
 ```bash
-curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+# No special manual retry is needed: bootstrap.sh tests raw, IPv4/X25519, GitHub API internally.
+# For the initial launcher, the copied install block above also has a separate GitHub API fallback.
 ```
 
 Обычный TLS остаётся основным путём. `X25519` — только compatibility fallback для сетей, где увеличенный TLS ClientHello от OpenSSL 3.5 не проходит; после запуска project downloader сам пробует normal TLS → X25519 → wget/API fallback.
