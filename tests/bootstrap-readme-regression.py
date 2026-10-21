@@ -16,6 +16,7 @@ DOCS = [
     "docs/EN/ENTWARE_EXTERNAL_STORAGE.md",
 ]
 COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[\s\S]*?\n')\n\x60{3}")
+QUICK_COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[^\n]*')\n\x60{3}")
 GOOD = "#!/bin/sh\n# KAS_FIRSTFETCH_V1\nprintf 'LAUNCHER_RAN\\n'\n"
 MOCK = r"""#!/usr/bin/env python3
 import json,os,sys
@@ -54,9 +55,12 @@ def extract():
         matches=COMMAND.findall(text)
         assert matches, (path,'no install command')
         if path in ("README.md", "docs/EN/README.md"):
-            assert len(matches) == 2, (path,'expected compact cheatsheet plus full fallback installer')
-            quick, full = matches
-            assert len(quick.splitlines()) <= 7, (path,'command cheat sheet became too long again')
+            assert len(matches) == 1, (path,'expected full fallback installer')
+            compact = QUICK_COMMAND.findall(text)
+            assert len(compact) == 1, (path,'must have exactly one single-line quick install')
+            quick = compact[0]
+            full = matches[0]
+            assert '\\n' not in quick and len(quick) <= 400, (path,'quick install must be one reasonable line')
             for required in (
                 'opkg update && opkg install curl',
                 'umask 077', 'mktemp /tmp/kas.', 'trap ', '--connect-timeout 7 --max-time 25',
