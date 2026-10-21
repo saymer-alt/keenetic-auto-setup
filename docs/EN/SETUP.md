@@ -7,7 +7,7 @@ It does not replace `install.sh`. It classifies the real `/opt` storage, selects
 ## Run
 
 ```bash
-opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
 ## Flow
@@ -21,7 +21,7 @@ opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 
 7. Download and start `config-import.sh` through the same resilient chain when an interactive TTY is available.
 8. Print the Doctor command.
 
-The short command streams the first `bootstrap.sh` over HTTPS to `sh`, with visible curl progress and bounded timeouts. This is an explicitly accepted first-fetch risk (no staging/validation of the initial stream). Once running, `bootstrap.sh` downloads `setup.sh` via raw → IPv4/X25519 → Contents API and validates it before execution. The staged three-path first-fetch option and offline/SCP alternative remain in the [advanced installation guide](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки). TLS certificate checks are not disabled.
+The short command streams the first `bootstrap.sh` over HTTPS to `sh`, using `curl -fSsL`: errors remain visible, progress is suppressed, and no extra overall timeout is specified for this initial request. This is an explicitly accepted first-fetch risk (no staging/validation of the initial stream). Once running, `bootstrap.sh` downloads `setup.sh` via raw → IPv4/X25519 → Contents API and validates it before execution. The staged three-path first-fetch option and offline/SCP alternative remain in the [advanced installation guide](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки). TLS certificate checks are not disabled.
 
 The wrapper never bypasses installer contracts for components, RAM/swap, EXT4, ProxyN, DNS interception, or other safety checks.
 
