@@ -145,7 +145,7 @@ a real `raw.githubusercontent.com` reset during installation:
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
 - the public fresh-install **happy path must stay concise and copy-pasteable** while never
   piping remote bytes into a shell (safe first-fetch, #165). The RU/EN README
-  **Common commands** shortcut is deliberately short: after `opkg update && opkg install curl`,
+  **Common commands** shortcut is deliberately **one copyable shell line**: after `opkg update && opkg install curl`,
   it stages `bootstrap.sh` into a private `mktemp` file using bounded CA-verified HTTPS,
   checks non-empty/shebang/`KAS_FIRSTFETCH_V1`/`sh -n`, and runs it only after validation.
   The compact shortcut uses **one** bounded raw GitHub request; if that path fails it must
