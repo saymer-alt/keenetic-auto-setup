@@ -26,11 +26,23 @@
 `setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. После запуска `setup.sh` дочерние project-скрипты скачиваются через устойчивую fallback-цепочку bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API.
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
-Если `curl` зависает до первого вывода скрипта на TLS handshake, используйте `-4 --connect-timeout 5 --max-time 20 --curves X25519`; подробности и offline/SCP fallback — в [подробной установке](03-install.md).
+Первый запуск теперь скачивает `bootstrap.sh` в закрытый временный файл, проверяет его перед исполнением и при отказе raw GitHub пробует GitHub Contents API. Сам `bootstrap.sh` затем скачивает и проверяет `setup.sh` через bounded raw → IPv4/X25519 → Contents API. На каждой стадии есть тайм-ауты и сообщения. При отсутствии Интернета `opkg update` может завершиться раньше; см. [подробную установку](03-install.md).
 
 Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 
