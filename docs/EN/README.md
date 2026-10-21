@@ -93,25 +93,23 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 
 ### 🚀 Simple path — recommended for most users
 
-You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
+**Copy this entire command into the Keenetic SSH shell with Entware installed:**
 
-If GitHub raw is unavailable for the initial download, use the [advanced staged launcher and fallback sources](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки).
+```bash
+opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+```
 
-If `curl` stalls **before setup/Doctor prints anything** during the TLS handshake to `raw.githubusercontent.com`, use the compatibility retry below (certificate verification remains enabled):
+You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives and delegates the EXT4, KeeneticOS component, RAM/swap, and other safety checks to the canonical installer. After installation, it starts the Mihomo configuration importer.
 
-For a failed initial fetch, use the [advanced staged first-fetch fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки). The bootstrap itself retains its raw, IPv4/X25519 and GitHub API fallback for fetching `setup.sh`.
+If the initial GitHub raw download fails, use the [advanced staged first-fetch fallback](../03-install.md#расширенная-установка-с-проверкой-первой-загрузки). Inside `bootstrap.sh`, raw → IPv4/X25519 → GitHub Contents API fallback and validation remain in place for downloading `setup.sh`. Other project files have their own fallback download logic. This default HTTPS command intentionally streams the first `bootstrap.sh` into `sh` without validating the entire file beforehand — an accepted usability trade-off.
 
-Normal TLS remains the primary path. `X25519` is only a compatibility fallback for paths where the larger OpenSSL 3.5 ClientHello is dropped; once the project downloader is running it tries normal TLS → X25519 → wget/API fallback.
-
-If `/opt` cannot be classified safely, the wrapper stops instead of guessing and points to the advanced installation path.
+If `/opt` cannot be classified safely, the installer stops instead of guessing.
 
 > **CRITICAL:** native KeeneticOS zRAM and external storage-backed SWAP must never be active together, regardless of RAM class. **Installer — ERROR, Doctor — FAIL, Updater — ERROR**; no automatic bypass. [Safety constitution](../CONSTITUTION.md).
 
 > **512 MB-class note:** bare 512 MB physical RAM is no longer a supported project baseline. A new install requires active KeeneticOS zRAM **or** verified external storage-backed swap; with neither present the installer stops with ERROR and Doctor reports FAIL. There is no access-point exception.
 
-Advanced/manual installation, explicit `ram|disk` selection, offline/SCP delivery, and storage overrides are documented separately.
-
-Details → [installation](../03-install.md)
+Advanced/manual installation, explicit `ram|disk` selection, offline/SCP delivery, and storage overrides are in the [detailed installation guide](../03-install.md).
 
 ## 2. Mihomo configuration
 
