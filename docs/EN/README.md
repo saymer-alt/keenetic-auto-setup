@@ -15,8 +15,20 @@ Frequently used SSH commands in one place. **Copy one block at a time.** More de
 **1. Install KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 **2. Edit the Mihomo configuration**
@@ -95,14 +107,27 @@ Full requirements → [KeeneticOS components and prerequisites](../COMPONENTS.md
 You do not need to choose `ram` or `disk` manually. `setup.sh` detects where `/opt` lives, selects the normal profile, and delegates to the canonical `install.sh`. EXT4, KeeneticOS component, RAM/swap, and other safety gates remain enforced by the canonical installer.
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+echo "[bootstrap] Downloading launcher (25s timeout)..."
+if ! curl -fSsL --connect-timeout 7 --max-time 25 -o "$f" https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh || ! valid; then
+    echo "[WARN] raw unavailable/invalid; trying GitHub Contents API" >&2
+    curl -4 -fSsL --connect-timeout 7 --max-time 25 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" -o "$f" "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable" || exit 1
+fi
+valid || { echo "[ERROR] Invalid launcher; nothing executed" >&2; exit 1; }
+sh "$f"
+'
 ```
 
 If `curl` stalls **before setup/Doctor prints anything** during the TLS handshake to `raw.githubusercontent.com`, use the compatibility retry below (certificate verification remains enabled):
 
 ```bash
-curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+# No special manual retry is needed: bootstrap.sh tests raw, IPv4/X25519, GitHub API internally.
+# For the initial launcher, the copied install block above also has a separate GitHub API fallback.
 ```
 
 Normal TLS remains the primary path. `X25519` is only a compatibility fallback for paths where the larger OpenSSL 3.5 ClientHello is dropped; once the project downloader is running it tries normal TLS → X25519 → wget/API fallback.
