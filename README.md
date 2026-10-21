@@ -15,8 +15,29 @@
 **1. Установить KAS (Mihomo + MagiTrickle)**
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
+fi
+sh "$f"
+'
 ```
 
 **2. Открыть конфигурацию Mihomo**
@@ -93,14 +114,36 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 Для обычной установки нужен один запуск. `setup.sh` сам определит профиль хранения (`ram`/`disk`), передаст все проверки каноническому installer и после успешной установки **сразу запустит безопасный импорт конфигурации Mihomo**.
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
+fi
+sh "$f"
+'
 ```
 
 Если `curl` зависает **до первого вывода setup/Doctor** на TLS handshake с `raw.githubusercontent.com`, используйте совместимый повтор (сертификат по-прежнему проверяется):
 
 ```bash
-curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+# No special manual retry is needed: bootstrap.sh tests raw, IPv4/X25519, GitHub API internally.
+# For the initial launcher, the copied install block above also has IPv4/X25519 and GitHub API fallbacks.
 ```
 
 Обычный TLS остаётся основным путём. `X25519` — только compatibility fallback для сетей, где увеличенный TLS ClientHello от OpenSSL 3.5 не проходит; после запуска project downloader сам пробует normal TLS → X25519 → wget/API fallback.
