@@ -13,8 +13,29 @@
 Для обычной установки рекомендуется тонкий front-end [`setup.sh`](14-setup.md):
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
+fi
+sh "$f"
+'
 ```
 
 Он только определяет класс хранилища `/opt`: внутреннее хранилище → `ram`, внешний persistent-накопитель → `disk`. После этого скачивает и запускает канонический `install.sh`. Он **не дублирует** проверки и не обходит safety-gates: неизвестный/небезопасный класс `/opt` приводит к остановке, а EXT4, компоненты KeeneticOS, RAM/swap и остальные требования проверяет основной installer.
@@ -30,11 +51,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 ### Если raw.githubusercontent.com недоступен с роутера
 
-Если команда `curl ... | sh` зависает ещё **до первого вывода скрипта**, сначала проверьте compatibility-вариант для TLS:
-
-```bash
-curl -4 -fSsL --connect-timeout 5 --max-time 20 --curves X25519 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
-```
+Если сеть ошибается на начальном запросе, новая команда установки делает bounded raw → raw IPv4/X25519 → GitHub Contents API до запуска shell, а `bootstrap.sh` проверяет и скачивает `setup.sh` с отдельным IPv4/X25519 fallback. Не используйте старый `curl | sh`: он не проверяет тело перед исполнением.
 
 Этот вариант не отключает проверку сертификата и не использует `--insecure`: меняется только TLS key-exchange group. Обычный TLS остаётся первым вариантом. После запуска `setup.sh` project-managed downloader сам использует bounded normal curl, затем один `X25519` compatibility retry, затем wget и GitHub Contents API.
 

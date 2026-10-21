@@ -26,11 +26,32 @@
 `setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. После запуска `setup.sh` дочерние project-скрипты скачиваются через устойчивую fallback-цепочку bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API.
 
 ```bash
-opkg update && opkg install curl && \
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/setup.sh | sh
+opkg update && opkg install curl && sh -c '
+umask 077
+f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
+trap "rm -f $f" 0
+valid() { [ -s "$f" ] && [ "$(head -n 1 "$f")" = "#!/bin/sh" ] &&
+    grep -Fq "KAS_FIRSTFETCH_V1" "$f" && sh -n "$f"; }
+fetch() { : > "$f" || return 1
+    curl -fSsL --connect-timeout 7 --max-time 25 "$@" -o "$f" && valid; }
+RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh
+API="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents/bootstrap.sh?ref=stable"
+echo "[bootstrap] Downloading verified KAS launcher..."
+if fetch "$RAW"; then
+    echo "[bootstrap] GitHub raw OK"
+elif fetch -4 --curves X25519 "$RAW"; then
+    echo "[bootstrap] GitHub raw IPv4/X25519 OK"
+elif fetch -4 -H "Accept: application/vnd.github.raw+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API"; then
+    echo "[bootstrap] GitHub Contents API OK"
+else
+    echo "[ERROR] No valid KAS launcher fetched; nothing executed" >&2
+    exit 1
+fi
+sh "$f"
+'
 ```
 
-Если `curl` зависает до первого вывода скрипта на TLS handshake, используйте `-4 --connect-timeout 5 --max-time 20 --curves X25519`; подробности и offline/SCP fallback — в [подробной установке](03-install.md).
+Первый запуск теперь скачивает `bootstrap.sh` в закрытый временный файл, проверяет его перед исполнением и при отказе raw GitHub пробует IPv4/X25519, затем GitHub Contents API. Сам `bootstrap.sh` затем скачивает и проверяет `setup.sh` через bounded raw → IPv4/X25519 → Contents API. На каждой стадии есть тайм-ауты и сообщения. При отсутствии Интернета `opkg update` может завершиться раньше; см. [подробную установку](03-install.md).
 
 Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 
