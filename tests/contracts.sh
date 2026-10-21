@@ -746,6 +746,9 @@ grep -Fq 'sh "$CONFIG_IMPORT_STAGE"' "$ROOT/setup.sh" || fail "simple setup must
 # First-fetch must never execute unchecked raw HTTP bytes as shell input.
 PUBLIC_BOOTSTRAP_URL='https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh'
 for _f in README.md docs/EN/README.md docs/02-quick-start.md docs/03-install.md docs/14-setup.md docs/EN/SETUP.md docs/HOWTO_RU.md docs/HOWTO.md docs/16-entware-external-storage.md docs/EN/ENTWARE_EXTERNAL_STORAGE.md; do
+    # Preserve the established clean-Entware prerequisite from the original KAS contract.
+    # This must happen before any bootstrap curl and must not be silently delegated to setup.sh.
+    grep -Fq "opkg update && opkg install curl && sh -c '" "$ROOT/$_f" || fail "$_f must bootstrap curl from a clean Entware first"
     grep -Fq "$PUBLIC_BOOTSTRAP_URL" "$ROOT/$_f" || fail "$_f must use checked bootstrap.sh first-fetch"
     grep -Fq 'sh -n "$f"' "$ROOT/$_f" || fail "$_f must validate staged launcher syntax"
     grep -Fq 'KAS_FIRSTFETCH_V1' "$ROOT/$_f" || fail "$_f must check bootstrap identity before execution"
