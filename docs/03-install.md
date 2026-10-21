@@ -13,6 +13,16 @@
 Для обычной установки рекомендуется тонкий front-end [`setup.sh`](14-setup.md):
 
 ```bash
+opkg update && opkg install curl && curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
+```
+
+Первая передача `bootstrap.sh` напрямую в `sh` — осознанный компромисс ради короткого запуска. HTTPS и стандартная проверка сертификата сохраняются; `curl` выводит прогресс, соединение ограничено 7 секундами, загрузка — 25 секундами. При обрыве потока shell может получить неполный скрипт, а код возврата `curl` не передаётся через pipe в POSIX sh. Внутренний `bootstrap.sh` продолжает предварительно проверять скачанный `setup.sh`.
+
+### Расширенная установка с проверкой первой загрузки
+
+Этот отдельный вариант сохраняет временный файл, проверки `sh -n`/маркера и резервные каналы для первого `bootstrap.sh`; используйте его при сбоях raw GitHub или когда хотите более строгую проверку первой загрузки.
+
+```bash
 opkg update && opkg install curl && sh -c '
 umask 077
 f=$(mktemp /tmp/kas-bootstrap.XXXXXXXX) || exit 1
@@ -51,7 +61,7 @@ sh "$f"
 
 ### Если raw.githubusercontent.com недоступен с роутера
 
-Если сеть ошибается на начальном запросе, новая команда установки делает bounded raw → raw IPv4/X25519 → GitHub Contents API до запуска shell, а `bootstrap.sh` проверяет и скачивает `setup.sh` с отдельным IPv4/X25519 fallback. Не используйте старый `curl | sh`: он не проверяет тело перед исполнением.
+Если начальный запрос raw GitHub не работает, короткая команда покажет ошибку `curl`. Для первого этапа используйте расширенный вариант выше: он пробует raw → IPv4/X25519 → GitHub Contents API с проверкой загруженного файла перед выполнением. Короткая команда сознательно допускает `curl | sh`, а `bootstrap.sh` по-прежнему проверяет `setup.sh` перед его выполнением.
 
 Этот вариант не отключает проверку сертификата и не использует `--insecure`: меняется только TLS key-exchange group. Обычный TLS остаётся первым вариантом. После запуска `setup.sh` project-managed downloader сам использует bounded normal curl, затем один `X25519` compatibility retry, затем wget и GitHub Contents API.
 

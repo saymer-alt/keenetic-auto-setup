@@ -143,23 +143,10 @@ a real `raw.githubusercontent.com` reset during installation:
 - do not reuse the short metadata/script total timeout for package assets. Live KN-1010 acceptance on 2026-09-28 showed that the ~12.8 MB mipsel IPK can exceed a 20 s total transfer window even when the path is otherwise healthy. Metadata/project scripts keep the short bounded window; large asset downloads in installer/updater use a separate 180 s bounded transfer window while retaining the 5 s connect/TLS gate and IPv4+X25519 compatibility retry;
 - shell candidates must be staged before execution, be non-empty, start with `#!/bin/sh`,
   and pass `sh -n`; destination replacement remains atomic where a managed file is installed;
-- the public fresh-install **happy path must stay concise and copy-pasteable** while never
-  piping remote bytes into a shell (safe first-fetch, #165). The RU/EN README
-  **Common commands** shortcut is deliberately **one copyable shell line**: after `opkg update && opkg install curl`,
-  it stages `bootstrap.sh` into a private `mktemp` file using bounded CA-verified HTTPS,
-  requires the `KAS_FIRSTFETCH_V1` marker and `sh -n` before execution, and cleans up
-  the staged file. The detailed full installer retains additional non-empty/shebang checks.
-  The compact shortcut uses **one** bounded raw GitHub request; if that path fails it must
-  fail closed and direct users to the full three-path fallback in README's detailed
-  Installation section. The detailed command in both READMEs, Quick Start, HOWTO,
-  and Entware guides retains the full first-hop fallback sequence
-  GitHub raw → IPv4/X25519 → GitHub Contents API (each attempt uses
-  `--connect-timeout 7 --max-time 25`, TLS/CA enabled; never `--insecure`).
-  `bootstrap.sh` independently validates and fetches `setup.sh` with the same staged
-  checks and fallback sequence. Do not regress any instruction to
-  `curl .../stable/setup.sh | sh` or strip fallback behavior from the **full installer**
-  just to shorten the quick command. Both short and full examples have offline
-  executable tests; if the full fallback chain also fails, point to offline/SCP recovery;
+- **Owner decision, 2026-10-22 (KAS #180):** public fresh-install UX is a short, familiar HTTPS `curl | sh` command for the initial `bootstrap.sh`, explicitly accepting a less strict first-hop trust/error-propagation model than #165. Do not silently revert that decision to an opaque `sh -c`/mktemp command in normal README/Quick Start. The copyable public command uses `curl -fSL --connect-timeout 7 --max-time 25 https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh` after `opkg update && opkg install curl`. `-fSL` intentionally shows progress and curl errors on stderr; default TLS/CA validation is mandatory (no HTTP, no `--insecure`).
+- **Documented accepted risk:** POSIX pipeline status normally follows `sh` rather than `curl`; an empty/failed first response may leave a 0 pipeline exit and a partial or altered first-stage shell stream is not prevalidated. Never call the short command equivalent to staged first-fetch or tamper-proof. Explain this briefly at the user-facing entry point. The `bootstrap.sh` stage itself remains responsible for securely staging and validating `setup.sh` before execution, with raw → IPv4/X25519 → GitHub Contents API fallbacks. `setup.sh` and `install.sh` safety invariants, including KAS-SAFETY-001, remain unchanged.
+- **Advanced first-fetch stays available** in `docs/03-install.md`: private staging, shebang/project-marker/`sh -n` checks, three-path first-fetch fallback, bounded timeouts, TLS/CA. This provides a stronger operator choice without burdening the default command.
+- RU/EN README and onboarding guides must show the same quick command; regression tests must exercise the *actual documented string* with mocked network/OPKG and separately exercise advanced full first-fetch. Do not edit tests to claim the short pipe has the same guarantees as the advanced staged path. If first raw fetch fails, recommend the advanced first-fetch or offline/SCP path.
 - a caller-provided custom source URL remains authoritative: do not silently replace a failed
   override with a different project payload.
 External package sources that do not have a project Contents-API equivalent still need the
