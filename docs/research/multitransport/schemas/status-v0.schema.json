@@ -86,14 +86,15 @@
   "$defs": {
     "verdict": {
       "enum": ["PASS", "FAIL", "UNKNOWN", "NOT_TESTED", "UNSUPPORTED", "STALE"],
-      "description": "UNKNOWN/STALE/UNSUPPORTED/NOT_TESTED are never PASS substitutes."
+      "description": "UNKNOWN = build capability not yet known; NOT_TESTED = capability present in build but never probed; UNSUPPORTED = proven absent from the build; FAIL = an executed probe failed. None of them may be read as PASS."
     },
     "loopbackBindOrNull": {
       "oneOf": [
         { "type": "null" },
         {
           "type": "string",
-          "pattern": "^127\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3})$"
+          "description": "Exactly 127.0.0.1:port (v0 conservative rule).",
+          "pattern": "^127\\.0\\.0\\.1:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3})$"
         }
       ]
     }

@@ -10,7 +10,7 @@
   "listener_owner_verified": true,
   "transport_state": { "turn": "UNKNOWN", "dtls": "UNKNOWN", "wg": "UNKNOWN" },
   "tcp_e2e": "UNKNOWN",
-  "udp_e2e": "UNSUPPORTED",
+  "udp_e2e": "UNKNOWN",
   "egress": "SOCKS_LISTEN_ONLY",
   "observed_at": "2026-10-21T12:00:05Z",
   "freshness_ttl_sec": 120,

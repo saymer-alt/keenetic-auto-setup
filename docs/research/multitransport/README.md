@@ -17,9 +17,9 @@
 ## Что гарантирует JSON Schema
 
 - типы/обязательные поля/`additionalProperties: false` у всех объектов;
-- `inbound_bind` — строго `127.x.x.x:port` с проверкой диапазонов октетов и порта 1–65535: `0.0.0.0`, LAN-адреса, `localhost`, IPv6, порт 0/99999 отклоняются (проверено);
+- `inbound_bind` — строго `127.0.0.1:port` (консервативное правило v0; прочие адреса 127/8 — только по отдельному обоснованию): `0.0.0.0`, LAN-адреса, `localhost`, IPv6, прочие `127.x`, порт 0/99999 отклоняются (проверено);
 - `artifact_provenance.sha256` — ровно 64 hex-символа; `source_commit` — 7–64 hex; явное отклонение «полусгенерированных» значений;
-- enum-уровни: `code/build ∈ {PRESENT, ABSENT, UNKNOWN}`; вердикты `PASS/FAIL/UNKNOWN/NOT_TESTED/UNSUPPORTED/STALE`;
+- enum-уровни: `code/build ∈ {PRESENT, ABSENT, UNKNOWN}`; вердикты `PASS/FAIL/UNKNOWN/NOT_TESTED/UNSUPPORTED/STALE` (`UNSUPPORTED` = доказанное отсутствие в сборке; `UNKNOWN`/`NOT_TESTED` = отсутствие данных/пробы — не путать);
 - инвариант монотонности `build=PRESENT ⇒ code=PRESENT` (для известных полей capability);
 - `admission_min_mb` (integer) ⇒ `admission_source` обязателен; `measured=true` ⇒ `measurement_ref` обязателен; `admission_min_mb=null` = «порог не определён, старт только по owner GO» (контракт ≥512 MB KAS+WDTT из #137 сохранён как документированная политика, не как доказанная достаточность);
 - `state=running` ⇒ `pid` обязателен и `pid_verified=true` (схема не даёт заявить running без ownership-подтверждения).
