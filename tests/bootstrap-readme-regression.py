@@ -15,7 +15,7 @@ DOCS = [
     "docs/HOWTO_RU.md", "docs/HOWTO.md", "docs/16-entware-external-storage.md",
     "docs/EN/ENTWARE_EXTERNAL_STORAGE.md",
 ]
-COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[\s\S]*?\n')\n\x60{3}")
+COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '\n[\s\S]*?\n')\n\x60{3}")
 QUICK_COMMAND = re.compile(r"\x60{3}bash\n(opkg update && opkg install curl && sh -c '[^\n]*')\n\x60{3}")
 GOOD = "#!/bin/sh\n# KAS_FIRSTFETCH_V1\nprintf 'LAUNCHER_RAN\\n'\n"
 MOCK = r"""#!/usr/bin/env python3
