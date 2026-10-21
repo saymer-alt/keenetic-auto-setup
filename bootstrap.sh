@@ -1,7 +1,10 @@
 #!/bin/sh
 # KAS_FIRSTFETCH_V1
-# Safe second-stage entry point: no remote stream is ever piped into sh.
-# This script itself must be downloaded into a private file and validated.
+# KAS public entry point. The short HTTPS installation command streams THIS
+# initial launcher to sh (an explicitly accepted first-fetch risk).
+# This launcher downloads setup.sh into a private temporary file, validates
+# the full candidate before execution, and uses GitHub transport fallbacks.
+# No setup.sh remote bytes are piped directly into sh.
 set -u
 
 CHECK_ONLY=0
