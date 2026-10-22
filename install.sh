@@ -906,7 +906,11 @@ kas_ledger_record() {
     _ko_kind=$1
     _ko_value=$2
     case "$_ko_kind|$_ko_value" in
-        owned\|proxy\|Proxy[0-9]*|owned\|policy\|bypass_wa|enabled\|dns\|intercept|\
+        owned\|proxy\|Proxy*)
+            _ko_num=${_ko_value#Proxy}
+            case "$_ko_num" in ''|*[!0-9]*) return 1 ;; esac
+            ;;
+        owned\|policy\|bypass_wa|enabled\|dns\|intercept|\
         owned\|package\|mihomo|owned\|package\|magitrickle|\
         owned\|repository\|magitrickle.conf|owned\|hook\|020-bypass_wa.sh|\
         owned\|watchdog\|binary|owned\|watchdog\|wrapper|owned\|service\|S00ubifs) ;;
