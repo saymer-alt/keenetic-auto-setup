@@ -39,7 +39,7 @@ def setup(td):
     toolbin.mkdir()
     for name, script in {
         "ndmc": '#!/bin/sh\ncase "$2" in\n"show running-config") printf "interface Proxy0\\n proxy upstream 127.0.0.1 7890\\n" ;;\n"show ip policy") printf "bypass_wa\\n" ;;\n*) exit 40 ;;\nesac\n',
-        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\nprintf -- "-N _CUST_BYPASS_WA_\\n"\n',
+        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\n',
         "opkg": '#!/bin/sh\n[ "$1" = list-installed ] || exit 40\nprintf "mihomo - 1\\nmagitrickle - 1\\n"\n',
     }.items():
         p = toolbin / name
