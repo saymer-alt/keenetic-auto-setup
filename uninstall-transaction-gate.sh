@@ -103,18 +103,52 @@ policy_block=$(printf '%s\n' "$rc" | awk '
     inside && /^!$/ { exit }
     inside { print }
 ')
+# KeeneticOS CLI may render the interface alias instead of its underlying ID
+# (for KN-1010: "no permit global ISP" is GigabitEthernet1). Do not accept
+# an unverified alias: require one unique, correctly scoped "rename ISP" in
+# this SAME read-only running-config snapshot.
+wan_isp_alias_verified=0
+if printf '%s\n' "$rc" | awk '
+    /^interface [^[:space:]]+[[:space:]]*$/ { iface=$2; next }
+    /^![[:space:]]*$/ { iface=""; next }
+    $1 == "rename" && $2 == "ISP" {
+        count++
+        if (NF != 2 || iface != "GigabitEthernet1") bad=1
+    }
+    END { exit !(count == 1 && !bad) }
+'; then
+    wan_isp_alias_verified=1
+fi
+seen_description=0
 seen_exit=0
+seen_wan_deny=0
 while IFS= read -r line; do
     case "$line" in
-        '    description bypass_wa') ;;
-        '    permit global Proxy0') seen_exit=1 ;;
-        '    no permit global GigabitEthernet1') ;;
+        '    description bypass_wa')
+            [ "$seen_description" -eq 0 ] || fail "duplicate bypass_wa description"
+            seen_description=1
+            ;;
+        '    permit global Proxy0')
+            [ "$seen_exit" -eq 0 ] || fail "duplicate permit global Proxy0"
+            seen_exit=1
+            ;;
+        '    no permit global GigabitEthernet1')
+            [ "$seen_wan_deny" -eq 0 ] || fail "duplicate WAN deny"
+            seen_wan_deny=1
+            ;;
+        '    no permit global ISP')
+            [ "$wan_isp_alias_verified" -eq 1 ] ||
+                fail "bypass_wa uses ISP but unique alias to GigabitEthernet1 is unverified"
+            [ "$seen_wan_deny" -eq 0 ] || fail "duplicate WAN deny"
+            seen_wan_deny=1
+            ;;
         *) fail "bypass_wa policy has an unrecognized/shared directive" ;;
     esac
 done <<_POLICY
 $policy_block
 _POLICY
-[ "$seen_exit" -eq 1 ] || fail "bypass_wa does not exclusively permit owned Proxy0"
+[ "$seen_description$seen_exit$seen_wan_deny" = 111 ] ||
+    fail "bypass_wa must have one description, one owned Proxy0 permit and one known WAN deny"
 # A separate user host/network selector may refer to this policy; that is not
 # safe to silently remove. Capture references outside the policy block.
 if printf '%s\n' "$rc" | awk '
