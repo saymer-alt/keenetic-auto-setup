@@ -38,8 +38,36 @@ def setup(td):
     toolbin = td / "bin"
     toolbin.mkdir()
     for name, script in {
-        "ndmc": '#!/bin/sh\ncase "$2" in\n"show running-config") printf "interface Proxy0\\n proxy upstream 127.0.0.1 7890\\n" ;;\n"show ip policy") printf "bypass_wa\\n" ;;\n*) exit 40 ;;\nesac\n',
-        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\n',
+        "ndmc": """#!/bin/sh
+case "$2" in
+"show running-config") cat <<'KAS_RCI'
+interface Bridge0
+    description Home
+!
+interface Proxy0
+    description "mihomo t2s0"
+    security-level public
+    ip global 350
+    proxy protocol socks5
+    proxy upstream 127.0.0.1 7890
+    proxy socks5-udp
+    up
+!
+ip policy bypass_wa
+    description bypass_wa
+    permit global Proxy0
+    no permit global GigabitEthernet1
+!
+dns-proxy
+    intercept enable
+!
+KAS_RCI
+;;
+"show ip policy") echo bypass_wa ;;
+*) exit 40 ;;
+esac
+""",
+        "iptables": '#!/bin/sh\\n[ "$*" = "-t mangle -S" ] || exit 40\\necho "-N _CUST_BYPASS_WA_"\\necho "-A PREROUTING -j _CUST_BYPASS_WA_"\\n',
         "opkg": '#!/bin/sh\n[ "$1" = list-installed ] || exit 40\nprintf "mihomo - 1\\nmagitrickle - 1\\n"\n',
     }.items():
         p = toolbin / name
@@ -88,6 +116,13 @@ for shell in SHELLS:
             return p
         p = verify()
         assert p.returncode == 0 and "[PASS] Snapshot verified" in p.stdout, (p.stdout, p.stderr)
+        # Before any destructive implementation, check that the 9-claim
+        # profile permits a strict read-only transaction plan.
+        gate = subprocess.run(
+            shell + [str(BASE / "uninstall-transaction-gate.sh"), "--check", snap.name],
+            env=env, capture_output=True, text=True, timeout=12)
+        assert gate.returncode == 0 and "[PASS] Nine-claim" in gate.stdout, (gate.stdout, gate.stderr)
+        assert "TEST_SECRET_MUST_NOT_PRINT" not in gate.stdout + gate.stderr
 
         # Any source change requires a new snapshot; we may not rely on READY alone.
         yaml = root / "opt/etc/mihomo/config.yaml"
@@ -148,4 +183,31 @@ for shell in SHELLS:
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (kind, p.stdout, p.stderr)
             assert not (root / "opt/kas-uninstall-backups").exists()
             print("[PASS]", shell, "blocked", kind)
+
+# A new, internally self-consistent snapshot does NOT authorize removal when
+# the profile includes foreign consumers or a customized shared policy.
+for shell in SHELLS:
+    for kind in ("foreign_proxy", "shared_policy"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-gate-") as temp:
+            td = Path(temp)
+            root, files, env = setup(td)
+            ndmc = td / "bin/ndmc"
+            body = ndmc.read_text()
+            if kind == "foreign_proxy":
+                body = body.replace(
+                    "dns-proxy\n    intercept enable",
+                    'interface Proxy1\n    description "foreign"\n'
+                    '    proxy upstream 127.0.0.1 7890\n!\ndns-proxy\n    intercept enable')
+            else:
+                body = body.replace("    permit global Proxy0\n",
+                                    "    permit global Proxy0\n    permit global GigabitEthernet1\n")
+            ndmc.write_text(body)
+            p = run(shell, env, "--create")
+            assert p.returncode == 0, (kind, p.stdout, p.stderr)
+            snap = next((root / "opt/kas-uninstall-backups").iterdir())
+            p = subprocess.run(
+                shell + [str(BASE / "uninstall-transaction-gate.sh"), "--check", snap.name],
+                env=env, capture_output=True, text=True, timeout=12)
+            assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (kind, p.stdout, p.stderr)
+            print("[PASS]", shell, "strict transaction gate rejects", kind)
 print("[PASS] no destructive actions tested or required")
