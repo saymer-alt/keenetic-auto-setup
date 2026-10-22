@@ -46,6 +46,51 @@ probe() {
 }
 
 printf '[KAS uninstall] READ-ONLY inventory; nothing will be removed or stopped.\n'
+# Recognize creation-only V1 ownership claims. Parsing is data-only; never source
+# the file as shell code. Ledger is evidence for later review, not permission to
+# tear down a shared interface or package.
+ledger_check() {
+    _dir="$ROOT/opt/etc/keenetic-auto-setup"
+    _file="$_dir/ownership.v1"
+    if [ -L "$_dir" ] || [ -L "$_file" ]; then
+        report UNKNOWN ledger 'symbolic link; refuse to trust it'
+        return
+    fi
+    if [ ! -e "$_file" ]; then
+        report UNKNOWN ledger 'absent: legacy installation cannot be removed automatically'
+        return
+    fi
+    if [ ! -f "$_file" ] || [ ! -r "$_file" ]; then
+        report UNKNOWN ledger 'not a readable regular file'
+        return
+    fi
+    if [ "$(head -n 1 "$_file" 2>/dev/null)" != KAS_OWNERSHIP_V1 ]; then
+        report UNKNOWN ledger 'unknown version or damaged header'
+        return
+    fi
+    if ! awk '
+        NR == 1 { next }
+        /^owned[|]proxy[|]Proxy[0-9]+$/ { next }
+        /^owned[|]policy[|]bypass_wa$/ { next }
+        /^enabled[|]dns[|]intercept$/ { next }
+        /^owned[|]package[|](mihomo|magitrickle)$/ { next }
+        /^owned[|]repository[|]magitrickle.conf$/ { next }
+        /^owned[|]hook[|]020-bypass_wa.sh$/ { next }
+        /^owned[|]watchdog[|](binary|wrapper)$/ { next }
+        /^owned[|]service[|]S00ubifs$/ { next }
+        { exit 1 }
+    ' "$_file"; then
+        report UNKNOWN ledger 'malformed record; refuse to trust it'
+        return
+    fi
+    report LEDGER ownership.v1 'valid creation log (not exclusive removal authority)'
+    while IFS= read -r _item || [ -n "$_item" ]; do
+        [ "$_item" != KAS_OWNERSHIP_V1 ] || continue
+        report RECORDED "$_item" 'created/enabled by KAS; current dependencies unverified'
+    done < "$_file"
+}
+ledger_check
+
 probe /opt/etc/mihomo/config.yaml shared
 probe /opt/etc/mihomo/config.yaml.bak shared
 probe /opt/etc/keenetic-auto-setup-mihomo.state unknown
