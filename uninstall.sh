@@ -258,10 +258,7 @@ _KAS_PROXY_DEPS
     # The current router state and the creation journal must BOTH support
     # each proposed teardown. These are REVIEW notices, never delete grants.
     if grep -Fqx 'owned|policy|bypass_wa' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
-        if printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa[[:space:]]*
-    printf '[KAS uninstall] Plan completed without changes.\n'
-fi
-; then
+        if printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa[[:space:]]*$'; then
             report REVIEW 'policy/bypass_wa' 'created by KAS; verify current permits, host bindings and external consumers before removing'
         else
             report REVIEW 'policy/bypass_wa' 'ledger records creation, but policy is not visible in running-config; do not guess'
@@ -270,10 +267,7 @@ fi
         report PRESERVE 'policy/bypass_wa' 'not created by this KAS installation'
     fi
     if grep -Fqx 'enabled|dns|intercept' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
-        if printf '%s\n' "$_rc" | grep -Eq '^[[:space:]]+intercept enable[[:space:]]*
-    printf '[KAS uninstall] Plan completed without changes.\n'
-fi
-; then
+        if printf '%s\n' "$_rc" | grep -Eq '^[[:space:]]+intercept enable[[:space:]]*$'; then
             report REVIEW 'dns-proxy intercept' 'KAS enabled it from OFF; later shared use is unknown, do not automatically disable'
         else
             report REVIEW 'dns-proxy intercept' 'ownership records enable, but it is no longer active; do not toggle'
