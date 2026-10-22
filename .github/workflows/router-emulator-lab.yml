@@ -1,8 +1,13 @@
-# Experimental, opt-in lab. OpenWrt boot/reset smoke is NOT a KeeneticOS/KAS acceptance test.
+# Experimental lab. On this PR, test only changes to this file; manual runs also supported.
+# OpenWrt boot/reset smoke is NOT a KeeneticOS/KAS acceptance test.
 # No hardware/VPS credentials, private NAND dumps or routed connections are used.
 name: Router Emulator lab — OpenWrt boot and reset
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/router-emulator-lab.yml'
   workflow_dispatch:
 
 permissions:
