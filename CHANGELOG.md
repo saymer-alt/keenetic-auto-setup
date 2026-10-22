@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.5] - 2026-10-22
+
+### Ownership journal для будущего безопасного удаления (KAS #179, PR #193)
+- `install.sh` фиксирует только новые, проверенно созданные ресурсы в `/opt/etc/keenetic-auto-setup/ownership.v1`: пакеты, ProxyN, политику, DNS-перехват и проектные файлы. Старые или переиспользованные ресурсы не присваиваются KAS.
+- Журнал записывается атомарно, с правами `0600`, под lifecycle lock. Повреждённый журнал или символическая ссылка блокирует установку; секреты и пользовательские YAML не сохраняются.
+- Тесты формата, повреждений, symlink и повторного запуска под POSIX sh/BusyBox ash; [описание и проверка](docs/24-ownership-ledger.md).
+- **KN-1010, аппаратный тест 22.10.2026:** внешний EXT4 `/opt`, disk profile, RAM 248 МБ, SWAP 468 МБ. Чистая установка `[OK] Done`; Doctor **33 OK / 1 WARN / 0 FAIL** (WARN — пустой новый лог watchdog). Повторная установка `[OK] Done`, без перезапуска Mihomo и новых записей; побайтовое `cmp` журнала до/после — **PASS**.
+- **Не входит:** удаление через `uninstall.sh --remove/--purge`. Оно остаётся в [#179](https://github.com/saymer-alt/keenetic-auto-setup/issues/179) и Draft PR #192. Команда установки и короткий README не меняются.
+
 ## [1.8.4] - 2026-10-21
 
 ### Безопасная первая загрузка (P0 #165, PR #168)
