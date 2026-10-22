@@ -10,6 +10,10 @@ name=${2:-}
 [ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare SNAPSHOT_NAME" >&2; exit 2; }
 case "$mode" in
     --prepare) ;;
+    --rehearse)
+        [ -n "${KAS_TXN_FIXTURE_ROOT:-}" ] ||
+            { echo "[BLOCKED] --rehearse only works against an isolated fixture" >&2; exit 3; }
+        ;;
     --remove|--purge) printf '[BLOCKED] Live removal not enabled in transaction engine\n' >&2; exit 3 ;;
     *) echo "Usage: sh uninstall-transaction.sh --prepare SNAPSHOT_NAME" >&2; exit 2 ;;
 esac
@@ -200,7 +204,29 @@ KAS_SNAPSHOT_ROOT="$root" sh "$dir/uninstall-transaction-gate.sh" --check "$name
     fail "strict ownership, snapshot or dependency gate failed"
 
 ml_lifecycle_acquire || fail "canonical Mihomo lifecycle lock is busy"
+REHEARSE_ACTIVE=0
+rehearse_restore() {
+    [ "$REHEARSE_ACTIVE" -eq 1 ] || return 0
+    _rr_status=0
+    # Source paths and snapshot backup paths are fixed, never user-provided.
+    for _rr_item in /opt/bin/mihomo_watchdog.sh \
+                    /opt/etc/cron.5mins/mihomo_watchdog \
+                    /opt/etc/ndm/netfilter.d/020-bypass_wa.sh \
+                    /opt/etc/crontab; do
+        _rr_source="$root$_rr_item"
+        _rr_copy="$snap/files$_rr_item"
+        [ -f "$_rr_copy" ] && [ ! -L "$_rr_copy" ] || { _rr_status=1; continue; }
+        cp -p "$_rr_copy" "$_rr_source" || _rr_status=1
+        cmp -s "$_rr_copy" "$_rr_source" || _rr_status=1
+    done
+    [ "$_rr_status" -eq 0 ] && REHEARSE_ACTIVE=0
+    return "$_rr_status"
+}
 cleanup() {
+    if [ "$REHEARSE_ACTIVE" -eq 1 ]; then
+        rehearse_restore ||
+            echo '[ERROR] Rehearsal restore failed, manual recovery from private snapshot needed' >&2
+    fi
     ml_lifecycle_release || {
         echo '[ERROR] Cannot release lifecycle lock; manual review required' >&2
         return 1
@@ -289,3 +315,54 @@ mv -f "$stage" "$txn/prepare.v1" ||
 printf '[PASS] KAS uninstall transaction prepared: %s\n' "$name"
 printf '[INFO] Lifecycle lock acquired/released; no router settings or packages changed\n'
 printf '[BLOCKED] Actual --remove/--purge still require fault-tested rollback engine\n'
+# Optional destructive REHEARSAL is never available against a real router.
+# It removes only the three ledger-owned files temporarily and restores
+# byte-identical originals via the private snapshot while holding the lock.
+if [ "$mode" = --rehearse ]; then
+    # Before any mutation, reject unrecognized/direct cron consumers.
+    cron_tmp="$txn/.cron_rehearse.$"
+    if ! awk '
+       /^[[:space:]]*#/ || /^[[:space:]]*$/ {print; next}
+       {
+           norm=$0
+           gsub(/^[ \t]+|[ \t]+$/, "", norm)
+           gsub(/[ \t]+/, " ", norm)
+           if (norm == "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog") next
+           if (index(norm, "mihomo_watchdog")) exit 2
+           print
+       }
+    ' "$root/opt/etc/crontab" > "$cron_tmp"; then
+        rm -f "$cron_tmp"
+        fail "unexpected cron consumer: cannot rehearse removal"
+    fi
+    REHEARSE_ACTIVE=1
+    for item in /opt/etc/cron.5mins/mihomo_watchdog \
+                /opt/bin/mihomo_watchdog.sh \
+                /opt/etc/ndm/netfilter.d/020-bypass_wa.sh; do
+        [ -f "$root$item" ] && [ ! -L "$root$item" ] ||
+            fail "owned rehearsal file is missing"
+        cmp -s "$root$item" "$snap/files$item" ||
+            fail "owned rehearsal file was modified"
+        rm -f "$root$item" || fail "cannot quarantine project-owned file"
+        case "$item" in
+            */mihomo_watchdog) 
+                [ "${KAS_TXN_TEST_FAIL_AT:-}" = wrapper ] &&
+                    fail "fault injection after watchdog wrapper removal" ;;
+            */mihomo_watchdog.sh)
+                [ "${KAS_TXN_TEST_FAIL_AT:-}" = binary ] &&
+                    fail "fault injection after watchdog binary removal" ;;
+            */020-bypass_wa.sh)
+                [ "${KAS_TXN_TEST_FAIL_AT:-}" = hook ] &&
+                    fail "fault injection after Netfilter hook removal" ;;
+        esac
+    done
+    cat "$cron_tmp" > "$root/opt/etc/crontab" ||
+        fail "cannot stage cron removal"
+    rm -f "$cron_tmp"
+    [ "${KAS_TXN_TEST_FAIL_AT:-}" = cron ] &&
+        fail "fault injection after removing owned cron schedule"
+    rehearse_restore || fail "rehearsal could not restore all backed up files"
+    printf '[PASS] Simulated owned-file removal and byte-for-byte recovery\n'
+    printf '[INFO] No real router settings, service states or packages were changed\n'
+fi
+
