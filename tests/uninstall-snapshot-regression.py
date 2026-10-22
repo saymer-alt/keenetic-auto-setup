@@ -67,7 +67,7 @@ KAS_RCI
 *) exit 40 ;;
 esac
 """,
-        "iptables": '#!/bin/sh\\n[ "$*" = "-t mangle -S" ] || exit 40\\necho "-N _CUST_BYPASS_WA_"\\necho "-A PREROUTING -j _CUST_BYPASS_WA_"\\n',
+        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\necho "-A PREROUTING -j _CUST_BYPASS_WA_"\n',
         "opkg": '#!/bin/sh\n[ "$1" = list-installed ] || exit 40\nprintf "mihomo - 1\\nmagitrickle - 1\\n"\n',
     }.items():
         p = toolbin / name
