@@ -345,22 +345,26 @@ if [ "$mode" = --rehearse ]; then
             fail "owned rehearsal file was modified"
         rm -f "$root$item" || fail "cannot quarantine project-owned file"
         case "$item" in
-            */mihomo_watchdog) 
-                [ "${KAS_TXN_TEST_FAIL_AT:-}" = wrapper ] &&
-                    fail "fault injection after watchdog wrapper removal" ;;
+            */mihomo_watchdog)
+                if [ "${KAS_TXN_TEST_FAIL_AT:-}" = wrapper ]; then
+                    fail "fault injection after watchdog wrapper removal"
+                fi ;;
             */mihomo_watchdog.sh)
-                [ "${KAS_TXN_TEST_FAIL_AT:-}" = binary ] &&
-                    fail "fault injection after watchdog binary removal" ;;
+                if [ "${KAS_TXN_TEST_FAIL_AT:-}" = binary ]; then
+                    fail "fault injection after watchdog binary removal"
+                fi ;;
             */020-bypass_wa.sh)
-                [ "${KAS_TXN_TEST_FAIL_AT:-}" = hook ] &&
-                    fail "fault injection after Netfilter hook removal" ;;
+                if [ "${KAS_TXN_TEST_FAIL_AT:-}" = hook ]; then
+                    fail "fault injection after Netfilter hook removal"
+                fi ;;
         esac
     done
     cat "$cron_tmp" > "$root/opt/etc/crontab" ||
         fail "cannot stage cron removal"
     rm -f "$cron_tmp"
-    [ "${KAS_TXN_TEST_FAIL_AT:-}" = cron ] &&
+    if [ "${KAS_TXN_TEST_FAIL_AT:-}" = cron ]; then
         fail "fault injection after removing owned cron schedule"
+    fi
     rehearse_restore || fail "rehearsal could not restore all backed up files"
     printf '[PASS] Simulated owned-file removal and byte-for-byte recovery\n'
     printf '[INFO] No real router settings, service states or packages were changed\n'
