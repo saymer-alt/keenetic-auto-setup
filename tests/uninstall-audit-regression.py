@@ -96,7 +96,7 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
                 assert '[BLOCKED] Proxy1' in p.stdout, p.stdout
             assert '[BLOCKED] opkg/mihomo' in p.stdout
             assert '[REVIEW] opkg/magitrickle' in p.stdout
-            assert '[PRESERVE] Proxy0 / Policy0 / bypass_wa / DNS intercept' in p.stdout
+            assert '[PRESERVE] unowned proxies, shared policies and DNS intercept' in p.stdout
         assert "DO_NOT_LEAK_ME" not in p.stdout
         assert "[SHARED_OR_FOREIGN] /opt/etc/mihomo/config.yaml" in p.stdout
         assert "[UNKNOWN] /opt/bin/mihomo_watchdog.sh" in p.stdout
