@@ -175,6 +175,36 @@ sh /tmp/kas-uninstall-snapshot-verify.sh 20261022-182643-5879
 Это **не деинсталлятор**: `uninstall.sh --remove` и `--purge` остаются
 заблокированы.
 
+## Транзакционный gate перед удалением (READ ONLY)
+
+После того как резервная копия проверена, `uninstall-transaction-gate.sh`
+дополнительно проверяет, что текущая система соответствует **узкому,
+аппаратно проверенному профилю KN-1010**: ровно девять записей владения,
+один канонический `Proxy0` на `127.0.0.1:7890`, простая политика
+`bypass_wa`, включённый самим KAS DNS intercept и живая цепочка mangle.
+
+Проверка **блокируется**, если обнаружены чужие ProxyN на 7890, новые
+директивы Proxy0, изменённые правила/привязки политики, отсутствие DNS
+intercept, изменённые данные снимка или активный maintenance-маркер.
+Она вызывает самостоятельный верификатор снимка перед проверкой.
+
+Команда (только после публикации PR в main):
+
+~~~sh
+curl -fSsL -o /tmp/uninstall-snapshot-verify.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-snapshot-verify.sh
+curl -fSsL -o /tmp/uninstall-transaction-gate.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-transaction-gate.sh
+sh -n /tmp/uninstall-transaction-gate.sh
+sh /tmp/uninstall-transaction-gate.sh --check 20261022-182643-5879
+~~~
+
+Скрипт принимает только `--check` и **не выполняет ни одной операции
+удаления**. Успех подтверждает только структурную готовность; внешние
+потребители Mihomo/MagiTrickle и будущие зависимости DNS могут быть
+недоступны для достоверной инвентаризации. Перед реальным `--remove`
+нужны отдельное согласие оператора, общий lifecycle lock, backup с
+транзакционным журналом, безопасный Netfilter teardown, восстановление YAML,
+проверка восстановления и испытание отказов.
+
 ## Только просмотр
 
 Скачанный отдельно `uninstall.sh` можно запустить в режиме:
