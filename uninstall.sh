@@ -13,12 +13,11 @@ KAS uninstall — read-only first stage
 Details: docs/23-uninstall.md
 TEXT
 }
-case "${1:---check}" in
+MODE=${1:---check}
+case "$MODE" in
     --help|-h) usage; exit 0 ;;
     --check) [ "$#" -le 1 ] || { usage >&2; exit 2; } ;;
-    --remove|--purge)
-        printf '[BLOCKED] %s unavailable: legacy KAS ownership is ambiguous. Nothing changed.\n' "$1" >&2
-        exit 3 ;;
+    --remove|--purge) [ "$#" -eq 1 ] || { usage >&2; exit 2; } ;;
     *) usage >&2; exit 2 ;;
 esac
 
@@ -49,6 +48,7 @@ printf '[KAS uninstall] READ-ONLY inventory; nothing will be removed or stopped.
 # Recognize creation-only V1 ownership claims. Parsing is data-only; never source
 # the file as shell code. Ledger is evidence for later review, not permission to
 # tear down a shared interface or package.
+LEDGER_VALID=0
 ledger_check() {
     _dir="$ROOT/opt/etc/keenetic-auto-setup"
     _file="$_dir/ownership.v1"
@@ -83,6 +83,7 @@ ledger_check() {
         report UNKNOWN ledger 'malformed record; refuse to trust it'
         return
     fi
+    LEDGER_VALID=1
     report LEDGER ownership.v1 'valid creation log (not exclusive removal authority)'
     while IFS= read -r _item || [ -n "$_item" ]; do
         [ "$_item" != KAS_OWNERSHIP_V1 ] || continue
@@ -90,6 +91,14 @@ ledger_check() {
     done < "$_file"
 }
 ledger_check
+if [ "$MODE" != --check ]; then
+    if [ "$LEDGER_VALID" -ne 1 ]; then
+        printf '[BLOCKED] %s: no valid ownership journal; no automatic removal, no --force. Nothing changed.\n' "$MODE" >&2
+    else
+        printf '[BLOCKED] %s: creation journal verified, but shared dependencies/recovery checks are not yet implemented. Nothing changed.\n' "$MODE" >&2
+    fi
+    exit 3
+fi
 
 probe /opt/etc/mihomo/config.yaml shared
 probe /opt/etc/mihomo/config.yaml.bak shared
