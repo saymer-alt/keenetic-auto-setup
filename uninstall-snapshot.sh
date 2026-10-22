@@ -4,7 +4,7 @@
 set -eu
 umask 077
 
-mode=\${1:---check}
+mode=${1:---check}
 [ "$#" -le 1 ] || { echo "Usage: sh uninstall-snapshot.sh [--check|--create]" >&2; exit 2; }
 case "$mode" in
     --check|--create) ;;
@@ -12,7 +12,7 @@ case "$mode" in
 esac
 
 # Only for mocked regression fixtures; never passed as a shell command.
-root=\${KAS_SNAPSHOT_ROOT:-}
+root=${KAS_SNAPSHOT_ROOT:-}
 case "$root" in
     '') ;;
     /*) [ "$root" != / ] || { echo "[BLOCKED] invalid root" >&2; exit 3; } ;;
@@ -113,7 +113,7 @@ for item in $items; do
     src="$root$item"
     if [ -f "$src" ]; then
         dest="$snap/files$item"
-        mkdir -p "\${dest%/*}" || fail "cannot make backup directory for $item (incomplete snapshot retained)"
+        mkdir -p "${dest%/*}" || fail "cannot make backup directory for $item (incomplete snapshot retained)"
         cp -p "$src" "$dest" || fail "cannot copy $item (incomplete snapshot retained)"
         chmod 600 "$dest" || fail "cannot secure $item (incomplete snapshot retained)"
         cmp -s "$src" "$dest" || fail "copy verification failed for $item (incomplete snapshot retained)"
