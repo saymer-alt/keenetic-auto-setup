@@ -83,6 +83,12 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         else:
             assert '[UNKNOWN] ledger' in p.stdout
             assert '[RECORDED]' not in p.stdout
+        if mode == '--plan' and ledger_mode == 'valid':
+            assert '=== KAS UNINSTALL PLAN (READ ONLY) ===' in p.stdout
+            assert '[BLOCKED] Proxy1' in p.stdout
+            assert '[BLOCKED] opkg/mihomo' in p.stdout
+            assert '[REVIEW] opkg/magitrickle' in p.stdout
+            assert '[PRESERVE] Proxy0 / Policy0 / bypass_wa / DNS intercept' in p.stdout
         assert "DO_NOT_LEAK_ME" not in p.stdout
         assert "[SHARED_OR_FOREIGN] /opt/etc/mihomo/config.yaml" in p.stdout
         assert "[UNKNOWN] /opt/bin/mihomo_watchdog.sh" in p.stdout
@@ -100,6 +106,8 @@ for shell in SHELLS:
     for ledger_mode in ('missing','valid','corrupt','link'):
         scenario(shell, '--check', ledger_mode=ledger_mode)
         print('[PASS]', ' '.join(shell), '--check', ledger_mode)
+    scenario(shell, '--plan', ledger_mode='valid')
+    print('[PASS]', ' '.join(shell), '--plan (foreign ProxyN preserved)')
     scenario(shell, '--check', malformed=True)
     for mode in ('--remove','--purge'):
         for ledger_mode in ('missing','valid','corrupt','link'):
