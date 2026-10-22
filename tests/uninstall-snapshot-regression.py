@@ -322,4 +322,37 @@ for shell in SHELLS:
         assert not (snap / "transaction").exists(), "foreign-chain preparation mutated snapshot"
         print("[PASS]", shell, "foreign mangle chain prevents transaction preparation")
 
-print("[PASS] no destructive actions tested or required")
+# Rehearse ONLY on a synthetic fixture: temporarily remove KAS-owned files
+# and a direct cron route, then prove originals were restored byte for byte.
+for shell in SHELLS:
+    for fault in ("none", "wrapper", "binary", "hook", "cron"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-rehearse-") as temp:
+            td = Path(temp)
+            root, files, env = setup(td)
+            env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+            if fault in ("none", "cron"):
+                direct = "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog\n"
+                files["opt/etc/crontab"] = direct
+                (root / "opt/etc/crontab").write_text(direct)
+            if fault != "none":
+                env["KAS_TXN_TEST_FAIL_AT"] = fault
+            p = run(shell, env, "--create")
+            assert p.returncode == 0, (fault, p.stdout, p.stderr)
+            snap = next((root / "opt/kas-uninstall-backups").iterdir())
+            rehearsed = subprocess.run(
+                shell + [str(BASE / "uninstall-transaction.sh"), "--rehearse", snap.name],
+                env=env, capture_output=True, text=True, timeout=12)
+            if fault == "none":
+                assert rehearsed.returncode == 0 and "[PASS] Simulated" in rehearsed.stdout, (
+                    fault, rehearsed.stdout, rehearsed.stderr)
+            else:
+                assert rehearsed.returncode == 3 and "[BLOCKED]" in rehearsed.stderr, (
+                    fault, rehearsed.stdout, rehearsed.stderr)
+            assert "TEST_SECRET_MUST_NOT_PRINT" not in rehearsed.stdout + rehearsed.stderr
+            for rel, original in files.items():
+                assert (root / rel).read_text() == original, ("rollback failed", fault, rel)
+            assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
+            assert not (root / "tmp/mihomo.maintenance").exists()
+            print("[PASS]", shell, "file removal recovery rehearsal", fault)
+
+print("[PASS] actual production uninstall remains BLOCKED")
