@@ -252,6 +252,8 @@ Default working rules:
   change; a significant shift should get a CHANGELOG entry (the "same commit" format is
   a proposal).
 
+- **Ownership journal phase (issue #179, 2026-10-22):** journal-on-install is a separate deliverable from uninstall. Only a proven freshly created/enabled resource is recorded in `/opt/etc/keenetic-auto-setup/ownership.v1` after verification; an old compatible ProxyN, preexisting DNS intercept, reused `magitrickle` package/repository or policy MUST NOT be retrospectively claimed. Writes are atomic under the lifecycle lock; invalid/symlinked log means fail closed. The journal is evidence, never sufficient authorization to remove anything. Keep `uninstall.sh --remove/--purge` out of production until independently tested (lab KN-1010 acceptance) and user-approved. Keep README concise and point to `docs/24-ownership-ledger.md` when detailed provenance is needed.
+
 ## 9. Testing
 
 The project testing policy is documented in `docs/TESTING_STRATEGY.md`. Prefer real installation states and cross-component contracts, then extend the existing permanent regression harness with the smallest scenario that preserves a real failure. Heavy adversarial matrices are reserved for high-consequence invariants such as atomic replacement/rollback, locking, one-Mihomo discipline, service-state restoration, and watchdog recovery. Do not build a full KeeneticOS emulator for a narrow task.
