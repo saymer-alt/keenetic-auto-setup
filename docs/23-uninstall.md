@@ -62,6 +62,26 @@ curl -fSsL -o /tmp/kas-uninstall.sh https://raw.githubusercontent.com/saymer-alt
 
 Пришли вывод для проверки признаков `SHARED_OR_FOREIGN` и `UNKNOWN`. **Пока не выполнять** `opkg remove`, `rm -rf`, `--remove` и `--purge` и не стирать Entware: иначе нельзя будет проверить настоящий деинсталлятор на исходном состоянии. В KN-1010 из предыдущих логов известны переиспользованный Proxy1 и чужой Proxy0, поэтому `чистая Entware` не равна `пустому KeeneticOS`.
 
+## План удаления с учётом зависимостей
+
+`uninstall.sh --plan` выполняет **только чтение** и использует валидированный
+`ownership.v1` и отдельные блоки каждого интерфейса ProxyN из
+`show running-config`. План фиксирует действующие/выключенные
+интерфейсы, указывающие на `127.0.0.1:7890`, как препятствие удалению
+Mihomo. Владелец `ProxyN` не определяется по подписи — нужна запись в журнале.
+
+```sh
+curl -fSsL -o /tmp/kas-uninstall.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall.sh &&
+sh -n /tmp/kas-uninstall.sh &&
+sh /tmp/kas-uninstall.sh --plan
+```
+
+`BLOCKED` — автоматическое удаление пока запрещено, `REVIEW` — объект
+требует отдельной проверки и правильного порядка действий,
+`PRESERVE` — объект сохраняется. Даже состояние `Proxy1 down`
+само по себе не означает право удалить этот чужой интерфейс.
+**Реальных операций удаления `--remove` / `--purge` в этой версии нет.**
+
 ## Только просмотр
 
 Скачанный отдельно `uninstall.sh` можно запустить в режиме:
