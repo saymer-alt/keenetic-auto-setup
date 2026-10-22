@@ -1,22 +1,23 @@
 #!/bin/sh
-# Keenetic Auto-Setup read-only uninstall preflight (phase 1).
+# Keenetic Auto-Setup read-only audit and dependency-aware removal plan.
 # An old installation has no durable ownership ledger: signatures are not
 # proof that a ProxyN, policy, package, hook or file belongs only to KAS.
 set -u
 
 usage() {
     cat <<'TEXT'
-KAS uninstall — read-only first stage
-  sh uninstall.sh --check    Inspect packages, files and Keenetic routing.
+KAS uninstall — read-only preflight
+  sh uninstall.sh --check    Inventory installed packages, ledger, Keenetic state.
+  sh uninstall.sh --plan     Identify blockers for a future safe removal.
   sh uninstall.sh --help     Display this help.
---remove and --purge are blocked until project ownership can be verified.
+--remove/--purge remain BLOCKED (no deletion code).
 Details: docs/23-uninstall.md
 TEXT
 }
 MODE=${1:---check}
 case "$MODE" in
     --help|-h) usage; exit 0 ;;
-    --check) [ "$#" -le 1 ] || { usage >&2; exit 2; } ;;
+    --check|--plan) [ "$#" -le 1 ] || { usage >&2; exit 2; } ;;
     --remove|--purge) [ "$#" -eq 1 ] || { usage >&2; exit 2; } ;;
     *) usage >&2; exit 2 ;;
 esac
@@ -91,7 +92,7 @@ ledger_check() {
     done < "$_file"
 }
 ledger_check
-if [ "$MODE" != --check ]; then
+if [ "$MODE" = --remove ] || [ "$MODE" = --purge ]; then
     if [ "$LEDGER_VALID" -ne 1 ]; then
         printf '[BLOCKED] %s: no valid ownership journal; no automatic removal, no --force. Nothing changed.\n' "$MODE" >&2
     else
@@ -174,3 +175,75 @@ fi
 
 printf '[KAS uninstall] No changes made. UNKNOWN and SHARED_OR_FOREIGN remain protected.\n'
 printf '[KAS uninstall] --remove/--purge blocked pending ownership and recovery contract.\n'
+
+# A dependency-aware plan is strictly read-only. Observing a disabled ProxyN
+# does not make it KAS-owned and does not authorize its deletion.
+if [ "$MODE" = --plan ]; then
+    printf '\n=== KAS UNINSTALL PLAN (READ ONLY) ===\n'
+    if [ "$LEDGER_VALID" -ne 1 ]; then
+        report BLOCKED 'full removal' 'valid ownership journal required; no force mode'
+        exit 3
+    fi
+    if [ -z "${_rc:-}" ] || ! printf '%s\n' "$_rc" | grep -q '^interface '; then
+        report BLOCKED 'Keenetic dependencies' 'running-config unavailable/unverified'
+        exit 3
+    fi
+
+    # Parse each Proxy interface as a separate running-config block. State
+    # and proxy upstream must occur in the same block; foreign Proxy0
+    # pointing elsewhere must not be confused with the Mihomo bridge.
+    _proxy_deps=$(printf '%s\n' "$_rc" | awk '
+        function flush() {
+            if (iface != "" && upstream) print iface "|" state
+            iface=""; upstream=0; state="UNKNOWN"
+        }
+        /^interface Proxy[0-9]+[[:space:]]*$/ {
+            flush()
+            iface=$2
+            next
+        }
+        /^interface / { flush(); next }
+        /^!([[:space:]]*)?$/ { flush(); next }
+        iface != "" && /^[[:space:]]+proxy upstream 127[.]0[.]0[.]1[[:space:]]+7890([[:space:]]|$)/ { upstream=1 }
+        iface != "" && /^[[:space:]]+up([[:space:]]|$)/ { state="UP" }
+        iface != "" && /^[[:space:]]+down([[:space:]]|$)/ { state="DOWN" }
+        END { flush() }
+    ') || {
+        report BLOCKED 'ProxyN inspection' 'cannot safely parse running-config'
+        exit 3
+    }
+    if [ -n "$_proxy_deps" ]; then
+        printf '%s\n' "$_proxy_deps" | while IFS='|' read -r _proxy _state; do
+            if grep -Fqx "owned|proxy|$_proxy" "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+                report REVIEW "$_proxy" "ledger-owned bridge to 127.0.0.1:7890, state=$_state; must check live policies"
+            else
+                report BLOCKED "$_proxy" "unowned bridge to 127.0.0.1:7890, state=$_state; preserve"
+            fi
+        done
+        report BLOCKED 'opkg/mihomo' 'ProxyN still points to port 7890; package removal requires dependency handling'
+    elif grep -Fqx 'owned|package|mihomo' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report CANDIDATE 'opkg/mihomo' 'owned; verify no other consumers and service state before removal'
+    else
+        report SHARED_OR_FOREIGN 'opkg/mihomo' 'not owned in this journal'
+    fi
+
+    if grep -Fqx 'owned|package|magitrickle' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report REVIEW 'opkg/magitrickle' 'owned; stop service first, preserve configuration'
+    else
+        report SHARED_OR_FOREIGN 'opkg/magitrickle' 'not owned in this journal'
+    fi
+    if grep -Fqx 'owned|repository|magitrickle.conf' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report REVIEW 'opkg/magitrickle.conf' 'owned feed; check other users before removal'
+    fi
+    if grep -Fqx 'owned|hook|020-bypass_wa.sh' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report REVIEW '020-bypass_wa.sh' 'owned hook; active mangle jump/chain require independent check'
+    fi
+    if grep -Fqx 'owned|watchdog|binary' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1" ||
+       grep -Fqx 'owned|watchdog|wrapper' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report REVIEW 'mihomo watchdog' 'owned files; shared crontab must not be replaced wholesale'
+    fi
+    report PRESERVE 'Proxy0 / Policy0 / bypass_wa / DNS intercept' 'not owned in journal'
+    report PRESERVE '/opt/etc/mihomo/config.yaml' 'user YAML must remain'
+    report BLOCKED '--remove / --purge' 'not implemented; never substitute generic opkg remove'
+    printf '[KAS uninstall] Plan completed without changes.\n'
+fi
