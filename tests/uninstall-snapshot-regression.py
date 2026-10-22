@@ -37,6 +37,7 @@ def setup(td):
         path.write_text(body)
     # The real KeeneticOS always has /tmp; offline fixtures need to model it.
     (root / "tmp").mkdir(exist_ok=True)
+    (root / ".kas-uninstall-fixture").write_text("KAS_UNINSTALL_TEST_FIXTURE_V1\n")
     toolbin = td / "bin"
     toolbin.mkdir()
     for name, script in {
@@ -354,5 +355,20 @@ for shell in SHELLS:
             assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
             assert not (root / "tmp/mihomo.maintenance").exists()
             print("[PASS]", shell, "file removal recovery rehearsal", fault)
+
+# A fixture-root path that textually differs from '/' but canonicalizes to
+# real '/' must never authorize a potentially destructive rehearsal.
+for shell in SHELLS:
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-rehearse-") as temp:
+        td = Path(temp)
+        root, files, env = setup(td)
+        env["KAS_TXN_FIXTURE_ROOT"] = "/tmp/.."
+        p = subprocess.run(
+            shell + [str(BASE / "uninstall-transaction.sh"), "--rehearse", "20261022-182643-123"],
+            env=env, capture_output=True, text=True, timeout=12)
+        assert p.returncode == 3 and "[BLOCKED]" in p.stderr
+        for rel, original in files.items():
+            assert (root / rel).read_text() == original
+        print("[PASS]", shell, "canonical fixture-root traversal guard")
 
 print("[PASS] actual production uninstall remains BLOCKED")
