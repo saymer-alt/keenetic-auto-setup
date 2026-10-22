@@ -80,6 +80,50 @@ for shell in SHELLS:
             assert stat.S_IMODE((snap / rel).stat().st_mode) == 0o600, rel
         assert stat.S_IMODE(snap.stat().st_mode) == 0o700
         print("[PASS]", shell, "verified secret-preserving snapshot + no original mutation")
+        verifier = str(BASE / "uninstall-snapshot-verify.sh")
+        def verify():
+            p = subprocess.run(shell + [verifier, snap.name], env=env,
+                               capture_output=True, text=True, timeout=12)
+            assert "TEST_SECRET_MUST_NOT_PRINT" not in p.stdout + p.stderr
+            return p
+        p = verify()
+        assert p.returncode == 0 and "[PASS] Snapshot verified" in p.stdout, (p.stdout, p.stderr)
+
+        # Any source change requires a new snapshot; we may not rely on READY alone.
+        yaml = root / "opt/etc/mihomo/config.yaml"
+        original = yaml.read_text()
+        yaml.write_text(original + "# modified after snapshot\n")
+        p = verify()
+        assert p.returncode == 3 and "source" in p.stderr, p
+        yaml.write_text(original)
+
+        evidence = snap / "iptables-mangle"
+        backup = evidence.read_text()
+        evidence.write_text(backup + "# tampered\n")
+        p = verify()
+        assert p.returncode == 3 and "mangle" in p.stderr, p
+        evidence.write_text(backup)
+
+        manifest = snap / "manifest.v1"
+        backup = manifest.read_text()
+        manifest.write_text(backup + "copied|/etc/foreign\n")
+        p = verify()
+        assert p.returncode == 3 and "manifest" in p.stderr, p
+        manifest.write_text(backup)
+
+        copied = snap / "files/opt/etc/mihomo/config.yaml"
+        copied.chmod(0o644)
+        p = verify()
+        assert p.returncode == 3 and "permissions" in p.stderr, p
+        copied.chmod(0o600)
+
+        link_target = snap / "files/opt/etc/mihomo/config.yaml"
+        link_target.unlink()
+        link_target.symlink_to(root / "opt/etc/mihomo/config.yaml")
+        p = verify()
+        assert p.returncode == 3 and "snapshot file" in p.stderr, p
+
+        print("[PASS]", shell, "snapshot integrity, freshness and symlink guards")
 
     for kind in ("corrupt", "duplicate", "missing_yaml", "linked_yaml", "maintenance"):
         with tempfile.TemporaryDirectory(prefix="kas-uninstall-blocked-") as temp:
