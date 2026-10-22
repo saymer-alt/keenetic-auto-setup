@@ -26,6 +26,17 @@ owned|service|S00ubifs
 
 ## Проверка на тестовом KN-1010
 
+До переноса в `stable` используйте **обе** переменные ветки (иначе `bootstrap.sh` сам возьмёт `stable`):
+
+```sh
+export KAS_BOOTSTRAP_REF=main KEENETIC_AUTO_SETUP_REF=main
+opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/bootstrap.sh | sh
+```
+
+Команда рассчитана **только на отдельный тестовый KN-1010**, после слияния проверенного PR в `main`. Это полноценный установщик, он может изменять сервисы и настройки, не является сухой проверкой. Обычный публичный установщик в README продолжает использовать `stable`; для возврата к стандартной ветке перед другими запусками сделайте `unset KAS_BOOTSTRAP_REF KEENETIC_AUTO_SETUP_REF`.
+
+
+
 После установки (и после повторного запуска установщика) можно безопасно посмотреть записи:
 
 ```sh
