@@ -35,6 +35,8 @@ def setup(td):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
+    # The real KeeneticOS always has /tmp; offline fixtures need to model it.
+    (root / "tmp").mkdir(exist_ok=True)
     toolbin = td / "bin"
     toolbin.mkdir()
     for name, script in {
