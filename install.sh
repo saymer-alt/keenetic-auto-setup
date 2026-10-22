@@ -866,6 +866,75 @@ mp_known || err "Mihomo runtime UNKNOWN; installation not started."
 # KeeneticOS interfaces/policies survive an Entware reinstall, so existing
 # canonical Proxy0 is not proof of an actively used project service.
 # Fail closed if either package inventory or listener state is unavailable.
+# BEGIN KAS OWNERSHIP LEDGER V1
+# Creation-only evidence. A legacy resource is NEVER retroactively claimed.
+# The lifecycle lock above serializes all writes; entries are atomically replaced
+# in /opt (same filesystem), private 0600 and never shell-sourced/evaluated.
+KAS_OWNER_DIR=/opt/etc/keenetic-auto-setup
+KAS_OWNER_FILE="$KAS_OWNER_DIR/ownership.v1"
+kas_ledger_valid() {
+    [ -f "$KAS_OWNER_FILE" ] && [ ! -L "$KAS_OWNER_FILE" ] || return 1
+    [ "$(head -n 1 "$KAS_OWNER_FILE" 2>/dev/null)" = KAS_OWNERSHIP_V1 ] || return 1
+    awk '
+        NR == 1 { next }
+        /^owned[|]proxy[|]Proxy[0-9]+$/ { next }
+        /^owned[|]policy[|]bypass_wa$/ { next }
+        /^enabled[|]dns[|]intercept$/ { next }
+        /^owned[|]package[|](mihomo|magitrickle)$/ { next }
+        /^owned[|]repository[|]magitrickle.conf$/ { next }
+        /^owned[|]hook[|]020-bypass_wa.sh$/ { next }
+        /^owned[|]watchdog[|](binary|wrapper)$/ { next }
+        /^owned[|]service[|]S00ubifs$/ { next }
+        { exit 1 }
+    ' "$KAS_OWNER_FILE"
+}
+kas_ledger_init() {
+    if [ -L "$KAS_OWNER_DIR" ] || { [ -e "$KAS_OWNER_DIR" ] && [ ! -d "$KAS_OWNER_DIR" ]; }; then
+        return 1
+    fi
+    if [ ! -d "$KAS_OWNER_DIR" ]; then
+        (umask 077; mkdir "$KAS_OWNER_DIR") || return 1
+    fi
+    if [ ! -e "$KAS_OWNER_FILE" ] && [ ! -L "$KAS_OWNER_FILE" ]; then
+        (umask 077; printf 'KAS_OWNERSHIP_V1\n' > "$KAS_OWNER_FILE") || return 1
+    fi
+    kas_ledger_valid || return 1
+    chmod 600 "$KAS_OWNER_FILE" || return 1
+    log "Ownership ledger ready: $KAS_OWNER_FILE (new creations only)"
+}
+kas_ledger_record() {
+    _ko_kind=$1
+    _ko_value=$2
+    case "$_ko_kind|$_ko_value" in
+        owned\|proxy\|Proxy[0-9]*|owned\|policy\|bypass_wa|enabled\|dns\|intercept|\
+        owned\|package\|mihomo|owned\|package\|magitrickle|\
+        owned\|repository\|magitrickle.conf|owned\|hook\|020-bypass_wa.sh|\
+        owned\|watchdog\|binary|owned\|watchdog\|wrapper|owned\|service\|S00ubifs) ;;
+        *) return 1 ;;
+    esac
+    kas_ledger_valid || return 1
+    _ko_line="$_ko_kind|$_ko_value"
+    # Exact-line dedup; no ownership escalation on repeat installs.
+    grep -Fqx "$_ko_line" "$KAS_OWNER_FILE" && return 0
+    _ko_stage=$(umask 077; mktemp "$KAS_OWNER_DIR/.ownership.XXXXXXXX") || return 1
+    if ! cat "$KAS_OWNER_FILE" > "$_ko_stage" ||
+       ! printf '%s\n' "$_ko_line" >> "$_ko_stage" ||
+       ! chmod 600 "$_ko_stage" ||
+       ! mv -f "$_ko_stage" "$KAS_OWNER_FILE"; then
+        rm -f "$_ko_stage" 2>/dev/null || true
+        return 1
+    fi
+    log "Ownership recorded: $_ko_line"
+}
+# END KAS OWNERSHIP LEDGER V1
+kas_ledger_init || err "Cannot initialize verified ownership ledger; installation aborted before packages/router mutations."
+# Save original package membership. Installed/reused packages are NEVER claimed.
+KAS_PKG_BEFORE=$(opkg list-installed 2>/dev/null) ||
+    err "Cannot capture pre-install OPKG inventory for ownership ledger."
+kas_package_was_absent() {
+    ! printf '%s\n' "$KAS_PKG_BEFORE" | grep -Eq "^$1[[:space:]]"
+}
+
 PROXY_FRESH_ENTWARE=0
 PROXY_CREATED_THIS_RUN=0
 PROXY_RESTORE_PENDING=""
