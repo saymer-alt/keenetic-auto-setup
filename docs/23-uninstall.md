@@ -175,6 +175,23 @@ sh /tmp/kas-uninstall-snapshot-verify.sh 20261022-182643-5879
 Это **не деинсталлятор**: `uninstall.sh --remove` и `--purge` остаются
 заблокированы.
 
+### Имена интерфейсов в `bypass_wa`
+
+На KN-1010 KeeneticOS 5.1.8 `ndmc -c 'show running-config'` может
+вывести `no permit global ISP` вместо
+`no permit global GigabitEthernet1`. `ISP` — псевдоним (`rename ISP`)
+WAN `GigabitEthernet1`, а не отдельный интерфейс.
+
+В `uninstall-transaction-gate.sh` оба варианта допускаются, **но** алиас
+`ISP` принимается только при одном проверенном соответствии
+`interface GigabitEthernet1` → `rename ISP` в том же текущем выводе
+конфигурации. Пропавший, дублированный либо назначенный другому интерфейсу
+псевдоним блокирует проверку. Дополнительные разрешения, повторяющиеся
+директивы или новые правила политики также блокируют её.
+
+Исправление относится только к режиму проверки `--check`. Оно не меняет
+WAN, не удаляет интерфейсы и не разрешает `uninstall.sh --remove`.
+
 ## Транзакционный gate перед удалением (READ ONLY)
 
 После того как резервная копия проверена, `uninstall-transaction-gate.sh`
