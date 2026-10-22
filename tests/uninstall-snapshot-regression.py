@@ -67,7 +67,7 @@ KAS_RCI
 *) exit 40 ;;
 esac
 """,
-        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\necho "-A PREROUTING -j _CUST_BYPASS_WA_"\n',
+        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\necho "-A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j MARK --set-xmark 0xffffaaa/0xffffffff"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j CONNMARK --save-mark"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j RETURN"\n',
         "opkg": '#!/bin/sh\n[ "$1" = list-installed ] || exit 40\nprintf "mihomo - 1\\nmagitrickle - 1\\n"\n',
     }.items():
         p = toolbin / name
@@ -123,6 +123,27 @@ for shell in SHELLS:
             env=env, capture_output=True, text=True, timeout=12)
         assert gate.returncode == 0 and "[PASS] Nine-claim" in gate.stdout, (gate.stdout, gate.stderr)
         assert "TEST_SECRET_MUST_NOT_PRINT" not in gate.stdout + gate.stderr
+
+        # Prepare-stage regression: validation uses the canonical KAS lock and
+        # a second state capture, and may write ONLY to this backup snapshot.
+        env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+        prep_script = str(BASE / "uninstall-transaction.sh")
+        prepared = subprocess.run(
+            shell + [prep_script, "--prepare", snap.name], env=env,
+            capture_output=True, text=True, timeout=12)
+        assert prepared.returncode == 0 and "[PASS] KAS uninstall transaction prepared" in prepared.stdout, (
+            prepared.stdout, prepared.stderr)
+        assert (snap / "transaction/prepare.v1").read_text().startswith(
+            "KAS_UNINSTALL_PREPARE_V1\n")
+        assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
+        assert not (root / "tmp/mihomo.maintenance").exists()
+        for rel, content in files.items():
+            assert (root / rel).read_text() == content, ("PREPARE changed source", rel)
+        blocked = subprocess.run(
+            shell + [prep_script, "--remove", snap.name], env=env,
+            capture_output=True, text=True, timeout=12)
+        assert blocked.returncode == 3 and "[BLOCKED]" in blocked.stderr
+        print("[PASS]", shell, "canonical lock, second verification and non-destructive transaction preparation")
 
         # Any source change requires a new snapshot; we may not rely on READY alone.
         yaml = root / "opt/etc/mihomo/config.yaml"
@@ -277,5 +298,26 @@ for shell in SHELLS:
                 assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (
                     kind, p.stdout, p.stderr)
             print("[PASS]", shell, "WAN alias policy guard", kind)
+
+# A well-formed and fresh snapshot with FOREIGN Netfilter chain contents
+# is not enough to authorize transaction preparation.
+for shell in SHELLS:
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-foreign-mangle-") as temp:
+        td = Path(temp)
+        root, files, env = setup(td)
+        bad = td / "bin/iptables"
+        original = bad.read_text()
+        bad.write_text(original + 'echo "-A _CUST_BYPASS_WA_ -p tcp -j DROP"\n')
+        p = run(shell, env, "--create")
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        snap = next((root / "opt/kas-uninstall-backups").iterdir())
+        env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+        prepared = subprocess.run(
+            shell + [str(BASE / "uninstall-transaction.sh"), "--prepare", snap.name],
+            env=env, capture_output=True, text=True, timeout=12)
+        assert prepared.returncode == 3 and "[BLOCKED]" in prepared.stderr, (
+            prepared.stdout, prepared.stderr)
+        assert not (snap / "transaction").exists(), "foreign-chain preparation mutated snapshot"
+        print("[PASS]", shell, "foreign mangle chain prevents transaction preparation")
 
 print("[PASS] no destructive actions tested or required")
