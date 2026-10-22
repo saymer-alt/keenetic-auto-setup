@@ -35,6 +35,9 @@ def setup(td):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
+    # The real KeeneticOS always has /tmp; offline fixtures need to model it.
+    (root / "tmp").mkdir(exist_ok=True)
+    (root / ".kas-uninstall-fixture").write_text("KAS_UNINSTALL_TEST_FIXTURE_V1\n")
     toolbin = td / "bin"
     toolbin.mkdir()
     for name, script in {
@@ -67,7 +70,7 @@ KAS_RCI
 *) exit 40 ;;
 esac
 """,
-        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\necho "-A PREROUTING -j _CUST_BYPASS_WA_"\n',
+        "iptables": '#!/bin/sh\n[ "$*" = "-t mangle -S" ] || exit 40\necho "-N _CUST_BYPASS_WA_"\necho "-A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j MARK --set-xmark 0xffffaaa/0xffffffff"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j CONNMARK --save-mark"\necho "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j RETURN"\n',
         "opkg": '#!/bin/sh\n[ "$1" = list-installed ] || exit 40\nprintf "mihomo - 1\\nmagitrickle - 1\\n"\n',
     }.items():
         p = toolbin / name
@@ -124,6 +127,27 @@ for shell in SHELLS:
         assert gate.returncode == 0 and "[PASS] Nine-claim" in gate.stdout, (gate.stdout, gate.stderr)
         assert "TEST_SECRET_MUST_NOT_PRINT" not in gate.stdout + gate.stderr
 
+        # Prepare-stage regression: validation uses the canonical KAS lock and
+        # a second state capture, and may write ONLY to this backup snapshot.
+        env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+        prep_script = str(BASE / "uninstall-transaction.sh")
+        prepared = subprocess.run(
+            shell + [prep_script, "--prepare", snap.name], env=env,
+            capture_output=True, text=True, timeout=12)
+        assert prepared.returncode == 0 and "[PASS] KAS uninstall transaction prepared" in prepared.stdout, (
+            prepared.stdout, prepared.stderr)
+        assert (snap / "transaction/prepare.v1").read_text().startswith(
+            "KAS_UNINSTALL_PREPARE_V1\n")
+        assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
+        assert not (root / "tmp/mihomo.maintenance").exists()
+        for rel, content in files.items():
+            assert (root / rel).read_text() == content, ("PREPARE changed source", rel)
+        blocked = subprocess.run(
+            shell + [prep_script, "--remove", snap.name], env=env,
+            capture_output=True, text=True, timeout=12)
+        assert blocked.returncode == 3 and "[BLOCKED]" in blocked.stderr
+        print("[PASS]", shell, "canonical lock, second verification and non-destructive transaction preparation")
+
         # Any source change requires a new snapshot; we may not rely on READY alone.
         yaml = root / "opt/etc/mihomo/config.yaml"
         original = yaml.read_text()
@@ -177,7 +201,7 @@ for shell in SHELLS:
                 yaml.symlink_to(root / "opt/etc/crontab")
             elif kind == "maintenance":
                 marker = root / "tmp/mihomo.maintenance"
-                marker.parent.mkdir(parents=True)
+                marker.parent.mkdir(parents=True, exist_ok=True)
                 marker.write_text("owner\n")
             p = run(shell, env, "--create")
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (kind, p.stdout, p.stderr)
@@ -278,4 +302,73 @@ for shell in SHELLS:
                     kind, p.stdout, p.stderr)
             print("[PASS]", shell, "WAN alias policy guard", kind)
 
-print("[PASS] no destructive actions tested or required")
+# A well-formed and fresh snapshot with FOREIGN Netfilter chain contents
+# is not enough to authorize transaction preparation.
+for shell in SHELLS:
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-foreign-mangle-") as temp:
+        td = Path(temp)
+        root, files, env = setup(td)
+        bad = td / "bin/iptables"
+        original = bad.read_text()
+        bad.write_text(original + 'echo "-A _CUST_BYPASS_WA_ -p tcp -j DROP"\n')
+        p = run(shell, env, "--create")
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        snap = next((root / "opt/kas-uninstall-backups").iterdir())
+        env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+        prepared = subprocess.run(
+            shell + [str(BASE / "uninstall-transaction.sh"), "--prepare", snap.name],
+            env=env, capture_output=True, text=True, timeout=12)
+        assert prepared.returncode == 3 and "[BLOCKED]" in prepared.stderr, (
+            prepared.stdout, prepared.stderr)
+        assert not (snap / "transaction").exists(), "foreign-chain preparation mutated snapshot"
+        print("[PASS]", shell, "foreign mangle chain prevents transaction preparation")
+
+# Rehearse ONLY on a synthetic fixture: temporarily remove KAS-owned files
+# and a direct cron route, then prove originals were restored byte for byte.
+for shell in SHELLS:
+    for fault in ("none", "wrapper", "binary", "hook", "cron"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-rehearse-") as temp:
+            td = Path(temp)
+            root, files, env = setup(td)
+            env["KAS_TXN_FIXTURE_ROOT"] = str(root)
+            if fault in ("none", "cron"):
+                direct = "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog\n"
+                files["opt/etc/crontab"] = direct
+                (root / "opt/etc/crontab").write_text(direct)
+            if fault != "none":
+                env["KAS_TXN_TEST_FAIL_AT"] = fault
+            p = run(shell, env, "--create")
+            assert p.returncode == 0, (fault, p.stdout, p.stderr)
+            snap = next((root / "opt/kas-uninstall-backups").iterdir())
+            rehearsed = subprocess.run(
+                shell + [str(BASE / "uninstall-transaction.sh"), "--rehearse", snap.name],
+                env=env, capture_output=True, text=True, timeout=12)
+            if fault == "none":
+                assert rehearsed.returncode == 0 and "[PASS] Simulated" in rehearsed.stdout, (
+                    fault, rehearsed.stdout, rehearsed.stderr)
+            else:
+                assert rehearsed.returncode == 3 and "[BLOCKED]" in rehearsed.stderr, (
+                    fault, rehearsed.stdout, rehearsed.stderr)
+            assert "TEST_SECRET_MUST_NOT_PRINT" not in rehearsed.stdout + rehearsed.stderr
+            for rel, original in files.items():
+                assert (root / rel).read_text() == original, ("rollback failed", fault, rel)
+            assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
+            assert not (root / "tmp/mihomo.maintenance").exists()
+            print("[PASS]", shell, "file removal recovery rehearsal", fault)
+
+# A fixture-root path that textually differs from '/' but canonicalizes to
+# real '/' must never authorize a potentially destructive rehearsal.
+for shell in SHELLS:
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-rehearse-") as temp:
+        td = Path(temp)
+        root, files, env = setup(td)
+        env["KAS_TXN_FIXTURE_ROOT"] = "/tmp/.."
+        p = subprocess.run(
+            shell + [str(BASE / "uninstall-transaction.sh"), "--rehearse", "20261022-182643-123"],
+            env=env, capture_output=True, text=True, timeout=12)
+        assert p.returncode == 3 and "[BLOCKED]" in p.stderr
+        for rel, original in files.items():
+            assert (root / rel).read_text() == original
+        print("[PASS]", shell, "canonical fixture-root traversal guard")
+
+print("[PASS] actual production uninstall remains BLOCKED")
