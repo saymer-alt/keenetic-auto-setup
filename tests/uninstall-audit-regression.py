@@ -68,6 +68,10 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         calls = logfile.read_text().splitlines() if logfile.exists() else []
         if mode in ("--remove", "--purge"):
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, p
+            if ledger_mode == "valid":
+                assert "creation journal verified" in p.stderr
+            else:
+                assert "no valid ownership journal" in p.stderr
             assert not calls, calls
             return
         assert p.returncode == 0, (p.returncode, p.stderr)
@@ -98,8 +102,9 @@ for shell in SHELLS:
         print('[PASS]', ' '.join(shell), '--check', ledger_mode)
     scenario(shell, '--check', malformed=True)
     for mode in ('--remove','--purge'):
-        scenario(shell, mode, ledger_mode='valid')
-        print('[PASS] blocked', ' '.join(shell), mode)
+        for ledger_mode in ('missing','valid','corrupt','link'):
+            scenario(shell, mode, ledger_mode=ledger_mode)
+            print('[PASS] blocked', ' '.join(shell), mode, ledger_mode)
 script = (ROOT / "uninstall.sh").read_text()
 assert "rm -rf" not in script and "opkg remove" not in script
 assert "ndmc -c \"interface" not in script
