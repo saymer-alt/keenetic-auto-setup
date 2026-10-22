@@ -276,8 +276,8 @@ _KAS_PROXY_DEPS
         report PRESERVE 'dns-proxy intercept' 'not originally enabled by KAS; current state must be retained'
     fi
     report PRESERVE 'other/unowned ProxyN, policies and Entware' 'must not be removed by this tool'
-    report BACKUP_REQUIRED '/opt/etc/mihomo/config.yaml' 'opkg remove can delete YAML; secure verified backup and restore before package removal'
-    report BACKUP_REQUIRED '/opt/var/lib/magitrickle/config.yaml' 'opkg remove can delete YAML; secure verified backup and restore before package removal'
+    report BACKUP_REQUIRED '/opt/etc/mihomo/config.yaml' 'package removal can delete YAML; secure verified backup and restore before package removal'
+    report BACKUP_REQUIRED '/opt/var/lib/magitrickle/config.yaml' 'package removal can delete YAML; secure verified backup and restore before package removal'
     report BLOCKED '--remove / --purge' 'not implemented; do not substitute manual package removal'
     printf '[KAS uninstall] Plan completed without changes.\n'
 fi
