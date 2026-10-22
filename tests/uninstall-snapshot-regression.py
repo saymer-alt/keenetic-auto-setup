@@ -200,7 +200,7 @@ for shell in SHELLS:
                 yaml.symlink_to(root / "opt/etc/crontab")
             elif kind == "maintenance":
                 marker = root / "tmp/mihomo.maintenance"
-                marker.parent.mkdir(parents=True)
+                marker.parent.mkdir(parents=True, exist_ok=True)
                 marker.write_text("owner\n")
             p = run(shell, env, "--create")
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (kind, p.stdout, p.stderr)
