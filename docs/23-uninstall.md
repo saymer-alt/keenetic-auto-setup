@@ -52,6 +52,16 @@ KAS может настраивать ProxyN, policy `bypass_wa`, правила
 - `curl`, `jq`, `nano`, `cron`, базовый Entware и компоненты KeeneticOS
   деинсталлятор не удаляет.
 
+## Проверка на тестовом KN-1010
+
+После публикации в `main` скачать диагностический скрипт в отдельный временный файл и запустить **только** `--check`:
+
+```sh
+curl -fSsL -o /tmp/kas-uninstall.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall.sh && sh -n /tmp/kas-uninstall.sh && sh /tmp/kas-uninstall.sh --check
+```
+
+Пришли вывод для проверки признаков `SHARED_OR_FOREIGN` и `UNKNOWN`. **Пока не выполнять** `opkg remove`, `rm -rf`, `--remove` и `--purge` и не стирать Entware: иначе нельзя будет проверить настоящий деинсталлятор на исходном состоянии. В KN-1010 из предыдущих логов известны переиспользованный Proxy1 и чужой Proxy0, поэтому `чистая Entware` не равна `пустому KeeneticOS`.
+
 ## Только просмотр
 
 Скачанный отдельно `uninstall.sh` можно запустить в режиме:
