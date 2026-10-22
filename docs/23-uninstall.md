@@ -153,6 +153,25 @@ sh /tmp/kas-uninstall-snapshot.sh --check
 
 Только после успешного `--check` можно добровольно запустить
 `sh /tmp/kas-uninstall-snapshot.sh --create`.
+После создания снимка следует независимо проверить его целостность и
+актуальность **второй** read-only командой:
+
+~~~sh
+curl -fSsL -o /tmp/kas-uninstall-snapshot-verify.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-snapshot-verify.sh &&
+sh -n /tmp/kas-uninstall-snapshot-verify.sh &&
+sh /tmp/kas-uninstall-snapshot-verify.sh 20261022-182643-5879
+~~~
+
+Аргумент — **только имя каталога**, не абсолютный путь; скрипт проверяет
+фиксированный каталог `/opt/kas-uninstall-backups/`. Он отказывается работать
+с символьными ссылками, ослабленными правами, изменёнными YAML, файлами,
+`running-config`, политиками, `iptables`, списком пакетов или с повреждённым
+манифестом. Никакие секреты из копий не выводятся. При изменениях нужно создать
+**новый** снимок, а не использовать устаревший.
+
+Верификация не заменяет атомарный lifecycle lock. Будущий `--remove`
+должен заново выполнить контроль после получения эксклюзивной блокировки.
+
 Это **не деинсталлятор**: `uninstall.sh --remove` и `--purge` остаются
 заблокированы.
 
