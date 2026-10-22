@@ -903,9 +903,11 @@ kas_ledger_init() {
     log "Ownership ledger ready: $KAS_OWNER_FILE (new creations only)"
 }
 kas_ledger_record() {
-    _ko_kind=$1
-    _ko_value=$2
-    case "$_ko_kind|$_ko_value" in
+    [ "$#" -eq 3 ] || return 1
+    _ko_group=$1
+    _ko_kind=$2
+    _ko_value=$3
+    case "$_ko_group|$_ko_kind|$_ko_value" in
         owned\|proxy\|Proxy*)
             _ko_num=${_ko_value#Proxy}
             case "$_ko_num" in ''|*[!0-9]*) return 1 ;; esac
@@ -917,7 +919,7 @@ kas_ledger_record() {
         *) return 1 ;;
     esac
     kas_ledger_valid || return 1
-    _ko_line="$_ko_kind|$_ko_value"
+    _ko_line="$_ko_group|$_ko_kind|$_ko_value"
     # Exact-line dedup; no ownership escalation on repeat installs.
     grep -Fqx "$_ko_line" "$KAS_OWNER_FILE" && return 0
     _ko_stage=$(umask 077; mktemp "$KAS_OWNER_DIR/.ownership.XXXXXXXX") || return 1
