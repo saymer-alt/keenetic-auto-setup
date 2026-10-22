@@ -242,7 +242,7 @@ if [ "$MODE" = --plan ]; then
        grep -Fqx 'owned|watchdog|wrapper' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
         report REVIEW 'mihomo watchdog' 'owned files; shared crontab must not be replaced wholesale'
     fi
-    report PRESERVE 'Proxy0 / Policy0 / bypass_wa / DNS intercept' 'not owned in journal'
+    report PRESERVE 'unowned proxies, shared policies and DNS intercept' 'must not be removed by this tool'
     report PRESERVE '/opt/etc/mihomo/config.yaml' 'user YAML must remain'
     report BLOCKED '--remove / --purge' 'not implemented; do not substitute manual package removal'
     printf '[KAS uninstall] Plan completed without changes.\n'
