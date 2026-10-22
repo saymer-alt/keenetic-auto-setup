@@ -61,6 +61,9 @@ jobs:
       - name: Uninstall read-only inventory and fail-closed smoke tests
         run: python3 tests/uninstall-audit-regression.py
 
+      - name: New-install ownership ledger sh/ash regression
+        run: python3 tests/ownership-ledger-regression.py
+
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
 
