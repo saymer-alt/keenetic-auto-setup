@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "provider_id": "openflux",
+  "adapter_version": "0.0.1",
+  "server_wire": "synthetic-openflux-negotiated-v3-1",
+  "server_class": "synthetic-openflux-exit-l4",
+  "architecture": [{ "arch": "aarch64", "abi": "glibc-entware" }],
+  "capabilities": {
+    "socks_tcp": { "code": "PRESENT", "build": "UNKNOWN" },
+    "socks_udp": { "code": "PRESENT", "build": "UNKNOWN" },
+    "tun": { "code": "UNKNOWN", "build": "UNKNOWN" }
+  },
+  "inbound_bind": "127.0.0.1:1083",
+  "resource_requirements": {
+    "admission_min_mb": null,
+    "admission_source": null,
+    "measured": false,
+    "measurement_ref": null,
+    "notes": "Future provider: no documented floor and no measurements; start requires explicit owner GO."
+  },
+  "artifact_provenance": {
+    "sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "source_commit": "fedcba9876543210fedcba9876543210fedcba98",
+    "build_ref": "synthetic-ci-run-0002",
+    "artifact_path": "versions/0.0.1/openflux"
+  },
+  "configuration_reference": "synthetic-docs/openflux-owner-config-v0.md"
+}
