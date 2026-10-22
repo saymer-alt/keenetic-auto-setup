@@ -369,4 +369,3 @@ if [ "$mode" = --rehearse ]; then
     printf '[PASS] Simulated owned-file removal and byte-for-byte recovery\n'
     printf '[INFO] No real router settings, service states or packages were changed\n'
 fi
-
