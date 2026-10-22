@@ -40,7 +40,7 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         ledger = fixture / 'opt/etc/keenetic-auto-setup/ownership.v1'
         ledger.parent.mkdir(parents=True, exist_ok=True)
         if ledger_mode == 'valid':
-            ledger.write_text('KAS_OWNERSHIP_V1\nowned|proxy|Proxy1\nowned|package|magitrickle\n')
+            ledger.write_text('KAS_OWNERSHIP_V1\nowned|proxy|Proxy1\nowned|policy|bypass_wa\nenabled|dns|intercept\nowned|package|mihomo\nowned|package|magitrickle\nowned|repository|magitrickle.conf\nowned|hook|020-bypass_wa.sh\nowned|watchdog|binary\nowned|watchdog|wrapper\n')
         elif ledger_mode == 'valid_foreign':
             ledger.write_text('KAS_OWNERSHIP_V1\nowned|package|magitrickle\nowned|package|mihomo\n')
         elif ledger_mode == 'corrupt':
@@ -94,9 +94,18 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
                 assert '[REVIEW] Proxy1' in p.stdout, p.stdout
             else:
                 assert '[BLOCKED] Proxy1' in p.stdout, p.stdout
-            assert '[BLOCKED] opkg/mihomo' in p.stdout
+            if ledger_mode == 'valid':
+                assert '[REVIEW] opkg/mihomo' in p.stdout, p.stdout
+                assert '[REVIEW] policy/bypass_wa' in p.stdout, p.stdout
+                assert '[REVIEW] dns-proxy intercept' in p.stdout, p.stdout
+            else:
+                assert '[BLOCKED] opkg/mihomo' in p.stdout, p.stdout
+                assert '[PRESERVE] policy/bypass_wa' in p.stdout, p.stdout
+                assert '[PRESERVE] dns-proxy intercept' in p.stdout, p.stdout
             assert '[REVIEW] opkg/magitrickle' in p.stdout
-            assert '[PRESERVE] unowned proxies, shared policies and DNS intercept' in p.stdout
+            assert '[PRESERVE] other/unowned ProxyN, policies and Entware' in p.stdout
+            assert '[BACKUP_REQUIRED] /opt/etc/mihomo/config.yaml' in p.stdout
+            assert '[BACKUP_REQUIRED] /opt/var/lib/magitrickle/config.yaml' in p.stdout
         assert "DO_NOT_LEAK_ME" not in p.stdout
         assert "[SHARED_OR_FOREIGN] /opt/etc/mihomo/config.yaml" in p.stdout
         assert "[UNKNOWN] /opt/bin/mihomo_watchdog.sh" in p.stdout
