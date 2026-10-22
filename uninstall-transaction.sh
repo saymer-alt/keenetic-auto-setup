@@ -5,8 +5,8 @@ set -eu
 umask 077
 export LC_ALL=C
 
-mode=\${1:-}
-name=\${2:-}
+mode=${1:-}
+name=${2:-}
 [ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare SNAPSHOT_NAME" >&2; exit 2; }
 case "$mode" in
     --prepare) ;;
@@ -16,7 +16,7 @@ esac
 fail() { printf '[BLOCKED] transaction preparation: %s\n' "$1" >&2; exit 3; }
 
 # Fixture mode exists solely to exercise the read-only plan on a fake tree.
-root=\${KAS_TXN_FIXTURE_ROOT:-}
+root=${KAS_TXN_FIXTURE_ROOT:-}
 case "$root" in
     '') ;;
     /*) [ "$root" != / ] || fail "invalid fixture root" ;;
