@@ -244,6 +244,6 @@ if [ "$MODE" = --plan ]; then
     fi
     report PRESERVE 'Proxy0 / Policy0 / bypass_wa / DNS intercept' 'not owned in journal'
     report PRESERVE '/opt/etc/mihomo/config.yaml' 'user YAML must remain'
-    report BLOCKED '--remove / --purge' 'not implemented; never substitute generic opkg remove'
+    report BLOCKED '--remove / --purge' 'not implemented; do not substitute manual package removal'
     printf '[KAS uninstall] Plan completed without changes.\n'
 fi
