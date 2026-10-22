@@ -1230,7 +1230,6 @@ log "Configuring bypass_wa..."
 
 _kas_policy_before=$(ndmc -c "show ip policy" 2>/dev/null) ||
     err "Cannot read policy list; refusing to guess ownership before mutation."
-[ -n "$_kas_policy_before" ] || err "Policy list empty/unknown; refusing to guess."
 if ! printf '%s\n' "$_kas_policy_before" | grep -wq 'bypass_wa'; then
     if ndmc -c "ip policy bypass_wa" >/dev/null 2>&1; then
         ndmc -c "ip policy bypass_wa description bypass_wa" >/dev/null 2>&1 ||
