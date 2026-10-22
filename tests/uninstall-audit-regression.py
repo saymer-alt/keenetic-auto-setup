@@ -24,7 +24,7 @@ def fingerprint(root):
             snap[key] = ("dir",)
     return snap
 
-def scenario(shell, mode, malformed=False):
+def scenario(shell, mode, malformed=False, ledger_mode='missing'):
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-preflight-") as temp:
         home = Path(temp)
         fixture = home / "root"
@@ -37,6 +37,16 @@ def scenario(shell, mode, malformed=False):
         cron = fixture / "opt/etc/crontab"
         cron.parent.mkdir(parents=True, exist_ok=True)
         cron.write_text("0 1 * * * root echo foreign\n")
+        ledger = fixture / 'opt/etc/keenetic-auto-setup/ownership.v1'
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        if ledger_mode == 'valid':
+            ledger.write_text('KAS_OWNERSHIP_V1\nowned|proxy|Proxy1\nowned|package|magitrickle\n')
+        elif ledger_mode == 'corrupt':
+            ledger.write_text('KAS_OWNERSHIP_V1\nowned|proxy|Proxy1\nDISABLE SAFETY\n')
+        elif ledger_mode == 'link':
+            ledger.symlink_to(config)
+        elif ledger_mode != 'missing':
+            raise AssertionError(ledger_mode)
         toolbin = home / "bin"
         toolbin.mkdir()
         logfile = home / "calls"
@@ -62,6 +72,13 @@ def scenario(shell, mode, malformed=False):
             return
         assert p.returncode == 0, (p.returncode, p.stderr)
         assert "No changes made" in p.stdout
+        if ledger_mode == 'valid':
+            assert '[LEDGER] ownership.v1' in p.stdout
+            assert '[RECORDED] owned|proxy|Proxy1' in p.stdout
+            assert '[RECORDED] owned|package|magitrickle' in p.stdout
+        else:
+            assert '[UNKNOWN] ledger' in p.stdout
+            assert '[RECORDED]' not in p.stdout
         assert "DO_NOT_LEAK_ME" not in p.stdout
         assert "[SHARED_OR_FOREIGN] /opt/etc/mihomo/config.yaml" in p.stdout
         assert "[UNKNOWN] /opt/bin/mihomo_watchdog.sh" in p.stdout
@@ -76,10 +93,13 @@ def scenario(shell, mode, malformed=False):
                          "iptables -t mangle -S _CUST_BYPASS_WA_"], calls
 
 for shell in SHELLS:
-    for mode, malformed in [("--check", False), ("--check", True),
-                            ("--remove", False), ("--purge", False)]:
-        scenario(shell, mode, malformed)
-        print("[PASS]", " ".join(shell), mode, "unreadable" if malformed else "normal")
+    for ledger_mode in ('missing','valid','corrupt','link'):
+        scenario(shell, '--check', ledger_mode=ledger_mode)
+        print('[PASS]', ' '.join(shell), '--check', ledger_mode)
+    scenario(shell, '--check', malformed=True)
+    for mode in ('--remove','--purge'):
+        scenario(shell, mode, ledger_mode='valid')
+        print('[PASS] blocked', ' '.join(shell), mode)
 script = (ROOT / "uninstall.sh").read_text()
 assert "rm -rf" not in script and "opkg remove" not in script
 assert "ndmc -c \"interface" not in script
