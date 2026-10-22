@@ -866,6 +866,81 @@ mp_known || err "Mihomo runtime UNKNOWN; installation not started."
 # KeeneticOS interfaces/policies survive an Entware reinstall, so existing
 # canonical Proxy0 is not proof of an actively used project service.
 # Fail closed if either package inventory or listener state is unavailable.
+# BEGIN KAS OWNERSHIP LEDGER V1
+# Creation-only evidence. A legacy resource is NEVER retroactively claimed.
+# The lifecycle lock above serializes all writes; entries are atomically replaced
+# in /opt (same filesystem), private 0600 and never shell-sourced/evaluated.
+KAS_OWNER_DIR=/opt/etc/keenetic-auto-setup
+KAS_OWNER_FILE="$KAS_OWNER_DIR/ownership.v1"
+kas_ledger_valid() {
+    [ -f "$KAS_OWNER_FILE" ] && [ ! -L "$KAS_OWNER_FILE" ] || return 1
+    [ "$(head -n 1 "$KAS_OWNER_FILE" 2>/dev/null)" = KAS_OWNERSHIP_V1 ] || return 1
+    awk '
+        NR == 1 { next }
+        /^owned[|]proxy[|]Proxy[0-9]+$/ { next }
+        /^owned[|]policy[|]bypass_wa$/ { next }
+        /^enabled[|]dns[|]intercept$/ { next }
+        /^owned[|]package[|](mihomo|magitrickle)$/ { next }
+        /^owned[|]repository[|]magitrickle.conf$/ { next }
+        /^owned[|]hook[|]020-bypass_wa.sh$/ { next }
+        /^owned[|]watchdog[|](binary|wrapper)$/ { next }
+        /^owned[|]service[|]S00ubifs$/ { next }
+        { exit 1 }
+    ' "$KAS_OWNER_FILE"
+}
+kas_ledger_init() {
+    if [ -L "$KAS_OWNER_DIR" ] || { [ -e "$KAS_OWNER_DIR" ] && [ ! -d "$KAS_OWNER_DIR" ]; }; then
+        return 1
+    fi
+    if [ ! -d "$KAS_OWNER_DIR" ]; then
+        (umask 077; mkdir "$KAS_OWNER_DIR") || return 1
+    fi
+    if [ ! -e "$KAS_OWNER_FILE" ] && [ ! -L "$KAS_OWNER_FILE" ]; then
+        (umask 077; printf 'KAS_OWNERSHIP_V1\n' > "$KAS_OWNER_FILE") || return 1
+    fi
+    kas_ledger_valid || return 1
+    chmod 600 "$KAS_OWNER_FILE" || return 1
+    log "Ownership ledger ready: $KAS_OWNER_FILE (new creations only)"
+}
+kas_ledger_record() {
+    [ "$#" -eq 3 ] || return 1
+    _ko_group=$1
+    _ko_kind=$2
+    _ko_value=$3
+    case "$_ko_group|$_ko_kind|$_ko_value" in
+        owned\|proxy\|Proxy*)
+            _ko_num=${_ko_value#Proxy}
+            case "$_ko_num" in ''|*[!0-9]*) return 1 ;; esac
+            ;;
+        owned\|policy\|bypass_wa|enabled\|dns\|intercept|\
+        owned\|package\|mihomo|owned\|package\|magitrickle|\
+        owned\|repository\|magitrickle.conf|owned\|hook\|020-bypass_wa.sh|\
+        owned\|watchdog\|binary|owned\|watchdog\|wrapper|owned\|service\|S00ubifs) ;;
+        *) return 1 ;;
+    esac
+    kas_ledger_valid || return 1
+    _ko_line="$_ko_group|$_ko_kind|$_ko_value"
+    # Exact-line dedup; no ownership escalation on repeat installs.
+    grep -Fqx "$_ko_line" "$KAS_OWNER_FILE" && return 0
+    _ko_stage=$(umask 077; mktemp "$KAS_OWNER_DIR/.ownership.XXXXXXXX") || return 1
+    if ! cat "$KAS_OWNER_FILE" > "$_ko_stage" ||
+       ! printf '%s\n' "$_ko_line" >> "$_ko_stage" ||
+       ! chmod 600 "$_ko_stage" ||
+       ! mv -f "$_ko_stage" "$KAS_OWNER_FILE"; then
+        rm -f "$_ko_stage" 2>/dev/null || true
+        return 1
+    fi
+    log "Ownership recorded: $_ko_line"
+}
+# END KAS OWNERSHIP LEDGER V1
+kas_ledger_init || err "Cannot initialize verified ownership ledger; installation aborted before packages/router mutations."
+# Save original package membership. Installed/reused packages are NEVER claimed.
+KAS_PKG_BEFORE=$(opkg list-installed 2>/dev/null) ||
+    err "Cannot capture pre-install OPKG inventory for ownership ledger."
+kas_package_was_absent() {
+    ! printf '%s\n' "$KAS_PKG_BEFORE" | grep -Eq "^$1[[:space:]]"
+}
+
 PROXY_FRESH_ENTWARE=0
 PROXY_CREATED_THIS_RUN=0
 PROXY_RESTORE_PENDING=""
@@ -1159,9 +1234,21 @@ log "Free space on /opt: $(df -h /opt 2>/dev/null | awk 'NR==2 {print $4}' || ec
 # ---------------------------
 log "Configuring bypass_wa..."
 
-if ! ndmc -c "show ip policy" 2>/dev/null | grep -w -q "bypass_wa"; then
-    ndmc -c "ip policy bypass_wa" >/dev/null 2>&1 || warn "Failed to create bypass_wa policy"
-    ndmc -c "ip policy bypass_wa description bypass_wa" >/dev/null 2>&1
+_kas_policy_before=$(ndmc -c "show ip policy" 2>/dev/null) ||
+    err "Cannot read policy list; refusing to guess ownership before mutation."
+if ! printf '%s\n' "$_kas_policy_before" | grep -wq 'bypass_wa'; then
+    if ndmc -c "ip policy bypass_wa" >/dev/null 2>&1; then
+        ndmc -c "ip policy bypass_wa description bypass_wa" >/dev/null 2>&1 ||
+            err "Cannot describe newly created bypass_wa policy."
+        _kas_policy_after=$(ndmc -c "show ip policy" 2>/dev/null) ||
+            err "Cannot verify new bypass_wa policy."
+        printf '%s\n' "$_kas_policy_after" | grep -wq 'bypass_wa' ||
+            err "New bypass_wa policy not verified."
+        kas_ledger_record owned policy bypass_wa ||
+            err "Created bypass_wa policy but cannot record ownership; stop for audit."
+    else
+        warn "Failed to create bypass_wa policy"
+    fi
 fi
 
 # ---------------------------
@@ -1186,6 +1273,7 @@ else
     if ! ndmc -c "show running-config" 2>/dev/null | grep -q "intercept enable"; then
         err "DNS transit interception did not appear in running-config after enable; installation cannot satisfy the MagiTrickle DNS contract"
     fi
+    kas_ledger_record enabled dns intercept || err "Enabled DNS interception, but cannot record its prior state."
 fi
 
 # ---------------------------
@@ -1242,7 +1330,12 @@ S00_SCRIPT="/opt/etc/init.d/S00ubifs"
 S00_ROOT="/opt"
 if [ "$MODE" = "ram" ]; then
     log "Installing S00ubifs..."
+    _kas_s00_existed=0
+    if [ -e "$S00_SCRIPT" ] || [ -L "$S00_SCRIPT" ]; then _kas_s00_existed=1; fi
     installer_tmpfs_activate "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"
+    if [ "$_kas_s00_existed" -eq 0 ]; then
+        kas_ledger_record owned service S00ubifs || err "Cannot journal newly installed S00ubifs."
+    fi
 else
     log "Skip S00ubifs (disk mode)"
 fi
@@ -1452,6 +1545,9 @@ else
 
     MIHOMO_BIN=$(resolve_installed_mihomo 2>/dev/null || true)
     [ -z "$MIHOMO_BIN" ] && err "Mihomo package installation completed but no executable canonical binary was found at /opt/sbin/mihomo or /opt/bin/mihomo"
+    if kas_package_was_absent mihomo && pkg_is_installed mihomo; then
+        kas_ledger_record owned package mihomo || err "Cannot journal new Mihomo package installation."
+    fi
 fi
 
 if ! mp_stopped; then
@@ -1711,6 +1807,7 @@ select_project_proxy() {
             err "Proxy0 appeared in running-config but the required project profile (mihomo t2s0 / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
         fi
         PROXY_CREATED_THIS_RUN=1
+        kas_ledger_record owned proxy Proxy0 || err "Cannot journal newly created Proxy0; stop for audit."
         log "Project proxy Proxy0 created and verified"
         return 0
     fi
@@ -1751,6 +1848,7 @@ select_project_proxy() {
         err "Proxy${_n} appeared in running-config but the required project profile (mihomo t2s${_n} / SOCKS5 upstream 127.0.0.1:7890) did not fully apply"
     fi
     PROXY_CREATED_THIS_RUN=1
+    kas_ledger_record owned proxy "Proxy${_n}" || err "Cannot journal newly created Proxy${_n}; stop for audit."
     log "Project proxy Proxy${_n} created and verified"
 }
 
@@ -1836,6 +1934,10 @@ opkg_repo_snapshot() {
     done
 }
 
+_kas_mt_repo_existed=0
+if [ -e /opt/etc/opkg/magitrickle.conf ] || [ -L /opt/etc/opkg/magitrickle.conf ]; then
+    _kas_mt_repo_existed=1
+fi
 MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)
 
 log "Ensuring MagiTrickle package repository..."
@@ -1855,6 +1957,11 @@ fi
 rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 
 MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
+if [ "$_kas_mt_repo_existed" -eq 0 ] &&
+   [ -f /opt/etc/opkg/magitrickle.conf ] && [ ! -L /opt/etc/opkg/magitrickle.conf ]; then
+    kas_ledger_record owned repository magitrickle.conf ||
+        err "Cannot journal newly created MagiTrickle OPKG source."
+fi
 if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
     log "MagiTrickle repository configuration changed - refreshing package metadata..."
     retry opkg update || err "opkg update after changing the MagiTrickle repository failed"
@@ -1866,6 +1973,9 @@ log "Installing MagiTrickle package..."
 pkg_ensure magitrickle
 
 pkg_is_installed magitrickle || err "MagiTrickle package is not present after installation"
+if kas_package_was_absent magitrickle; then
+    kas_ledger_record owned package magitrickle || err "Cannot journal new MagiTrickle package installation."
+fi
 [ -x /opt/etc/init.d/S99magitrickle ] || err "MagiTrickle init script missing after installation"
 
 log "Starting MagiTrickle..."
@@ -1879,8 +1989,14 @@ log "Installing bypass rules..."
 
 mkdir -p /opt/etc/ndm/netfilter.d
 
+_kas_bypass_hook_existed=0
+if [ -e /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ] ||
+   [ -L /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then _kas_bypass_hook_existed=1; fi
 if project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"; then
     chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
+    if [ "$_kas_bypass_hook_existed" -eq 0 ]; then
+        kas_ledger_record owned hook 020-bypass_wa.sh || err "Cannot journal newly installed Netfilter hook."
+    fi
 else
     warn "bypass download failed after raw/curl, raw/wget and GitHub API fallbacks"
 fi
@@ -2085,6 +2201,10 @@ ensure_watchdog_cron() {
     wd_normalize_cron || return 1
 }
 
+_kas_wd_bin_existed=0
+_kas_wd_wrapper_existed=0
+if [ -e "$WATCHDOG_BIN" ] || [ -L "$WATCHDOG_BIN" ]; then _kas_wd_bin_existed=1; fi
+if [ -e "$WATCHDOG_CRON" ] || [ -L "$WATCHDOG_CRON" ]; then _kas_wd_wrapper_existed=1; fi
 if watchdog_is_canonical "$WATCHDOG_BIN"; then
     wd_permissions "$WATCHDOG_BIN" 755 || err "Watchdog permissions need repair"
     # Canonical binary present: accept the new layout, keep one cron route.
@@ -2116,6 +2236,16 @@ else
     else
         warn "Watchdog installation incomplete"
     fi
+fi
+
+# Record only files that were absent at entry and now match project signatures.
+if [ "$_kas_wd_bin_existed" -eq 0 ] && watchdog_is_canonical "$WATCHDOG_BIN"; then
+    kas_ledger_record owned watchdog binary || err "Cannot journal new watchdog binary."
+fi
+if [ "$_kas_wd_wrapper_existed" -eq 0 ] && [ -f "$WATCHDOG_CRON" ] &&
+   [ ! -L "$WATCHDOG_CRON" ] &&
+   [ "$(cat "$WATCHDOG_CRON")" = "$(printf '#!/bin/sh\nexec /opt/bin/mihomo_watchdog.sh "$@"\n')" ]; then
+    kas_ledger_record owned watchdog wrapper || err "Cannot journal new watchdog wrapper."
 fi
 
 # ---------------------------
