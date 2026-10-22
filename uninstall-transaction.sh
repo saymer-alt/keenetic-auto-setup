@@ -26,6 +26,20 @@ case "$root" in
     /*) [ "$root" != / ] || fail "invalid fixture root" ;;
     *) fail "fixture root must be absolute" ;;
 esac
+if [ "$mode" = --rehearse ]; then
+    # Canonicalize first: '/tmp/..' and path aliases MUST NOT bypass the
+    # simulated-device restriction. Never allow real /opt to be the target.
+    root=$(CDPATH= cd "$root" && pwd -P) ||
+        fail "fixture directory cannot be resolved"
+    case "$root" in
+        /tmp/kas-uninstall-*/root) ;;
+        *) fail "rehearsal allowed only inside a disposable /tmp test fixture" ;;
+    esac
+    fixture_marker="$root/.kas-uninstall-fixture"
+    [ -f "$fixture_marker" ] && [ ! -L "$fixture_marker" ] &&
+        [ "$(cat "$fixture_marker")" = KAS_UNINSTALL_TEST_FIXTURE_V1 ] ||
+        fail "missing explicit disposable fixture identity marker"
+fi
 # The lifecycle lock contract is identical to installer/update/watchdog. Only
 # the path root differs in offline tests; production always uses /tmp.
 # BEGIN MIHOMO LIFECYCLE LOCK v1
