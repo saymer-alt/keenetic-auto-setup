@@ -210,4 +210,72 @@ for shell in SHELLS:
                 env=env, capture_output=True, text=True, timeout=12)
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (kind, p.stdout, p.stderr)
             print("[PASS]", shell, "strict transaction gate rejects", kind)
+# Keenetic may serialize a policy's WAN deny using an interface alias, even
+# though the underlying interface ID is GigabitEthernet1 (KN-1010: ISP).
+# The gate must accept ONLY a unique, live alias within that interface block.
+for shell in SHELLS:
+    for kind, allowed in (
+        ("isp_alias", True),
+        ("wan_id", True),
+        ("missing_alias", False),
+        ("wrong_interface_alias", False),
+        ("duplicate_alias", False),
+        ("extra_permit", False),
+        ("duplicate_permit", False),
+        ("duplicate_deny", False),
+        ("missing_deny", False),
+        ("unknown_directive", False),
+    ):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-isp-alias-") as temp:
+            td = Path(temp)
+            root, files, env = setup(td)
+            ndmc = td / "bin/ndmc"
+            body = ndmc.read_text()
+            if kind != "wan_id":
+                inserted = "interface GigabitEthernet1\n    rename ISP\n!\n"
+                if kind == "missing_alias":
+                    inserted = "interface GigabitEthernet1\n!\n"
+                elif kind == "wrong_interface_alias":
+                    inserted = "interface Bridge2\n    rename ISP\n!\n"
+                elif kind == "duplicate_alias":
+                    inserted = "interface GigabitEthernet1\n    rename ISP\n    rename ISP\n!\n"
+                body = body.replace("interface Proxy0\n", inserted + "interface Proxy0\n", 1)
+                body = body.replace(
+                    "    no permit global GigabitEthernet1\n",
+                    "    no permit global ISP\n", 1
+                )
+            if kind == "extra_permit":
+                body = body.replace(
+                    "    permit global Proxy0\n",
+                    "    permit global Proxy0\n    permit global ISP\n", 1)
+            elif kind == "duplicate_permit":
+                body = body.replace(
+                    "    permit global Proxy0\n",
+                    "    permit global Proxy0\n    permit global Proxy0\n", 1)
+            elif kind == "duplicate_deny":
+                body = body.replace(
+                    "    no permit global ISP\n",
+                    "    no permit global ISP\n    no permit global GigabitEthernet1\n", 1)
+            elif kind == "missing_deny":
+                body = body.replace("    no permit global ISP\n", "", 1)
+            elif kind == "unknown_directive":
+                body = body.replace(
+                    "    permit global Proxy0\n",
+                    "    permit global Proxy0\n    description altered\n", 1)
+            ndmc.write_text(body)
+            p = run(shell, env, "--create")
+            assert p.returncode == 0, (kind, p.stdout, p.stderr)
+            snap = next((root / "opt/kas-uninstall-backups").iterdir())
+            p = subprocess.run(
+                shell + [str(BASE / "uninstall-transaction-gate.sh"), "--check", snap.name],
+                env=env, capture_output=True, text=True, timeout=12)
+            assert "TEST_SECRET_MUST_NOT_PRINT" not in p.stdout + p.stderr
+            if allowed:
+                assert p.returncode == 0 and "[PASS] Nine-claim" in p.stdout, (
+                    kind, p.stdout, p.stderr)
+            else:
+                assert p.returncode == 3 and "[BLOCKED]" in p.stderr, (
+                    kind, p.stdout, p.stderr)
+            print("[PASS]", shell, "WAN alias policy guard", kind)
+
 print("[PASS] no destructive actions tested or required")
