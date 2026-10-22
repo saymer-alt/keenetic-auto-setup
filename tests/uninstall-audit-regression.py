@@ -85,7 +85,7 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
             assert '[RECORDED]' not in p.stdout
         if mode == '--plan' and ledger_mode == 'valid':
             assert '=== KAS UNINSTALL PLAN (READ ONLY) ===' in p.stdout
-            assert '[BLOCKED] Proxy1' in p.stdout
+            assert '[BLOCKED] Proxy1' in p.stdout, p.stdout
             assert '[BLOCKED] opkg/mihomo' in p.stdout
             assert '[REVIEW] opkg/magitrickle' in p.stdout
             assert '[PRESERVE] Proxy0 / Policy0 / bypass_wa / DNS intercept' in p.stdout
