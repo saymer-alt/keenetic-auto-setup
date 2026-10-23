@@ -110,11 +110,19 @@ case "$spec" in
     grep '^-A PREROUTING ' "$S/mangle"
     ;;
 '-t mangle -X _CUST_BYPASS_WA_')
-    grep -vE '_CUST_BYPASS_WA_' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
+    grep -qx -- '-N _CUST_BYPASS_WA_' "$S/mangle" || exit 1
+    grep -q '^-A _CUST_BYPASS_WA_ ' "$S/mangle" && exit 1
+    grep -q ' -j _CUST_BYPASS_WA_$' "$S/mangle" && exit 1
+    sed '/^-N _CUST_BYPASS_WA_$/d' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
     ;;
 '-t mangle -D '*)
     target=$(printf '%s' "$spec" | sed 's/^-t mangle -D /-A /')
-    grep -vF -- "$target" "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
+    grep -Fxq -- "$target" "$S/mangle" || exit 1
+    awk -v t="$target" '$0==t && !deleted {deleted=1; next} {print}' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
+    case "$target" in
+        '-A _CUST_BYPASS_WA_ '*)
+            if [ -n "${KAS_KILL_AFTER_RULE:-}" ]; then kill "-$KAS_KILL_AFTER_RULE" "$PPID"; fi ;;
+    esac
     ;;
 *) exit 40 ;;
 esac
@@ -178,7 +186,10 @@ def setup(td, ip_global=PROXY_350, extra_cron="", foreign_mangle=True):
 
     toolbin = td / "bin"
     toolbin.mkdir(exist_ok=True)
-    for name, script in {"ndmc": NDMC, "iptables": IPTABLES, "opkg": OPKG, "pidof": PIDOF}.items():
+    # File/journal mutations are real; fixture tests do not model power-loss
+    # durability. Avoid syncing every unrelated filesystem on the CI host.
+    for name, script in {"ndmc": NDMC, "iptables": IPTABLES, "opkg": OPKG, "pidof": PIDOF,
+                         "sync": "#!/bin/sh\nexit 0\n"}.items():
         p = toolbin / name
         p.write_text(script)
         p.chmod(0o755)
@@ -210,7 +221,19 @@ def digest(root, state):
 
 
 def run(shell, env, *args, timeout=30):
-    return subprocess.run(shell + [str(BASE / args[0])] + list(args[1:]),
+    # BusyBox ash may prefer compiled applets to PATH. Explicit function
+    # redirection makes injected pidof failures and fixture sync effective in
+    # BOTH shells; $0 remains the real production path for sibling scripts.
+    fixture_commands = '''
+pidof() { "$KAS_FAKE_STATE/../bin/pidof" "$@"; }
+sync() { "$KAS_FAKE_STATE/../bin/sync"; }
+sleep() {
+    if [ -x "$KAS_FAKE_STATE/../bin/sleep" ]; then "$KAS_FAKE_STATE/../bin/sleep" "$@";
+    else /bin/sleep "$@"; fi
+}
+. "$0"
+'''
+    return subprocess.run(shell + ['-c', fixture_commands, str(BASE / args[0])] + list(args[1:]),
                           env=env, capture_output=True, text=True, timeout=timeout)
 
 
@@ -231,7 +254,11 @@ for shell in SHELLS:
     # ---- 1. happy path -------------------------------------------------
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-happy-") as temp:
         td = Path(temp)
-        root, state, files, env = setup(td)
+        root, state, files, env = setup(td, extra_cron=FOREIGN_CRON)
+        foreign_config = ('interface Proxy9\n    proxy upstream 127.0.0.1 1081\n!\n'
+                          'ip policy foreign\n    permit global Bridge0\n!\n')
+        rcfile = state / "running-config"
+        rcfile.write_text(rcfile.read_text() + foreign_config)
         name = prepared_snapshot(shell, root, state, env)
         assert (root / f"opt/kas-uninstall-backups/{name}/packages/MANIFEST").is_file()
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
@@ -250,6 +277,7 @@ for shell in SHELLS:
         # foreign cron line preserved, owned line gone
         cron = (root / "opt/etc/crontab").read_text()
         assert OWNED_CRON not in cron and "run-parts /opt/etc/cron.5mins" in cron
+        assert FOREIGN_CRON in cron
         # foreign mangle rule preserved, KAS chain gone
         mangle = (state / "mangle").read_text()
         assert "_CUST_BYPASS_WA_" not in mangle and FOREIGN_RULE in mangle
@@ -257,6 +285,7 @@ for shell in SHELLS:
         rc = (state / "running-config").read_text()
         assert "ip policy bypass_wa" not in rc and "interface Proxy0" not in rc
         assert "intercept enable" in rc
+        assert foreign_config in rc
         assert "system configuration save" in (state / "ndmc.log").read_text()
         journal = (root / f"opt/kas-uninstall-backups/{name}/transaction/journal.v1").read_text()
         assert journal.rstrip().endswith("complete")
@@ -282,7 +311,7 @@ for shell in SHELLS:
         p = run(shell, env, "uninstall.sh", "--remove", name)
         assert p.returncode == 0, (p.stdout, p.stderr)
         p = run(shell, env, "uninstall.sh", "--remove")
-        assert p.returncode == 0 and "already fully removed" in p.stdout
+        assert p.returncode == 0 and "idempotent" in p.stdout
         print("[PASS]", shell, "uninstall.sh --remove delegation + idempotent audit")
 
     # ---- 4. missing rollback cache refuses BEFORE any mutation ----------
@@ -320,8 +349,7 @@ for shell in SHELLS:
         (state / "running-config").write_text(rc)
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
         assert p.returncode == 3, (p.stdout, p.stderr)
-        assert digest(root, state) == before + hashlib.sha256(
-            (state / "running-config").read_bytes()).hexdigest()[:0] or True
+        assert "BLOCKED" in p.stderr
         # the only permitted delta is the user's own edit; nothing else moved
         (state / "running-config").write_text(
             (state / "running-config").read_text().replace("    permit global Bridge0\n", ""))
@@ -329,14 +357,7 @@ for shell in SHELLS:
         print("[PASS]", shell, "post-prepare configuration drift fails closed")
 
     # ---- 7. fault injection + resume ------------------------------------
-    for fault in ("hook", "policy", "opkg"):
-        with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-fault-") as temp:
-            td = Path(temp)
-            root, state, files, env = setup(td)
-            name = prepared_snapshot(shell, root, state, env)
-            env2 = env | {"KAS_TXN_TEST_FAIL_AT": fault}
-            p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
-            # first attempt without the fault env must succeed; use env2 on a fresh fixture instead
+    for fault in ("cron", "watchdog", "netfilter", "hook", "services", "policy", "proxy", "opkg", "feed", "ledger"):
         with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-fault2-") as temp:
             td = Path(temp)
             root, state, files, env = setup(td)
@@ -368,15 +389,161 @@ for shell in SHELLS:
             (state / "mangle").read_text().replace(
                 "-A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_\n", ""))
         (snapdir / "transaction/journal.v1").write_text(
-            "KAS_UNINSTALL_JOURNAL_V1\nbegin x\nintent netfilter\ninterrupted (signal or abort)\n")
+            f"KAS_UNINSTALL_JOURNAL_V1\nbegin {name}\nintent cron\ndone cron\nintent watchdog\ndone watchdog\nintent netfilter\ninterrupted (signal or abort)\n")
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
         assert p.returncode == 0, (p.stdout, p.stderr)
         assert "_CUST_BYPASS_WA_" not in (state / "mangle").read_text()
         assert FOREIGN_RULE in (state / "mangle").read_text()
         print("[PASS]", shell, "mid-step netfilter state recovers by audit")
 
+    # Every resume drift must BLOCK without another system mutation.
+    for drift in ("policy", "proxy", "cron", "netfilter", "ledger", "yaml", "feed", "packages", "consumer"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-resume-drift-") as temp:
+            root, state, files, env = setup(Path(temp))
+            name = prepared_snapshot(shell, root, state, env)
+            p = run(shell, env | {"KAS_TXN_TEST_FAIL_AT": "hook"}, "uninstall-transaction.sh", "--remove", name)
+            assert p.returncode == 3, p.stderr
+            if drift == "policy":
+                f=state/"running-config"; f.write_text(f.read_text().replace("    permit global Proxy0", "    permit global Bridge0"))
+            elif drift == "proxy":
+                f=state/"running-config"; f.write_text(f.read_text().replace("127.0.0.1 7890", "127.0.0.1 1081"))
+            elif drift == "consumer":
+                f=state/"running-config"; f.write_text(f.read_text()+"ip policy foreign\n    permit global Proxy0\n!\n")
+            elif drift == "netfilter":
+                f=state/"mangle"; f.write_text(f.read_text()+"-A PREROUTING -j ACCEPT\n")
+            elif drift == "packages":
+                f=state/"installed"; f.write_text(f.read_text().replace("1.19.33-2", "1.20.0-1"))
+            else:
+                rel={"cron":"opt/etc/crontab", "ledger":"opt/etc/keenetic-auto-setup/ownership.v1", "yaml":"opt/etc/mihomo/config.yaml", "feed":"opt/etc/opkg/magitrickle.conf"}[drift]
+                f=root/rel; f.write_text(f.read_text()+"# user edit\n")
+            before=digest(root,state)
+            p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3 and "BLOCKED" in p.stderr, (drift,p.stdout,p.stderr)
+            assert digest(root,state)==before, drift
+            print("[PASS]",shell,"resume preserves drift:",drift)
+
+    # Actual -X contract: a nonempty owned chain cannot be deleted.
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-nonempty-") as temp:
+        root,state,files,env=setup(Path(temp))
+        original_mangle=(state/"mangle").read_text()
+        (state/"mangle").write_text(original_mangle.replace(
+            "-A PREROUTING -m mark --mark 0x0 -j _CUST_BYPASS_WA_\n", ""))
+        before=digest(root,state)
+        p=subprocess.run([str(Path(temp)/"bin/iptables"),"-t","mangle","-X","_CUST_BYPASS_WA_"],env=env)
+        assert p.returncode!=0 and digest(root,state)==before
+        (state/"mangle").write_text(original_mangle)
+        name=prepared_snapshot(shell,root,state,env)
+        p=run(shell,env|{"KAS_TXN_TEST_FAIL_AT":"netfilter-rule"},"uninstall-transaction.sh","--remove",name)
+        assert p.returncode==3, p.stderr
+        p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+        assert p.returncode==0,(p.stdout,p.stderr)
+        print("[PASS]",shell,"realistic -X and mid-rule resume")
+
+    for code in (127,2,0):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-unknown-") as temp:
+            root,state,files,env=setup(Path(temp))
+            name=prepared_snapshot(shell,root,state,env)
+            # 0 with empty output is UNKNOWN, as are 2 and command-not-found.
+            (Path(temp)/"bin/pidof").write_text(f"#!/bin/sh\nexit {code}\n")
+            before=digest(root,state)
+            p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3 and "UNKNOWN" in p.stderr,(p.stdout,p.stderr)
+            assert digest(root,state)==before
+            print("[PASS]",shell,"process UNKNOWN blocks before mutation",code)
+
+    for fault in ("netfilter-jump","netfilter-rule-1","netfilter-rule-2","netfilter-rule-3"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-rule-fault-") as temp:
+            root,state,files,env=setup(Path(temp))
+            name=prepared_snapshot(shell,root,state,env)
+            p=run(shell,env|{"KAS_TXN_TEST_FAIL_AT":fault},"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3,(fault,p.stdout,p.stderr)
+            p=run(shell,env,"uninstall.sh","--remove",name)
+            assert p.returncode==0,(fault,p.stdout,p.stderr)
+            assert FOREIGN_RULE in (state/"mangle").read_text()
+            print("[PASS]",shell,"resume after",fault)
+
+    for extra in ("-A _CUST_BYPASS_WA_ -j ACCEPT", "-A OUTPUT -j _CUST_BYPASS_WA_",
+                  "-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j MARK --set-xmark 0x1/0xffffffff"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-foreign-rule-") as temp:
+            root,state,files,env=setup(Path(temp))
+            f=state/"mangle";f.write_text(f.read_text()+extra+"\n")
+            p=run(shell,env,"uninstall-snapshot.sh","--create")
+            assert p.returncode==0,p.stderr
+            name=next((root/"opt/kas-uninstall-backups").iterdir()).name
+            before=digest(root,state)
+            p=run(shell,env,"uninstall-transaction.sh","--prepare",name)
+            assert p.returncode==3,(p.stdout,p.stderr)
+            assert digest(root,state)==before
+            print("[PASS]",shell,"foreign chain rule/reference preserved")
+
+    for daemon in ("mihomo","magitrickled"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-running-") as temp:
+            root,state,files,env=setup(Path(temp))
+            name=prepared_snapshot(shell,root,state,env)
+            (state/"pids"/daemon).write_text("42\n")
+            # Init stop returns success but deliberately leaves a live PID.
+            (Path(temp)/"bin/sleep").write_text("#!/bin/sh\nexit 0\n")
+            (Path(temp)/"bin/sleep").chmod(0o755)
+            original=(state/"running-config").read_bytes(),(state/"installed").read_bytes()
+            p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3 and "did not stop" in p.stderr,(daemon,p.stdout,p.stderr)
+            assert ((state/"running-config").read_bytes(),(state/"installed").read_bytes())==original
+            print("[PASS]",shell,"RUNNING prevents policy/package removal",daemon)
+
+    for signal in ("TERM", "KILL"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-real-signal-") as temp:
+            root,state,files,env=setup(Path(temp))
+            name=prepared_snapshot(shell,root,state,env)
+            p=run(shell,env|{"KAS_KILL_AFTER_RULE":signal},"uninstall-transaction.sh","--remove",name)
+            assert p.returncode in (143,-9), (signal,p.returncode,p.stdout,p.stderr)
+            journal=root/f"opt/kas-uninstall-backups/{name}/transaction/journal.v1"
+            assert "intent netfilter" in journal.read_text() and "complete" not in journal.read_text()
+            p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==0,(signal,p.stdout,p.stderr)
+            assert FOREIGN_RULE in (state/"mangle").read_text()
+            print("[PASS]",shell,"real signal and durable-intent resume",signal)
+
+    for damage in ("journal","snapshot","resurrection"):
+        with tempfile.TemporaryDirectory(prefix="kas-uninstall-evidence-drift-") as temp:
+            root,state,files,env=setup(Path(temp))
+            name=prepared_snapshot(shell,root,state,env)
+            p=run(shell,env|{"KAS_TXN_TEST_FAIL_AT":"hook"},"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3
+            snap=root/f"opt/kas-uninstall-backups/{name}"
+            if damage=="journal":
+                f=snap/"transaction/journal.v1";f.write_text(f.read_text()+"done proxy\n")
+            elif damage=="snapshot":
+                f=snap/"files/opt/etc/keenetic-auto-setup/ownership.v1";f.write_text(f.read_text()+"owned|proxy|Proxy9\n")
+            else:
+                (root/"opt/etc/ndm/netfilter.d/020-bypass_wa.sh").write_text("# foreign hook\n")
+            before=digest(root,state)
+            p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+            assert p.returncode==3,(damage,p.stdout,p.stderr)
+            assert digest(root,state)==before
+            print("[PASS]",shell,"invalid recovery evidence blocks:",damage)
+
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-package-data-") as temp:
+        root,state,files,env=setup(Path(temp))
+        name=prepared_snapshot(shell,root,state,env)
+        # Model real package conffile unlink semantics, including init files.
+        tool=Path(temp)/"bin/opkg"
+        tool.write_text(OPKG.replace('remove)\n', 'remove)\n    rm -f "$KAS_TXN_FIXTURE_ROOT/opt/etc/mihomo/config.yaml" "$KAS_TXN_FIXTURE_ROOT/opt/var/lib/magitrickle/config.yaml" "$KAS_TXN_FIXTURE_ROOT/opt/etc/init.d/S99mihomo" "$KAS_TXN_FIXTURE_ROOT/opt/etc/init.d/S99magitrickle"\n'))
+        tool.write_text(tool.read_text().replace(
+            '    [ -s "$KAS_FAKE_STATE/download_broken" ] && exit 1',
+            '    rmdir "$KAS_TXN_FIXTURE_ROOT/opt/etc/mihomo" "$KAS_TXN_FIXTURE_ROOT/opt/var/lib/magitrickle" 2>/dev/null || true\n    [ -s "$KAS_FAKE_STATE/download_broken" ] && exit 1'))
+        p=run(shell,env,"uninstall-transaction.sh","--remove",name)
+        assert p.returncode==0,(p.stdout,p.stderr)
+        for rel in ("opt/etc/mihomo/config.yaml","opt/var/lib/magitrickle/config.yaml"):
+            assert (root/rel).read_text()==files[rel]
+        print("[PASS]",shell,"OPKG unlinks restore exact user YAML")
+
 # ---- 9. gate: relaxed ip global contract -------------------------------
 for shell in SHELLS:
+    for bad_name in ('../outside', '20261023-000000-1\n/../outside', '20261023-000000-1\n'):
+        p=subprocess.run(shell+[str(BASE/'uninstall-transaction.sh'),'--remove',bad_name],
+                         capture_output=True,text=True,timeout=5)
+        assert p.returncode==3 and 'invalid snapshot name' in p.stderr,(p.stdout,p.stderr)
+    print('[PASS]',shell,'whole-input snapshot name validation before journal lookup')
     for label, ip_global, expect_ok in (
             ("allocator 350", PROXY_350, True),
             ("allocator 32767 (Ported)", PROXY_32767, True),

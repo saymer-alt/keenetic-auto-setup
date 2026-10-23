@@ -1,6 +1,6 @@
 #!/bin/sh
-# KAS uninstall transaction: verified PREPARE stage only.
-# --remove is explicitly blocked until rollback/teardown CI + hardware gates.
+# KAS experimental uninstall transaction: sealed preparation and audited removal.
+# Production promotion still requires independent virtual/hardware acceptance.
 set -eu
 umask 077
 export LC_ALL=C
@@ -8,6 +8,11 @@ export LC_ALL=C
 mode=${1:-}
 name=${2:-}
 [ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare|--remove SNAPSHOT_NAME" >&2; exit 2; }
+case "$name" in
+    ''|*[!0-9-]*) echo '[BLOCKED] invalid snapshot name' >&2; exit 3 ;;
+esac
+printf '%s\n' "$name" | grep -Eq '^[0-9]{8}-[0-9]{6}-[0-9]+$' ||
+    { echo '[BLOCKED] invalid snapshot name' >&2; exit 3; }
 case "$mode" in
     --prepare) ;;
     --rehearse)
@@ -347,14 +352,39 @@ txn_chain_present() {
 }
 txn_step_netfilter_done() { ! txn_chain_present; }
 txn_step_netfilter() {
+    txn_audit
     if txn_chain_present; then
         # Delete exactly the KAS jump as serialized live; never a flush.
         _jump=$(iptables -t mangle -S PREROUTING 2>/dev/null | grep -F -- '-j _CUST_BYPASS_WA_') ||
             _jump=''
         if [ -n "$_jump" ]; then
+            set -f
             iptables -t mangle $(printf '%s\n' "$_jump" | sed 's/^-A /-D /') ||
                 fail "cannot detach the KAS PREROUTING jump"
+            set +f
+            txn_fault_check netfilter-jump
         fi
+        # Only the verified snapshot rules, in their original order. Audit
+        # accepts a deleted prefix only while this step has durable intent.
+        _rules=$(iptables -t mangle -S _CUST_BYPASS_WA_) || fail "cannot read owned chain"
+        _rule_count=0
+        while IFS= read -r _rule; do
+            case "$_rule" in
+                '-A _CUST_BYPASS_WA_ '*)
+                    txn_audit
+                    set -f
+                    iptables -t mangle $(printf '%s\n' "$_rule" | sed 's/^-A /-D /') ||
+                        fail "cannot delete verified KAS rule"
+                    set +f
+                    _rule_count=$((_rule_count + 1))
+                    txn_fault_check "netfilter-rule-$_rule_count"
+                    txn_fault_check "netfilter-rule"
+                    ;;
+            esac
+        done <<_RULES
+$_rules
+_RULES
+        txn_audit
         iptables -t mangle -X _CUST_BYPASS_WA_ ||
             fail "cannot remove the KAS-owned chain"
     fi
@@ -371,8 +401,168 @@ txn_step_hook() {
         fail "cannot remove the KAS netfilter hook"
 }
 
+# BEGIN MIHOMO PROCESS STATE v1
+# Identical standalone contract: 0 running, 1 stopped, 2 unknown.
+# MP_PIDS contains only positive evidence; unknown is never absence.
+mp_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof mihomo 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/mihomo|/opt/bin/mihomo|*/mihomo)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/mihomo /opt/bin/mihomo; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+mp_running() { mp_state; }
+mp_stopped() {
+    local rc
+    if mp_state; then return 1; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_known() {
+    local rc
+    if mp_state; then return 0; else rc=$?; fi
+    [ "$rc" -eq 1 ]
+}
+mp_pids() {
+    mp_state || return 1
+    printf '%s\n' "$MP_PIDS"
+}
+# END MIHOMO PROCESS STATE v1
+
+txn_magi_state() {
+    local rc p exe name flags state data tail seen uncertain
+    MP_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MP_PIDS=$(pidof magitrickled 2>/dev/null); then
+            [ -n "$MP_PIDS" ] || return 2
+            seen=0
+            for p in $MP_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MP_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || return 2
+            return 0
+        else
+            rc=$?
+            MP_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/sbin/magitrickled|/opt/bin/magitrickled|*/magitrickled)
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    continue ;;
+            esac
+            # A renamed executable may still be the canonical inode.
+            for name in /opt/sbin/magitrickled /opt/bin/magitrickled; do
+                if [ "$p/exe" -ef "$name" ]; then
+                    MP_PIDS="$MP_PIDS ${p##*/}"
+                    break
+                fi
+            done
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if data=$(cat "$p/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ -d "$p" ] && uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MP_PIDS" ] && return 0
+    return 1
+}
+
+
 txn_step_services_done() {
-    ! pidof mihomo >/dev/null 2>&1 && ! pidof magitrickled >/dev/null 2>&1
+    if mp_state; then _ms=0; else _ms=$?; fi
+    if txn_magi_state; then _gs=0; else _gs=$?; fi
+    [ "$_ms" -ne 2 ] && [ "$_gs" -ne 2 ] || fail "service state UNKNOWN"
+    [ "$_ms" -eq 1 ] && [ "$_gs" -eq 1 ]
 }
 txn_step_services() {
     for svc in S99mihomo S99magitrickle; do
@@ -425,8 +615,20 @@ txn_step_opkg_done() {
 txn_step_opkg() {
     for pkg in magitrickle mihomo; do
         if printf '%s\n' "$(opkg list-installed 2>/dev/null)" | grep -Eq "^${pkg}[[:space:]]"; then
-            opkg remove "$pkg" ||
-                fail "opkg refused to remove the ledger-owned $pkg (shared consumer?)"
+            _pkg_result=0
+            opkg remove "$pkg" || _pkg_result=$?
+            # Packages may unlink their conffiles. Preserve the user's exact
+            # verified bytes at the original paths, never purge their trees.
+            for _yaml in /opt/etc/mihomo/config.yaml /opt/var/lib/magitrickle/config.yaml; do
+                if [ ! -e "$root$_yaml" ] && [ ! -L "$root$_yaml" ]; then
+                    txn_no_links "$root$_yaml"
+                    mkdir -p "${root}${_yaml%/*}" || fail "cannot retain user YAML directory"
+                    cp -p "$snap/files$_yaml" "$root$_yaml" || fail "cannot retain user YAML"
+                fi
+                cmp -s "$root$_yaml" "$snap/files$_yaml" || fail "package changed user YAML"
+            done
+            [ "$_pkg_result" -eq 0 ] || fail "opkg refused to remove the ledger-owned package"
+            txn_audit
         fi
     done
     txn_step_opkg_done || fail "owned packages remain installed"
@@ -521,6 +723,163 @@ txn_cache_verified() {
     return 0
 }
 
+
+# PREPARE seals the exact recovery inputs. Resume never trusts changed backup
+# bytes, nor absence without an ordered journal authorization. No shell eval.
+txn_seal() {
+    (cd "$snap" && sha256sum manifest.v1 READY running-config ip-policy iptables-mangle opkg-packages \
+        files/opt/etc/keenetic-auto-setup/ownership.v1 files/opt/etc/mihomo/config.yaml \
+        files/opt/var/lib/magitrickle/config.yaml files/opt/etc/crontab \
+        files/opt/etc/ndm/netfilter.d/020-bypass_wa.sh files/opt/etc/cron.5mins/mihomo_watchdog \
+        files/opt/bin/mihomo_watchdog.sh files/opt/etc/opkg/magitrickle.conf \
+        files/opt/etc/init.d/S99mihomo files/opt/etc/init.d/S99magitrickle \
+        packages/wanted packages/MANIFEST packages/*.ipk > transaction/recovery.sha256) ||
+        fail "cannot seal recovery inputs"
+}
+
+txn_absent() { [ ! -e "$1" ] && [ ! -L "$1" ]; }
+txn_no_links() {
+    _nl=$1
+    while [ "$_nl" != "$root" ] && [ -n "$_nl" ]; do
+        [ ! -L "$_nl" ] || fail "linked resource or recovery ancestor"
+        _nl=${_nl%/*}
+    done
+}
+txn_authorized() {
+    [ "$resuming" -ne 0 ] || return 1
+    awk -v s="$1" '$1 == "intent" && $2 == s {yes=1} END {exit !yes}' "$journal"
+}
+txn_recorded_done() {
+    [ "$resuming" -ne 0 ] || return 1
+    grep -qx "done $1" "$journal"
+}
+txn_journal_verified() {
+    [ "$resuming" -ne 0 ] || return 0
+    [ -f "$journal" ] && [ ! -L "$journal" ] || fail "invalid journal"
+    awk -v name="$name" -v steps="$TXN_STEPS" '
+        BEGIN {n=split(steps,a," "); i=1; active=0; bad=0}
+        NR==1 {if ($0!="KAS_UNINSTALL_JOURNAL_V1") bad=1; next}
+        NR==2 {if ($0!="begin " name) bad=1; next}
+        ended {bad=1; next}
+        $1=="interrupted" {next}
+        $1=="intent" && NF==2 && i<=n && $2==a[i] {active=1; next}
+        $1=="done" && NF==2 && active && $2==a[i] {i++; active=0; next}
+        $0=="complete" && i==n+1 && !active {ended=1; next}
+        {bad=1}
+        END {exit (bad || NR<2)}
+    ' "$journal" || fail "untrusted or unordered transaction journal"
+}
+
+txn_audit_file() {
+    _af_path=$1; _af_step=$2
+    txn_no_links "$root$_af_path"
+    [ ! -L "$root$_af_path" ] || fail "remaining resource is linked"
+    if txn_absent "$root$_af_path"; then
+        txn_authorized "$_af_step" || fail "resource missing without journal intent"
+    else
+        if [ "${3:-}" != retained ]; then
+            txn_recorded_done "$_af_step" && fail "completed resource reappeared"
+        fi
+        [ -f "$root$_af_path" ] && cmp -s "$root$_af_path" "$snap/files$_af_path" ||
+            fail "remaining owned resource drift"
+    fi
+}
+
+txn_audit() {
+    txn_journal_verified
+    [ -f "$snap/transaction/recovery.sha256" ] && [ ! -L "$snap/transaction/recovery.sha256" ] ||
+        fail "missing sealed recovery inputs; prepare a fresh snapshot"
+    # Reject linked ancestors as well as linked leaves before checksum reads.
+    for _sealed in "$snap" "$snap/transaction" "$snap/packages" "$snap/files"; do
+        txn_no_links "$_sealed"
+        [ -d "$_sealed" ] && [ ! -L "$_sealed" ] || fail "linked recovery directory"
+    done
+    for _sealed in /opt/etc/keenetic-auto-setup/ownership.v1 /opt/etc/mihomo/config.yaml \
+        /opt/var/lib/magitrickle/config.yaml /opt/etc/crontab \
+        /opt/etc/ndm/netfilter.d/020-bypass_wa.sh /opt/etc/cron.5mins/mihomo_watchdog \
+        /opt/bin/mihomo_watchdog.sh /opt/etc/opkg/magitrickle.conf \
+        /opt/etc/init.d/S99mihomo /opt/etc/init.d/S99magitrickle; do
+        txn_no_links "$snap/files$_sealed"
+    done
+    (cd "$snap" && sha256sum -c transaction/recovery.sha256 >/dev/null 2>&1) ||
+        fail "recovery inputs changed"
+    if txn_step_services_done; then :; fi  # UNKNOWN fails before mutation.
+    if txn_recorded_done services && ! txn_step_services_done; then
+        fail "owned services RUNNING after the recorded stop"
+    fi
+    for _yf in /opt/etc/mihomo/config.yaml /opt/var/lib/magitrickle/config.yaml; do
+        txn_no_links "$root$_yf"
+        [ -f "$root$_yf" ] && [ ! -L "$root$_yf" ] &&
+            cmp -s "$root$_yf" "$snap/files$_yf" || fail "user YAML drift"
+    done
+    txn_audit_file /opt/etc/keenetic-auto-setup/ownership.v1 ledger
+    txn_audit_file /opt/etc/cron.5mins/mihomo_watchdog watchdog
+    txn_audit_file /opt/bin/mihomo_watchdog.sh watchdog
+    txn_audit_file /opt/etc/ndm/netfilter.d/020-bypass_wa.sh hook
+    txn_audit_file /opt/etc/opkg/magitrickle.conf feed
+    txn_audit_file /opt/etc/init.d/S99mihomo opkg retained
+    txn_audit_file /opt/etc/init.d/S99magitrickle opkg retained
+    txn_no_links "$root/opt/etc/crontab"
+    [ -f "$root/opt/etc/crontab" ] && [ ! -L "$root/opt/etc/crontab" ] || fail "crontab unreadable"
+    if ! cmp -s "$root/opt/etc/crontab" "$snap/files/opt/etc/crontab"; then
+        txn_authorized cron || fail "crontab drift"
+        awk '
+            {norm=$0; gsub(/^[ \t]+|[ \t]+$/, "", norm); gsub(/[ \t]+/, " ", norm)}
+            norm != "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog" {print}
+        ' "$snap/files/opt/etc/crontab" | cmp -s - "$root/opt/etc/crontab" || fail "foreign crontab drift"
+    elif txn_recorded_done cron; then fail "completed cron reappeared"; fi
+
+    _ar=$(ndmc -c 'show running-config' 2>/dev/null) || fail "running-config UNKNOWN"
+    _ar=$(printf '%s\n' "$_ar" | tr -d '\r')
+    _pol=0; _prx=0
+    if ! printf '%s\n' "$_ar" | grep -qx 'ip policy bypass_wa'; then
+        txn_authorized policy || fail "policy disappeared without intent"
+        _pol=1
+    elif txn_recorded_done policy; then fail "completed policy reappeared"; fi
+    if ! printf '%s\n' "$_ar" | grep -qx 'interface Proxy0'; then
+        txn_authorized proxy || fail "Proxy0 disappeared without intent"
+        _prx=1
+    elif txn_recorded_done proxy; then fail "completed Proxy0 reappeared"; fi
+    _expected=$(awk -v pol="$_pol" -v prx="$_prx" '
+        (pol && $0=="ip policy bypass_wa") || (prx && $0=="interface Proxy0") {skip=1; next}
+        skip && /^!$/ {skip=0; next}
+        !skip {print}
+    ' "$snap/running-config")
+    [ "$_ar" = "$_expected" ] || fail "remaining configuration or dependency drift"
+    _ap=$(ndmc -c 'show ip policy' 2>/dev/null) || fail "policy inventory UNKNOWN"
+    if [ "$_pol" -eq 0 ]; then
+        printf '%s\n' "$_ap" | cmp -s - "$snap/ip-policy" || fail "policy inventory drift"
+    fi
+    _am=$(iptables -t mangle -S 2>/dev/null) || fail "Netfilter UNKNOWN"
+    # Only a PREFIX of the four exact owned deletions is legal mid-step.
+    _match=0
+    for _cut in 0 1 2 3 4 5; do
+        [ "$_cut" -eq 0 ] || txn_authorized netfilter || continue
+        txn_recorded_done netfilter && [ "$_cut" -ne 5 ] && continue
+        _em=$(awk -v cut="$_cut" '
+            /^-A PREROUTING .* -j _CUST_BYPASS_WA_$/ {if(cut>=1) next}
+            /^-A _CUST_BYPASS_WA_ / {r++; if(cut>=r+1) next}
+            /^-N _CUST_BYPASS_WA_$/ {if(cut==5) next}
+            {print}
+        ' "$snap/iptables-mangle")
+        if [ "$_am" = "$_em" ]; then _match=1; break; fi
+    done
+    [ "$_match" -eq 1 ] || fail "remaining Netfilter or foreign rules drift"
+    _apk=$(opkg list-installed 2>/dev/null) || fail "package inventory UNKNOWN"
+    _match=0
+    for _cut in 0 1 2; do
+        [ "$_cut" -eq 0 ] || txn_authorized opkg || continue
+        txn_recorded_done opkg && [ "$_cut" -ne 2 ] && continue
+        _ep=$(awk -v cut="$_cut" '
+            $1=="magitrickle" && cut>=1 {next}
+            $1=="mihomo" && cut>=2 {next}
+            {print}
+        ' "$snap/opkg-packages")
+        if [ "$_apk" = "$_ep" ]; then _match=1; break; fi
+    done
+    [ "$_match" -eq 1 ] || fail "remaining package inventory drift"
+}
+
 # The whole-system already-removed audit for idempotent re-runs.
 txn_all_steps_done() {
     for step in $TXN_STEPS; do
@@ -581,17 +940,21 @@ printf '%s\n' "$packages" | cmp -s - "$snap/opkg-packages" ||
 # Fail closed when chain is referenced from any unexpected source.
 printf '%s\n' "$mangle" | awk '
     $1 == "-N" && $2 == "_CUST_BYPASS_WA_" { names++; next }
-    $1 == "-A" && $2 == "PREROUTING" && /-j _CUST_BYPASS_WA_/ { jumps++; next }
+    $1 == "-A" && $2 == "PREROUTING" && /-j _CUST_BYPASS_WA_/ {
+        if ($0 !~ /^-A PREROUTING -m mark --mark 0x0(\/0xffffffff)? -j _CUST_BYPASS_WA_$/) bad=1
+        jumps++; next
+    }
     $1 == "-A" && $2 == "_CUST_BYPASS_WA_" {
-        if (index($0, "--dports 1400,3478,3482") == 0) exit 1
-        if ($0 ~ / -j MARK( |$)/) mark++
-        else if ($0 ~ / -j CONNMARK( |$)/) connmark++
-        else if ($0 ~ / -j RETURN( |$)/) ret++
-        else exit 1
+        rule=$0; sub(/ -m udp /," ",rule)
+        prefix="^-A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j "
+        if (rule ~ (prefix "MARK --set-xmark 0x[0-9a-fA-F]+/0xffffffff$")) {mark++; if (connmark || ret) bad=1}
+        else if (rule ~ (prefix "CONNMARK --save-mark( --nfmask 0xffffffff --ctmask 0xffffffff)?$")) {connmark++; if(mark!=1 || ret) bad=1}
+        else if (rule ~ (prefix "RETURN$")) {ret++; if(mark!=1 || connmark!=1) bad=1}
+        else bad=1
         next
     }
-    /_CUST_BYPASS_WA_/ { exit 1 }
-    END { if (names != 1 || jumps != 1 || mark != 1 || connmark != 1 || ret != 1) exit 1 }
+    /_CUST_BYPASS_WA_/ { bad=1 }
+    END { if (bad || names != 1 || jumps != 1 || mark != 1 || connmark != 1 || ret != 1) exit 1 }
 ' || fail "KAS mangle chain has unexpected/foreign rules"
 
 fi
@@ -619,13 +982,14 @@ mv -f "$stage" "$txn/prepare.v1" ||
     fail "cannot atomically commit preparation marker"
 printf '[PASS] KAS uninstall transaction prepared: %s\n' "$name"
 printf '[INFO] Lifecycle lock acquired/released; no router settings or packages changed\n'
-printf '[BLOCKED] Actual --remove/--purge still require fault-tested rollback engine\n'
+printf '[INFO] Experimental --remove requires separate acceptance; --purge is NOT_IMPLEMENTED\n'
 # Rollback cache (PREPARE only): the exact installed versions must be
 # locally restorable, or a future --remove refuses to start. Dependencies
 # are NOT removed by --remove, so only the two owned packages are cached.
 if [ "$mode" = --prepare ]; then
     packages="$snap/packages"
     if txn_build_cache; then
+        txn_seal
         printf '[PASS] Rollback cache verified: exact installed .ipk stored with checksums
 '
     else
@@ -705,38 +1069,17 @@ if [ "$mode" = --remove ]; then
         tail -n 1 "$journal" | grep -qx 'complete' && resuming=2
     fi
 
+    if [ "$resuming" -eq 0 ]; then
+        txn_cache_verified || fail "rollback cache missing or not the installed versions"
+    fi
+    txn_audit
     if [ "$resuming" = 2 ]; then
-        # A completed transaction re-run must be a no-op PASS, never a replay.
-        txn_all_steps_done ||
-            fail "journal says complete but owned resources remain; manual recovery required"
-        printf '[PASS] KAS already removed (idempotent re-run); nothing changed\n'
-        printf '[INFO] Rollback data retained in %s\n' "$snap"
+        txn_all_steps_done || fail "completed transaction has remaining resources"
+        printf '[PASS] KAS already fully removed (idempotent re-run); nothing changed\n'
         exit 0
     fi
-
-    if [ "$resuming" -ne 1 ]; then
-        # Fresh removal: exact-version rollback cache must verify BEFORE any
-        # mutation. Without restorable packages the transaction refuses.
-        txn_cache_verified ||
-            fail "rollback cache missing or not the installed versions; re-run --prepare with the feeds reachable"
-        txn_all_steps_done &&
-            fail "system already matches the removed state; nothing to do"
-    else
+    if [ "$resuming" -ne 0 ]; then
         printf '[INFO] Resuming an interrupted removal (journal present); auditing state\n'
-        # The interrupted steps must form a prefix: done steps may not follow
-        # undone steps; anything else is an untrusted hybrid state.
-        _seen_undone=0
-        for step in $TXN_STEPS; do
-            # `services` leaves no observable trace (already-stopped is a
-            # legal pre-state); it is idempotent and simply re-runs.
-            if [ "$step" = services ]; then continue; fi
-            if txn_step_done "$step"; then
-                [ "$_seen_undone" -eq 0 ] ||
-                    fail "inconsistent removal state at step $step; manual recovery required"
-            else
-                _seen_undone=1
-            fi
-        done
     fi
 
     REMOVE_ACTIVE=1
@@ -746,16 +1089,15 @@ if [ "$mode" = --remove ]; then
         txn_journal_line begin "$name"
     fi
 
+    resuming=1
     for step in $TXN_STEPS; do
-        if txn_step_done "$step"; then
-            [ "$resuming" -eq 1 ] &&
-                printf '[INFO] step %s already complete; skipping\n' "$step"
-            continue
-        fi
+        txn_audit
+        if txn_recorded_done "$step"; then continue; fi
         txn_journal_line intent "$step"
-        txn_step_run "$step"
+        if ! txn_step_done "$step"; then txn_step_run "$step"; fi
         txn_step_done "$step" || fail "step $step did not reach its expected state"
         txn_journal_line done "$step"
+        txn_audit
         txn_fault_check "$step"
     done
 

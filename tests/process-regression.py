@@ -14,7 +14,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ['install.sh', 'update-mihomo.sh', 'config-import.sh',
          'migrate-mihomo-mips.sh', 'migrate-mihomo-tun.sh',
-         'mihomo-doctor.sh', 'mihomo-watchdog.sh']
+         'mihomo-doctor.sh', 'mihomo-watchdog.sh', 'uninstall-transaction.sh']
 
 
 def source(name):
@@ -41,6 +41,9 @@ def main():
     helper = block(source(FILES[0]))
     for name in FILES:
         assert block(source(name)) == helper, name
+    magi = function(source('uninstall-transaction.sh'), 'txn_magi_state')
+    expected = function(helper, 'mp_state').replace('mp_state()', 'txn_magi_state()').replace('mihomo', 'magitrickled')
+    assert magi == expected, 'MagiTrickle must keep the same tri-state evidence protocol'
     count = 0
     for shell in [['sh'], ['busybox', 'ash']]:
         n = 0
@@ -52,6 +55,7 @@ def main():
 
         for output, rc, want in [('123', 0, 0), ('', 1, 1), ('', 127, 2), ('', 0, 2), ('123 456', 0, 0), ('garbage', 0, 2), ('   ', 0, 2)]:
             check(f'pidof {output!r} rc={rc}', helper+f'\npidof() {{ echo "{output}"; return {rc}; }}\nmp_state\n', want)
+            check(f'MagiTrickle pidof {output!r} rc={rc}', magi+f'\npidof() {{ echo "{output}"; return {rc}; }}\ntxn_magi_state\n', want)
         with tempfile.TemporaryDirectory(prefix='mihomo-process-') as directory:
             lab = Path(directory)
             proc = lab / 'proc'; proc.mkdir()
@@ -63,6 +67,8 @@ def main():
             # Mask only command availability; keep production fallback intact.
             h = helper.replace('command -v pidof', 'false').replace('/proc/', str(proc)+'/')
             check('no pidof, proven stopped', h+'\nmp_state\n', 1)
+            mh = magi.replace('command -v pidof', 'false').replace('/proc/', str(proc)+'/')
+            check('MagiTrickle no pidof, proven stopped', mh+'\ntxn_magi_state\n', 1)
             exe = lab / 'mihomo'; shutil.copy2(shutil.which('busybox'), exe)
             children = []
             try:
