@@ -1,0 +1,115 @@
+# Experimental lab. On this PR, test only changes to this file; manual runs also supported.
+# OpenWrt boot/reset smoke is NOT a KeeneticOS/KAS acceptance test.
+# No hardware/VPS credentials, private NAND dumps or routed connections are used.
+name: Router Emulator lab — OpenWrt boot and reset
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/router-emulator-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openwrt-smoke:
+    name: MT7981 OpenWrt boot, LAN and reset (NOT KeeneticOS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EMULATOR_VERSION: "3.8"
+      OPENWRT_VERSION: "25.12.5"
+    steps:
+      - name: Checkout KAS (read only)
+        uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mtd-utils unzip socat curl wget python3
+
+      - name: Download and verify pinned upstream emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/stavultras/router-emulator/releases/download/v$EMULATOR_VERSION"
+          mkdir -p "$RUNNER_TEMP/router-lab"
+          cd "$RUNNER_TEMP/router-lab"
+          curl -fL --retry 3 -o emulator.tar.gz "$base/Router-Emulator-$EMULATOR_VERSION-linux-x86_64.tar.gz"
+          curl -fL --retry 3 -o presets.zip "$base/Router-Emulator-$EMULATOR_VERSION-presets.zip"
+          echo '77fa6f8a6a00af1164c9e144dc2f8bda7154877271498666bb9f17355d2e74d6  emulator.tar.gz' | sha256sum -c -
+          echo 'ef98b33c7636b5e792dcb16bcd1ad54f247639fccc19e9d9662fd422954d0732  presets.zip' | sha256sum -c -
+          tar -xzf emulator.tar.gz
+          unzip -q presets.zip
+          echo "EMU_DIR=$RUNNER_TEMP/router-lab/Router-Emulator" >> "$GITHUB_ENV"
+
+      - name: Create isolated flash from official OpenWrt images
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$EMU_DIR"
+          mkdir -p work
+          tools/prepare-nand.sh cudy_wr3000p-v1 "$OPENWRT_VERSION"
+
+      - name: Boot chain smoke (vendor-neutral)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$EMU_DIR"
+          python3 tests/quick.py --limit 600 -P cudy-wr3000p-v1             --qemu="-netdev user,id=wan,restrict=on"             'BL2: @60' 'U-Boot 20@120' 'Starting kernel@240'             'Linux version@60' 'Please press Enter@480'
+
+      - name: LAN LuCI, QEMU reset, and LAN recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$EMU_DIR"
+          mkdir -p work/logs
+          ./emulator.sh -P cudy-wr3000p-v1 -w offline -l user -u none             -S work/console.sock -L work/logs > work/emulator-run.log 2>&1 &
+          pid=$!
+          cleanup() {
+            printf 'quit\n' | socat - UNIX-CONNECT:work/monitor.sock >/dev/null 2>&1 || true
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          probe_luci() {
+            local code
+            for i in $(seq 1 120); do
+              kill -0 "$pid" 2>/dev/null || { echo "Emulator exited"; return 1; }
+              code=$(curl -s -m 4 -o work/index.html -w '%{http_code}'                 http://127.0.0.1:8080/cgi-bin/luci/ || true)
+              if [[ "$code" == 200 || "$code" == 403 ]] && grep -q 'luci-static' work/index.html; then
+                return 0
+              fi
+              sleep 4
+            done
+            return 1
+          }
+          probe_luci || { echo 'FAIL: first LuCI boot'; exit 1; }
+          echo 'PASS: OpenWrt LuCI before reset'
+          count_bl2() { (grep -h -c 'BL2:' work/logs/console_*.log || true) | awk '{n+=$1} END {print n+0}'; }
+          before=$(count_bl2)
+          test "$before" -ge 1 || { echo 'FAIL: no BL2 trace'; exit 1; }
+          printf 'system_reset\n' | socat - UNIX-CONNECT:work/monitor.sock
+          reset_seen=false
+          for i in $(seq 1 90); do
+            after=$(count_bl2)
+            if [ "$after" -gt "$before" ]; then reset_seen=true; break; fi
+            sleep 2
+          done
+          [ "$reset_seen" = true ] || { echo 'FAIL: reset trace not observed'; exit 1; }
+          probe_luci || { echo 'FAIL: LuCI after QEMU reset'; exit 1; }
+          echo 'PASS: OpenWrt LuCI recovered after simulated board reset'
+
+      - name: Upload diagnostics (never use private flash images)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: router-emulator-openwrt-smoke
+          path: |
+            ${{ runner.temp }}/router-lab/Router-Emulator/work/*.log
+            ${{ runner.temp }}/router-lab/Router-Emulator/work/logs/*.log
+            ${{ runner.temp }}/router-lab/Router-Emulator/work/index.html
+          if-no-files-found: ignore
+          retention-days: 7
