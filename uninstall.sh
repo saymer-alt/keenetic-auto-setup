@@ -101,54 +101,25 @@ if [ "$MODE" = --purge ]; then
     exit 3
 fi
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd) || { printf '[ERROR] cannot resolve script directory\n' >&2; exit 2; }
-already_removed() {
-    # Every owned resource class must be provably absent; any gap means
-    # "not removed" and falls through to the strict transaction path.
-    [ "$LEDGER_VALID" -ne 0 ] && return 1
-    { [ -e "$ROOT/opt/bin/mihomo_watchdog.sh" ] || [ -L "$ROOT/opt/bin/mihomo_watchdog.sh" ]; } && return 1
-    { [ -e "$ROOT/opt/etc/cron.5mins/mihomo_watchdog" ] || [ -L "$ROOT/opt/etc/cron.5mins/mihomo_watchdog" ]; } && return 1
-    { [ -e "$ROOT/opt/etc/ndm/netfilter.d/020-bypass_wa.sh" ] || [ -L "$ROOT/opt/etc/ndm/netfilter.d/020-bypass_wa.sh" ]; } && return 1
-    if command -v opkg >/dev/null 2>&1; then
-        _pkgs=$(opkg list-installed 2>/dev/null) || return 1
-        printf '%s\n' "$_pkgs" | grep -Eq '^(mihomo|magitrickle)[[:space:]]' && return 1
-    else
-        return 1
-    fi
-    if command -v ndmc >/dev/null 2>&1; then
-        _rc=$(ndmc -c 'show running-config' 2>/dev/null | tr -d '\r') || return 1
-        printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa$|^interface Proxy0$' && return 1
-    else
-        return 1
-    fi
-    if command -v iptables >/dev/null 2>&1; then
-        iptables -t mangle -S _CUST_BYPASS_WA_ >/dev/null 2>&1 && return 1
-    else
-        return 1
-    fi
-    return 0
-}
 if [ "$MODE" = --remove ]; then
-    if already_removed; then
-        printf '[PASS] --remove: system already fully removed (idempotent no-op). Nothing changed.\n'
-        exit 0
-    fi
-    if [ "$LEDGER_VALID" -ne 1 ]; then
-        printf '[BLOCKED] --remove: no valid ownership journal; no automatic removal, no --force. Nothing changed.\n' >&2
-        exit 3
-    fi
+    # Every path, including already-removed and interrupted-after-ledger,
+    # goes through the locked journal and tri-state process audit.
     snap_name=${2:-}
     if [ -z "$snap_name" ]; then
         snap_name=$(ls -1 "$ROOT/opt/kas-uninstall-backups" 2>/dev/null |
             while IFS= read -r _cand; do
                 [ -f "$ROOT/opt/kas-uninstall-backups/$_cand/READY" ] &&
                 [ -f "$ROOT/opt/kas-uninstall-backups/$_cand/transaction/prepare.v1" ] &&
-                { printf '%s\n' "$_cand"; break; }
+                printf '%s\n' "$_cand"
             done | tail -n 1)
-        [ -n "$snap_name" ] || {
-            printf '[BLOCKED] --remove: no prepared snapshot found; run uninstall-transaction.sh --prepare first.\n' >&2
-            exit 3
-        }
-        printf '[INFO] --remove: using latest prepared snapshot %s\n' "\$snap_name"
+    fi
+    if [ -z "$snap_name" ]; then
+        if [ "$LEDGER_VALID" -ne 1 ]; then
+            printf '[BLOCKED] --remove: no valid ownership journal; nothing changed.\n' >&2
+        else
+            printf '[BLOCKED] --remove: no prepared snapshot found; run --prepare first.\n' >&2
+        fi
+        exit 3
     fi
     exec sh "$dir/uninstall-transaction.sh" --remove "$snap_name"
 fi
