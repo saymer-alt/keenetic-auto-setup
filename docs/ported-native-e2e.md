@@ -3,7 +3,7 @@
 The caller in `.github/workflows/ported-native-e2e.yml` executes the actual PR
 scripts in WR3000P Keenetic Ported with genuine EXT4 Entware. The reusable
 laboratory and its source are pinned to one full Router Emulator commit:
-`4002625d03027d83e8215ff6f6143a783b2e0022` — upstream 3.9 with the full lab
+`44c6cab9d50fcd33147ac0a3a193a5a985710796` — upstream 3.9 with the full lab
 integration (PRs #1–#3), the patch-series check (PR #5) and the netfilter
 settle probe-retry fix (PR #7). Dependencies are frozen separately; a KAS
 change does not silently upgrade them.
