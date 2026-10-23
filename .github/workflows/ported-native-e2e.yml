@@ -1,0 +1,24 @@
+name: Keenetic Ported native KAS E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      kas_ref:
+        description: Full KAS commit SHA (empty selects this dispatch commit)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ported-kas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-kas:
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@4002625d03027d83e8215ff6f6143a783b2e0022
+    with:
+      emulator_ref: 4002625d03027d83e8215ff6f6143a783b2e0022
+      kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
