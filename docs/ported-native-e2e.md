@@ -2,8 +2,11 @@
 
 The caller in `.github/workflows/ported-native-e2e.yml` executes the actual PR
 scripts in WR3000P Keenetic Ported with genuine EXT4 Entware. The reusable
-laboratory and its source are pinned to one full Router Emulator commit.
-Dependencies are frozen separately; a KAS change does not silently upgrade them.
+laboratory and its source are pinned to one full Router Emulator commit:
+`4002625d03027d83e8215ff6f6143a783b2e0022` — upstream 3.9 with the full lab
+integration (PRs #1–#3), the patch-series check (PR #5) and the netfilter
+settle probe-retry fix (PR #7). Dependencies are frozen separately; a KAS
+change does not silently upgrade them.
 
 After owner review/merge of the boot fix, laboratory and this caller, every KAS
 PR runs on GitHub-hosted Ubuntu without the owner's computer or a physical router.
@@ -16,7 +19,11 @@ ROLLBACK and UNINSTALL are independent gates. Expected guard rejection can make
 an execution job green while the report remains BLOCKED. In the frozen baseline,
 `uninstall.sh --remove` has no native removal implementation and exits 3; the lab
 verifies refusal and unchanged state, and never substitutes manual deletion or
-fixture rehearsal. This is not full uninstall acceptance.
+fixture rehearsal. This is not full uninstall acceptance. The real transactional `--remove`
+(KAS PR #215) is exercised by dispatching this caller with `kas_ref` set to
+that feature SHA; its gate contract accepts the allocator-rendered
+`ip global` index (32767 on Ported), so the transaction gate can PASS
+virtually before any hardware run.
 
 The first run builds only AArch64 QEMU. Cache keys cover the exact patch series;
 run dispatch once on the default branch after merge to seed a cache reusable by
