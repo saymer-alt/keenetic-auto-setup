@@ -70,8 +70,13 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         calls = logfile.read_text().splitlines() if logfile.exists() else []
         if mode in ("--remove", "--purge"):
             assert p.returncode == 3 and "[BLOCKED]" in p.stderr, p
-            if ledger_mode in ('valid','valid_foreign'):
-                assert "creation journal verified" in p.stderr
+            if mode == "--purge":
+                assert "NOT_IMPLEMENTED" in p.stderr
+            elif ledger_mode in ('valid','valid_foreign'):
+                # valid ledger, no prepared transaction: refusal names the
+                # missing prepared snapshot (the engine contract changed
+                # from "not implemented" to "delegated transactional remove")
+                assert "no prepared snapshot found" in p.stderr
             else:
                 assert "no valid ownership journal" in p.stderr
             assert not calls, calls

@@ -78,10 +78,28 @@ seen_socks=0
 seen_udp=0
 seen_up=0
 seen_name=0
+seen_global=0
 while IFS= read -r line; do
     case "$line" in
         '    description "mihomo t2s0"') seen_name=1 ;;
-        '    security-level public'|'    ip global 350') ;;
+        '    security-level public') ;;
+        '    ip global '*)
+            # install.sh sets `ip global auto`; the rendered index is chosen
+            # by the NDMS allocator per device/firmware (350 on the KN-1010
+            # hardware fixture, 32767 on Ported 5.1.8). The number is not an
+            # ownership signal: ownership is the ledger claim plus the
+            # canonical description/socks5/udp/upstream/up signature and the
+            # single-consumer scan above. Require exactly one rendered
+            # positive integer instead of one hard-coded value; everything
+            # else about the block stays byte-strict, and the snapshot
+            # comparison still catches any post-snapshot drift.
+            [ "$seen_global" -eq 0 ] || fail "duplicate ip global directive"
+            _ig=${line#'    ip global '}
+            case "$_ig" in
+                ''|*[!0-9]*) fail "ip global index is not a rendered integer" ;;
+            esac
+            [ "$_ig" -gt 0 ] || fail "ip global index must be positive"
+            seen_global=1 ;;
         '    proxy protocol socks5') seen_socks=1 ;;
         '    proxy socks5-udp') seen_udp=1 ;;
         '    proxy upstream 127.0.0.1 7890') seen_upstream=1 ;;
@@ -91,7 +109,7 @@ while IFS= read -r line; do
 done <<_PROXY
 $proxy_block
 _PROXY
-[ "$seen_name$seen_socks$seen_udp$seen_upstream$seen_up" = 11111 ] ||
+[ "$seen_name$seen_socks$seen_udp$seen_upstream$seen_up$seen_global" = 111111 ] ||
     fail "owned Proxy0 no longer matches canonical signature"
 
 # The policy is journal-owned, but only the original simple signature is
