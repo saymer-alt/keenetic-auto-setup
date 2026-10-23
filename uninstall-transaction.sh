@@ -8,6 +8,9 @@ export LC_ALL=C
 mode=${1:-}
 name=${2:-}
 [ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare|--remove SNAPSHOT_NAME" >&2; exit 2; }
+case "$name" in
+    ''|*[!0-9-]*) echo '[BLOCKED] invalid snapshot name' >&2; exit 3 ;;
+esac
 printf '%s\n' "$name" | grep -Eq '^[0-9]{8}-[0-9]{6}-[0-9]+$' ||
     { echo '[BLOCKED] invalid snapshot name' >&2; exit 3; }
 case "$mode" in

@@ -539,6 +539,11 @@ for shell in SHELLS:
 
 # ---- 9. gate: relaxed ip global contract -------------------------------
 for shell in SHELLS:
+    for bad_name in ('../outside', '20261023-000000-1\n/../outside', '20261023-000000-1\n'):
+        p=subprocess.run(shell+[str(BASE/'uninstall-transaction.sh'),'--remove',bad_name],
+                         capture_output=True,text=True,timeout=5)
+        assert p.returncode==3 and 'invalid snapshot name' in p.stderr,(p.stdout,p.stderr)
+    print('[PASS]',shell,'whole-input snapshot name validation before journal lookup')
     for label, ip_global, expect_ok in (
             ("allocator 350", PROXY_350, True),
             ("allocator 32767 (Ported)", PROXY_32767, True),
