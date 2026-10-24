@@ -492,6 +492,56 @@ txn_fault_check() {
 
 # Exact-version rollback cache. Failures leave no partial trust: the caller
 # downgrades to REVIEW and --remove refuses to start without a full cache.
+# Two independent ways to obtain each .ipk, most portable first:
+#   1. `opkg download` (present on some builds only);
+#   2. opkg's own cached feed lists (/opt/var/opkg/lists): find the stanza
+#      whose Version equals the installed one, take its Filename: entry and
+#      fetch <feed-url>/<filename> with curl. This is the same index opkg
+#      itself used to install the running version.
+txn_fetch_ipk() {  # $1=pkg $2=ver  (downloads into $snap/packages)
+    _pkg=$1
+    _ver=$2
+    if (cd "$snap/packages" && opkg download "$_pkg" >/dev/null 2>&1); then
+        return 0
+    fi
+    command -v curl >/dev/null 2>&1 || { printf '[INFO] rollback cache: curl unavailable for %s\n' "$_pkg"; return 1; }
+    _found=''
+    for _list in "$root"/opt/var/opkg/lists/*; do
+        [ -f "$_list" ] && [ ! -L "$_list" ] || continue
+        # Decide in END only: an `exit` in the body still runs END on mawk,
+        # which printed the filename twice and corrupted the fetch URL.
+        _hit=$(awk '
+            BEGIN { p = v = f = hit = "" }
+            $1 == "Package:" {
+                if (p != "" && p == pkg && v == ver && f != "") hit = f
+                p = $2; v = ""; f = ""
+            }
+            $1 == "Version:" && p != "" { v = $2 }
+            $1 == "Filename:" && p != "" { f = $2 }
+            END {
+                if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f
+                if (hit != "") print hit
+            }
+        ' pkg="$_pkg" ver="$_ver" "$_list")
+        [ -n "$_hit" ] || continue
+        _feed=$(awk -v list="$(basename "$_list")" '
+            $1 == "src" || $1 == "src/gz" { if ($2 == list) { print $3; exit } }
+        ' "$root"/opt/etc/opkg/*.conf 2>/dev/null)
+        [ -n "$_feed" ] || { printf '[INFO] rollback cache: feed URL for %s not found\n' "$_list"; continue; }
+        case "$_feed" in
+            */) ;;
+            *) _feed="$_feed/" ;;
+        esac
+        if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_hit" -O); then
+            return 0
+        fi
+        printf '[INFO] rollback cache: feed fetch failed for %s %s\n' "$_pkg" "$_ver"
+    done
+    [ -n "$_found" ] && return 0
+    printf '[INFO] rollback cache: no feed list carries %s %s\n' "$_pkg" "$_ver"
+    return 1
+}
+
 txn_build_cache() {
     rm -rf "$snap/packages"
     (umask 077; mkdir "$snap/packages") || return 1
@@ -500,9 +550,9 @@ txn_build_cache() {
         ver=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1 == p { print $3 }')
         case "$ver" in ''|*[!A-Za-z0-9.+~-]*) return 1 ;; esac
         printf '%s %s\n' "$pkg" "$ver" >> "$snap/packages/wanted" || return 1
-        (cd "$snap/packages" && opkg download "$pkg" >/dev/null 2>&1) || return 1
+        txn_fetch_ipk "$pkg" "$ver" || return 1
         count=$(find "$snap/packages" -maxdepth 1 -name "${pkg}_${ver}_*.ipk" | wc -l)
-        [ "$count" -eq 1 ] || return 1
+        [ "$count" -eq 1 ] || { printf '[INFO] rollback cache: %s %s .ipk not found after fetch\n' "$pkg" "$ver"; return 1; }
     done
     (cd "$snap/packages" && sha256sum ./*.ipk > MANIFEST) || return 1
     return 0

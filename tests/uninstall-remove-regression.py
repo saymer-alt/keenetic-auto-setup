@@ -134,12 +134,28 @@ remove)
     grep -v "^$2 " "$S/installed" > "$S/installed.new" && mv "$S/installed.new" "$S/installed"
     ;;
 download)
-    if [ -s "$KAS_FAKE_STATE/download_broken" ]; then exit 1; fi
+    if [ -s "$KAS_FAKE_STATE/download_broken" ] || [ -s "$KAS_FAKE_STATE/download_fail" ]; then exit 1; fi
     ver=$(awk -v p="$2" '$1 == p { print $3 }' "$S/installed")
     [ -n "$ver" ] || exit 1
     printf 'fixture-ipk:%s:%s\\n' "$2" "$ver" > "${2}_${ver}_aarch64.ipk"
     ;;
 *) exit 40 ;;
+esac
+"""
+
+CURL = """#!/bin/sh
+S=${KAS_FAKE_STATE:?}
+for arg in "$@"; do
+    case "$arg" in
+        https://example.invalid/*) url=$arg ;;
+    esac
+done
+[ -n "$url" ] || exit 1
+fn=${url##*/}
+case "$fn" in
+    mihomo_1.19.33-2_aarch64.ipk) printf 'fixture-ipk:mihomo:1.19.33-2' > "$PWD/$fn" ;;
+    magitrickle_0.8.2-1_aarch64.ipk) printf 'fixture-ipk:magitrickle:0.8.2-1' > "$PWD/$fn" ;;
+    *) exit 1 ;;
 esac
 """
 
@@ -180,10 +196,15 @@ def setup(td, ip_global=PROXY_350, extra_cron="", foreign_mangle=True):
     (state / "installed").write_text("mihomo - 1.19.33-2\nmagitrickle - 0.8.2-1\ncurl - 8.0.0\n")
     (state / "pids").mkdir()
     (state / "ndmc.log").write_text("")
+    lists = root / "opt/var/opkg/lists"
+    lists.mkdir(parents=True)
+    (lists / "magitrickle").write_text(
+        "Package: mihomo\nVersion: 1.19.33-2\nFilename: mihomo_1.19.33-2_aarch64.ipk\nSize: 1\n\n"
+        "Package: magitrickle\nVersion: 0.8.2-1\nFilename: magitrickle_0.8.2-1_aarch64.ipk\nSize: 1\n\n")
 
     toolbin = td / "bin"
     toolbin.mkdir(exist_ok=True)
-    for name, script in {"ndmc": NDMC, "iptables": IPTABLES, "opkg": OPKG, "pidof": PIDOF}.items():
+    for name, script in {"ndmc": NDMC, "iptables": IPTABLES, "opkg": OPKG, "pidof": PIDOF, "curl": CURL}.items():
         p = toolbin / name
         p.write_text(script)
         p.chmod(0o755)
@@ -294,6 +315,8 @@ for shell in SHELLS:
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-nocache-") as temp:
         td = Path(temp)
         root, state, files, env = setup(td)
+        import shutil as _sh
+        _sh.rmtree(root / "opt/var/opkg/lists")  # break the feed fallback too
         name = prepared_snapshot(shell, root, state, env, want_cache=False)
         before = digest(root, state)
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
@@ -379,6 +402,21 @@ for shell in SHELLS:
         assert "_CUST_BYPASS_WA_" not in (state / "mangle").read_text()
         assert FOREIGN_RULE in (state / "mangle").read_text()
         print("[PASS]", shell, "mid-step netfilter state recovers by audit")
+
+    # ---- 8b. rollback cache via the feed fallback when download is broken --
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-feed-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        (state / "download_fail").write_text("1")
+        name = prepared_snapshot(shell, root, state, env)
+        manifest = root / f"opt/kas-uninstall-backups/{name}/packages/MANIFEST"
+        assert manifest.is_file(), "feed fallback must build the cache"
+        body = manifest.read_text()
+        assert "mihomo_1.19.33-2_aarch64.ipk" in body and "magitrickle_0.8.2-1_aarch64.ipk" in body
+        p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        assert "mihomo" not in (state / "installed").read_text()
+        print("[PASS]", shell, "rollback cache built via opkg feed fallback")
 
 # ---- 9. gate: relaxed ip global contract -------------------------------
 for shell in SHELLS:

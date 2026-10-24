@@ -148,7 +148,7 @@ if [ "$MODE" = --remove ]; then
             printf '[BLOCKED] --remove: no prepared snapshot found; run uninstall-transaction.sh --prepare first.\n' >&2
             exit 3
         }
-        printf '[INFO] --remove: using latest prepared snapshot %s\n' "\$snap_name"
+        printf '[INFO] --remove: using latest prepared snapshot %s\n' "$snap_name"
     fi
     exec sh "$dir/uninstall-transaction.sh" --remove "$snap_name"
 fi
