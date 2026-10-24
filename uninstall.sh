@@ -116,7 +116,13 @@ already_removed() {
     fi
     if command -v ndmc >/dev/null 2>&1; then
         _rc=$(ndmc -c 'show running-config' 2>/dev/null | tr -d '\r') || return 1
-        printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa$|^interface Proxy0$' && return 1
+        printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa$' && return 1
+        # The owned proxy is whatever the (now-removed) ledger claimed; a
+        # FOREIGN ProxyN (e.g. to 1081) must not stop --remove from
+        # recognizing an already-removed system. A residual OWNED bridge
+        # still fails this audit through its 7890 upstream signature.
+        printf '%s\n' "$_rc" | grep -Eq '^interface Proxy[0-9]+$' || return 0
+        printf '%s\n' "$_rc" | grep -Eq 'proxy upstream 127\.0\.0\.1 7890' && return 1
     else
         return 1
     fi
