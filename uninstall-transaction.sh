@@ -430,17 +430,37 @@ txn_step_policy() {
     fi
 }
 
+# The owned proxy interface is the ledger claim (Proxy0 on a clean
+# install, Proxy1 beside a foreign Proxy0). Recorded in the journal at
+# begin so predicates keep working after the ledger itself is removed.
+txn_owned_proxy() {
+    if [ -f "$journal" ] && [ ! -L "$journal" ]; then
+        _tp=$(awk '$1 == "owned-proxy" { print $2; exit }' "$journal")
+        case "$_tp" in
+            Proxy[0-9]) printf '%s' "$_tp"; return 0 ;;
+        esac
+    fi
+    _tp=$(awk -F'|' '$1 == "owned" && $2 == "proxy" { print $3; exit }' \
+        "$root/opt/etc/keenetic-auto-setup/ownership.v1" 2>/dev/null)
+    case "$_tp" in
+        Proxy[0-9]) printf '%s' "$_tp"; return 0 ;;
+    esac
+    return 1
+}
+
 txn_proxy_present() {
-    ndmc -c 'show running-config' 2>/dev/null | tr -d '\r' | grep -q '^interface Proxy0$'
+    _own=$(txn_owned_proxy) || fail 'cannot resolve the owned proxy interface'
+    ndmc -c 'show running-config' 2>/dev/null | tr -d '\r' | grep -q "^interface $_own$"
 }
 txn_step_proxy_done() { ! txn_proxy_present; }
 txn_step_proxy() {
+    _own=$(txn_owned_proxy) || fail 'cannot resolve the owned proxy interface'
     if txn_proxy_present; then
-        ndmc -c 'no interface Proxy0' >/dev/null 2>&1 ||
-            fail "ndmc rejected removal of the owned Proxy0 interface"
+        ndmc -c "no interface $_own" >/dev/null 2>&1 ||
+            fail "ndmc rejected removal of the owned $_own interface"
     fi
     if txn_proxy_present; then
-        fail "owned Proxy0 still present after removal"
+        fail "owned $_own still present after removal"
     fi
     ndmc -c 'system configuration save' >/dev/null 2>&1 ||
         fail "cannot persist the Keenetic configuration after teardown"
@@ -874,6 +894,8 @@ if [ "$mode" = --remove ]; then
         : > "$journal" || fail "cannot create transaction journal"
         printf 'KAS_UNINSTALL_JOURNAL_V1\n' >> "$journal"
         txn_journal_line begin "$name"
+        _own_proxy=$(txn_owned_proxy) || fail "cannot resolve the owned proxy interface"
+        txn_journal_line owned-proxy "$_own_proxy"
     fi
 
     for step in $TXN_STEPS; do

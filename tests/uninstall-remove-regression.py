@@ -91,9 +91,10 @@ case "$2" in
         { print }
     ' "$S/running-config" > "$S/running-config.new" && mv "$S/running-config.new" "$S/running-config"
     ;;
-'no interface Proxy0')
-    awk '
-        /^interface Proxy0$/ { skip=1; next }
+'no interface Proxy'*)
+    _if=${2#no interface }
+    awk -v ifn="$_if" '
+        $0 == "interface " ifn { skip=1; next }
         skip && /^!/ { skip=0; next }
         skip { next }
         { print }
@@ -479,6 +480,31 @@ for shell in SHELLS:
         assert p.returncode == 0, (p.stdout, p.stderr)
         assert "canonical Proxy1" in p.stdout
         print("[PASS]", shell, "gate: foreign profile with owned Proxy1")
+
+    # ---- 8f. foreign profile full removal: foreign Proxy0 SURVIVES ---------
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-fp-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        ledger = files["opt/etc/keenetic-auto-setup/ownership.v1"].replace(
+            "owned|proxy|Proxy0", "owned|proxy|Proxy1")
+        (root / "opt/etc/keenetic-auto-setup/ownership.v1").write_text(ledger)
+        cfg = (state / "running-config").read_text()
+        cfg = cfg.replace(
+            "interface Proxy0" + chr(10) + '    description "mihomo t2s0"' + chr(10),
+            "interface Proxy0" + chr(10) + "    description lab-foreign" + chr(10) +
+            "    proxy protocol socks5" + chr(10) + "    proxy upstream 127.0.0.1 1081" + chr(10) +
+            "    down" + chr(10) + "!" + chr(10) +
+            "interface Proxy1" + chr(10) + '    description "mihomo t2s1"' + chr(10))
+        cfg = cfg.replace("    permit global Proxy0", "    permit global Proxy1")
+        (state / "running-config").write_text(cfg)
+        name = prepared_snapshot(shell, root, state, env)
+        p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        rc = (state / "running-config").read_text()
+        assert "interface Proxy0" in rc and "1081" in rc, "foreign Proxy0 must survive"
+        assert "interface Proxy1" not in rc, "owned Proxy1 must be removed"
+        assert "bypass_wa" not in rc
+        print("[PASS]", shell, "foreign profile removal preserves the foreign Proxy0")
 
 # ---- 8d. invalid snapshot names are rejected before any path use ------
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-name-") as temp:
