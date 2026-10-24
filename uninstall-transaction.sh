@@ -411,7 +411,21 @@ txn_step_services() {
     _tries=0
     while ! txn_step_services_done; do
         _tries=$((_tries + 1))
-        [ "$_tries" -le 10 ] || fail "owned services did not stop"
+        if [ "$_tries" -eq 5 ]; then
+            # one bounded direct TERM of the two OWNED daemons (exact
+            # package binary names); init-script stop alone proved
+            # insufficient on the Ported guest
+            for _daemon in mihomo magitrickled; do
+                _pids=$(pidof "$_daemon" 2>/dev/null) || _pids=""
+                if [ -n "$_pids" ]; then
+                    kill -TERM $_pids 2>/dev/null || true
+                fi
+            done
+        fi
+        if [ "$_tries" -gt 15 ]; then
+            printf '[INFO] removal: services still running after stop+TERM: mihomo=%s magitrickled=%s\n' "$(pidof mihomo 2>/dev/null | wc -w)" "$(pidof magitrickled 2>/dev/null | wc -w)"
+            fail "owned services did not stop"
+        fi
         sleep 2
     done
 }
