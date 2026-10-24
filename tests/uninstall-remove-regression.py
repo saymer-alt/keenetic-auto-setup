@@ -117,8 +117,13 @@ case "$spec" in
 '-t mangle -S PREROUTING')
     grep '^-A PREROUTING ' "$S/mangle"
     ;;
+'-t mangle -F _CUST_BYPASS_WA_')
+    grep -v '^-A _CUST_BYPASS_WA_' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
+    ;;
 '-t mangle -X _CUST_BYPASS_WA_')
-    grep -vE '_CUST_BYPASS_WA_' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
+    # real iptables refuses -X while the chain still holds rules
+    grep -q '^-A _CUST_BYPASS_WA_' "$S/mangle" && exit 1
+    grep -v '_CUST_BYPASS_WA_' "$S/mangle" > "$S/mangle.new" && mv "$S/mangle.new" "$S/mangle"
     ;;
 '-t mangle -D '*)
     target=$(printf '%s' "$spec" | sed 's/^-t mangle -D /-A /')

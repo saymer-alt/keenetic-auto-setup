@@ -355,6 +355,10 @@ txn_step_netfilter() {
             iptables -t mangle $(printf '%s\n' "$_jump" | sed 's/^-A /-D /') ||
                 fail "cannot detach the KAS PREROUTING jump"
         fi
+        # iptables refuses -X on a non-empty chain; -F of THIS chain only
+        # (never the table) removes exactly the three verified rules.
+        iptables -t mangle -F _CUST_BYPASS_WA_ ||
+            fail "cannot flush the KAS-owned chain"
         iptables -t mangle -X _CUST_BYPASS_WA_ ||
             fail "cannot remove the KAS-owned chain"
     fi
