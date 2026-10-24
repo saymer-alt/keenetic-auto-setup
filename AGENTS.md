@@ -1,5 +1,19 @@
 # AGENTS.md — keenetic-auto-setup
 
+## Owner rule 2026-10-24: SIMPLICITY-FIRST / STOP OVERENGINEERING
+
+**Applies before designing new functionality, not as permission to rewrite an active feature.**
+Cross-project decision: [saymer-alt policy PR #7](https://github.com/saymer-alt/saymer-alt/pull/7).
+KAS evidence: [uninstall retrospective #225](https://github.com/saymer-alt/keenetic-auto-setup/issues/225).
+
+- Ask first: would documentation, an existing manual path, a narrow stop/disable action, or one small script solve the real user problem? Compare **do nothing/manual**, **minimal**, **full subsystem** before implementation; minimal wins unless real risks demand more.
+- Budget new scripts, state, locks, backup/journal/cache, router RAM/storage and E2E time. If a helper becomes an independent transaction manager or takes comparable effort to the installer, **STOP expanding scope** and ask the owner to choose an architecture.
+- For uninstall distinguish **disable KAS**, **remove verified KAS-owned resources**, and **purge private/user data**. Do not mistake formatting the OPKG drive for complete KeeneticOS cleanup: it removes unrelated drive contents and may leave router configuration. Do not leave active broken network dependencies or delete foreign resources.
+- Prioritize proven ownership, user YAML protection, foreign resource preservation and safe network restoration. Do **not** automatically demand perfect rollback of arbitrary states, exact-version .ipk cache, or multi-phase resume for a minimal removal task unless specifically justified and approved.
+- Use targeted fast regression before running the full Ported QEMU E2E; after repeated equivalent expensive failures without new evidence, change the debug strategy instead of adding another defensive layer.
+- **Historical warning:** KAS PR #215/#216 and issue #179 are an **overengineering case study**, not a golden reference for other projects. Preserve code/test evidence but do not copy their structure automatically.
+- This addendum **does not interrupt** the agent's current uninstall acceptance or authorize a rewrite, merge to main/stable, release, purge, or physical testing. Architectural simplification requires a separate proposal and Owner GO.
+
 ## ⚑ Решение владельца от 2026-10-11: WORKING-FIRST / LICENSE AUDIT DEFERRED
 
 **ПРОЕКТЫ ВЕДУТСЯ В ПЕРВУЮ ОЧЕРЕДЬ ДЛЯ ЛИЧНОГО НЕКОММЕРЧЕСКОГО ИСПОЛЬЗОВАНИЯ. РЕПОЗИТОРИИ ПУБЛИЧНЫЕ.**
