@@ -78,10 +78,28 @@ seen_socks=0
 seen_udp=0
 seen_up=0
 seen_name=0
+seen_global=0
 while IFS= read -r line; do
     case "$line" in
         '    description "mihomo t2s0"') seen_name=1 ;;
-        '    security-level public'|'    ip global 350') ;;
+        '    security-level public') ;;
+        '    ip global '*)
+            # install.sh sets `ip global auto`; the rendered index is chosen
+            # by the NDMS allocator per device/firmware (350 on the KN-1010
+            # hardware fixture, 32767 on Ported 5.1.8). The number is not an
+            # ownership signal: ownership is the ledger claim plus the
+            # canonical description/socks5/udp/upstream/up signature and the
+            # single-consumer scan above. Require exactly one rendered
+            # positive integer instead of one hard-coded value; everything
+            # else about the block stays byte-strict, and the snapshot
+            # comparison still catches any post-snapshot drift.
+            [ "$seen_global" -eq 0 ] || fail "duplicate ip global directive"
+            _ig=${line#'    ip global '}
+            case "$_ig" in
+                ''|*[!0-9]*) fail "ip global index is not a rendered integer" ;;
+            esac
+            [ "$_ig" -gt 0 ] || fail "ip global index must be positive"
+            seen_global=1 ;;
         '    proxy protocol socks5') seen_socks=1 ;;
         '    proxy socks5-udp') seen_udp=1 ;;
         '    proxy upstream 127.0.0.1 7890') seen_upstream=1 ;;
@@ -91,7 +109,7 @@ while IFS= read -r line; do
 done <<_PROXY
 $proxy_block
 _PROXY
-[ "$seen_name$seen_socks$seen_udp$seen_upstream$seen_up" = 11111 ] ||
+[ "$seen_name$seen_socks$seen_udp$seen_upstream$seen_up$seen_global" = 111111 ] ||
     fail "owned Proxy0 no longer matches canonical signature"
 
 # The policy is journal-owned, but only the original simple signature is
@@ -103,22 +121,13 @@ policy_block=$(printf '%s\n' "$rc" | awk '
     inside && /^!$/ { exit }
     inside { print }
 ')
-# KeeneticOS CLI may render the interface alias instead of its underlying ID
-# (for KN-1010: "no permit global ISP" is GigabitEthernet1). Do not accept
-# an unverified alias: require one unique, correctly scoped "rename ISP" in
-# this SAME read-only running-config snapshot.
-wan_isp_alias_verified=0
-if printf '%s\n' "$rc" | awk '
-    /^interface [^[:space:]]+[[:space:]]*$/ { iface=$2; next }
-    /^![[:space:]]*$/ { iface=""; next }
-    $1 == "rename" && $2 == "ISP" {
-        count++
-        if (NF != 2 || iface != "GigabitEthernet1") bad=1
-    }
-    END { exit !(count == 1 && !bad) }
-'; then
-    wan_isp_alias_verified=1
-fi
+# The WAN-deny line is fixture configuration, not an ownership signal:
+# install.sh itself never writes it (it existed on the KN-1010 hardware
+# fixture as `no permit global GigabitEthernet1` / its ISP alias; the
+# Ported lab guest has none). Accept AT MOST ONE deny, and only of a name
+# that is provably an interface here: either a literal `interface <name>`
+# block in this same running-config read, or an alias with exactly one
+# `rename <name>` directive. Any other deny stays unrecognized and blocks.
 seen_description=0
 seen_exit=0
 seen_wan_deny=0
@@ -132,14 +141,22 @@ while IFS= read -r line; do
             [ "$seen_exit" -eq 0 ] || fail "duplicate permit global Proxy0"
             seen_exit=1
             ;;
-        '    no permit global GigabitEthernet1')
+        '    no permit global '*)
             [ "$seen_wan_deny" -eq 0 ] || fail "duplicate WAN deny"
-            seen_wan_deny=1
-            ;;
-        '    no permit global ISP')
-            [ "$wan_isp_alias_verified" -eq 1 ] ||
-                fail "bypass_wa uses ISP but unique alias to GigabitEthernet1 is unverified"
-            [ "$seen_wan_deny" -eq 0 ] || fail "duplicate WAN deny"
+            _wan=${line#'    no permit global '}
+            case "$_wan" in
+                ''|*[!A-Za-z0-9_.-]*) fail "bypass_wa WAN deny is not an interface name" ;;
+            esac
+            if printf '%s\n' "$rc" | grep -qx "interface ${_wan}"; then
+                :
+            elif printf '%s\n' "$rc" | awk -v n="$_wan" '
+                $1 == "rename" && $2 == n { c++ }
+                END { exit !(c == 1) }
+            '; then
+                :
+            else
+                fail "bypass_wa denies a name that is neither an interface nor a unique alias: unknown shape"
+            fi
             seen_wan_deny=1
             ;;
         *) fail "bypass_wa policy has an unrecognized/shared directive" ;;
@@ -147,8 +164,8 @@ while IFS= read -r line; do
 done <<_POLICY
 $policy_block
 _POLICY
-[ "$seen_description$seen_exit$seen_wan_deny" = 111 ] ||
-    fail "bypass_wa must have one description, one owned Proxy0 permit and one known WAN deny"
+[ "$seen_description$seen_exit" = 11 ] ||
+    fail "bypass_wa must have one description and one owned Proxy0 permit"
 # A separate user host/network selector may refer to this policy; that is not
 # safe to silently remove. Capture references outside the policy block.
 if printf '%s\n' "$rc" | awk '

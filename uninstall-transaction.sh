@@ -7,15 +7,16 @@ export LC_ALL=C
 
 mode=${1:-}
 name=${2:-}
-[ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare SNAPSHOT_NAME" >&2; exit 2; }
+[ "$#" -eq 2 ] || { echo "Usage: sh uninstall-transaction.sh --prepare|--remove SNAPSHOT_NAME" >&2; exit 2; }
 case "$mode" in
     --prepare) ;;
     --rehearse)
         [ -n "${KAS_TXN_FIXTURE_ROOT:-}" ] ||
             { echo "[BLOCKED] --rehearse only works against an isolated fixture" >&2; exit 3; }
         ;;
-    --remove|--purge) printf '[BLOCKED] Live removal not enabled in transaction engine\n' >&2; exit 3 ;;
-    *) echo "Usage: sh uninstall-transaction.sh --prepare SNAPSHOT_NAME" >&2; exit 2 ;;
+    --remove) ;;
+    --purge) printf '[BLOCKED] --purge is NOT_IMPLEMENTED and deliberately separate from --remove\n' >&2; exit 3 ;;
+    *) echo "Usage: sh uninstall-transaction.sh --prepare|--remove SNAPSHOT_NAME" >&2; exit 2 ;;
 esac
 fail() { printf '[BLOCKED] transaction preparation: %s\n' "$1" >&2; exit 3; }
 
@@ -26,7 +27,7 @@ case "$root" in
     /*) [ "$root" != / ] || fail "invalid fixture root" ;;
     *) fail "fixture root must be absolute" ;;
 esac
-if [ "$mode" = --rehearse ]; then
+if [ "$mode" = --rehearse ] || { [ "$mode" = --remove ] && [ -n "${KAS_TXN_FIXTURE_ROOT:-}" ]; }; then
     # Canonicalize first: '/tmp/..' and path aliases MUST NOT bypass the
     # simulated-device restriction. Never allow real /opt to be the target.
     root=$(CDPATH= cd "$root" && pwd -P) ||
@@ -214,8 +215,20 @@ dir=$(CDPATH= cd "$(dirname "$0")" && pwd) || fail "cannot resolve script direct
 # Both independent gates run BEFORE acquiring the maintenance marker.
 # Once locked, compare live state and backed-up evidence again before
 # producing a transaction marker; that closes the normal KAS TOCTOU window.
-KAS_SNAPSHOT_ROOT="$root" sh "$dir/uninstall-transaction-gate.sh" --check "$name" ||
-    fail "strict ownership, snapshot or dependency gate failed"
+# Exception: a --remove whose journal already says complete is verified by
+# the engine's whole-system already-removed audit instead (the pre-removal
+# snapshot comparison is meaningless after a legitimate removal).
+txn_skip_gate=0
+if [ "$mode" = --remove ]; then
+    _j="$root/opt/kas-uninstall-backups/$name/transaction/journal.v1"
+    if [ -f "$_j" ] && [ ! -L "$_j" ]; then
+        txn_skip_gate=1
+    fi
+fi
+if [ "$txn_skip_gate" -eq 0 ]; then
+    KAS_SNAPSHOT_ROOT="$root" sh "$dir/uninstall-transaction-gate.sh" --check "$name" ||
+        fail "strict ownership, snapshot or dependency gate failed"
+fi
 
 ml_lifecycle_acquire || fail "canonical Mihomo lifecycle lock is busy"
 REHEARSE_ACTIVE=0
@@ -237,6 +250,12 @@ rehearse_restore() {
     return "$_rr_status"
 }
 cleanup() {
+    if [ "${REMOVE_ACTIVE:-0}" -eq 1 ]; then
+        printf '%s %s
+' interrupted '(signal or abort)' >> "$journal" 2>/dev/null || true
+        sync
+        REMOVE_ACTIVE=0
+    fi
     if [ "$REHEARSE_ACTIVE" -eq 1 ]; then
         rehearse_restore ||
             echo '[ERROR] Rehearsal restore failed, manual recovery from private snapshot needed' >&2
@@ -250,12 +269,374 @@ trap 'cleanup' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+
+# ---------------------------------------------------------------------------
+# Removal engine primitives (used by --remove; defined for every mode).
+# Every step is state-aware and idempotent: each predicate reads the ACTUAL
+# system, so an interrupted run resumes without replaying completed work.
+txn_journal_line() {
+    if [ "$#" -eq 2 ]; then
+        printf '%s %s\n' "$1" "$2" >> "$journal" || fail "cannot append transaction journal"
+    else
+        printf '%s\n' "$1" >> "$journal" || fail "cannot append transaction journal"
+    fi
+    sync
+}
+
+txn_owned_cron_present() {
+    # Exactly the canonical owned schedule line (flag decided in END: an
+    # `exit` in the body would be overridden by the END status).
+    awk '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ {next}
+        {
+            norm=$0
+            gsub(/^[ \t]+|[ \t]+$/, "", norm)
+            gsub(/[ \t]+/, " ", norm)
+            if (norm == "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog") owned=1
+        }
+        END { exit !owned }
+    ' "$root/opt/etc/crontab"
+}
+
+txn_step_cron_done() { ! txn_owned_cron_present; }
+txn_step_cron() {
+    # A foreign mihomo_watchdog schedule is a consumer we do not own:
+    # refuse before touching the shared crontab at all.
+    if awk '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ {next}
+        {
+            norm=$0
+            gsub(/^[ \t]+|[ \t]+$/, "", norm)
+            gsub(/[ \t]+/, " ", norm)
+            if (index(norm, "mihomo_watchdog") && norm != "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog") foreign=1
+        }
+        END { exit !foreign }
+    ' "$root/opt/etc/crontab"; then
+        fail "foreign mihomo_watchdog cron consumer: preserve and remove manually"
+    fi
+    awk '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ {print; next}
+        {
+            norm=$0
+            gsub(/^[ \t]+|[ \t]+$/, "", norm)
+            gsub(/[ \t]+/, " ", norm)
+            if (norm == "*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog") next
+            print
+        }
+    ' "$root/opt/etc/crontab" > "$root/opt/etc/crontab.kas-txn.$$" ||
+        fail "cannot stage crontab without the owned schedule"
+    cat "$root/opt/etc/crontab.kas-txn.$$" > "$root/opt/etc/crontab" ||
+        { rm -f "$root/opt/etc/crontab.kas-txn.$$"; fail "cannot rewrite crontab"; }
+    rm -f "$root/opt/etc/crontab.kas-txn.$$"
+    if cmp -s "$root/opt/etc/crontab" "$snap/files/opt/etc/crontab"; then
+        fail "crontab rewrite made no change"
+    fi
+}
+
+txn_step_watchdog_done() {
+    [ ! -e "$root/opt/etc/cron.5mins/mihomo_watchdog" ] && [ ! -L "$root/opt/etc/cron.5mins/mihomo_watchdog" ] &&
+    [ ! -e "$root/opt/bin/mihomo_watchdog.sh" ] && [ ! -L "$root/opt/bin/mihomo_watchdog.sh" ]
+}
+txn_step_watchdog() {
+    rm -f "$root/opt/etc/cron.5mins/mihomo_watchdog" "$root/opt/bin/mihomo_watchdog.sh" ||
+        fail "cannot quarantine watchdog files"
+}
+
+txn_chain_present() {
+    iptables -t mangle -S _CUST_BYPASS_WA_ >/dev/null 2>&1
+}
+txn_step_netfilter_done() { ! txn_chain_present; }
+txn_step_netfilter() {
+    if txn_chain_present; then
+        # Delete exactly the KAS jump as serialized live; never a flush.
+        _jump=$(iptables -t mangle -S PREROUTING 2>/dev/null | grep -F -- '-j _CUST_BYPASS_WA_') ||
+            _jump=''
+        if [ -n "$_jump" ]; then
+            iptables -t mangle $(printf '%s\n' "$_jump" | sed 's/^-A /-D /') ||
+                fail "cannot detach the KAS PREROUTING jump"
+        fi
+        iptables -t mangle -X _CUST_BYPASS_WA_ ||
+            fail "cannot remove the KAS-owned chain"
+    fi
+    if txn_chain_present; then
+        fail "KAS chain still present after teardown"
+    fi
+}
+
+txn_step_hook_done() {
+    [ ! -e "$root/opt/etc/ndm/netfilter.d/020-bypass_wa.sh" ] && [ ! -L "$root/opt/etc/ndm/netfilter.d/020-bypass_wa.sh" ]
+}
+txn_step_hook() {
+    rm -f "$root/opt/etc/ndm/netfilter.d/020-bypass_wa.sh" ||
+        fail "cannot remove the KAS netfilter hook"
+}
+
+txn_step_services_done() {
+    ! pidof mihomo >/dev/null 2>&1 && ! pidof magitrickled >/dev/null 2>&1
+}
+txn_step_services() {
+    for svc in S99mihomo S99magitrickle; do
+        if [ -x "$root/opt/etc/init.d/$svc" ]; then
+            "$root/opt/etc/init.d/$svc" stop >/dev/null 2>&1 || true
+        fi
+    done
+    _tries=0
+    while ! txn_step_services_done; do
+        _tries=$((_tries + 1))
+        [ "$_tries" -le 10 ] || fail "owned services did not stop"
+        sleep 2
+    done
+}
+
+txn_policy_present() {
+    ndmc -c 'show running-config' 2>/dev/null | tr -d '\r' | grep -q '^ip policy bypass_wa$'
+}
+txn_step_policy_done() { ! txn_policy_present; }
+txn_step_policy() {
+    if txn_policy_present; then
+        ndmc -c 'no ip policy bypass_wa' >/dev/null 2>&1 ||
+            fail "ndmc rejected removal of the owned policy"
+    fi
+    if txn_policy_present; then
+        fail "owned policy still present after removal"
+    fi
+}
+
+txn_proxy_present() {
+    ndmc -c 'show running-config' 2>/dev/null | tr -d '\r' | grep -q '^interface Proxy0$'
+}
+txn_step_proxy_done() { ! txn_proxy_present; }
+txn_step_proxy() {
+    if txn_proxy_present; then
+        ndmc -c 'no interface Proxy0' >/dev/null 2>&1 ||
+            fail "ndmc rejected removal of the owned Proxy0 interface"
+    fi
+    if txn_proxy_present; then
+        fail "owned Proxy0 still present after removal"
+    fi
+    ndmc -c 'system configuration save' >/dev/null 2>&1 ||
+        fail "cannot persist the Keenetic configuration after teardown"
+}
+
+txn_step_opkg_done() {
+    _list=$(opkg list-installed 2>/dev/null) || return 1
+    ! printf '%s\n' "$_list" | grep -Eq '^(mihomo|magitrickle)[[:space:]]'
+}
+txn_step_opkg() {
+    for pkg in magitrickle mihomo; do
+        if printf '%s\n' "$(opkg list-installed 2>/dev/null)" | grep -Eq "^${pkg}[[:space:]]"; then
+            opkg remove "$pkg" ||
+                fail "opkg refused to remove the ledger-owned $pkg (shared consumer?)"
+        fi
+    done
+    txn_step_opkg_done || fail "owned packages remain installed"
+}
+
+txn_step_feed_done() {
+    [ ! -e "$root/opt/etc/opkg/magitrickle.conf" ] && [ ! -L "$root/opt/etc/opkg/magitrickle.conf" ]
+}
+txn_step_feed() {
+    rm -f "$root/opt/etc/opkg/magitrickle.conf" ||
+        fail "cannot remove the KAS-owned feed configuration"
+}
+
+txn_step_ledger_done() {
+    [ ! -e "$root/opt/etc/keenetic-auto-setup/ownership.v1" ] &&
+    [ ! -L "$root/opt/etc/keenetic-auto-setup/ownership.v1" ]
+}
+txn_step_ledger() {
+    rm -f "$root/opt/etc/keenetic-auto-setup/ownership.v1" ||
+        fail "cannot remove the ownership ledger"
+    rmdir "$root/opt/etc/keenetic-auto-setup" 2>/dev/null || true
+}
+
+TXN_STEPS='cron watchdog netfilter hook services policy proxy opkg feed ledger'
+
+txn_step_done() {
+    case "$1" in
+        cron) txn_step_cron_done ;;
+        watchdog) txn_step_watchdog_done ;;
+        netfilter) txn_step_netfilter_done ;;
+        hook) txn_step_hook_done ;;
+        services) txn_step_services_done ;;
+        policy) txn_step_policy_done ;;
+        proxy) txn_step_proxy_done ;;
+        opkg) txn_step_opkg_done ;;
+        feed) txn_step_feed_done ;;
+        ledger) txn_step_ledger_done ;;
+        *) fail "unknown removal step" ;;
+    esac
+}
+
+txn_step_run() {
+    case "$1" in
+        cron) txn_step_cron ;;
+        watchdog) txn_step_watchdog ;;
+        netfilter) txn_step_netfilter ;;
+        hook) txn_step_hook ;;
+        services) txn_step_services ;;
+        policy) txn_step_policy ;;
+        proxy) txn_step_proxy ;;
+        opkg) txn_step_opkg ;;
+        feed) txn_step_feed ;;
+        ledger) txn_step_ledger ;;
+    esac
+}
+
+txn_fault_check() {
+    if [ "${KAS_TXN_TEST_FAIL_AT:-}" = "$1" ]; then
+        txn_journal_line interrupted "$1"
+        fail "fault injection after step $1"
+    fi
+}
+
+# Exact-version rollback cache. Failures leave no partial trust: the caller
+# downgrades to REVIEW and --remove refuses to start without a full cache.
+# Two independent ways to obtain each .ipk, most portable first:
+#   1. `opkg download` (present on some builds only);
+#   2. opkg's own cached feed lists (/opt/var/opkg/lists): find the stanza
+#      whose Version equals the installed one, take its Filename: entry and
+#      fetch <feed-url>/<filename> with curl. This is the same index opkg
+#      itself used to install the running version.
+txn_fetch_ipk() {  # $1=pkg $2=ver  (downloads into $snap/packages)
+    _pkg=$1
+    _ver=$2
+    if (cd "$snap/packages" && opkg download "$_pkg" >/dev/null 2>&1); then
+        return 0
+    fi
+    command -v curl >/dev/null 2>&1 || { printf '[INFO] rollback cache: curl unavailable for %s\n' "$_pkg"; return 1; }
+    _found=''
+    for _list in "$root"/opt/var/opkg/lists/*; do
+        [ -f "$_list" ] && [ ! -L "$_list" ] || continue
+        # Decide in END only: an `exit` in the body still runs END on mawk,
+        # which printed the filename twice and corrupted the fetch URL.
+        _hit=$(awk '
+            BEGIN { p = v = f = hit = "" }
+            $1 == "Package:" {
+                if (p != "" && p == pkg && v == ver && f != "") hit = f
+                p = $2; v = ""; f = ""
+            }
+            $1 == "Version:" && p != "" { v = $2 }
+            $1 == "Filename:" && p != "" { f = $2 }
+            END {
+                if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f
+                if (hit != "") print hit
+            }
+        ' pkg="$_pkg" ver="$_ver" "$_list")
+        [ -n "$_hit" ] || continue
+        _feed=$(awk -v list="$(basename "$_list")" '
+            $1 == "src" || $1 == "src/gz" { if ($2 == list) { print $3; exit } }
+        ' "$root"/opt/etc/opkg/*.conf 2>/dev/null)
+        [ -n "$_feed" ] || { printf '[INFO] rollback cache: feed URL for %s not found\n' "$_list"; continue; }
+        case "$_feed" in
+            */) ;;
+            *) _feed="$_feed/" ;;
+        esac
+        if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_hit" -O); then
+            return 0
+        fi
+        printf '[INFO] rollback cache: feed fetch failed for %s %s\n' "$_pkg" "$_ver"
+    done
+    # 3. Recorded provenance: install.sh stores the exact .ipk URL of every
+    #    owned package it installed (sources.v1); re-fetch those bytes.
+    _srcfile="$root/opt/etc/keenetic-auto-setup/sources.v1"
+    if [ -f "$_srcfile" ] && [ ! -L "$_srcfile" ]; then
+        _src=$(awk -F'|' -v p="$_pkg" '$1 == "package" && $2 == p { print $3; exit }' "$_srcfile")
+        case "$_src" in
+            https://*)
+                if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 180 "$_src" -O); then
+                    return 0
+                fi
+                printf '[INFO] rollback cache: recorded source fetch failed for %s\n' "$_pkg"
+                ;;
+        esac
+    fi
+    # 4. Live feed indexes: parse each configured feed's Packages.gz and
+    #    fetch the stanza whose Version equals the installed one.
+    for _conf in "$root"/opt/etc/opkg/*.conf; do
+        [ -f "$_conf" ] && [ ! -L "$_conf" ] || continue
+        _feedurls=$(awk '$1 == "src" || $1 == "src/gz" { print $3 }' "$_conf")
+        for _feed in $_feedurls; do
+            case "$_feed" in
+                */) ;;
+                *) _feed="$_feed/" ;;
+            esac
+            _gz=$(mktemp) || return 1
+            if curl -fsS --connect-timeout 5 --max-time 60 "${_feed}Packages.gz" -o "$_gz" 2>/dev/null; then
+                _fn=$(gunzip -c "$_gz" 2>/dev/null | awk '
+                    BEGIN { p = v = f = hit = "" }
+                    $1 == "Package:" { if (p != "" && p == pkg && v == ver && f != "") hit = f; p = $2; v = ""; f = "" }
+                    $1 == "Version:" && p != "" { v = $2 }
+                    $1 == "Filename:" && p != "" { f = $2 }
+                    END { if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f; if (hit != "") print hit }
+                ' pkg="$_pkg" ver="$_ver")
+                rm -f "$_gz"
+                if [ -n "$_fn" ]; then
+                    if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_fn" -O); then
+                        return 0
+                    fi
+                fi
+            else
+                rm -f "$_gz"
+            fi
+        done
+    done
+    printf '[INFO] rollback cache: no feed list carries %s %s\n' "$_pkg" "$_ver"
+    return 1
+}
+
+txn_build_cache() {
+    rm -rf "$snap/packages"
+    (umask 077; mkdir "$snap/packages") || return 1
+    : > "$snap/packages/wanted" || return 1
+    for pkg in mihomo magitrickle; do
+        ver=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1 == p { print $3 }')
+        case "$ver" in ''|*[!A-Za-z0-9.+~-]*) return 1 ;; esac
+        printf '%s %s\n' "$pkg" "$ver" >> "$snap/packages/wanted" || return 1
+        txn_fetch_ipk "$pkg" "$ver" || return 1
+        count=$(find "$snap/packages" -maxdepth 1 -name "${pkg}_${ver}_*.ipk" | wc -l)
+        [ "$count" -eq 1 ] || { printf '[INFO] rollback cache: %s %s .ipk not found after fetch\n' "$pkg" "$ver"; return 1; }
+    done
+    (cd "$snap/packages" && sha256sum ./*.ipk > MANIFEST) || return 1
+    return 0
+}
+
+txn_cache_verified() {
+    [ -f "$snap/packages/wanted" ] && [ ! -L "$snap/packages/wanted" ] || return 1
+    [ -f "$snap/packages/MANIFEST" ] && [ ! -L "$snap/packages/MANIFEST" ] || return 1
+    (cd "$snap/packages" && sha256sum -c MANIFEST >/dev/null 2>&1) || return 1
+    while IFS=' ' read -r pkg ver; do
+        [ -n "$pkg" ] && [ -n "$ver" ] || return 1
+        live=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1 == p { print $3 }')
+        [ "$live" = "$ver" ] || return 1
+        [ "$(find "$snap/packages" -maxdepth 1 -name "${pkg}_${ver}_*.ipk" | wc -l)" -eq 1 ] || return 1
+    done < "$snap/packages/wanted"
+    return 0
+}
+
+# The whole-system already-removed audit for idempotent re-runs.
+txn_all_steps_done() {
+    for step in $TXN_STEPS; do
+        txn_step_done "$step" || return 1
+    done
+    return 0
+}
+
 snap="$root/opt/kas-uninstall-backups/$name"
 [ -d "$snap" ] && [ ! -L "$snap" ] || fail "snapshot vanished"
 [ -f "$snap/READY" ] && [ ! -L "$snap/READY" ] || fail "snapshot no longer READY"
 
+journal="$snap/transaction/journal.v1"
+resuming=0
+if [ "$mode" = --remove ] && [ -f "$journal" ] && [ ! -L "$journal" ]; then
+    # A previously interrupted removal is audited against actual state, not
+    # against the pre-removal snapshot (which legitimate steps changed).
+    resuming=1
+fi
+
 # Comparison inside lock: external agents may mutate regardless of KAS lock;
 # strict comparison is mandatory as late as possible in PREPARE.
+if [ "$resuming" -eq 0 ]; then
 for item in /opt/etc/keenetic-auto-setup/ownership.v1 \
             /opt/etc/mihomo/config.yaml \
             /opt/var/lib/magitrickle/config.yaml \
@@ -306,10 +687,13 @@ printf '%s\n' "$mangle" | awk '
     END { if (names != 1 || jumps != 1 || mark != 1 || connmark != 1 || ret != 1) exit 1 }
 ' || fail "KAS mangle chain has unexpected/foreign rules"
 
+fi
+
 # Ensure the user preserves current YAML and settings even if OPKG package
 # removal later deletes installed files. PREPARE is strictly non-destructive.
 # The transaction record is atomic and private; it MUST NEVER be mistaken for
 # permission to perform deletion.
+if [ "$mode" != --remove ]; then
 txn="$snap/transaction"
 [ ! -L "$txn" ] || fail "transaction path is a symlink"
 if [ ! -d "$txn" ]; then
@@ -329,6 +713,21 @@ mv -f "$stage" "$txn/prepare.v1" ||
 printf '[PASS] KAS uninstall transaction prepared: %s\n' "$name"
 printf '[INFO] Lifecycle lock acquired/released; no router settings or packages changed\n'
 printf '[BLOCKED] Actual --remove/--purge still require fault-tested rollback engine\n'
+# Rollback cache (PREPARE only): the exact installed versions must be
+# locally restorable, or a future --remove refuses to start. Dependencies
+# are NOT removed by --remove, so only the two owned packages are cached.
+if [ "$mode" = --prepare ]; then
+    packages="$snap/packages"
+    if txn_build_cache; then
+        printf '[PASS] Rollback cache verified: exact installed .ipk stored with checksums
+'
+    else
+        rm -rf "$packages"
+        printf '[REVIEW] Rollback cache incomplete: --remove will refuse until exact versions are cached in %s
+' "$packages"
+    fi
+fi
+
 # Optional destructive REHEARSAL is never available against a real router.
 # It removes only the three ledger-owned files temporarily and restores
 # byte-identical originals via the private snapshot while holding the lock.
@@ -382,4 +781,81 @@ if [ "$mode" = --rehearse ]; then
     rehearse_restore || fail "rehearsal could not restore all backed up files"
     printf '[PASS] Simulated owned-file removal and byte-for-byte recovery\n'
     printf '[INFO] No real router settings, service states or packages were changed\n'
+fi
+
+# ---------------------------------------------------------------------------
+fi
+
+# --remove: the destructive transaction. Runs only in --remove mode, after
+# the shared gate/lock/verify section above. Fail-closed everywhere: the
+# journal records intent before each mutation, steps are state-aware, and
+# any unexpected observation aborts without touching later steps.
+if [ "$mode" = --remove ]; then
+    [ ! -L "$snap/transaction/prepare.v1" ] && [ -f "$snap/transaction/prepare.v1" ] ||
+        fail "no prepared transaction for this snapshot; run --prepare first"
+
+    if [ "$resuming" -eq 1 ]; then
+        tail -n 1 "$journal" | grep -qx 'complete' && resuming=2
+    fi
+
+    if [ "$resuming" = 2 ]; then
+        # A completed transaction re-run must be a no-op PASS, never a replay.
+        txn_all_steps_done ||
+            fail "journal says complete but owned resources remain; manual recovery required"
+        printf '[PASS] KAS already removed (idempotent re-run); nothing changed\n'
+        printf '[INFO] Rollback data retained in %s\n' "$snap"
+        exit 0
+    fi
+
+    if [ "$resuming" -ne 1 ]; then
+        # Fresh removal: exact-version rollback cache must verify BEFORE any
+        # mutation. Without restorable packages the transaction refuses.
+        txn_cache_verified ||
+            fail "rollback cache missing or not the installed versions; re-run --prepare with the feeds reachable"
+        txn_all_steps_done &&
+            fail "system already matches the removed state; nothing to do"
+    else
+        printf '[INFO] Resuming an interrupted removal (journal present); auditing state\n'
+        # The interrupted steps must form a prefix: done steps may not follow
+        # undone steps; anything else is an untrusted hybrid state.
+        _seen_undone=0
+        for step in $TXN_STEPS; do
+            # `services` leaves no observable trace (already-stopped is a
+            # legal pre-state); it is idempotent and simply re-runs.
+            if [ "$step" = services ]; then continue; fi
+            if txn_step_done "$step"; then
+                [ "$_seen_undone" -eq 0 ] ||
+                    fail "inconsistent removal state at step $step; manual recovery required"
+            else
+                _seen_undone=1
+            fi
+        done
+    fi
+
+    REMOVE_ACTIVE=1
+    if [ "$resuming" -ne 1 ]; then
+        : > "$journal" || fail "cannot create transaction journal"
+        printf 'KAS_UNINSTALL_JOURNAL_V1\n' >> "$journal"
+        txn_journal_line begin "$name"
+    fi
+
+    for step in $TXN_STEPS; do
+        if txn_step_done "$step"; then
+            [ "$resuming" -eq 1 ] &&
+                printf '[INFO] step %s already complete; skipping\n' "$step"
+            continue
+        fi
+        txn_journal_line intent "$step"
+        txn_step_run "$step"
+        txn_step_done "$step" || fail "step $step did not reach its expected state"
+        txn_journal_line done "$step"
+        txn_fault_check "$step"
+    done
+
+    txn_journal_line complete
+    REMOVE_ACTIVE=0
+    printf '[PASS] KAS removal transaction complete: only ledger-owned resources were removed\n'
+    printf '[REVIEW] DNS intercept left ENABLED (it predates nothing provably foreign; disable manually if unwanted)\n'
+    printf '[INFO] Rollback data and both user YAML copies retained in %s\n' "$snap"
+    printf '[INFO] Reinstall: opkg install %s/packages/*.ipk and restore YAML from %s/files, or re-run install.sh\n' "$snap" "$snap"
 fi

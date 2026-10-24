@@ -243,15 +243,46 @@ sh uninstall.sh --check
 При успешной проверке журнала `--check` показывает записи `RECORDED`, но ничего не удаляет.
 Аудитор не выводит содержимое пользовательского YAML и его секреты.
 
-## Блокирующие режимы
+## Режимы удаления
 
 ~~~sh
-sh uninstall.sh --remove
+sh uninstall.sh --check
+sh uninstall.sh --plan
+sh uninstall.sh --remove [SNAPSHOT]
 sh uninstall.sh --purge
 ~~~
 
-Сейчас оба режима возвращают **код 3**, не выполняя действий. Это
-намеренная защита для старых установок без ownership/provenance.
+`--remove` — транзакционное удаление через `uninstall-transaction.sh`
+(см. следующий раздел). `--purge` остаётся **NOT_IMPLEMENTED** (код 3) и
+намеренно отделён от `--remove`. Для старых установок без валидного
+ownership-журнала `--remove` отказывает без изменений — защиты для
+legacy-инсталляций без provenance сохранены.
+
+### Транзакция `--remove`
+
+Предусловия (отказ ДО любых изменений):
+
+1. verified-снимок (`uninstall-snapshot.sh --create` + verify);
+2. строгий nine-claim gate (`uninstall-transaction-gate.sh --check`);
+3. маркер `--prepare` (lifecycle lock, повторная сверка состояния);
+4. **rollback cache**: `.ipk` установленных версий `mihomo`/`magitrickle`
+   + sha256 MANIFEST внутри снимка. Если точные версии недоступны —
+   `--remove` отказывает до мутации (восстановимость важнее удаления).
+
+Журнал `transaction/journal.v1` пишет intent перед каждым шагом. Шаги
+(идемпотентные, state-aware): cron-расписание → watchdog-файлы → netfilter
+jump+chain (точный `-D` из live-сериализации, без flush) → хук → стоп
+сервисов → `no ip policy bypass_wa` → `no interface Proxy0` +
+`system configuration save` → `opkg remove` двух owned-пакетов → feed →
+ledger. Прерванная транзакция возобновляется аудитом фактического
+состояния (prefix-консистентность) или завершается fail-closed. Повторный
+`--remove` после завершённого удаления — идемпотентный no-op (PASS).
+
+**Сохраняется всегда:** чужие ProxyN/политики/цепочки/правила, чужие
+cron-строки (включая любые упоминания `mihomo_watchdog` — они блокируют
+удаление), пользовательские YAML (копии в снимке), общий MagiTrickle при
+shared-use, Entware и системные пакеты, **DNS intercept** (умолчание:
+не отключается без доказанной эксклюзивности).
 
 ## Очистка Netfilter без перезагрузки
 
@@ -335,13 +366,71 @@ hook и cron; после каждого отказа нужно восстано
 OPKG uninstall с сохранением/восстановлением двух YAML и сценариях
 отката. Только после этого вводить реальный `--remove`.
 
-## Что требуется для настоящего удаления
+## Состояние реализации (23.10.2026)
 
-Следующий этап #179 — вести проверяемый журнал созданных/переиспользованных
-ресурсов; корректно отключать зависимости ProxyN/policy/Netfilter до остановки
-Mihomo; учитывать общие пакеты, cron, существующий DNS intercept;
-оставлять пользовательские YAML и бэкапы. `--purge` требует отдельного
-подтверждения и резервной копии. Тесты на стенде, а не на основном роутере.
+`--remove` реализован (PR #215): журнал, rollback cache, точечное снятие,
+идемпотентность и resume покрыты фикстур-тестами в
+`tests/uninstall-remove-regression.py` (dash + BusyBox ash).
 
-**Не выдавать `--check` за полное удаление.** В README не публикуется команда
-удаления, пока она не реализована и не прошла аппаратную проверку.
+Gate-контракт Proxy0: принимается **любой единственный отрендеренный
+положительный** `ip global <N>`. Установщик ставит `ip global auto`;
+номер выделяет аллокатор NDMS (350 на KN-1010-стенде, 32767 на Ported
+5.1.8) и не является сигналом владения — владение доказывается ledger
+claim + канонической сигнатурой + single-consumer scan + байтовым
+сравнением со снимком. Дубль/отсутствие/не-число — BLOCKED.
+
+До аппаратной приёмки на запасном KN-1010 merge в main не выполняется.
+`--check` остаётся read-only и не является удалением. `--purge` требует
+отдельного подтверждения и резервной копии. Тесты на стенде, а не на
+основном роутере.
+
+### Восстановление после удаления (rollback)
+
+Снимок содержит всё необходимое: `packages/*.ipk` точных версий (с
+MANIFEST), `files/` с копиями обоих пользовательских YAML и конфигураций,
+`running-config`/`ip-policy`/`iptables-mangle`/`opkg-packages` на момент
+снимка. Ручное восстановление:
+
+~~~sh
+opkg install /opt/kas-uninstall-backups/SNAP/packages/*.ipk
+cp -p /opt/kas-uninstall-backups/SNAP/files/opt/etc/mihomo/config.yaml /opt/etc/mihomo/
+cp -p /opt/kas-uninstall-backups/SNAP/files/opt/var/lib/magitrickle/config.yaml /opt/var/lib/magitrickle/
+~~~
+
+Либо повторная установка `install.sh disk` и возврат YAML из снимка.
+Частично завершённая транзакция: повторный `--remove` запустит аудит
+состояния и продолжит/остановится fail-closed; снимок не удаляется
+транзакцией и остаётся источником восстановления.
+
+## Аппаратная приёмка на запасном KN-1010 (read-only preflight)
+
+Стенд: Keenetic Giga KN-1010, KeeneticOS 3.05/5.x (проверить фактическую
+`show version`), Entware на EXT4, ~248 MB RAM, внешний SWAP ~468 MB.
+Перед испытанием состояние устройства перечитывается заново. Домашний
+NC-4210 и рабочие роутеры НЕ используются. Физический `--remove` — только
+после отдельного Owner GO.
+
+Последовательность (все шаги до `--prepare` не меняют систему):
+
+~~~sh
+sh uninstall.sh --check                 # инвентарь: ledger/packages/Keenetic state
+sh uninstall.sh --plan                  # блокеры и REVIEW-заметки
+sh uninstall-snapshot.sh --create       # приватный снимок (+ verify)
+sh uninstall-snapshot-verify.sh SNAPSHOT_NAME
+sh uninstall-transaction-gate.sh --check SNAPSHOT_NAME
+sh uninstall-transaction.sh --prepare SNAPSHOT_NAME
+# rollback cache: убедиться в [PASS] Rollback cache verified и сохранить
+# путь к снимку; opkg download требует доступности фидов с точными версиями
+ls -l /opt/kas-uninstall-backups/SNAPSHOT_NAME/packages/
+~~~
+
+Ожидаемые результаты: `[LEDGER] ownership.v1` валиден (nine-claim),
+gate — `[PASS] Nine-claim KAS transaction preflight`, prepare —
+`[PASS] KAS uninstall transaction prepared` + `[PASS] Rollback cache
+verified`. Любой BLOCKED на этом пути означает: аппаратная приёмка
+откладывается до устранения причины.
+
+После виртуальной приёмки (QEMU) владелец даёт отдельный GO на реальный
+`sh uninstall.sh --remove SNAPSHOT_NAME`. Контроль после аппаратного
+удаления: сохранность чужих ресурсов, работа KeeneticOS/Entware, отсутствие
+KAS-owned остатков, возможность повторной установки, Doctor без FAIL.

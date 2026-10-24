@@ -47,6 +47,10 @@ case "$2" in
 interface Bridge0
     description Home
 !
+interface GigabitEthernet1
+    security-level public
+    up
+!
 interface Proxy0
     description "mihomo t2s0"
     security-level public
@@ -242,12 +246,16 @@ for shell in SHELLS:
         ("isp_alias", True),
         ("wan_id", True),
         ("missing_alias", False),
-        ("wrong_interface_alias", False),
+        # the deny is fixture configuration, not an ownership signal: any
+        # unique live alias authorizes it now, whichever interface carries it
+        ("wrong_interface_alias", True),
         ("duplicate_alias", False),
         ("extra_permit", False),
         ("duplicate_permit", False),
         ("duplicate_deny", False),
-        ("missing_deny", False),
+        # the WAN deny is optional fixture configuration (install.sh never
+        # writes one; the Ported lab guest has none) - the Ported shape
+        ("missing_deny", True),
         ("unknown_directive", False),
     ):
         with tempfile.TemporaryDirectory(prefix="kas-uninstall-isp-alias-") as temp:
@@ -255,7 +263,11 @@ for shell in SHELLS:
             root, files, env = setup(td)
             ndmc = td / "bin/ndmc"
             body = ndmc.read_text()
-            if kind != "wan_id":
+            if kind == "wan_id":
+                body = body.replace(
+                    "interface Proxy0\n",
+                    "interface GigabitEthernet1\n    security-level public\n!\ninterface Proxy0\n", 1)
+            else:
                 inserted = "interface GigabitEthernet1\n    rename ISP\n!\n"
                 if kind == "missing_alias":
                     inserted = "interface GigabitEthernet1\n!\n"

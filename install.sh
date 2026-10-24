@@ -933,6 +933,24 @@ kas_ledger_record() {
     log "Ownership recorded: $_ko_line"
 }
 # END KAS OWNERSHIP LEDGER V1
+
+# Rollback-cache provenance: where each owned package's exact .ipk came
+# from. Append-only, same privacy and dedup discipline as the ledger; a
+# later uninstall --remove fetches these URLs to cache the installed
+# versions before any mutation.
+kas_source_record() {  # pkg url
+    [ "$#" -eq 2 ] || return 1
+    case "$1" in mihomo|magitrickle) ;; *) return 1 ;; esac
+    case "$2" in https://*) ;; *) return 1 ;; esac
+    _ks_file="$KAS_OWNER_DIR/sources.v1"
+    [ -d "$KAS_OWNER_DIR" ] || return 1
+    [ ! -L "$_ks_file" ] || return 1
+    grep -Fqx "package|$1|$2" "$_ks_file" 2>/dev/null && return 0
+    _ks_stage=$(umask 077; mktemp "$KAS_OWNER_DIR/.sources.XXXXXXXX") || return 1
+    printf 'package|%s|%s\n' "$1" "$2" > "$_ks_stage" || { rm -f "$_ks_stage"; return 1; }
+    cat "$_ks_stage" >> "$_ks_file" && rm -f "$_ks_stage" || { rm -f "$_ks_stage"; return 1; }
+    return 0
+}
 kas_ledger_init || err "Cannot initialize verified ownership ledger; installation aborted before packages/router mutations."
 # Save original package membership. Installed/reused packages are NEVER claimed.
 KAS_PKG_BEFORE=$(opkg list-installed 2>/dev/null) ||
@@ -1526,6 +1544,7 @@ else
             if opkg install "$TMP_DIR/mihomo.ipk"; then
                 MIHOMO_INSTALLED=1
                 MIHOMO_RESTART_NEEDED=1
+                kas_source_record mihomo "$DOWNLOAD_URL" || warn "Cannot record the mihomo package source; rollback cache may be unavailable"
             else
                 warn "Mihomo install from the downloaded GitHub package failed"
             fi
