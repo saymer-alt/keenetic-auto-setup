@@ -1,0 +1,11 @@
+{
+  "peer": "192.0.2.1:56000",
+  "listen": "127.0.0.1:19000",
+  "password": "REPLACE_LOCALLY_WITH_PRIVATE_WDTT_PASSWORD",
+  "vk": "REPLACE_LOCALLY_WITH_PRIVATE_CALL_HASH",
+  "auth": "account",
+  "creds_file": "/absolute/private/turn-creds.json",
+  "dns": "yandex",
+  "workers": 1,
+  "device": "isolated-test-device"
+}
