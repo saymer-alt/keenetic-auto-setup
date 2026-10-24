@@ -537,7 +537,50 @@ txn_fetch_ipk() {  # $1=pkg $2=ver  (downloads into $snap/packages)
         fi
         printf '[INFO] rollback cache: feed fetch failed for %s %s\n' "$_pkg" "$_ver"
     done
-    [ -n "$_found" ] && return 0
+    # 3. Recorded provenance: install.sh stores the exact .ipk URL of every
+    #    owned package it installed (sources.v1); re-fetch those bytes.
+    _srcfile="$root/opt/etc/keenetic-auto-setup/sources.v1"
+    if [ -f "$_srcfile" ] && [ ! -L "$_srcfile" ]; then
+        _src=$(awk -F'|' -v p="$_pkg" '$1 == "package" && $2 == p { print $3; exit }' "$_srcfile")
+        case "$_src" in
+            https://*)
+                if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 180 "$_src" -O); then
+                    return 0
+                fi
+                printf '[INFO] rollback cache: recorded source fetch failed for %s\n' "$_pkg"
+                ;;
+        esac
+    fi
+    # 4. Live feed indexes: parse each configured feed's Packages.gz and
+    #    fetch the stanza whose Version equals the installed one.
+    for _conf in "$root"/opt/etc/opkg/*.conf; do
+        [ -f "$_conf" ] && [ ! -L "$_conf" ] || continue
+        _feedurls=$(awk '$1 == "src" || $1 == "src/gz" { print $3 }' "$_conf")
+        for _feed in $_feedurls; do
+            case "$_feed" in
+                */) ;;
+                *) _feed="$_feed/" ;;
+            esac
+            _gz=$(mktemp) || return 1
+            if curl -fsS --connect-timeout 5 --max-time 60 "${_feed}Packages.gz" -o "$_gz" 2>/dev/null; then
+                _fn=$(gunzip -c "$_gz" 2>/dev/null | awk '
+                    BEGIN { p = v = f = hit = "" }
+                    $1 == "Package:" { if (p != "" && p == pkg && v == ver && f != "") hit = f; p = $2; v = ""; f = "" }
+                    $1 == "Version:" && p != "" { v = $2 }
+                    $1 == "Filename:" && p != "" { f = $2 }
+                    END { if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f; if (hit != "") print hit }
+                ' pkg="$_pkg" ver="$_ver")
+                rm -f "$_gz"
+                if [ -n "$_fn" ]; then
+                    if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_fn" -O); then
+                        return 0
+                    fi
+                fi
+            else
+                rm -f "$_gz"
+            fi
+        done
+    done
     printf '[INFO] rollback cache: no feed list carries %s %s\n' "$_pkg" "$_ver"
     return 1
 }

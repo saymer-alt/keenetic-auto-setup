@@ -71,6 +71,9 @@ BASE_FILES = {
     "opt/bin/mihomo_watchdog.sh": "#!/bin/sh\n",
     "opt/etc/cron.5mins/mihomo_watchdog": "#!/bin/sh\n",
     "opt/etc/opkg/magitrickle.conf": "src/gz magitrickle https://example.invalid\n",
+    "opt/etc/keenetic-auto-setup/sources.v1": (
+        "package|mihomo|https://github.com/saymer-alt/entware-go/releases/download/latest/mihomo_1.19.33-2_aarch64-3.10.ipk\n"
+        "package|magitrickle|https://bin.magitrickle.dev/packages/entware/aarch64-3.10/magitrickle_0.8.2-1_entware_aarch64-3.10.ipk\n"),
     "opt/etc/init.d/S99mihomo": "#!/bin/sh\n",
     "opt/etc/init.d/S99magitrickle": "#!/bin/sh\n",
 }
@@ -147,13 +150,15 @@ CURL = """#!/bin/sh
 S=${KAS_FAKE_STATE:?}
 for arg in "$@"; do
     case "$arg" in
-        https://example.invalid/*) url=$arg ;;
+        https://example.invalid/*|https://github.com/*|https://bin.magitrickle.dev/*) url=$arg ;;
     esac
 done
 [ -n "$url" ] || exit 1
 fn=${url##*/}
 case "$fn" in
     mihomo_1.19.33-2_aarch64.ipk) printf 'fixture-ipk:mihomo:1.19.33-2' > "$PWD/$fn" ;;
+    mihomo_1.19.33-2_aarch64-3.10.ipk) printf 'fixture-ipk:mihomo:1.19.33-2' > "$PWD/$fn" ;;
+    magitrickle_0.8.2-1_entware_aarch64-3.10.ipk) printf 'fixture-ipk:magitrickle:0.8.2-1' > "$PWD/$fn" ;;
     magitrickle_0.8.2-1_aarch64.ipk) printf 'fixture-ipk:magitrickle:0.8.2-1' > "$PWD/$fn" ;;
     *) exit 1 ;;
 esac
@@ -317,6 +322,9 @@ for shell in SHELLS:
         root, state, files, env = setup(td)
         import shutil as _sh
         _sh.rmtree(root / "opt/var/opkg/lists")  # break the feed fallback too
+        _sh.rmtree(root / "opt/etc/keenetic-auto-setup", ignore_errors=False)
+        (root / "opt/etc/keenetic-auto-setup").mkdir(parents=True)
+        (root / "opt/etc/keenetic-auto-setup/ownership.v1").write_text(files["opt/etc/keenetic-auto-setup/ownership.v1"])  # ledger only, no sources
         name = prepared_snapshot(shell, root, state, env, want_cache=False)
         before = digest(root, state)
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
@@ -417,6 +425,20 @@ for shell in SHELLS:
         assert p.returncode == 0, (p.stdout, p.stderr)
         assert "mihomo" not in (state / "installed").read_text()
         print("[PASS]", shell, "rollback cache built via opkg feed fallback")
+
+    # ---- 8c. rollback cache via recorded provenance when lists are absent --
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-src-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        (state / "download_fail").write_text("1")
+        import shutil as _sh2
+        _sh2.rmtree(root / "opt/var/opkg/lists")
+        name = prepared_snapshot(shell, root, state, env)
+        body = (root / f"opt/kas-uninstall-backups/{name}/packages/MANIFEST").read_text()
+        assert "mihomo_1.19.33-2_aarch64-3.10.ipk" in body
+        p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        print("[PASS]", shell, "rollback cache built from recorded sources.v1")
 
 # ---- 9. gate: relaxed ip global contract -------------------------------
 for shell in SHELLS:
