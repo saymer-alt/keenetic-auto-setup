@@ -411,19 +411,20 @@ txn_step_services() {
     _tries=0
     while ! txn_step_services_done; do
         _tries=$((_tries + 1))
-        if [ "$_tries" -eq 5 ]; then
-            # one bounded direct TERM of the two OWNED daemons (exact
-            # package binary names); init-script stop alone proved
-            # insufficient on the Ported guest
-            for _daemon in mihomo magitrickled; do
-                _pids=$(pidof "$_daemon" 2>/dev/null) || _pids=""
-                if [ -n "$_pids" ]; then
-                    kill -TERM $_pids 2>/dev/null || true
-                fi
-            done
-        fi
+        # Bounded escalation aimed ONLY at the two owned daemon binaries:
+        # TERM at ~8s, KILL at ~20s (the Ported guest proved TERM alone
+        # insufficient for magitrickled after a foreign-profile run).
+        for _daemon in mihomo magitrickled; do
+            _pids=$(pidof "$_daemon" 2>/dev/null) || _pids=""
+            [ -n "$_pids" ] || continue
+            if [ "$_tries" -eq 4 ]; then
+                kill -TERM $_pids 2>/dev/null || true
+            elif [ "$_tries" -ge 10 ]; then
+                kill -KILL $_pids 2>/dev/null || true
+            fi
+        done
         if [ "$_tries" -gt 15 ]; then
-            printf '[INFO] removal: services still running after stop+TERM: mihomo=%s magitrickled=%s\n' "$(pidof mihomo 2>/dev/null | wc -w)" "$(pidof magitrickled 2>/dev/null | wc -w)"
+            printf '[INFO] removal: services still running after stop+TERM+KILL: mihomo=%s magitrickled=%s\n' "$(pidof mihomo 2>/dev/null | wc -w)" "$(pidof magitrickled 2>/dev/null | wc -w)"
             fail "owned services did not stop"
         fi
         sleep 2
