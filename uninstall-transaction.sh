@@ -20,6 +20,15 @@ case "$mode" in
 esac
 fail() { printf '[BLOCKED] transaction preparation: %s\n' "$1" >&2; exit 3; }
 
+# A snapshot name is an opaque single-line token from our own directory
+# listing; reject anything else before it reaches a path or the journal.
+txn_validate_name() {
+    case "$name" in
+        ''|*[!A-Za-z0-9_-]*|*/*) fail 'invalid snapshot name' ;;
+    esac
+}
+txn_validate_name
+
 # Fixture mode exists solely to exercise the read-only plan on a fake tree.
 root=${KAS_TXN_FIXTURE_ROOT:-}
 case "$root" in
@@ -352,13 +361,28 @@ txn_step_netfilter() {
         _jump=$(iptables -t mangle -S PREROUTING 2>/dev/null | grep -F -- '-j _CUST_BYPASS_WA_') ||
             _jump=''
         if [ -n "$_jump" ]; then
+            set -f
             iptables -t mangle $(printf '%s\n' "$_jump" | sed 's/^-A /-D /') ||
                 fail "cannot detach the KAS PREROUTING jump"
+            set +f
         fi
-        # iptables refuses -X on a non-empty chain; -F of THIS chain only
-        # (never the table) removes exactly the three verified rules.
-        iptables -t mangle -F _CUST_BYPASS_WA_ ||
-            fail "cannot flush the KAS-owned chain"
+        # Delete each chain rule through its own exact -D built from the
+        # live -S serialization (resume-safe: a partially deleted chain
+        # simply has fewer rules left). No -F, no table-wide flush.
+        _rules=$(iptables -t mangle -S _CUST_BYPASS_WA_) ||
+            fail "cannot read the owned chain"
+        while IFS= read -r _rule; do
+            case "$_rule" in
+                '-A _CUST_BYPASS_WA_ '*)
+                    set -f
+                    iptables -t mangle $(printf '%s\n' "$_rule" | sed 's/^-A /-D /') ||
+                        fail "cannot delete a verified KAS rule"
+                    set +f
+                    ;;
+            esac
+        done <<_TXN_RULES
+$_rules
+_TXN_RULES
         iptables -t mangle -X _CUST_BYPASS_WA_ ||
             fail "cannot remove the KAS-owned chain"
     fi
@@ -431,6 +455,15 @@ txn_step_opkg() {
         if printf '%s\n' "$(opkg list-installed 2>/dev/null)" | grep -Eq "^${pkg}[[:space:]]"; then
             opkg remove "$pkg" ||
                 fail "opkg refused to remove the ledger-owned $pkg (shared consumer?)"
+        fi
+    done
+    # opkg remove may delete the packaged YAMLs; they are USER data and
+    # must survive every outcome of the removal transaction.
+    for _yaml in /opt/etc/mihomo/config.yaml /opt/var/lib/magitrickle/config.yaml; do
+        if [ ! -e "$root$_yaml" ] && [ ! -L "$root$_yaml" ]; then
+            mkdir -p "$root${_yaml%/*}" || fail "cannot retain user YAML directory"
+            cp -p "$snap/files$_yaml" "$root$_yaml" || fail "cannot retain user YAML"
+            printf '[INFO] user YAML retained from the private snapshot: %s\n' "$_yaml"
         fi
     done
     txn_step_opkg_done || fail "owned packages remain installed"

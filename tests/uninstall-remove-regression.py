@@ -140,6 +140,9 @@ list-installed) cat "$S/installed" ;;
 remove)
     [ -s "$KAS_FAKE_STATE/download_broken" ] && exit 1
     grep -v "^$2 " "$S/installed" > "$S/installed.new" && mv "$S/installed.new" "$S/installed"
+    # real opkg deletes packaged conffiles
+    rm -f "$KAS_SNAPSHOT_ROOT/opt/etc/mihomo/config.yaml" \
+          "$KAS_SNAPSHOT_ROOT/opt/var/lib/magitrickle/config.yaml"
     ;;
 download)
     if [ -s "$KAS_FAKE_STATE/download_broken" ] || [ -s "$KAS_FAKE_STATE/download_fail" ]; then exit 1; fi
@@ -282,6 +285,9 @@ for shell in SHELLS:
         assert not (root / "opt/etc/opkg/magitrickle.conf").exists()
         installed = (state / "installed").read_text()
         assert "mihomo" not in installed and "magitrickle" not in installed
+        # opkg deleted the packaged YAMLs; the transaction retained USER data
+        assert (root / "opt/etc/mihomo/config.yaml").read_text() == files["opt/etc/mihomo/config.yaml"]
+        assert (root / "opt/var/lib/magitrickle/config.yaml").read_text() == files["opt/var/lib/magitrickle/config.yaml"]
         assert "curl - 8.0.0" in installed, "foreign package must survive"
         # foreign cron line preserved, owned line gone
         cron = (root / "opt/etc/crontab").read_text()
@@ -444,6 +450,45 @@ for shell in SHELLS:
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
         assert p.returncode == 0, (p.stdout, p.stderr)
         print("[PASS]", shell, "rollback cache built from recorded sources.v1")
+
+        # ---- 8e. foreign-profile gate geometry: KAS owns Proxy1, foreign Proxy0 --
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-gate-foreign-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        # ledger claims Proxy1 instead of Proxy0
+        ledger = files["opt/etc/keenetic-auto-setup/ownership.v1"].replace(
+            "owned|proxy|Proxy0", "owned|proxy|Proxy1")
+        (root / "opt/etc/keenetic-auto-setup/ownership.v1").write_text(ledger)
+        # config: foreign Proxy0 to 1081 (down), KAS-owned Proxy1 to 7890
+        cfg = (state / "running-config").read_text()
+        cfg = cfg.replace(
+            "interface Proxy0" + chr(10) +
+            '    description "mihomo t2s0"' + chr(10),
+            "interface Proxy0" + chr(10) +
+            "    description lab-foreign" + chr(10) +
+            "    proxy protocol socks5" + chr(10) +
+            "    proxy upstream 127.0.0.1 1081" + chr(10) +
+            "    down" + chr(10) + "!" + chr(10) +
+            "interface Proxy1" + chr(10) +
+            '    description "mihomo t2s1"' + chr(10))
+        cfg = cfg.replace("    permit global Proxy0", "    permit global Proxy1")
+        (state / "running-config").write_text(cfg)
+        p = run(shell, env, "uninstall-snapshot.sh", "--create")
+        name = next((root / "opt/kas-uninstall-backups").iterdir()).name
+        p = run(shell, env, "uninstall-transaction-gate.sh", "--check", name)
+        assert p.returncode == 0, (p.stdout, p.stderr)
+        assert "canonical Proxy1" in p.stdout
+        print("[PASS]", shell, "gate: foreign profile with owned Proxy1")
+
+# ---- 8d. invalid snapshot names are rejected before any path use ------
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-name-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        for bad in ("../evil", "with/slash", "space name", "semi;colon"):
+            p = run(shell, env, "uninstall-transaction.sh", "--remove", bad)
+            assert p.returncode == 3 and "invalid snapshot name" in p.stderr, (bad, p.stderr)
+            assert not (root / "opt/etc/crontab.kas-txn").exists()
+        print("[PASS]", shell, "invalid snapshot names rejected")
 
 # ---- 9. gate: relaxed ip global contract -------------------------------
 for shell in SHELLS:

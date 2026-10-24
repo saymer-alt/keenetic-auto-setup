@@ -26,22 +26,30 @@ ledger="$root/opt/etc/keenetic-auto-setup/ownership.v1"
 # This first transaction profile intentionally covers ONLY the KN-1010 hardware
 # fixture: nine claims (8 types) on one canonical Proxy0. Partial, foreign,
 # legacy or additional/modified resources require a different owner review.
-expected='KAS_OWNERSHIP_V1
-owned|policy|bypass_wa
+# The owned proxy comes FROM THE LEDGER (Proxy0 on the hardware fixture,
+# Proxy1 when a foreign Proxy0 already exists - the lab's foreign profile).
+expected_static='owned|policy|bypass_wa
 enabled|dns|intercept
 owned|package|mihomo
-owned|proxy|Proxy0
 owned|repository|magitrickle.conf
 owned|package|magitrickle
 owned|hook|020-bypass_wa.sh
 owned|watchdog|binary
 owned|watchdog|wrapper'
-[ "$(wc -l < "$ledger")" -eq 10 ] || fail "ledger not the hardware-tested nine-claim profile"
-for entry in $(printf '%s\n' "$expected" | tail -n +2 | tr '\n' ' '); do
+[ "$(wc -l < "$ledger")" -eq 10 ] || fail "ledger not the nine-claim profile"
+ledger_proxy=$(awk -F'|' '$1 == "owned" && $2 == "proxy" { print $3 }' "$ledger")
+case "$ledger_proxy" in
+    Proxy[0-9]) ;;
+    *) fail "ledger does not record exactly one owned ProxyN" ;;
+esac
+[ "$(awk -F'|' '$1 == "owned" && $2 == "proxy"' "$ledger" | wc -l)" -eq 1 ] ||
+    fail "multiple owned proxy claims"
+for entry in $expected_static; do
     grep -Fqx "$entry" "$ledger" || fail "required recorded claim missing"
 done
 [ "$(LC_ALL=C sort -u "$ledger" | wc -l)" -eq 10 ] ||
     fail "duplicate ledger entry"
+ledger_num=${ledger_proxy#Proxy}
 
 rc=$(ndmc -c 'show running-config' 2>/dev/null | tr -d '\r') ||
     fail "running-config cannot be read"
@@ -62,17 +70,17 @@ proxies=$(printf '%s\n' "$rc" | awk '
     iface != "" && /^[[:space:]]+proxy upstream 127[.]0[.]0[.]1[[:space:]]+7890[[:space:]]*$/ { upstream=1 }
     END { flush() }
 ') || fail "proxy scan failed"
-[ "$proxies" = Proxy0 ] ||
+[ "$proxies" = "$ledger_proxy" ] ||
     fail "unexpected, foreign or missing ProxyN consuming port 7890"
 
 # Reject noncanonical modifications even to a ledger-owned Proxy0. This
 # refuses to tear down an interface the user may have repurposed.
-proxy_block=$(printf '%s\n' "$rc" | awk '
-    /^interface Proxy0$/ { inside=1; next }
+proxy_block=$(printf '%s\n' "$rc" | awk -v px="$ledger_proxy" '
+    $0 == "interface " px { inside=1; next }
     inside && /^!$/ { exit }
     inside { print }
-') || fail "cannot inspect owned Proxy0"
-[ -n "$proxy_block" ] || fail "owned Proxy0 missing"
+') || fail "cannot inspect the owned proxy interface"
+[ -n "$proxy_block" ] || fail "owned proxy interface missing"
 seen_upstream=0
 seen_socks=0
 seen_udp=0
@@ -81,7 +89,7 @@ seen_name=0
 seen_global=0
 while IFS= read -r line; do
     case "$line" in
-        '    description "mihomo t2s0"') seen_name=1 ;;
+        '    description "mihomo t2s'$ledger_num'"') seen_name=1 ;;
         '    security-level public') ;;
         '    ip global '*)
             # install.sh sets `ip global auto`; the rendered index is chosen
@@ -132,14 +140,15 @@ seen_description=0
 seen_exit=0
 seen_wan_deny=0
 while IFS= read -r line; do
+    if [ "$line" = "    permit global $ledger_proxy" ]; then
+        [ "$seen_exit" -eq 0 ] || fail "duplicate permit global $ledger_proxy"
+        seen_exit=1
+        continue
+    fi
     case "$line" in
         '    description bypass_wa')
             [ "$seen_description" -eq 0 ] || fail "duplicate bypass_wa description"
             seen_description=1
-            ;;
-        '    permit global Proxy0')
-            [ "$seen_exit" -eq 0 ] || fail "duplicate permit global Proxy0"
-            seen_exit=1
             ;;
         '    no permit global '*)
             [ "$seen_wan_deny" -eq 0 ] || fail "duplicate WAN deny"
@@ -189,6 +198,6 @@ printf '%s\n' "$mangle" | grep -Eq '^-A PREROUTING .*_CUST_BYPASS_WA_' ||
 
 # Backup verification above compares current OPKG and file inventory with the
 # snapshot. It does not prove *exclusive* use by unrelated host processes.
-printf '[PASS] Nine-claim KAS transaction preflight: canonical Proxy0, bypass_wa and DNS verified\n'
+printf '[PASS] Nine-claim KAS transaction preflight: canonical %s, bypass_wa and DNS verified\n' "$ledger_proxy"
 printf '[REVIEW] DNS interception and package consumers can be shared; human approval still required\n'
 printf '[INFO] This is read-only; uninstall.sh --remove remains BLOCKED\n'
