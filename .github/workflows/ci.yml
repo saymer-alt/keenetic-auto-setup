@@ -64,6 +64,9 @@ jobs:
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
 
+      - name: Simple uninstall regression (dash and BusyBox ash)
+        run: python3 tests/simple-uninstall-regression.py
+
       - name: Uninstall private snapshot backup regression (dash and BusyBox ash)
         run: python3 tests/uninstall-snapshot-regression.py
 

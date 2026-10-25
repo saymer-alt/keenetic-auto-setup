@@ -10,7 +10,8 @@ KAS uninstall — read-only preflight
   sh uninstall.sh --check    Inventory installed packages, ledger, Keenetic state.
   sh uninstall.sh --plan     Identify blockers for a future safe removal.
   sh uninstall.sh --help     Display this help.
---remove/--purge remain BLOCKED (no deletion code).
+  sh uninstall.sh --remove   Preview, confirm and remove verified own components.
+--purge remains BLOCKED. --remove has no system rollback; retains user YAML.
 Details: docs/23-uninstall.md
 TEXT
 }
@@ -45,7 +46,7 @@ probe() {
     fi
 }
 
-printf '[KAS uninstall] READ-ONLY inventory; nothing will be removed or stopped.\n'
+[ "$MODE" = --remove ] || printf '[KAS uninstall] READ-ONLY inventory; nothing will be removed or stopped.\n'
 # Recognize creation-only V1 ownership claims. Parsing is data-only; never source
 # the file as shell code. Ledger is evidence for later review, not permission to
 # tear down a shared interface or package.
@@ -71,6 +72,7 @@ ledger_check() {
     fi
     if ! awk '
         NR == 1 { next }
+        seen[$0]++ { exit 1 }
         /^owned[|]proxy[|]Proxy[0-9]+$/ { next }
         /^owned[|]policy[|]bypass_wa$/ { next }
         /^enabled[|]dns[|]intercept$/ { next }
@@ -92,7 +94,14 @@ ledger_check() {
     done < "$_file"
 }
 ledger_check
-if [ "$MODE" = --remove ] || [ "$MODE" = --purge ]; then
+if [ "$MODE" = --remove ]; then
+    dir=$(CDPATH= cd "$(dirname "$0")" && pwd) || exit 3
+    [ -f "$dir/uninstall-remove.sh" ] || { printf '[BLOCKED] Missing uninstall-remove.sh companion.\n' >&2; exit 3; }
+    . "$dir/uninstall-remove.sh"
+    simple_remove_main
+    exit $?
+fi
+if [ "$MODE" = --purge ]; then
     if [ "$LEDGER_VALID" -ne 1 ]; then
         printf '[BLOCKED] %s: no valid ownership journal; no automatic removal, no --force. Nothing changed.\n' "$MODE" >&2
     else
