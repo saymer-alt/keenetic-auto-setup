@@ -1,6 +1,6 @@
 #!/bin/sh
-# KAS uninstall transaction: verified PREPARE stage only.
-# --remove is explicitly blocked until rollback/teardown CI + hardware gates.
+# KAS uninstall transaction: verified rollback cache before PREPARED/remove.
+# Hardware removal remains an explicit owner-authorized operation.
 set -eu
 umask 077
 export LC_ALL=C
@@ -317,6 +317,10 @@ rehearse_restore() {
     return "$_rr_status"
 }
 cleanup() {
+    if [ -n "${TXN_CACHE_STAGE:-}" ]; then
+        case "$TXN_CACHE_STAGE" in "$snap"/.packages.*) rm -rf "$TXN_CACHE_STAGE";; esac
+        TXN_CACHE_STAGE=''
+    fi
     if [ "${REMOVE_ACTIVE:-0}" -eq 1 ]; then
         printf '%s %s
 ' interrupted '(signal or abort)' >> "$journal" 2>/dev/null || true
@@ -590,129 +594,167 @@ txn_fault_check() {
     fi
 }
 
-# Exact-version rollback cache. Failures leave no partial trust: the caller
-# downgrades to REVIEW and --remove refuses to start without a full cache.
-# Two independent ways to obtain each .ipk, most portable first:
-#   1. `opkg download` (present on some builds only);
-#   2. opkg's own cached feed lists (/opt/var/opkg/lists): find the stanza
-#      whose Version equals the installed one, take its Filename: entry and
-#      fetch <feed-url>/<filename> with curl. This is the same index opkg
-#      itself used to install the running version.
-txn_fetch_ipk() {  # $1=pkg $2=ver  (downloads into $snap/packages)
-    _pkg=$1
-    _ver=$2
-    if (cd "$snap/packages" && opkg download "$_pkg" >/dev/null 2>&1); then
-        return 0
-    fi
-    command -v curl >/dev/null 2>&1 || { printf '[INFO] rollback cache: curl unavailable for %s\n' "$_pkg"; return 1; }
-    _found=''
-    for _list in "$root"/opt/var/opkg/lists/*; do
-        [ -f "$_list" ] && [ ! -L "$_list" ] || continue
-        # Decide in END only: an `exit` in the body still runs END on mawk,
-        # which printed the filename twice and corrupted the fetch URL.
-        _hit=$(awk '
-            BEGIN { p = v = f = hit = "" }
-            $1 == "Package:" {
-                if (p != "" && p == pkg && v == ver && f != "") hit = f
-                p = $2; v = ""; f = ""
-            }
-            $1 == "Version:" && p != "" { v = $2 }
-            $1 == "Filename:" && p != "" { f = $2 }
-            END {
-                if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f
-                if (hit != "") print hit
-            }
-        ' pkg="$_pkg" ver="$_ver" "$_list")
-        [ -n "$_hit" ] || continue
-        _feed=$(awk -v list="$(basename "$_list")" '
-            $1 == "src" || $1 == "src/gz" { if ($2 == list) { print $3; exit } }
-        ' "$root"/opt/etc/opkg/*.conf 2>/dev/null)
-        [ -n "$_feed" ] || { printf '[INFO] rollback cache: feed URL for %s not found\n' "$_list"; continue; }
-        case "$_feed" in
-            */) ;;
-            *) _feed="$_feed/" ;;
-        esac
-        if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_hit" -O); then
-            return 0
-        fi
-        printf '[INFO] rollback cache: feed fetch failed for %s %s\n' "$_pkg" "$_ver"
-    done
-    # 3. Recorded provenance: install.sh stores the exact .ipk URL of every
-    #    owned package it installed (sources.v1); re-fetch those bytes.
-    _srcfile="$root/opt/etc/keenetic-auto-setup/sources.v1"
-    if [ -f "$_srcfile" ] && [ ! -L "$_srcfile" ]; then
-        _src=$(awk -F'|' -v p="$_pkg" '$1 == "package" && $2 == p { print $3; exit }' "$_srcfile")
-        case "$_src" in
-            https://*)
-                if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 180 "$_src" -O); then
-                    return 0
-                fi
-                printf '[INFO] rollback cache: recorded source fetch failed for %s\n' "$_pkg"
-                ;;
-        esac
-    fi
-    # 4. Live feed indexes: parse each configured feed's Packages.gz and
-    #    fetch the stanza whose Version equals the installed one.
-    for _conf in "$root"/opt/etc/opkg/*.conf; do
-        [ -f "$_conf" ] && [ ! -L "$_conf" ] || continue
-        _feedurls=$(awk '$1 == "src" || $1 == "src/gz" { print $3 }' "$_conf")
-        for _feed in $_feedurls; do
-            case "$_feed" in
-                */) ;;
-                *) _feed="$_feed/" ;;
+# Exact-version IPKs: trusted SHA256 plus installed Package/Version/Architecture.
+# KAS_ROLLBACK_IPKS is an operator-approved data file: SHA256|local-path-or-HTTPS.
+# A basename is relative to that file. It is never sourced or evaluated.
+txn_pkg_expected() {
+    local pkg ver arch base
+    pkg=$1
+    ver=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1==p {v=$3;n++} END {if(n==1)print v;else exit 1}') || return 1
+    arch=$(opkg status "$pkg" 2>/dev/null | awk '$1=="Architecture:" {v=$2;n++} END {if(n==1)print v;else exit 1}') || return 1
+    case "$ver" in ''|*[!A-Za-z0-9.+:~_-]*) return 1;; esac
+    base=$arch
+    [ "$pkg" != magitrickle ] || base=${arch%_kn}
+    case "$base" in aarch64-3.10|armv7-3.2|mipsel-3.4|mips-3.4) ;; *) return 1;; esac
+    opkg print-architecture | awk -v a="$arch" -v b="$base" '$1=="arch" && ($2==a || $2==b) {ok=1} END {exit !ok}' || return 1
+    printf '%s %s\n' "$ver" "$arch"
+}
+
+txn_ipk_check() { # file package version architecture approved-SHA256
+    local file pkg ver arch sha filename names ctrl data member control extract
+    file=$1; pkg=$2; ver=$3; arch=$4; sha=$5; filename=${file##*/}
+    [ -f "$file" ] && [ ! -L "$file" ] || return 1
+    [ "${#sha}" -eq 64 ] || return 1
+    case "$sha" in *[!0-9A-Fa-f]*) return 1;; esac
+    sha=$(printf '%s' "$sha" | tr A-F a-f)
+    case "$filename" in "${pkg}_${ver}_${arch}.ipk"|"${pkg}_${ver}_entware_${arch}.ipk") ;; *) return 1;; esac
+    [ "$(sha256sum "$file" | awk '{print $1}')" = "$sha" ] || return 1
+    # BusyBox does not auto-detect gzip with -tf/-xOf (GNU tar does).
+    if names=$(tar -tzf "$file" 2>/dev/null); then extract=-xzOf
+    else names=$(tar -tf "$file" 2>/dev/null) || return 1; extract=-xOf; fi
+    printf '%s\n' "$names" | awk '
+        {n=$0;if(substr(n,1,2)=="./")n=substr(n,3);if(n=="")next
+         if(n!="debian-binary" && n!="control.tar.gz" && n!="data.tar.gz")bad=1
+         seen[n]++}
+        END {exit (bad || seen["debian-binary"]!=1 || seen["control.tar.gz"]!=1 || seen["data.tar.gz"]!=1)}' || return 1
+    ctrl=$(printf '%s\n' "$names" | grep -E '^([.]/)?control[.]tar[.]gz$') || return 1
+    data=$(printf '%s\n' "$names" | grep -E '^([.]/)?data[.]tar[.]gz$') || return 1
+    member=$(printf '%s\n' "$names" | grep -E '^([.]/)?debian-binary$') || return 1
+    [ "$(tar "$extract" "$file" "$member" 2>/dev/null)" = 2.0 ] || return 1
+    member=$(tar "$extract" "$file" "$ctrl" 2>/dev/null | tar -tzf - 2>/dev/null |
+        awk '$0=="control" || $0=="./control" {m=$0;n++} END {if(n==1)print m;else exit 1}') || return 1
+    control=$(tar "$extract" "$file" "$ctrl" 2>/dev/null | tar -xzOf - "$member" 2>/dev/null) || return 1
+    printf '%s\n' "$control" | awk -v p="$pkg" -v v="$ver" -v a="$arch" '
+        $1=="Package:" {np++;if($2!=p || NF!=2)bad=1}
+        $1=="Version:" {nv++;if($2!=v || NF!=2)bad=1}
+        $1=="Architecture:" {na++;if($2!=a || NF!=2)bad=1}
+        END {exit (bad || np!=1 || nv!=1 || na!=1)}' || return 1
+    tar "$extract" "$file" "$data" 2>/dev/null | tar -tzf - >/dev/null 2>&1
+}
+
+txn_store_ipk() { # source sha pkg ver arch cache
+    local src sha pkg ver arch cache filename
+    src=$1; sha=$2; pkg=$3; ver=$4; arch=$5; cache=$6; filename=${src##*/}
+    [ "${#sha}" -eq 64 ] || return 1
+    case "$sha" in *[!0-9A-Fa-f]*) return 1;; esac
+    case "$filename" in "${pkg}_${ver}_${arch}.ipk"|"${pkg}_${ver}_entware_${arch}.ipk") ;; *) return 1;; esac
+    case "$src" in
+        https://*) curl -fsSL --connect-timeout 5 --max-time 180 "$src" -o "$cache/$filename" 2>/dev/null || return 1;;
+        /*) [ -f "$src" ] && [ ! -L "$src" ] && cp "$src" "$cache/$filename" 2>/dev/null || return 1;;
+        *) return 1;;
+    esac
+    txn_ipk_check "$cache/$filename" "$pkg" "$ver" "$arch" "$sha" || return 1
+    printf '%s  %s\n' "$(printf '%s' "$sha" | tr A-F a-f)" "$filename" >> "$cache/MANIFEST" || return 1
+    TXN_IPK_NAME=$filename
+}
+
+txn_fetch_ipk() { # pkg ver arch cache
+    local pkg ver arch cache approved hit sha src dirs conf path list feed filename
+    pkg=$1; ver=$2; arch=$3; cache=$4; approved=${KAS_ROLLBACK_IPKS:-}
+    if [ -n "$approved" ]; then
+        [ -f "$approved" ] && [ ! -L "$approved" ] || return 1
+        [ "$(ls -ld "$approved" | cut -c1-10)" = -rw------- ] || return 1
+        [ "$(ls -ldn "$approved" | awk '{print $3}')" = "$(id -u)" ] || return 1
+        # Reject malformed/duplicate records, not just the selected entry.
+        awk -F'|' '/^#/ || /^$/ {next}
+          {n=$2;sub(/^.*\//,"",n);if(NF!=2 || length($1)!=64 || $1~/[^0-9A-Fa-f]/ || n=="" || seen[n]++)bad=1}
+          END {exit bad}' "$approved" || return 1
+        hit=$(awk -F'|' -v a="${pkg}_${ver}_${arch}.ipk" -v b="${pkg}_${ver}_entware_${arch}.ipk" '
+          /^#/ || /^$/ {next} {n=$2;sub(/^.*\//,"",n);if(n==a || n==b){row=$0;count++}}
+          END {if(count==1)print row;else if(count>1)exit 1}' "$approved") || return 1
+        if [ -n "$hit" ]; then
+            sha=${hit%%|*}; src=${hit#*|}
+            case "$src" in
+                https://*|/*) ;;
+                */*) return 1;;
+                *) src="$(CDPATH= cd "$(dirname "$approved")" && pwd)/$src" || return 1;;
             esac
-            _gz=$(mktemp) || return 1
-            if curl -fsS --connect-timeout 5 --max-time 60 "${_feed}Packages.gz" -o "$_gz" 2>/dev/null; then
-                _fn=$(gunzip -c "$_gz" 2>/dev/null | awk '
-                    BEGIN { p = v = f = hit = "" }
-                    $1 == "Package:" { if (p != "" && p == pkg && v == ver && f != "") hit = f; p = $2; v = ""; f = "" }
-                    $1 == "Version:" && p != "" { v = $2 }
-                    $1 == "Filename:" && p != "" { f = $2 }
-                    END { if (hit == "" && p != "" && p == pkg && v == ver && f != "") hit = f; if (hit != "") print hit }
-                ' pkg="$_pkg" ver="$_ver")
-                rm -f "$_gz"
-                if [ -n "$_fn" ]; then
-                    if (cd "$snap/packages" && curl -fsS --connect-timeout 5 --max-time 120 "$_feed$_fn" -O); then
-                        return 0
-                    fi
-                fi
-            else
-                rm -f "$_gz"
-            fi
+            txn_store_ipk "$src" "$sha" "$pkg" "$ver" "$arch" "$cache"
+            return $?
+        fi
+    fi
+    dirs='/opt/var/opkg-lists /opt/var/opkg/lists'
+    for conf in "$root/opt/etc/opkg.conf" "$root"/opt/etc/opkg/*.conf; do
+        [ -f "$conf" ] && [ ! -L "$conf" ] || continue
+        dirs="$dirs $(awk '$1=="lists_dir" && NF==3 {print $3}' "$conf")"
+    done
+    for path in $dirs; do
+        case "$path" in /*) ;; *) continue;; esac
+        [ ! -L "$root$path" ] || continue
+        for list in "$root$path"/*; do
+            [ -f "$list" ] && [ ! -L "$list" ] || continue
+            hit=$(awk -v P="$pkg" -v V="$ver" -v A="$arch" '
+              function flush(){if(p==P && v==V && a==A && f!="" && h!=""){n++;row=f "|" h}p=v=a=f=h=""}
+              $1=="Package:" {if(p!="")flush();p=$2}
+              $1=="Version:" {v=$2} $1=="Architecture:" {a=$2}
+              $1=="Filename:" {f=$2} $1=="SHA256sum:" {h=$2}
+              /^$/ {flush()} END {flush();if(n==1)print row;else exit 1}' "$list") || continue
+            filename=${hit%%|*}; sha=${hit#*|}
+            case "$filename" in "${pkg}_${ver}_${arch}.ipk"|"${pkg}_${ver}_entware_${arch}.ipk") ;; *) continue;; esac
+            feed=$(awk -v n="${list##*/}" '($1=="src" || $1=="src/gz") && $2==n {print $3}' "$root"/opt/etc/opkg/*.conf 2>/dev/null) || continue
+            case "$feed" in https://*) ;; *) continue;; esac
+            txn_store_ipk "${feed%/}/$filename" "$sha" "$pkg" "$ver" "$arch" "$cache" && return 0
         done
     done
-    printf '[INFO] rollback cache: no feed list carries %s %s\n' "$_pkg" "$_ver"
+    printf '[INFO] rollback cache: exact SHA256-approved IPK unavailable for %s %s\n' "$pkg" "$ver"
     return 1
 }
 
-txn_build_cache() {
-    rm -rf "$snap/packages"
-    (umask 077; mkdir "$snap/packages") || return 1
-    : > "$snap/packages/wanted" || return 1
+txn_cache_external() {
+    # Same storage convention as install.sh: deepest mount, external EXT4.
+    local mount
+    mount=$(awk -v path="${snap#"$root"}" '
+      {m=$2;if(path==m || m=="/" || index(path,m "/")==1)if(length(m)>best){best=length(m);s=$1;f=$3}}
+      END {if(best)print s "|" f;else exit 1}' "$root/proc/mounts") || return 1
+    case "$mount" in /dev/sd*'|ext4'|/dev/nvme*'|ext4'|/tmp/mnt/*'|ext4') return 0;; esac
+    return 1
+}
+
+txn_build_cache() { # private staging dir, never the published cache
+    local cache pkg expected ver arch
+    cache=$1
+    : > "$cache/wanted" && : > "$cache/MANIFEST" || return 1
     for pkg in mihomo magitrickle; do
-        ver=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1 == p { print $3 }')
-        case "$ver" in ''|*[!A-Za-z0-9.+~-]*) return 1 ;; esac
-        printf '%s %s\n' "$pkg" "$ver" >> "$snap/packages/wanted" || return 1
-        txn_fetch_ipk "$pkg" "$ver" || return 1
-        count=$(find "$snap/packages" -maxdepth 1 -name "${pkg}_${ver}_*.ipk" | wc -l)
-        [ "$count" -eq 1 ] || { printf '[INFO] rollback cache: %s %s .ipk not found after fetch\n' "$pkg" "$ver"; return 1; }
+        expected=$(txn_pkg_expected "$pkg") || return 1
+        ver=${expected% *}; arch=${expected##* }
+        txn_fetch_ipk "$pkg" "$ver" "$arch" "$cache" || return 1
+        printf '%s %s %s %s\n' "$pkg" "$ver" "$arch" "$TXN_IPK_NAME" >> "$cache/wanted" || return 1
     done
-    (cd "$snap/packages" && sha256sum ./*.ipk > MANIFEST) || return 1
-    return 0
+    txn_cache_verified "$cache"
 }
 
 txn_cache_verified() {
-    [ -f "$snap/packages/wanted" ] && [ ! -L "$snap/packages/wanted" ] || return 1
-    [ -f "$snap/packages/MANIFEST" ] && [ ! -L "$snap/packages/MANIFEST" ] || return 1
-    (cd "$snap/packages" && sha256sum -c MANIFEST >/dev/null 2>&1) || return 1
-    while IFS=' ' read -r pkg ver; do
-        [ -n "$pkg" ] && [ -n "$ver" ] || return 1
-        live=$(opkg list-installed 2>/dev/null | awk -v p="$pkg" '$1 == p { print $3 }')
-        [ "$live" = "$ver" ] || return 1
-        [ "$(find "$snap/packages" -maxdepth 1 -name "${pkg}_${ver}_*.ipk" | wc -l)" -eq 1 ] || return 1
-    done < "$snap/packages/wanted"
-    return 0
+    local cache pkg ver arch filename extra sha seen count expected
+    cache=${1:-"$snap/packages"}; seen=''; count=0
+    [ -d "$cache" ] && [ ! -L "$cache" ] || return 1
+    for filename in wanted MANIFEST; do
+        [ -f "$cache/$filename" ] && [ ! -L "$cache/$filename" ] || return 1
+    done
+    [ "$(wc -l < "$cache/MANIFEST")" -eq 2 ] || return 1
+    while IFS=' ' read -r pkg ver arch filename extra; do
+        [ -z "$extra" ] && [ -n "$filename" ] || return 1
+        case "$pkg" in mihomo|magitrickle) ;; *) return 1;; esac
+        case " $seen " in *" $pkg "*) return 1;; esac
+        seen="$seen $pkg"; count=$((count+1))
+        expected=$(txn_pkg_expected "$pkg") || return 1
+        [ "$expected" = "$ver $arch" ] || return 1
+        case "$filename" in "${pkg}_${ver}_${arch}.ipk"|"${pkg}_${ver}_entware_${arch}.ipk") ;; *) return 1;; esac
+        sha=$(awk -v f="$filename" '$2==f && NF==2 {s=$1;n++} END {if(n==1)print s;else exit 1}' "$cache/MANIFEST") || return 1
+        txn_ipk_check "$cache/$filename" "$pkg" "$ver" "$arch" "$sha" || return 1
+    done < "$cache/wanted"
+    [ "$count" -eq 2 ] && [ "$(find "$cache" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 2 ]
 }
+
 
 # The whole-system already-removed audit for idempotent re-runs.
 txn_all_steps_done() {
@@ -800,6 +842,29 @@ if [ ! -d "$txn" ]; then
     mkdir -m 700 "$txn" || fail "cannot create private transaction directory"
 fi
 [ ! -L "$txn/prepare.v1" ] || fail "transaction marker is a symlink"
+if [ "$mode" = --prepare ]; then
+    [ ! -e "$journal" ] && [ ! -L "$journal" ] ||
+        fail 'journal already exists; do not re-prepare an interrupted transaction'
+    TXN_CACHE_VALID=0
+    if txn_cache_verified; then
+        TXN_CACHE_VALID=1
+    else
+        # Revoke a legacy PREPARED-without-cache record; never destroy its data.
+        rm -f "$txn/prepare.v1" || fail 'cannot invalidate incomplete preparation'
+    fi
+    txn_cache_external || fail 'rollback IPKs require verified external EXT4 /opt; internal flash is not used'
+    if [ "$TXN_CACHE_VALID" -eq 0 ]; then
+        [ ! -e "$snap/packages" ] && [ ! -L "$snap/packages" ] ||
+            fail 'existing rollback cache unverified and retained; use a fresh snapshot after review'
+        TXN_CACHE_STAGE=$(mktemp -d "$snap/.packages.XXXXXXXX") || fail 'cannot stage rollback cache'
+        txn_build_cache "$TXN_CACHE_STAGE" || fail 'rollback cache incomplete or unverified; preparation NOT complete'
+        [ ! -e "$snap/packages" ] && [ ! -L "$snap/packages" ] || fail 'rollback cache appeared during preparation'
+        mv "$TXN_CACHE_STAGE" "$snap/packages" || fail 'cannot publish verified rollback cache'
+        TXN_CACHE_STAGE=''
+        txn_cache_verified || fail 'published rollback cache verification failed'
+    fi
+    printf '[PASS] Rollback cache verified: exact installed IPKs with approved SHA256 and control metadata\n'
+fi
 stage="$txn/.prepare.$$"
 (umask 077
     printf 'KAS_UNINSTALL_PREPARE_V1\n' > "$stage"
@@ -812,21 +877,6 @@ mv -f "$stage" "$txn/prepare.v1" ||
     fail "cannot atomically commit preparation marker"
 printf '[PASS] KAS uninstall transaction prepared: %s\n' "$name"
 printf '[INFO] Lifecycle lock acquired/released; no router settings or packages changed\n'
-printf '[BLOCKED] Actual --remove/--purge still require fault-tested rollback engine\n'
-# Rollback cache (PREPARE only): the exact installed versions must be
-# locally restorable, or a future --remove refuses to start. Dependencies
-# are NOT removed by --remove, so only the two owned packages are cached.
-if [ "$mode" = --prepare ]; then
-    packages="$snap/packages"
-    if txn_build_cache; then
-        printf '[PASS] Rollback cache verified: exact installed .ipk stored with checksums
-'
-    else
-        rm -rf "$packages"
-        printf '[REVIEW] Rollback cache incomplete: --remove will refuse until exact versions are cached in %s
-' "$packages"
-    fi
-fi
 
 # Optional destructive REHEARSAL is never available against a real router.
 # It removes only the three ledger-owned files temporarily and restores

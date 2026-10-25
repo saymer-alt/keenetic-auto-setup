@@ -138,10 +138,11 @@ for shell in SHELLS:
         prepared = subprocess.run(
             shell + [prep_script, "--prepare", snap.name], env=env,
             capture_output=True, text=True, timeout=12)
-        assert prepared.returncode == 0 and "[PASS] KAS uninstall transaction prepared" in prepared.stdout, (
+        # Inventory-only fixture: missing verified storage/IPKs must not
+        # publish PREPARED just because the ownership gate passed.
+        assert prepared.returncode == 3 and "[BLOCKED]" in prepared.stderr, (
             prepared.stdout, prepared.stderr)
-        assert (snap / "transaction/prepare.v1").read_text().startswith(
-            "KAS_UNINSTALL_PREPARE_V1\n")
+        assert not (snap / "transaction/prepare.v1").exists()
         assert not (root / "tmp/mihomo-lifecycle.lock.d").exists()
         assert not (root / "tmp/mihomo.maintenance").exists()
         for rel, content in files.items():

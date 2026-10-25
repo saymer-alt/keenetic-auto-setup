@@ -6,11 +6,13 @@ foreign cron consumers, post-prepare drift, fault-injected resume, a
 mid-step netfilter recovery and the relaxed ip global gate contract."""
 from pathlib import Path
 import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
 import tempfile
+import tarfile
 import time
 
 BASE = Path(__file__).resolve().parents[1]
@@ -135,10 +137,38 @@ case "$spec" in
 esac
 """
 
+def make_ipk(path, package, version, arch='aarch64-3.10'):
+    """Real Entware tar IPK; validation reads metadata, never executes scripts."""
+    def archive(entries):
+        data = io.BytesIO()
+        with tarfile.open(fileobj=data, mode='w:gz') as files:
+            for name, body in entries.items():
+                body = body.encode()
+                member = tarfile.TarInfo(name)
+                member.size = len(body)
+                files.addfile(member, io.BytesIO(body))
+        return data.getvalue()
+    control = archive({'./control': f'Package: {package}\nVersion: {version}\nArchitecture: {arch}\n'})
+    payload = archive({'./opt/bin/' + package: 'fixture payload'})
+    with tarfile.open(path, 'w:gz') as files:
+        for name, data in (('./debian-binary', b'2.0\n'), ('./control.tar.gz', control), ('./data.tar.gz', payload)):
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            files.addfile(member, io.BytesIO(data))
+
+
 OPKG = """#!/bin/sh
 S=${KAS_FAKE_STATE:?}
 case "$1" in
 list-installed) cat "$S/installed" ;;
+print-architecture)
+    if [ -f "$S/platform" ]; then cat "$S/platform"; else echo 'arch aarch64-3.10 100'; fi ;;
+status)
+    ver=$(awk -v p="$2" '$1 == p { print $3 }' "$S/installed")
+    arch=aarch64-3.10
+    [ ! -f "$S/$2.arch" ] || arch=$(cat "$S/$2.arch")
+    printf 'Package: %s\\nVersion: %s\\nArchitecture: %s\\n' "$2" "$ver" "$arch"
+    ;;
 remove)
     [ -s "$KAS_FAKE_STATE/download_broken" ] && exit 1
     grep -v "^$2 " "$S/installed" > "$S/installed.new" && mv "$S/installed.new" "$S/installed"
@@ -150,7 +180,7 @@ download)
     if [ -s "$KAS_FAKE_STATE/download_broken" ] || [ -s "$KAS_FAKE_STATE/download_fail" ]; then exit 1; fi
     ver=$(awk -v p="$2" '$1 == p { print $3 }' "$S/installed")
     [ -n "$ver" ] || exit 1
-    printf 'fixture-ipk:%s:%s\\n' "$2" "$ver" > "${2}_${ver}_aarch64.ipk"
+    cp "$S/assets/${2}_${ver}_aarch64-3.10.ipk" .
     ;;
 *) exit 40 ;;
 esac
@@ -158,20 +188,23 @@ esac
 
 CURL = """#!/bin/sh
 S=${KAS_FAKE_STATE:?}
+out=; take=0
 for arg in "$@"; do
+    if [ "$take" = 1 ]; then out=$arg; take=0; continue; fi
     case "$arg" in
+        -o) take=1 ;;
         https://example.invalid/*|https://github.com/*|https://bin.magitrickle.dev/*) url=$arg ;;
     esac
 done
 [ -n "$url" ] || exit 1
 fn=${url##*/}
-case "$fn" in
-    mihomo_1.19.33-2_aarch64.ipk) printf 'fixture-ipk:mihomo:1.19.33-2' > "$PWD/$fn" ;;
-    mihomo_1.19.33-2_aarch64-3.10.ipk) printf 'fixture-ipk:mihomo:1.19.33-2' > "$PWD/$fn" ;;
-    magitrickle_0.8.2-1_entware_aarch64-3.10.ipk) printf 'fixture-ipk:magitrickle:0.8.2-1' > "$PWD/$fn" ;;
-    magitrickle_0.8.2-1_aarch64.ipk) printf 'fixture-ipk:magitrickle:0.8.2-1' > "$PWD/$fn" ;;
-    *) exit 1 ;;
-esac
+[ -n "$out" ] || out="$PWD/$fn"
+[ ! -s "$S/download_broken" ] || exit 22
+if [ -s "$S/download_interrupt" ]; then
+    printf partial > "$out"; kill -TERM "$PPID"; exit 22
+fi
+if [ -s "$S/partial_download" ]; then printf partial > "$out"; exit 22; fi
+cp "$S/assets/$fn" "$out"
 """
 
 PIDOF = """#!/bin/sh
@@ -204,7 +237,7 @@ def setup(td, ip_global=PROXY_350, extra_cron="", foreign_mangle=True):
     (proc / '1/comm').write_text('init\n')
     (proc / '1/exe').symlink_to('/bin/sh')
     (proc / 'self').symlink_to('/proc/self')
-    (proc / 'mounts').write_text('proc /proc proc rw 0 0\n')
+    (proc / 'mounts').write_text('proc /proc proc rw 0 0\n/dev/sda1 /opt ext4 rw 0 0\n')
     (root / ".kas-uninstall-fixture").write_text("KAS_UNINSTALL_TEST_FIXTURE_V1\n")
     crontab = "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins\n" + OWNED_CRON
     if extra_cron:
@@ -219,11 +252,20 @@ def setup(td, ip_global=PROXY_350, extra_cron="", foreign_mangle=True):
     (state / "installed").write_text("mihomo - 1.19.33-2\nmagitrickle - 0.8.2-1\ncurl - 8.0.0\n")
     (state / "pids").mkdir()
     (state / "ndmc.log").write_text("")
-    lists = root / "opt/var/opkg/lists"
+    assets = state / 'assets'
+    assets.mkdir()
+    index = ''
+    for package, version in (('mihomo', '1.19.33-2'), ('magitrickle', '0.8.2-1')):
+        filename = f'{package}_{version}_aarch64-3.10.ipk'
+        make_ipk(assets / filename, package, version)
+        checksum = hashlib.sha256((assets / filename).read_bytes()).hexdigest()
+        index += (f'Package: {package}\nVersion: {version}\nArchitecture: aarch64-3.10\n'
+                  f'Filename: {filename}\nSHA256sum: {checksum}\n\n')
+    shutil.copyfile(assets / 'magitrickle_0.8.2-1_aarch64-3.10.ipk',
+                    assets / 'magitrickle_0.8.2-1_entware_aarch64-3.10.ipk')
+    lists = root / "opt/var/opkg-lists"
     lists.mkdir(parents=True)
-    (lists / "magitrickle").write_text(
-        "Package: mihomo\nVersion: 1.19.33-2\nFilename: mihomo_1.19.33-2_aarch64.ipk\nSize: 1\n\n"
-        "Package: magitrickle\nVersion: 0.8.2-1\nFilename: magitrickle_0.8.2-1_aarch64.ipk\nSize: 1\n\n")
+    (lists / "magitrickle").write_text(index)
 
     toolbin = td / "bin"
     toolbin.mkdir(exist_ok=True)
@@ -272,11 +314,121 @@ def prepared_snapshot(shell, root, state, env, want_cache=True):
     p = run(shell, env, "uninstall-transaction-gate.sh", "--check", name)
     assert p.returncode == 0, p.stderr
     p = run(shell, env, "uninstall-transaction.sh", "--prepare", name)
-    assert p.returncode == 0, p.stderr
+    assert p.returncode == (0 if want_cache else 3), (p.stdout, p.stderr)
     return name
 
 
+def test_exact_prepare(shell):
+    cases = ('indices', 'legacy_indices', 'configured_indices', 'no_indices', 'older_feed',
+             'local_import', 'https_import', 'mips_import', 'wrong_version', 'wrong_arch', 'wrong_hash',
+             'truncated', 'missing_one', 'network_partial', 'network_interrupted', 'no_digest', 'internal_storage',
+             'duplicate_control')
+    for case in cases:
+        with tempfile.TemporaryDirectory(prefix='kas-uninstall-ipk-') as temp:
+            td = Path(temp)
+            root, state, files, env = setup(td)
+            if shell[:1] == ['busybox']:
+                for applet in ('tar', 'awk', 'sha256sum', 'find'):
+                    (td / 'bin' / applet).symlink_to(shutil.which('busybox'))
+            (state / 'download_fail').write_text('1')
+            (root / 'opt/etc/keenetic-auto-setup/sources.v1').unlink()
+            lists = root / 'opt/var/opkg-lists'
+            if case == 'legacy_indices':
+                legacy = root / 'opt/var/opkg/lists'
+                legacy.parent.mkdir(parents=True)
+                lists.rename(legacy)
+            if case == 'configured_indices':
+                custom = root / 'opt/custom-lists'
+                lists.rename(custom)
+                (root / 'opt/etc/opkg.conf').write_text('lists_dir ext /opt/custom-lists\n')
+            if case == 'older_feed':
+                index = lists / 'magitrickle'
+                index.write_text(index.read_text().replace('Version: 1.19.33-2', 'Version: 1.19.27-1'))
+            if case == 'no_digest':
+                index = lists / 'magitrickle'
+                index.write_text('\n'.join(line for line in index.read_text().splitlines()
+                                            if not line.startswith('SHA256sum:')) + '\n')
+            if case == 'internal_storage':
+                (root / 'proc/mounts').write_text('proc /proc proc rw 0 0\nubi0:rootfs /opt ubifs rw 0 0\n')
+            if case == 'network_partial':
+                (state / 'partial_download').write_text('1')
+            if case == 'network_interrupted':
+                (state / 'download_interrupt').write_text('1')
+            imports = case in ('local_import', 'https_import', 'mips_import', 'wrong_version', 'wrong_arch',
+                               'wrong_hash', 'truncated', 'missing_one', 'duplicate_control')
+            if case == 'no_indices' or imports:
+                shutil.rmtree(lists)
+            if imports:
+                manifest = td / 'approved-ipks'
+                mihomo = state / 'assets/mihomo_1.19.33-2_aarch64-3.10.ipk'
+                if case == 'wrong_version': make_ipk(mihomo, 'mihomo', '1.19.27-1')
+                if case == 'wrong_arch': make_ipk(mihomo, 'mihomo', '1.19.33-2', 'mipsel-3.4')
+                if case == 'truncated': mihomo.write_bytes(mihomo.read_bytes()[:30])
+                if case == 'duplicate_control':
+                    make_ipk(mihomo, 'mihomo\nPackage: foreign', '1.19.33-2')
+                rows = []
+                for package, version in (('mihomo', '1.19.33-2'), ('magitrickle', '0.8.2-1')):
+                    if case == 'missing_one' and package == 'magitrickle': continue
+                    asset = state / f'assets/{package}_{version}_aarch64-3.10.ipk'
+                    if case == 'mips_import':
+                        arch = 'mipsel-3.4' + ('_kn' if package == 'magitrickle' else '')
+                        prefix = 'entware_' if package == 'magitrickle' else ''
+                        asset = state / f'assets/{package}_{version}_{prefix}{arch}.ipk'
+                        make_ipk(asset, package, version, arch)
+                        (state / (package + '.arch')).write_text(arch)
+                        (state / 'platform').write_text('arch mipsel-3.4 100\n')
+                    sha = hashlib.sha256(asset.read_bytes()).hexdigest()
+                    if case == 'wrong_hash' and package == 'mihomo': sha = '0' * 64
+                    source = 'https://example.invalid/' + asset.name if case == 'https_import' else str(asset)
+                    rows.append(sha + '|' + source + '\n')
+                manifest.write_text(''.join(rows)); manifest.chmod(0o600)
+                env['KAS_ROLLBACK_IPKS'] = str(manifest)
+            p = run(shell, env, 'uninstall-snapshot.sh', '--create')
+            assert p.returncode == 0, p.stderr
+            snap = next((root / 'opt/kas-uninstall-backups').iterdir())
+            if case == 'no_indices':
+                (snap / 'transaction').mkdir(mode=0o700)
+                (snap / 'transaction/prepare.v1').write_text('KAS_UNINSTALL_PREPARE_V1\n')
+            before = digest(root, state)
+            result = run(shell, env, 'uninstall-transaction.sh', '--prepare', snap.name)
+            succeeds = case in ('indices', 'legacy_indices', 'configured_indices', 'local_import', 'https_import', 'mips_import')
+            expected_code = 143 if case == 'network_interrupted' else 0 if succeeds else 3
+            assert result.returncode == expected_code, (case, result.stdout, result.stderr)
+            assert digest(root, state) == before, ('prepare mutated device/user state', case)
+            assert not (root / 'tmp/mihomo-lifecycle.lock.d').exists()
+            assert not (root / 'tmp/mihomo.maintenance').exists()
+            assert 'TEST_SECRET_MUST_NOT_PRINT' not in result.stdout + result.stderr
+            marker = snap / 'transaction/prepare.v1'
+            if succeeds:
+                assert marker.exists() and (snap / 'packages/MANIFEST').is_file()
+                assert '[PASS] KAS uninstall transaction prepared' in result.stdout
+                cached = {p.name: p.read_bytes() for p in (snap / 'packages').iterdir()}
+                (state / 'partial_download').write_text('1')
+                repeated = run(shell, env, 'uninstall-transaction.sh', '--prepare', snap.name)
+                assert repeated.returncode == 0, repeated.stderr
+                assert cached == {p.name: p.read_bytes() for p in (snap / 'packages').iterdir()}
+                if case == 'indices':
+                    yaml = root / 'opt/etc/mihomo/config.yaml'
+                    yaml.write_text(yaml.read_text() + '# test-only drift\n')
+                    denied = run(shell, env, 'uninstall-transaction.sh', '--prepare', snap.name)
+                    assert denied.returncode == 3
+                    assert cached == {p.name: p.read_bytes() for p in (snap / 'packages').iterdir()}
+            else:
+                assert (case == 'network_interrupted' or '[BLOCKED]' in result.stderr) and not marker.exists(), (case, result.stdout, result.stderr)
+                assert '[PASS] KAS uninstall transaction prepared' not in result.stdout
+                assert not (snap / 'packages').exists(), ('partial cache was published', case)
+                assert not list(snap.glob('.packages.*')), 'staging cache leaked after failure/signal'
+                denied = run(shell, env, 'uninstall-transaction.sh', '--remove', snap.name)
+                assert denied.returncode == 3 and digest(root, state) == before
+                if case in ('network_partial', 'network_interrupted'):
+                    (state / ('partial_download' if case == 'network_partial' else 'download_interrupt')).unlink()
+                    retried = run(shell, env, 'uninstall-transaction.sh', '--prepare', snap.name)
+                    assert retried.returncode == 0 and marker.exists(), retried.stderr
+            print('[PASS]', shell, 'exact prepare', case)
+
+
 for shell in SHELLS:
+    test_exact_prepare(shell)
     # Real Linux processes: a matching name must never authorize a signal.
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-process-") as temp:
         td = Path(temp)
@@ -415,14 +567,15 @@ for shell in SHELLS:
         td = Path(temp)
         root, state, files, env = setup(td)
         import shutil as _sh
-        _sh.rmtree(root / "opt/var/opkg/lists")  # break the feed fallback too
+        _sh.rmtree(root / "opt/var/opkg-lists")  # break the feed fallback too
         _sh.rmtree(root / "opt/etc/keenetic-auto-setup", ignore_errors=False)
         (root / "opt/etc/keenetic-auto-setup").mkdir(parents=True)
         (root / "opt/etc/keenetic-auto-setup/ownership.v1").write_text(files["opt/etc/keenetic-auto-setup/ownership.v1"])  # ledger only, no sources
         name = prepared_snapshot(shell, root, state, env, want_cache=False)
         before = digest(root, state)
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
-        assert p.returncode == 3 and "rollback cache" in p.stderr, (p.stdout, p.stderr)
+        assert p.returncode == 3 and "no prepared transaction" in p.stderr, (p.stdout, p.stderr)
+        assert not (root / f'opt/kas-uninstall-backups/{name}/transaction/prepare.v1').exists()
         assert digest(root, state) == before, "refusal must not mutate anything"
         print("[PASS]", shell, "missing rollback cache refuses without changes")
 
@@ -514,7 +667,7 @@ for shell in SHELLS:
         manifest = root / f"opt/kas-uninstall-backups/{name}/packages/MANIFEST"
         assert manifest.is_file(), "feed fallback must build the cache"
         body = manifest.read_text()
-        assert "mihomo_1.19.33-2_aarch64.ipk" in body and "magitrickle_0.8.2-1_aarch64.ipk" in body
+        assert "mihomo_1.19.33-2_aarch64-3.10.ipk" in body and "magitrickle_0.8.2-1_aarch64-3.10.ipk" in body
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
         assert p.returncode == 0, (p.stdout, p.stderr)
         assert "mihomo" not in (state / "installed").read_text()
@@ -526,13 +679,22 @@ for shell in SHELLS:
         root, state, files, env = setup(td)
         (state / "download_fail").write_text("1")
         import shutil as _sh2
-        _sh2.rmtree(root / "opt/var/opkg/lists")
+        _sh2.rmtree(root / "opt/var/opkg-lists")
+        # A recorded mutable URL alone is not an approved checksum.
+        approved = td / 'approved-recorded-sources'
+        rows = []
+        for line in files['opt/etc/keenetic-auto-setup/sources.v1'].splitlines():
+            url = line.split('|')[2]
+            sha = hashlib.sha256((state / 'assets' / url.rsplit('/', 1)[1]).read_bytes()).hexdigest()
+            rows.append(sha + '|' + url + '\n')
+        approved.write_text(''.join(rows)); approved.chmod(0o600)
+        env['KAS_ROLLBACK_IPKS'] = str(approved)
         name = prepared_snapshot(shell, root, state, env)
         body = (root / f"opt/kas-uninstall-backups/{name}/packages/MANIFEST").read_text()
         assert "mihomo_1.19.33-2_aarch64-3.10.ipk" in body
         p = run(shell, env, "uninstall-transaction.sh", "--remove", name)
         assert p.returncode == 0, (p.stdout, p.stderr)
-        print("[PASS]", shell, "rollback cache built from recorded sources.v1")
+        print("[PASS]", shell, "rollback cache built from source URLs pinned by approved SHA256")
 
         # ---- 8e. foreign-profile gate geometry: KAS owns Proxy1, foreign Proxy0 --
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-gate-foreign-") as temp:
