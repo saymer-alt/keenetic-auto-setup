@@ -188,11 +188,13 @@ sr_file() {
 # Names, exe and argv are ONLY negative evidence here: never authority to kill.
 # Any unreadable userspace process prevents daemon/package/routing destruction.
 sr_processes() {
-    local p exe data tail flags cmd name
+    local p exe data tail flags cmd name procdir
+    # ROOT is nonempty ONLY after explicit disposable-fixture authorization.
+    procdir="$ROOT/proc"
     SR_BUSY=0; SR_BUSY_REASON=none
-    [ -r /proc/self/stat ] && [ -r /proc/mounts ] || { SR_BUSY=1; return; }
-    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then SR_BUSY=1; return; fi
-    for p in /proc/[0-9]*; do
+    [ -r "$procdir/self/stat" ] && [ -r "$procdir/mounts" ] && [ -d "$procdir/1" ] || { SR_BUSY=1; return; }
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' "$procdir/mounts"; then SR_BUSY=1; return; fi
+    for p in "$procdir"/[0-9]*; do
         [ -d "$p" ] || continue
         exe=$(readlink "$p/exe" 2>/dev/null) || exe=''
         data=$(cat "$p/stat" 2>/dev/null) || { [ ! -d "$p" ] || SR_BUSY=1; continue; }

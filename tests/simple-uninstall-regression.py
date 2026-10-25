@@ -120,6 +120,14 @@ class Fixture:
   self.home=Path(self.tmp.name); self.root=self.home/'root'; self.state=self.home/'state'; self.bin=self.home/'bin'
   for d in (self.root,self.state,self.bin,self.root/'tmp'): d.mkdir(parents=True,exist_ok=True)
   self.write('.kas-uninstall-fixture','KAS_SIMPLE_REMOVE_TEST_V1\n')
+  # A private proc view avoids depending on host privileges/process churn.
+  # Lock identities still use the real /proc, exactly as in production.
+  self.write('proc/1/stat',Path('/proc/self/stat').read_text())
+  self.write('proc/1/comm','fixture-init\n')
+  self.write('proc/1/cmdline','/sbin/init\0')
+  self.write('proc/mounts','proc /proc proc rw 0 0\n')
+  (self.root/'proc/1/exe').symlink_to('/bin/sh')
+  (self.root/'proc/self').symlink_to('1')
   self.write('opt/etc/keenetic-auto-setup/ownership.v1','KAS_OWNERSHIP_V1\nowned|proxy|Proxy0\nowned|policy|bypass_wa\nowned|package|mihomo\nowned|package|magitrickle\nowned|watchdog|binary\nowned|watchdog|wrapper\nowned|hook|020-bypass_wa.sh\n')
   self.write('opt/bin/mihomo_watchdog.sh',(BASE/'mihomo-watchdog.sh').read_text())
   self.write('opt/etc/ndm/netfilter.d/020-bypass_wa.sh',(BASE/'020-bypass-wa.sh').read_text())
@@ -180,6 +188,7 @@ for shell in SHELLS:
   for _ in range(100):
    if Path(f'/proc/{proc.pid}/comm').read_text().strip()=='mihomo': break
    time.sleep(.01)
+  (f.root/'proc'/str(proc.pid)).symlink_to(f'/proc/{proc.pid}')
   try:
    p=f.run(shell)
    assert p.returncode==1 and '[LEFT] daemons' in p.stdout,(p.stdout,p.stderr)
@@ -267,3 +276,12 @@ for shell in SHELLS:
   assert 'mihomo - 1' in (f.state/'installed').read_text()
   f.check_preserved()
  print('[PASS]',shell,'foreign Proxy sharing 7890 also preserves service autostart')
+
+for shell in SHELLS:
+ with Fixture() as f:
+  (f.root/'proc/1/exe').unlink()
+  p=f.run(shell)
+  assert p.returncode==1 and '[LEFT] daemons' in p.stdout
+  assert 'mihomo - 1' in (f.state/'installed').read_text()
+  f.check_preserved()
+ print('[PASS]',shell,'unreadable executable remains UNKNOWN, never stopped')
