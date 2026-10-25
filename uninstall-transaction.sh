@@ -50,6 +50,63 @@ if [ "$mode" = --rehearse ] || { [ "$mode" = --remove ] && [ -n "${KAS_TXN_FIXTU
         [ "$(cat "$fixture_marker")" = KAS_UNINSTALL_TEST_FIXTURE_V1 ] ||
         fail "missing explicit disposable fixture identity marker"
 fi
+txn_step_services_done() {
+    local proc comm exe data tail state flags seen rc
+    # These init scripts delegate stop to rc.func (killall). Neither retains
+    # a PID/starttime record proving which invocation belongs to KAS. Even an
+    # identical executable/argv can be a manual foreign invocation: fail closed.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] ||
+        fail "process inventory unavailable"
+    # Same restricted-proc rule as KAS mp_state; absence must be observable.
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        fail "restricted process inventory"
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || fail "process mounts unreadable"
+    fi
+    seen=0
+    for proc in /proc/[0-9]*; do
+        [ -d "$proc" ] || continue
+        seen=1
+        IFS= read -r comm < "$proc/comm" || {
+            [ ! -d "$proc" ] && continue
+            fail "process inventory unreadable"
+        }
+        case "$comm" in mihomo|magitrickled) return 1 ;; esac
+        if exe=$(readlink "$proc/exe" 2>/dev/null); then
+            case "${exe% (deleted)}" in */mihomo|*/magitrickled) return 1 ;; esac
+            for comm in /opt/sbin/mihomo /opt/bin/mihomo /opt/bin/magitrickled; do
+                if [ "$proc/exe" -ef "$root$comm" ]; then return 1; fi
+            done
+            continue
+        fi
+        # Reuse mp_state's treatment of vanished processes, zombies and
+        # PF_KTHREAD. An unreadable live userspace executable is UNKNOWN.
+        [ -d "$proc" ] || continue
+        if data=$(cat "$proc/stat" 2>/dev/null); then
+            tail=${data##*) }
+            state=${tail%% *}
+            case "$state" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$tail" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        [ ! -d "$proc" ] || fail "live process executable unreadable"
+    done
+    [ "$seen" -eq 1 ] || fail "empty process inventory"
+    return 0
+}
+
+txn_step_services() {
+    txn_step_services_done ||
+        fail "live service ownership unproven; no signals sent; stop services manually after verifying ownership"
+}
+
+# Refuse unproven live processes BEFORE gates, lock or marker writes.
+if [ "$mode" = --remove ]; then txn_step_services; fi
+
 # The lifecycle lock contract is identical to installer/update/watchdog. Only
 # the path root differs in offline tests; production always uses /tmp.
 # BEGIN MIHOMO LIFECYCLE LOCK v1
@@ -399,37 +456,6 @@ txn_step_hook() {
         fail "cannot remove the KAS netfilter hook"
 }
 
-txn_step_services_done() {
-    ! pidof mihomo >/dev/null 2>&1 && ! pidof magitrickled >/dev/null 2>&1
-}
-txn_step_services() {
-    for svc in S99mihomo S99magitrickle; do
-        if [ -x "$root/opt/etc/init.d/$svc" ]; then
-            "$root/opt/etc/init.d/$svc" stop >/dev/null 2>&1 || true
-        fi
-    done
-    _tries=0
-    while ! txn_step_services_done; do
-        _tries=$((_tries + 1))
-        # Bounded escalation aimed ONLY at the two owned daemon binaries:
-        # TERM at ~8s, KILL at ~20s (the Ported guest proved TERM alone
-        # insufficient for magitrickled after a foreign-profile run).
-        for _daemon in mihomo magitrickled; do
-            _pids=$(pidof "$_daemon" 2>/dev/null) || _pids=""
-            [ -n "$_pids" ] || continue
-            if [ "$_tries" -eq 4 ]; then
-                kill -TERM $_pids 2>/dev/null || true
-            elif [ "$_tries" -ge 10 ]; then
-                kill -KILL $_pids 2>/dev/null || true
-            fi
-        done
-        if [ "$_tries" -gt 15 ]; then
-            printf '[INFO] removal: services still running after stop+TERM+KILL: mihomo=%s magitrickled=%s\n' "$(pidof mihomo 2>/dev/null | wc -w)" "$(pidof magitrickled 2>/dev/null | wc -w)"
-            fail "owned services did not stop"
-        fi
-        sleep 2
-    done
-}
 
 txn_policy_present() {
     ndmc -c 'show running-config' 2>/dev/null | tr -d '\r' | grep -q '^ip policy bypass_wa$'
@@ -486,6 +512,7 @@ txn_step_opkg_done() {
     ! printf '%s\n' "$_list" | grep -Eq '^(mihomo|magitrickle)[[:space:]]'
 }
 txn_step_opkg() {
+    txn_step_services_done || fail 'services restarted before package removal'
     for pkg in magitrickle mihomo; do
         if printf '%s\n' "$(opkg list-installed 2>/dev/null)" | grep -Eq "^${pkg}[[:space:]]"; then
             opkg remove "$pkg" ||
@@ -863,6 +890,7 @@ fi
 # journal records intent before each mutation, steps are state-aware, and
 # any unexpected observation aborts without touching later steps.
 if [ "$mode" = --remove ]; then
+    txn_step_services
     [ ! -L "$snap/transaction/prepare.v1" ] && [ -f "$snap/transaction/prepare.v1" ] ||
         fail "no prepared transaction for this snapshot; run --prepare first"
 

@@ -200,8 +200,43 @@ mv() { [ "$CASE" != rename-fail ] || return 1; command mv "$@"; }
     print('PASS',shell,'C2/C3 watchdog ownership/modes/faults/lock/cron/idempotency')
 
 
+def doctor_fresh_history(shell):
+    """Real Doctor history + summary; no router or fabricated verdict.
+
+    A fresh foreign profile does not run wan_guard, and install touches an
+    empty log. This reproduces a source-backed cause, not the lost guest log.
+    """
+    text = source('mihomo-doctor.sh')
+    history = text[text.index('WD_STAB="OK"'):text.index('hdr "9. Network"')]
+    summary = text[text.index('# Summary\n'):]
+    helpers = '\n'.join(line for line in text.splitlines()
+                        if line.startswith(('ok() ', 'warn() ', 'info() ')))
+    with tempfile.TemporaryDirectory() as temp:
+        logfile = Path(temp) / 'watchdog.log'
+        for content, message in ((None, 'Watchdog log not found'),
+                                 ('', 'Watchdog log is empty'),
+                                 (time.strftime('%Y-%m-%d %H:%M:%S') + ' [WARN] WAN unreachable - skip restart\n', None)):
+            if content is not None:
+                logfile.write_text(content)
+            setup = '''N_OK=0; N_WARN=0; N_FAIL=0; N_INFO=0
+COLOR_GREEN=; COLOR_YELLOW=; COLOR_RED=; COLOR_CYAN=
+WD_CANON=1; MIHOMO_PROCS=1; WATCHDOG_RECENT_WARN_THRESHOLD=2
+WATCHDOG_CRON=/nonexistent/kas-test-wrapper
+status_out() { printf '%s\\n' "$2"; }
+append_finding() { :; }; print_human_result() { :; }
+'''
+            p = run(shell, setup + 'WATCHDOG_LOG=' + shlex.quote(str(logfile)) + '\n'
+                    + helpers + '\n' + history + summary, rc=1 if message else 0)
+            assert ('Overall status: WARN' in p.stdout) == bool(message), p.stdout
+            assert 'FAIL: 0' in p.stdout, p.stdout
+            if message:
+                assert message in p.stdout and 'WARN: 1' in p.stdout, p.stdout
+    print('PASS', shell, 'production Doctor missing/empty history WARN; WAN-only history informational')
+
+
 if __name__=='__main__':
     for shell in [['sh'],['busybox','ash']]:
+        doctor_fresh_history(shell)
         package_versions(shell)
         mounts(shell)
         watchdog(shell)

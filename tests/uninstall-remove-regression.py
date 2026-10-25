@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 
 BASE = Path(__file__).resolve().parents[1]
 SHELLS = [["sh"]]
@@ -268,6 +269,75 @@ def prepared_snapshot(shell, root, state, env, want_cache=True):
 
 
 for shell in SHELLS:
+    # Real Linux processes: a matching name must never authorize a signal.
+    with tempfile.TemporaryDirectory(prefix="kas-uninstall-process-") as temp:
+        td = Path(temp)
+        root, state, files, env = setup(td)
+        name = prepared_snapshot(shell, root, state, env)
+        # A final-tree digest alone would miss temporary lock/marker writes.
+        # Record even attempted mkdir: a live unknown process must refuse
+        # before lifecycle acquisition, not just clean up afterwards.
+        mkdir_log = td / 'mkdir-attempts'
+        (td / 'bin/mkdir').write_text('#!/bin/sh\necho attempted >> "' + str(mkdir_log) + '"\nexec /bin/mkdir "$@"\n')
+        (td / 'bin/mkdir').chmod(0o755)
+        binary = td / 'daemon'
+        source = td / 'daemon.c'
+        source.write_text('#include <unistd.h>\nint main(void) { for (;;) pause(); }\n')
+        subprocess.run(['cc', str(source), '-o', str(binary)], check=True)
+        for daemon in ('mihomo', 'magitrickled'):
+            target = root / 'opt/bin' / daemon
+            shutil.copyfile(binary, target)
+            target.chmod(0o755)
+            foreign = td / daemon
+            shutil.copyfile(binary, foreign)
+            foreign.chmod(0o755)
+            for executable, arguments in (
+                    (foreign, []), (target, ['--config', '/foreign/config.yaml']),
+                    (target, ['-d', '/opt/etc/mihomo'] if daemon == 'mihomo' else [])):
+                process = subprocess.Popen(['/opt/bin/' + daemon] + arguments, executable=executable)
+                try:
+                    time.sleep(.05)
+                    # Even the daemon's numeric PID file plus matching inode,
+                    # argv and stable starttime does not identify its launcher.
+                    pidfile = root / 'opt/var/run/magitrickle.pid'
+                    pidfile.parent.mkdir(parents=True, exist_ok=True)
+                    pidfile.write_text(str(process.pid))
+                    stat = Path(f'/proc/{process.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+                    before = digest(root, state)
+                    p = run(shell, env, 'uninstall-transaction.sh', '--remove', name)
+                    assert p.returncode == 3 and 'live service ownership unproven' in p.stderr, (p.stdout, p.stderr)
+                    assert process.poll() is None, 'foreign daemon was signalled'
+                    assert Path(f'/proc/{process.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19] == stat
+                    assert digest(root, state) == before, 'foreign daemon refusal mutated resources'
+                    assert not mkdir_log.exists(), 'refusal attempted a lifecycle lock mutation'
+                    assert not (root / f'opt/kas-uninstall-backups/{name}/transaction/journal.v1').exists()
+                finally:
+                    process.terminate()
+                    process.wait(timeout=5)
+        print("[PASS]", shell, "real namesakes and same-binary foreign invocations blocked before mutation")
+
+    # Restricted proc and an unreadable live userspace executable are UNKNOWN,
+    # not evidence that services are absent. Path replacement is test-only.
+    with tempfile.TemporaryDirectory(prefix='kas-uninstall-proc-') as temp:
+        td = Path(temp)
+        proc = td / 'proc'
+        (proc / 'self').mkdir(parents=True)
+        (proc / 'self/stat').write_text('readable')
+        (proc / '1').mkdir()
+        (proc / '1/comm').write_text('unrelated\n')
+        (proc / '1/stat').write_text('1 (unrelated) S 0 0 0 0 0 0 0\n')
+        production = (BASE / 'uninstall-transaction.sh').read_text()
+        start = production.index('txn_step_services_done() {')
+        end = production.index('# Refuse unproven live processes', start)
+        helpers = production[start:end].replace('/proc/', str(proc) + '/')
+        for mounts, expected in (('proc /proc proc rw,hidepid=2 0 0\n', 'restricted process inventory'),
+                                 ('proc /proc proc rw 0 0\n', 'live process executable unreadable')):
+            (proc / 'mounts').write_text(mounts)
+            p = subprocess.run(shell, input='root=' + str(td) + '\nfail() { echo "$*" >&2; exit 3; }\n'
+                               + helpers + '\ntxn_step_services\n', text=True, capture_output=True)
+            assert p.returncode == 3 and expected in p.stderr, (p.stdout, p.stderr)
+        print('[PASS]', shell, 'restricted/unreadable proc blocks closed')
+
     # ---- 1. happy path -------------------------------------------------
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-remove-happy-") as temp:
         td = Path(temp)
