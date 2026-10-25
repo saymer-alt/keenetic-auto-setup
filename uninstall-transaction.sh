@@ -51,21 +51,22 @@ if [ "$mode" = --rehearse ] || { [ "$mode" = --remove ] && [ -n "${KAS_TXN_FIXTU
         fail "missing explicit disposable fixture identity marker"
 fi
 txn_step_services_done() {
-    local proc comm exe data tail state flags seen rc
+    local proc comm exe data tail state flags seen rc procdir
+    procdir="$root/proc"
     # These init scripts delegate stop to rc.func (killall). Neither retains
     # a PID/starttime record proving which invocation belongs to KAS. Even an
     # identical executable/argv can be a manual foreign invocation: fail closed.
-    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] ||
+    [ -r "$procdir/self/stat" ] && [ -d "$procdir/1" ] && [ -r "$procdir/mounts" ] ||
         fail "process inventory unavailable"
     # Same restricted-proc rule as KAS mp_state; absence must be observable.
-    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' "$procdir/mounts"; then
         fail "restricted process inventory"
     else
         rc=$?
         [ "$rc" -eq 1 ] || fail "process mounts unreadable"
     fi
     seen=0
-    for proc in /proc/[0-9]*; do
+    for proc in "$procdir"/[0-9]*; do
         [ -d "$proc" ] || continue
         seen=1
         IFS= read -r comm < "$proc/comm" || {

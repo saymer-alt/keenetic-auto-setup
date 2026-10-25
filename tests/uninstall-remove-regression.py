@@ -197,6 +197,14 @@ def setup(td, ip_global=PROXY_350, extra_cron="", foreign_mangle=True):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
     (root / "tmp").mkdir(exist_ok=True)
+    # Existing fixture root also isolates the service inventory. Production
+    # uses /proc; default fixtures describe no daemon, independent of host UID.
+    proc = root / 'proc'
+    (proc / '1').mkdir(parents=True)
+    (proc / '1/comm').write_text('init\n')
+    (proc / '1/exe').symlink_to('/bin/sh')
+    (proc / 'self').symlink_to('/proc/self')
+    (proc / 'mounts').write_text('proc /proc proc rw 0 0\n')
     (root / ".kas-uninstall-fixture").write_text("KAS_UNINSTALL_TEST_FIXTURE_V1\n")
     crontab = "*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins\n" + OWNED_CRON
     if extra_cron:
@@ -302,6 +310,8 @@ for shell in SHELLS:
                     pidfile = root / 'opt/var/run/magitrickle.pid'
                     pidfile.parent.mkdir(parents=True, exist_ok=True)
                     pidfile.write_text(str(process.pid))
+                    proc_entry = root / 'proc' / str(process.pid)
+                    proc_entry.symlink_to(f'/proc/{process.pid}')
                     stat = Path(f'/proc/{process.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
                     before = digest(root, state)
                     p = run(shell, env, 'uninstall-transaction.sh', '--remove', name)
@@ -312,6 +322,8 @@ for shell in SHELLS:
                     assert not mkdir_log.exists(), 'refusal attempted a lifecycle lock mutation'
                     assert not (root / f'opt/kas-uninstall-backups/{name}/transaction/journal.v1').exists()
                 finally:
+                    if (root / 'proc' / str(process.pid)).is_symlink():
+                        (root / 'proc' / str(process.pid)).unlink()
                     process.terminate()
                     process.wait(timeout=5)
         print("[PASS]", shell, "real namesakes and same-binary foreign invocations blocked before mutation")
@@ -329,7 +341,7 @@ for shell in SHELLS:
         production = (BASE / 'uninstall-transaction.sh').read_text()
         start = production.index('txn_step_services_done() {')
         end = production.index('# Refuse unproven live processes', start)
-        helpers = production[start:end].replace('/proc/', str(proc) + '/')
+        helpers = production[start:end]
         for mounts, expected in (('proc /proc proc rw,hidepid=2 0 0\n', 'restricted process inventory'),
                                  ('proc /proc proc rw 0 0\n', 'live process executable unreadable')):
             (proc / 'mounts').write_text(mounts)
