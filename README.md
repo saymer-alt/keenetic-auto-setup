@@ -40,11 +40,22 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
 ```
 
-**5. Безопасно импортировать новый YAML (предпочтительно вместо очистки)**
+**5. Заменить конфиг Mihomo новым YAML без `nano` (рекомендуется)**
+
+**Важно:** команда ниже **не скачивает готовый конфиг из генератора автоматически**. Она запускает мастер, в который нужно **вручную вставить YAML**:
+
+1. Создайте новый YAML в [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/) и скопируйте **весь его текст**.
+2. Выполните в SSH роутера:
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
 ```
+
+3. Когда появится приглашение `YAML (or s to skip):`, вставьте скопированный YAML в терминал и нажмите **Ctrl+D один раз**, чтобы завершить ввод.
+
+**Что делает мастер:** проверяет YAML, сохраняет предыдущий `/opt/etc/mihomo/config.yaml` в `config.yaml.bak`, заменяет конфиг и, если Mihomo работал до импорта, запускает его снова. Если проверка или запуск не удались, предусмотрено восстановление прежнего конфига. **Открывать `nano` и вручную очищать файл не нужно.** Предыдущая `.bak` при новом импорте перезаписывается.
+
+Для пропуска импорта **до вставки YAML** введите `s` и нажмите Enter. [Подробности и ограничения](docs/13-config-import.md).
 
 **6. Проверить систему — Doctor**
 
