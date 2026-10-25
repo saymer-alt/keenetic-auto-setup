@@ -70,6 +70,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
+**10. Remove only Mihomo and MagiTrickle packages (no /opt formatting)**
+
+~~~sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+~~~
+
+**Partial package removal, NOT full KAS rollback.** OPKG removes the packages and may remove their configurations. KeeneticOS ProxyN, policy, DNS, Netfilter hook, cron/watchdog and other files are untouched; routes that depend on removed packages may stop working. Save important YAML first: /opt/etc/mihomo/config.yaml and /opt/var/lib/magitrickle/config.yaml. No rollback cache or flash formatting is required.
+
 ---
 
 ## 0. Prerequisites
