@@ -1,44 +1,48 @@
-# Native Ported QEMU acceptance
+# Native Keenetic Ported E2E
 
-The caller in `.github/workflows/ported-native-e2e.yml` executes the actual PR
-scripts in WR3000P Keenetic Ported with genuine EXT4 Entware. The reusable
-laboratory and its source are pinned to one full Router Emulator commit:
-`44c6cab9d50fcd33147ac0a3a193a5a985710796` — upstream 3.9 with the full lab
-integration (PRs #1–#3), the patch-series check (PR #5) and the netfilter
-settle probe-retry fix (PR #7). Dependencies are frozen separately; a KAS
-change does not silently upgrade them.
+KAS retains `.github/workflows/ported-native-e2e.yml` as an independently
+pinned, **disposable QEMU/Entware integration test** for installing KAS,
+running Doctor and exercising related lifecycle checks. It does not connect
+to real routers and does not modify the installation scripts.
 
-After owner review/merge of the boot fix, laboratory and this caller, every KAS
-PR runs on GitHub-hosted Ubuntu without the owner's computer or a physical router.
-Manual dispatch accepts a full KAS SHA; an empty value selects the dispatch commit.
-The workflow also runs for this caller PR before merge. No schedule is enabled.
+## What this caller tests
 
-Read the job summary and the three files in the `ported-gates` artifact: JSON,
-JUnit and Markdown. BOOT, AUTH, ENTWARE, PREFLIGHT, INSTALL, DOCTOR, REBOOT,
-ROLLBACK and UNINSTALL are independent gates. Expected guard rejection can make
-an execution job green while the report remains BLOCKED. In the frozen baseline,
-`uninstall.sh --remove` has no native removal implementation and exits 3; the lab
-verifies refusal and unchanged state, and never substitutes manual deletion or
-fixture rehearsal. This is not full uninstall acceptance. The real transactional `--remove`
-(KAS PR #215) is exercised by dispatching this caller with `kas_ref` set to
-that feature SHA; its gate contract accepts the allocator-rendered
-`ip global` index (32767 on Ported), so the transaction gate can PASS
-virtually before any hardware run.
+The KAS caller runs on pull requests and can also be dispatched manually with
+a full 40-character `kas_ref`. It delegates to the Router Emulator reusable
+workflow at the pinned SHA **shown in the caller's YAML**. That pinned
+laboratory runs the `kas` lifecycle stage, including a *deliberate refusal*
+from the historical `uninstall.sh --remove`. A green GitHub Actions job in this
+stage **does not prove the new package uninstaller worked**. Consult the
+individual gate labels in the sanitized `ported-gates` artifact; an overall
+report may remain BLOCKED when a gate was not attempted.
 
-The first run builds only AArch64 QEMU. Cache keys cover the exact patch series;
-run dispatch once on the default branch after merge to seed a cache reusable by
-PRs. Caches are repository/ref scoped. There is no full Windows/MIPS/PGO rebuild.
-No secrets, PAT, device credentials or live VPN server are needed. WAN stays
-restricted. Only pinned dependency paths and genuine local HTTP/DNS fixtures are
-available; public watchdog targets receive no fabricated success.
+## Accepted minimal uninstaller
 
-Public artifacts exclude NAND, firmware, USB images, credentials, keys, password
-hashes, running configurations and UART/SSH logs. Do not upload private working
-directories to diagnose failures. Full input SHA values and binary hashes are in
-JSON. See the pinned emulator's `lab/PORTED-E2E.md` for implementation and limits.
+The separate **`uninstall-packages` stage** was added in
+[router-emulator PR #35](https://github.com/saymer-alt/router-emulator/pull/35)
+and runs a real install → native service stop → `opkg remove` → preserved YAML →
+repeat → reboot on virtual Keenetic Ported/Entware. Its final
+[run 40313388777](https://github.com/saymer-alt/router-emulator/actions/runs/40313388777)
+passed. The same production package uninstaller also passed the KN-1010
+hardware test, documented in
+[KAS PR #235](https://github.com/saymer-alt/keenetic-auto-setup/pull/235).
 
-This result covers WR3000P Ported QEMU, not physical KN-1012/KN-3811 or any other
-router. Real radios, USB behavior, power loss, external VPN/WAN/NTP and hardware
-model compatibility need separate evidence. Native TUN and local SOCKS traffic
-do not prove a real VPN tunnel. Production runtime and uninstall guards are
-unchanged by this caller.
+To repeat that targeted test, dispatch the **Router Emulator**
+`ported-entware-kas.yml` workflow with `stage=uninstall-packages`, a full
+SHA of the KAS commit under test (`kas_ref`) and a full SHA of the
+compatible Router Emulator commit (`emulator_ref`); use the already accepted
+run's exact inputs when reproducing that evidence. Do not infer any result
+from an unrelated `kas` lifecycle workflow.
+
+## Security and limitations
+
+The lab publishes only sanitized gate labels, JSON/JUnit and summary text.
+Guest NAND, firmware images, USB filesystems, credentials, private YAML and
+UART/SSH logs must remain private and are destroyed at the end of a run.
+Pinned source and assets are necessary for reproducibility.
+
+The old snapshot/PREPARE/transaction prototype was abandoned and its
+repository files removed. The historical PRs remain on GitHub, but are not
+a supported uninstall path. Production `uninstall-packages.sh` removes only
+Mihomo/MagiTrickle and their recognized Entware services/watchdog; it leaves
+KeeneticOS ProxyN, policies, DNS and live Netfilter state untouched.
