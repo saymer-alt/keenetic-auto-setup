@@ -604,7 +604,7 @@ grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must 
 grep -q '^project_script_curl_retry()' "$ROOT/install.sh" || fail "project-script delivery must centralize bounded curl compatibility retries"
 grep -Fq 'if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with bounded curl retries first"
 grep -Fq -- '--connect-timeout 5 --max-time 20 -4 --curves X25519' "$ROOT/install.sh" || fail "installer must retain the bounded X25519 TLS compatibility retry"
-grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
+grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" -T 20 "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet, timeout-bounded wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
