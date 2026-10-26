@@ -76,7 +76,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
 ~~~
 
-**Partial package removal, NOT full KAS rollback.** OPKG removes the packages and may remove their configurations. KeeneticOS ProxyN, policy, DNS, Netfilter hook, cron/watchdog and other files are untouched; routes that depend on removed packages may stop working. Save important YAML first: /opt/etc/mihomo/config.yaml and /opt/var/lib/magitrickle/config.yaml. No rollback cache or flash formatting is required.
+**Minimal native-service removal, NOT full KeeneticOS rollback.** Disables the KAS cron watchdog, disables native autostart and calls the two Entware init.d stop scripts before `opkg remove`. Checks that both daemons stopped. YAML is preserved by default using copies under `/opt/var/kas-yaml.*` and missing files restored. Use `--purge-config` to explicitly remove YAML after packages, or `--cleanup` to additionally remove recorded KAS MagiTrickle feed and Netfilter hook files. KeeneticOS ProxyN, policy, DNS interception and live Netfilter rules are NOT modified; review routing separately (`sh uninstall.sh --plan`). Not hardware-tested yet. No IPK rollback cache or drive formatting.
 
 ---
 
