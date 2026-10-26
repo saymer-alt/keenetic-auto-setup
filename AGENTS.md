@@ -97,6 +97,7 @@ The most sensitive parts — change only for an explicit task and with full unde
 ## 4. Development principles
 
 Confirmed by code and docs:
+- **Keenetic `ip global` is a variable routing priority, NOT a constant or an ownership ID.** Official CLI: `ip global <priority>` (1..65534), `ip global order ...`, `ip global auto` (automatically computed/rendered). Higher priority is preferred for the default route among applicable interfaces; policy context matters. KAS uses `ip global auto` for owned ProxyN; `350` on hardware, `32767` in Ported, and unrelated WAN `700` are not mismatches by themselves. Parse per-interface blocks; accept valid N without fixing a magic number; establish ownership via ledger + canonical ProxyN signature + exclusive-consumer scan + snapshot, preserve post-snapshot drift checks. Never modify another interface's priority to appease tests or infer actual client routing from one number. Vendor references, scope, and negative regression cases: [docs/keenetic-ip-global-priority.md](docs/keenetic-ip-global-priority.md).
 - Re-running install.sh is designed to be safe: mutating steps are guarded by checks
   (pkg_ensure; `show ip policy` / `show interface Proxy0` before creation; grep before
   appending to crontab; is_mounted in S00ubifs). An already installed executable Mihomo at a
