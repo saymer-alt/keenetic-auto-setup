@@ -633,7 +633,7 @@ grep -Fq 'rm -f "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater mus
 pass "Mihomo updater network acquisition uses curl/wget fallback without weakening transactions"
 
 grep -q '^download_watchdog_candidate()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must centralize resilient candidate download"
-grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url" 2>/dev/null' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain quiet wget fallback"
+grep -Fq 'wget -qO "$TMP_FILE" -T 20 "$_dw_url" 2>/dev/null' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain quiet, bounded wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain GitHub Contents API fallback for managed source"
 grep -Fq 'if [ -z "${WATCHDOG_URL:-}" ]' "$ROOT/update-watchdog.sh" || fail "watchdog updater API fallback must not override a caller-provided WATCHDOG_URL"
 grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must clear partial candidates between transports"
