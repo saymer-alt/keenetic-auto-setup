@@ -61,6 +61,12 @@ jobs:
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
 
+      - name: Minimal OPKG package removal regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-regression.py
+
+      - name: Native service stop and package removal regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-service-regression.py
+
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
 
