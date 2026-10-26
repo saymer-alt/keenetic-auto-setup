@@ -5,6 +5,10 @@ pinned, **disposable QEMU/Entware integration test** for installing KAS,
 running Doctor and exercising related lifecycle checks. It does not connect
 to real routers and does not modify the installation scripts.
 
+## When the workflow runs
+
+The caller automatically runs on pull requests that change **anything other than** Markdown documentation and issue templates (the `pull_request.paths-ignore` rules). Script/runtime, test, CI and workflow changes **still** trigger native Ported E2E. Manual `workflow_dispatch` remains available with a full immutable KAS ref. This avoids paying for an approximately 14–24 minute emulation run on documentation-only PRs; it does **not** weaken required `Shell contracts` checks, source pinning or gate semantics. Do not treat a workflow skipped by path filter as a passing native E2E test.
+
 ## What this caller tests
 
 The KAS caller runs on pull requests and can also be dispatched manually with

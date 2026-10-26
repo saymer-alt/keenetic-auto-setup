@@ -2,6 +2,11 @@ name: Keenetic Ported native KAS E2E
 
 on:
   pull_request:
+    # Native E2E is expensive. Ignore only documentation/issue-template-only PRs;
+    # any change to scripts, tests, fixtures or workflow CI still runs it.
+    paths-ignore:
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
     inputs:
       kas_ref:
