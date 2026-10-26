@@ -8,6 +8,7 @@
 
 | Скрипт | Назначение / документация |
 | --- | --- |
+| [`uninstall-packages.sh`](../uninstall-packages.sh) | [Штатно остановить Mihomo/MagiTrickle и удалить оба пакета через OPKG без форматирования `/opt`; YAML сохраняются, ProxyN/политики/DNS/Netfilter KeeneticOS не очищаются](../README.md#7-удаление) |
 | [`uninstall.sh`](../uninstall.sh) | [Только `--check`: проверяет журнал, пакеты и настройки перед удалением; `--remove`/`--purge` заблокированы](23-uninstall.md) |
 | [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
