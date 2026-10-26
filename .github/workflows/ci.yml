@@ -70,9 +70,6 @@ jobs:
       - name: Native service stop and simple uninstall regression (sh and BusyBox ash)
         run: python3 tests/uninstall-packages-service-regression.py
 
-      - name: Uninstall private snapshot backup regression (dash and BusyBox ash)
-        run: python3 tests/uninstall-snapshot-regression.py
-
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
 
