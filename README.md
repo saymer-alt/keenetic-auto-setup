@@ -144,7 +144,17 @@ MagiTrickle: http://192.168.1.1:8080/
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
-## 7. Справочник
+## 7. Удаление
+
+Остановить Mihomo/MagiTrickle, отключить их watchdog и удалить пакеты **без форматирования /opt**:
+
+```sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+```
+
+Проверено в QEMU и на тестовом KN-1010 (удаление, повтор, перезагрузка). Пользовательские YAML сохраняются. **Это частичное удаление:** ProxyN, DNS, политики и действующие правила Netfilter KeeneticOS не очищаются; маршрутизация через удалённый Mihomo может перестать работать. `--cleanup` и `--purge-config` необязательны; при обычном удалении их не используйте.
+
+## 8. Справочник
 
 - [Полное HOWTO](docs/HOWTO_RU.md)
 - [Энциклопедия / карта системы](docs/encyclopedia/00-karta-sistemy.md)
