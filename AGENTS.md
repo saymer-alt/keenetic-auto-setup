@@ -1,5 +1,8 @@
 # AGENTS.md — keenetic-auto-setup
 
+> **Общее правило для всех проектов saymer-alt:** [Proof Before Build](https://github.com/saymer-alt/saymer-alt/blob/main/PROOF-BEFORE-BUILD.md) ([PR #9](https://github.com/saymer-alt/saymer-alt/pull/9)). Специализированное ТЭО и пример KAS: [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). Новые функции — только после доказательства проблемы, сравнения альтернатив, оценки пользы, стоимости и рисков. Обязательные safety-контракты KAS сохраняются.
+
+
 ## ⚑ Решение владельца от 2026-10-11: WORKING-FIRST / LICENSE AUDIT DEFERRED
 
 **ПРОЕКТЫ ВЕДУТСЯ В ПЕРВУЮ ОЧЕРЕДЬ ДЛЯ ЛИЧНОГО НЕКОММЕРЧЕСКОГО ИСПОЛЬЗОВАНИЯ. РЕПОЗИТОРИИ ПУБЛИЧНЫЕ.**
@@ -113,6 +116,7 @@ Confirmed by code and docs:
   (update-mihomo.sh); backup + sanity + sh -n + atomic mv (update-watchdog.sh).
 - Simplicity is more important than features (docs/10): do not add a feature that
   complicates the system and raises breakage risk.
+- **Proof Before Build (owner decision 2026-10-26):** before implementing a new feature or major integration, first defend the need, reproduce the problem, compare alternatives including native KeeneticOS/wait/no change, evaluate technical/economic benefit, full maintenance costs, risks and measurable acceptance criteria. Follow [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). A one-issue short assessment suffices; a failed proof means defer/skip, not expanding scope. Existing safety contracts and routine narrowly scoped bug fixes are not waived.
 - User-facing terminal status colors are a project contract, not decoration. Follow
   [docs/18-output-colors.md](docs/18-output-colors.md): normal progress and OK are green,
   INFO is cyan, WARN is yellow, ERROR/FAIL are red. Textual prefixes remain mandatory;
