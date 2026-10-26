@@ -130,22 +130,23 @@ stop_native() {
         if [ -x "$init" ]; then
             "$init" stop || echo "[WARN] $pkg stop returned error; checking process" >&2
         fi
-        if grep -qx 'ENABLED=yes' "$init"; then
-            tmp=$(mktemp "$ROOT/opt/etc/init.d/.kas-init.XXXXXX") || return 1
-            if ! cp -p "$init" "$tmp" ||
-               ! sed 's/^ENABLED=yes$/ENABLED=no/' "$init" > "$tmp" ||
-               ! mv -f "$tmp" "$init"; then
-                rm -f "$tmp"
-                echo "[ERROR] Cannot disable $pkg autostart" >&2; return 1
-            fi
-        fi
     fi
     n=0
     while pidof "$daemon" >/dev/null 2>&1 && [ "$n" -lt 4 ]; do
         sleep 1; n=$((n+1))
     done
     if pidof "$daemon" >/dev/null 2>&1; then
+        # Preserve the original init script to allow an ordinary retry of stop.
         echo "[ERROR] $daemon still running; $pkg package retained" >&2; return 1
+    fi
+    if [ -f "$init" ] && grep -qx 'ENABLED=yes' "$init"; then
+        tmp=$(mktemp "$ROOT/opt/etc/init.d/.kas-init.XXXXXX") || return 1
+        if ! cp -p "$init" "$tmp" ||
+           ! sed 's/^ENABLED=yes$/ENABLED=no/' "$init" > "$tmp" ||
+           ! mv -f "$tmp" "$init"; then
+            rm -f "$tmp"
+            echo "[ERROR] Cannot disable $pkg autostart" >&2; return 1
+        fi
     fi
     return 0
 }
