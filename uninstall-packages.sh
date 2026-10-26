@@ -34,8 +34,14 @@ installed=$(opkg list-installed 2>/dev/null) || {
 
 # Protect the user's two YAML files before touching OPKG or any service.
 # This is only a small file copy, not a transaction or IPK rollback system.
+# A repeated run on already removed packages must not mint a new copy.
+pending=''
+for pkg in mihomo magitrickle; do
+    printf '%s
+' "$installed" | grep -q "^$pkg - " && pending="$pending $pkg"
+done
 BACKUP=''
-if [ "$PURGE" -eq 0 ]; then
+if [ "$PURGE" -eq 0 ] && [ -n "$pending" ]; then
     for cfg in "$ROOT/opt/etc/mihomo/config.yaml" "$ROOT/opt/var/lib/magitrickle/config.yaml"; do
         [ -e "$cfg" ] || [ -L "$cfg" ] || continue
         [ -f "$cfg" ] && [ ! -L "$cfg" ] ||

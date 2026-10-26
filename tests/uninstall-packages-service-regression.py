@@ -128,6 +128,11 @@ for shell in SHELLS:
                 scenario not in ("stuck", "none", "watchdog_busy", "foreign_cron"))
             assert ("remove:magitrickle" in actions) == (
                 scenario not in ("none", "watchdog_busy", "foreign_cron"))
+            # YAML safety copies exist exactly when there is something to
+            # remove (the none scenario and explicit purge skip them).
+            yaml_dirs = sorted(p.name for p in (root / "opt/var").glob("kas-yaml.*"))
+            assert bool(yaml_dirs) == (scenario != "none" and args != ["--purge-config"]), (
+                shell, scenario, args, yaml_dirs)
             if scenario == "normal" and args != ["--purge-config"]:
                 assert (root / "opt/etc/mihomo/config.yaml").read_text() == (
                     "user: mihomo\n")
@@ -155,9 +160,14 @@ for shell in SHELLS:
                 # working init stop followed by the package removal.
                 assert actions[-2:] == ["mihomo:stop", "remove:mihomo"], actions
                 # A third run must be idempotent: do not stop/remove packages again.
+                before_again = sorted(p.name for p in (root / "opt/var").glob("kas-yaml.*"))
                 again = subprocess.run(shell + [str(SCRIPT)], env=env,
                                        capture_output=True, text=True, timeout=45)
                 assert again.returncode == 0, (shell, again)
+                # The repeat run created no additional YAML copies and kept
+                # the earlier ones.
+                assert sorted(p.name for p in (root / "opt/var").glob("kas-yaml.*")) == before_again, (
+                    shell, before_again)
                 assert actions == (root / "actions").read_text().splitlines()
             print("[PASS]", " ".join(shell), scenario, args)
 print("[PASS] native init stop, watchdog, OPKG, YAML, optional cleanup and foreign state")
