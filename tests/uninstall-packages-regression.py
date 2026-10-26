@@ -46,6 +46,6 @@ exit 0
             assert result.returncode == expected_rc, (shell, scenario, result)
             assert log.read_text().splitlines() == expected_calls, (shell, scenario)
             assert yaml.read_text() == "user: keep\n", (shell, scenario)
-            assert ("[PARTIAL]" in result.stdout + result.stderr or "[ERROR]" in result.stderr), (shell, scenario)
+            assert (("[OK]" in result.stdout or "[PARTIAL]" in result.stdout + result.stderr) if expected_rc == 0 else "[ERROR]" in result.stderr), (shell, scenario)
             print("[PASS]", shell, scenario)
 print("[PASS] package-only uninstaller does not call ndmc, iptables or file delete")
