@@ -70,14 +70,6 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
-**10. Удалить только пакеты Mihomo и MagiTrickle (без форматирования /opt)**
-
-~~~sh
-curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
-~~~
-
-**Удаление:** скрипт останавливает службы и watchdog, удаляет Mihomo и MagiTrickle через штатный OPKG, сохраняя YAML (копии в `/opt/var/kas-yaml.*`). **Не очищает** ProxyN, политики, DNS и активные правила Netfilter KeeneticOS. Проверено в QEMU и на KN-1010 (5.1.8).
-
 ---
 
 ## 0. Что нужно
@@ -152,7 +144,17 @@ MagiTrickle: http://192.168.1.1:8080/
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
-## 7. Справочник
+## 7. Удаление
+
+Удалить Mihomo и MagiTrickle **без форматирования /opt**:
+
+```sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/main/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+```
+
+YAML сохраняются. Настройки ProxyN, DNS, политик и Netfilter KeeneticOS не удаляются. Проверено в QEMU и на KN-1010.
+
+## 8. Справочник
 
 - [Полное HOWTO](docs/HOWTO_RU.md)
 - [Энциклопедия / карта системы](docs/encyclopedia/00-karta-sistemy.md)
