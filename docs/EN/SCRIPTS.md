@@ -12,6 +12,7 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 | [`setup.sh`](../../setup.sh) | [Setup wizard: detects `ram`/`disk`, delegates to `install.sh`, offers configuration import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
+| [`uninstall-packages.sh`](../../uninstall-packages.sh) | [Stop Mihomo/MagiTrickle and remove OPKG packages, preserving YAML; KeeneticOS state remains](README.md#7-uninstall) |
 | [`migrate-mihomo-tun.sh`](../../migrate-mihomo-tun.sh) | [Add TUN/`mitun0` to a legacy config with no `tun:` block](UPDATES.md#legacy-config-add-tun--mitun0) |
 | [`migrate-mihomo-mips.sh`](../../migrate-mihomo-mips.sh) | [Migrate the TUN config from gVisor to MIPS](UPDATES.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../../mihomo-doctor.sh) | [Doctor: full project diagnostics](../08-troubleshooting.md) |
