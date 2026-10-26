@@ -91,9 +91,29 @@ fi
 wd="$ROOT/opt/bin/mihomo_watchdog.sh"
 if [ -f "$wd" ] && [ ! -L "$wd" ] &&
    grep -q 'MIHOMO WATCHDOG SCRIPT' "$wd"; then
-    rm -f "$wd" || echo '[WARN] Watchdog file not removed' >&2
+    rm -f "$wd" || { echo '[ERROR] Cannot disable watchdog file; packages retained' >&2; exit 1; }
 elif [ -e "$wd" ] || [ -L "$wd" ]; then
     echo '[WARN] Unknown watchdog binary kept' >&2
+fi
+
+# The cron entry is gone, but a watchdog launched just before removal may
+# still be executing. It owns this existing per-run lock until it finishes.
+# Wait for it before stopping Mihomo; NEVER remove or steal a live/stale lock.
+wd_lock="$ROOT/tmp/mihomo_watchdog.lock.d"
+if [ -e "$wd_lock" ] || [ -L "$wd_lock" ]; then
+    [ -d "$wd_lock" ] && [ ! -L "$wd_lock" ] ||
+        { echo '[ERROR] Unsafe watchdog lock; packages retained' >&2; exit 1; }
+    wd_wait=0
+    wd_max=30
+    [ -z "$ROOT" ] || wd_max=2
+    while [ -d "$wd_lock" ] && [ "$wd_wait" -lt "$wd_max" ]; do
+        sleep 1
+        wd_wait=$((wd_wait+1))
+    done
+    if [ -e "$wd_lock" ] || [ -L "$wd_lock" ]; then
+        echo '[ERROR] Watchdog run still active or lock stale; packages retained. Check /tmp/mihomo_watchdog.lock.d' >&2
+        exit 1
+    fi
 fi
 
 # Stop with native init.d. Never kill by name. Leave a still-running package.
@@ -105,6 +125,11 @@ stop_native() {
         echo "[ERROR] $pkg init is a symlink; package retained" >&2; return 1
     fi
     if [ -f "$init" ]; then
+        # Some Entware init scripts check ENABLED before dispatching 'stop'.
+        # Stop FIRST, while the script is still enabled; then disable boot start.
+        if [ -x "$init" ]; then
+            "$init" stop || echo "[WARN] $pkg stop returned error; checking process" >&2
+        fi
         if grep -qx 'ENABLED=yes' "$init"; then
             tmp=$(mktemp "$ROOT/opt/etc/init.d/.kas-init.XXXXXX") || return 1
             if ! cp -p "$init" "$tmp" ||
@@ -113,9 +138,6 @@ stop_native() {
                 rm -f "$tmp"
                 echo "[ERROR] Cannot disable $pkg autostart" >&2; return 1
             fi
-        fi
-        if [ -x "$init" ]; then
-            "$init" stop || echo "[WARN] $pkg stop returned error; checking process" >&2
         fi
     fi
     n=0
