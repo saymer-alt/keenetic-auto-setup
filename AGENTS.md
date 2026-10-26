@@ -113,6 +113,7 @@ Confirmed by code and docs:
   (update-mihomo.sh); backup + sanity + sh -n + atomic mv (update-watchdog.sh).
 - Simplicity is more important than features (docs/10): do not add a feature that
   complicates the system and raises breakage risk.
+- **Proof Before Build (owner decision 2026-10-26):** before implementing a new feature or major integration, first defend the need, reproduce the problem, compare alternatives including native KeeneticOS/wait/no change, evaluate technical/economic benefit, full maintenance costs, risks and measurable acceptance criteria. Follow [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). A one-issue short assessment suffices; a failed proof means defer/skip, not expanding scope. Existing safety contracts and routine narrowly scoped bug fixes are not waived.
 - User-facing terminal status colors are a project contract, not decoration. Follow
   [docs/18-output-colors.md](docs/18-output-colors.md): normal progress and OK are green,
   INFO is cyan, WARN is yellow, ERROR/FAIL are red. Textual prefixes remain mandatory;
