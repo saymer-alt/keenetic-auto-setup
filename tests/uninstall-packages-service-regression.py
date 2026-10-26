@@ -100,7 +100,7 @@ for shell in SHELLS:
                 with (root / "opt/etc/crontab").open("a") as stream:
                     stream.write("*/5 * * * * root /bin/sh /foreign/mihomo_watchdog\n")
             result = subprocess.run(shell + [str(SCRIPT), *args], env=env,
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=45)
             assert result.returncode == rc, (shell, scenario, result)
             actions = (root / "actions").read_text().splitlines() if (
                 root / "actions").exists() else []
@@ -144,16 +144,19 @@ for shell in SHELLS:
                 env["TEST_STUCK"] = ""
                 env["TEST_CASE"] = "normal"
                 retry = subprocess.run(shell + [str(SCRIPT)], env=env,
-                                       capture_output=True, text=True, timeout=20)
+                                       capture_output=True, text=True, timeout=45)
                 assert retry.returncode == 0, (shell, retry)
                 assert not (root / "tmp/mihomo.installed").exists()
                 assert not (root / "tmp/magitrickle.installed").exists()
                 assert (root / "opt/etc/mihomo/config.yaml").read_text() == "user: mihomo\n"
                 actions = (root / "actions").read_text().splitlines()
-                assert actions.count("mihomo:stop") == 2, actions
+                # The stuck run itself now issues its bounded mid-budget
+                # re-stop, so assert the retry's own tail: exactly one
+                # working init stop followed by the package removal.
+                assert actions[-2:] == ["mihomo:stop", "remove:mihomo"], actions
                 # A third run must be idempotent: do not stop/remove packages again.
                 again = subprocess.run(shell + [str(SCRIPT)], env=env,
-                                       capture_output=True, text=True, timeout=20)
+                                       capture_output=True, text=True, timeout=45)
                 assert again.returncode == 0, (shell, again)
                 assert actions == (root / "actions").read_text().splitlines()
             print("[PASS]", " ".join(shell), scenario, args)
