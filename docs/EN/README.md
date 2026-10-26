@@ -144,7 +144,17 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **[Full script inventory and documentation](SCRIPTS.md)**
 
-## 7. Reference
+## 7. Uninstall
+
+Stop Mihomo and MagiTrickle via their native Entware init scripts, disable the KAS watchdog, and remove both packages **without formatting /opt**:
+
+```sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+```
+
+Verified in QEMU and on a KN-1010 test router (removal, repeat, reboot). User YAML configurations are preserved by default. **This is partial removal:** KeeneticOS ProxyN, DNS interception, routing policies and active Netfilter rules remain. Traffic routed through removed Mihomo may stop working. Optional `--cleanup` and `--purge-config` are not required for standard removal.
+
+## 8. Reference
 
 - [Full HOWTO](../HOWTO.md)
 - [Encyclopedia / system map](../encyclopedia/00-karta-sistemy.md)
