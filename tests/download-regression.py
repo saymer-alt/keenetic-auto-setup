@@ -29,6 +29,8 @@ if 'api.github.com' in url:
 else:
     assert '/fixture-ref/helper.sh' in url
 method=base_method + ('-x25519' if '--curves' in args else '')
+if base_method == 'wget':
+    assert '-T' in args and args[args.index('-T') + 1] == '20', args
 if '--curves' in args:
     assert args[args.index('--curves')+1] == 'X25519'
     assert '-4' in args
