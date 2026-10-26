@@ -131,9 +131,15 @@ stop_native() {
             "$init" stop || echo "[WARN] $pkg stop returned error; checking process" >&2
         fi
     fi
+    # A daemon mid-shutdown (DNS cleanup through ndmc, a busy event loop)
+    # can outlast a few seconds of TERM; keep waiting within a bounded
+    # budget and re-send the ordinary init stop once before giving up.
     n=0
-    while pidof "$daemon" >/dev/null 2>&1 && [ "$n" -lt 4 ]; do
+    while pidof "$daemon" >/dev/null 2>&1 && [ "$n" -lt 20 ]; do
         sleep 1; n=$((n+1))
+        if [ "$n" -eq 10 ]; then
+            "$init" stop >/dev/null 2>&1 || true
+        fi
     done
     if pidof "$daemon" >/dev/null 2>&1; then
         # Preserve the original init script to allow an ordinary retry of stop.
