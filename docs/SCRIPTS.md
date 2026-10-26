@@ -12,6 +12,7 @@
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |
 | [`config-import.sh`](../config-import.sh) | [Импорт и безопасная замена `config.yaml`](13-config-import.md) |
+| [`uninstall-packages.sh`](../uninstall-packages.sh) | [Остановить Mihomo/MagiTrickle и удалить пакеты через OPKG; YAML сохраняются, настройки KeeneticOS не очищаются](../README.md#7-удаление) |
 | [`migrate-mihomo-tun.sh`](../migrate-mihomo-tun.sh) | [Добавить TUN/`mitun0` в legacy-конфиг без секции `tun:`](12-updates.md#legacy-config-добавление-tun--mitun0) |
 | [`migrate-mihomo-mips.sh`](../migrate-mihomo-mips.sh) | [Перевод TUN-конфига с gVisor на MIPS](12-updates.md#mips-tun-migration) |
 | [`mihomo-doctor.sh`](../mihomo-doctor.sh) | [Доктор: полная диагностика проекта](08-troubleshooting.md) |
