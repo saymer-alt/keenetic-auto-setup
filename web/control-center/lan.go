@@ -74,11 +74,11 @@ func newHomeLAN(bind,iface,passwordFile string)(*homeLAN,error){
  return p,nil
 }
 
-func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request)bool{
+func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string)bool{
  host,_,err:=net.SplitHostPort(r.RemoteAddr)
  if err!=nil{http.Error(w,"forbidden",http.StatusForbidden);return false}
  client,err:=netip.ParseAddr(host)
- if err!=nil||!p.clients.Contains(client.Unmap()){
+ if err!=nil||(!p.clients.Contains(client.Unmap()) && !(client.IsLoopback() && proxyHost!="" && r.Host==proxyHost)){
   http.Error(w,"forbidden",http.StatusForbidden);return false
  }
  if p.passwordEnabled{
