@@ -99,11 +99,19 @@ func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
 func TestPasswordFilePolicy(t *testing.T){
  dir:=t.TempDir()
  p:=filepath.Join(dir,"pass")
- if err:=os.WriteFile(p,[]byte("valid-long-password\n"),0600);err!=nil{t.Fatal(err)}
- st,err:=os.Lstat(p)
- if err!=nil||!st.Mode().IsRegular()||st.Mode().Perm()!=0600{t.Fatal("private password permissions")}
+ good:="valid-long-password"
+ if err:=os.WriteFile(p,[]byte(good+"\n"),0600);err!=nil{t.Fatal(err)}
+ policy:=&homeLAN{}
+ if err:=policy.loadOptionalPassword("");err!=nil||policy.passwordEnabled{t.Fatal("password must be off by default")}
+ if err:=policy.loadOptionalPassword(p);err!=nil{t.Fatal(err)}
+ if !policy.passwordEnabled||policy.passwordDigest!=sha256.Sum256([]byte(good)){t.Fatal("password not enabled correctly")}
  if err:=os.Chmod(p,0644);err!=nil{t.Fatal(err)}
- st,_=os.Lstat(p)
- if st.Mode().Perm()&0077==0{t.Fatal("permissions unexpectedly private")}
+ if err:=(&homeLAN{}).loadOptionalPassword(p);err==nil{t.Fatal("accepted world-readable password")}
+ if err:=os.Chmod(p,0600);err!=nil{t.Fatal(err)}
+ symlink:=filepath.Join(dir,"pass-link")
+ if err:=os.Symlink(p,symlink);err!=nil{t.Fatal(err)}
+ if err:=(&homeLAN{}).loadOptionalPassword(symlink);err==nil{t.Fatal("accepted symlink to password")}
+ if err:=os.WriteFile(p,[]byte("short"),0600);err!=nil{t.Fatal(err)}
+ if err:=(&homeLAN{}).loadOptionalPassword(p);err==nil{t.Fatal("accepted too-short password")}
 }
 
