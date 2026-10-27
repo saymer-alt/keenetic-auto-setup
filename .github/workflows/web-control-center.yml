@@ -42,17 +42,29 @@ jobs:
       - name: Validate offline browser sources
         run: |
           node --check web/control-center/web/app.js
-          python3 - <<'PY'
-          import pathlib,re
-          js=pathlib.Path("web/control-center/web/app.js").read_text()
-          found=re.search(r"ru:\{(.*?)\},\s*en:\{(.*?)\}\s*\};",js,re.S)
-          assert found, "two flat dictionaries required"
-          extract=lambda s:set(re.findall(r"(?:^|,)([a-z]+):'",s))
-          ru,en=map(extract,found.groups())
-          assert ru and ru==en, f"RU/EN keys differ: {ru^en}"
-          assert "words.en[key]" in js, "English fallback missing"
-          print(f"RU/EN parity: {len(ru)} keys")
-          PY
+          node <<'JS'
+          const fs = require('fs');
+          const vm = require('vm');
+          const source = fs.readFileSync('web/control-center/web/app.js', 'utf8');
+          const found = source.match(/const words=\{([\s\S]*?)\};/);
+          if (!found) throw Error('RU/EN dictionary missing');
+          const dictionaries = vm.runInNewContext('({' + found[1] + '})');
+          const ru = Object.keys(dictionaries.ru).sort();
+          const en = Object.keys(dictionaries.en).sort();
+          if (ru.length === 0 || JSON.stringify(ru) !== JSON.stringify(en)) {
+            throw Error('Translation key mismatch: ' + JSON.stringify({ru, en}));
+          }
+          const used = new Set([
+            ...[...source.matchAll(/\bt\('([^']+)'/g)].map(x => x[1]),
+            ...[...source.matchAll(/\['[^']+','([^']+)'\]/g)].map(x => x[1])
+          ]);
+          for (const key of used) {
+            if (!(key in dictionaries.ru) || !(key in dictionaries.en)) {
+              throw Error('Missing translated key: ' + key);
+            }
+          }
+          console.log('RU/EN parity: ' + ru.length + ' full keys; referenced: ' + used.size);
+          JS
       - name: Cross compile ARM64 staging binary
         run: |
           cd web/control-center
