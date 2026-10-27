@@ -149,7 +149,7 @@ func (a *app)handler()http.Handler{
  })
 }
 func main(){
- listen:=flag.String("listen","127.0.0.1:18081","IPv4 address:port, or auto with -lan")
+ listen:=flag.String("listen","","IP:port; default loopback without -lan, Home br0 with -lan")
  lanMode:=flag.Bool("lan",false,"listen on private Home br0 IPv4, HTTP, no password by default")
  lanInterface:=flag.String("lan-interface","br0","Home LAN bridge (currently br0 only)")
  passwordFile:=flag.String("password-file","","optional private file with KAS panel password")
@@ -162,6 +162,7 @@ func main(){
   *listen=lan.address
  }else{
   if *passwordFile!=""{log.Fatal("password-file requires -lan")}
+  if *listen==""{*listen="127.0.0.1:18081"}
   if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
  }
  script,err:=assets.ReadFile("scripts/mihomo-doctor.sh");if err!=nil{log.Fatal(err)}
