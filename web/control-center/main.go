@@ -38,6 +38,8 @@ type apiResult struct {
 }
 type app struct {
  host string
+ proxyHost string
+ proxyOrigin string
  lan *homeLAN
  doctor []byte
  importer []byte
@@ -59,6 +61,11 @@ func validateBind(address string) error {
  if port==""||port=="0"{return errors.New("choose an explicit nonzero port")}
  return nil
 }
+func (a *app) expectedOrigin(host string)string {
+ if host==a.host{return "http://"+a.host}
+ if host==a.proxyHost && a.proxyOrigin!=""{return a.proxyOrigin}
+ return ""
+}
 func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func fileExists(path string)bool{st,err:=os.Stat(path);return err==nil&&!st.IsDir()}
 func (a *app)handleStatus(w http.ResponseWriter,r *http.Request){
@@ -71,7 +78,7 @@ func (a *app)handleStatus(w http.ResponseWriter,r *http.Request){
 func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodPost{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
  origin:=r.Header.Get("Origin")
- if origin!="http://"+a.host||r.Header.Get("Content-Type")!="application/json"{
+ if origin!=a.expectedOrigin(r.Host)||r.Header.Get("Content-Type")!="application/json"{
   writeJSON(w,http.StatusForbidden,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"REQUEST_BLOCKED"});return
  }
  if site:=r.Header.Get("Sec-Fetch-Site");site!=""&&site!="same-origin"{
@@ -140,8 +147,8 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/config/import",a.handleImport)
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  if r.Host!=a.host{http.Error(w,"invalid host",http.StatusForbidden);return}
-  if a.lan!=nil && !a.lan.allowed(w,r){return}
+  if r.Host!=a.host && (a.proxyHost==""||r.Host!=a.proxyHost){http.Error(w,"invalid host",http.StatusForbidden);return}
+  if a.lan!=nil && !a.lan.allowed(w,r,a.proxyHost){return}
   w.Header().Set("X-Frame-Options","DENY")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -153,6 +160,7 @@ func main(){
  lanMode:=flag.Bool("lan",false,"listen on private Home br0 IPv4, HTTP, no password by default")
  lanInterface:=flag.String("lan-interface","br0","Home LAN bridge (currently br0 only)")
  passwordFile:=flag.String("password-file","","optional private file with KAS panel password")
+ proxyOrigin:=flag.String("proxy-origin","","optional existing KeenDNS HTTPS URL allowed via router reverse proxy")
  flag.Parse()
  var lan *homeLAN
  if *lanMode {
@@ -161,7 +169,7 @@ func main(){
   if err!=nil{log.Fatal(err)}
   *listen=lan.address
  }else{
-  if *passwordFile!=""{log.Fatal("password-file requires -lan")}
+  if *passwordFile!=""||*proxyOrigin!=""{log.Fatal("password-file and proxy-origin require -lan")}
   if *listen==""{*listen="127.0.0.1:18081"}
   if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
  }
@@ -170,6 +178,12 @@ func main(){
  app:=newApp(*listen,script)
  app.importer=importer
  app.lan=lan
+ if *proxyOrigin!=""{
+  host,err:=validateProxyOrigin(*proxyOrigin)
+  if err!=nil{log.Fatal(err)}
+  app.proxyOrigin=*proxyOrigin
+  app.proxyHost=host
+ }
  srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
  if lan!=nil {fmt.Println(lan.describe())}else{fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)}
  runErrors:=make(chan error,1)
