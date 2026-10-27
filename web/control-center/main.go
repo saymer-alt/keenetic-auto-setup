@@ -93,7 +93,8 @@ func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
   writeJSON(w,http.StatusOK,result);return
  }
  // Exit code 0 proves only script completion, not full client route health.
- result.State="OK";writeJSON(w,http.StatusOK,result)
+ // Doctor exit 0 alone is not a machine-readable diagnostic verdict.
+ result.State="UNKNOWN";writeJSON(w,http.StatusOK,result)
 }
 var secretLine=regexp.MustCompile(`(?i)(password|passwd|secret|token|authorization|api.key|private.key|subscription|://[^\s/]+:[^\s/@]+@)`)
 func redact(s string)string{
