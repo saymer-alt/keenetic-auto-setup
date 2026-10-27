@@ -8,7 +8,7 @@
 - Explicit install, start, stop, status and remove operations for the panel itself.
 - Managed paths only: /opt/bin/kas-control-center, /opt/etc/init.d/S98kas-control-center, /opt/etc/kas-control-center.web.sha256, /opt/var/run/kas-control-center.pid.
 - Refuses foreign files, modified owned binary, unverified process PID and untracked process. No automatic overwrite.
-- Listener is strictly 127.0.0.1:18081. No LAN, WAN, IPv6 or guest exposure. LAN security remains a separate release blocker.
+- Stage 4 experimental launcher chooses the single private IPv4 of Home br0 and serves plain HTTP on TCP/18081, without app password by default. It never selects WAN, Guest, wildcard, or IPv6; see LAN.md. This supersedes the old Stage 3 localhost-only launcher behavior on this branch.
 - SIGTERM causes the Go process to reject new requests and wait for any running canonical importer before exit. No SIGKILL fallback from the service helper.
 - remove does NOT alter Mihomo, MagiTrickle, KAS core, Watchdog, configs, backups, policies, Entware shared packages or foreign services.
 
@@ -33,8 +33,8 @@ Installation does not immediately start the GUI. S*-named init can be auto-start
 
 ## Tests and unresolved gates
 - CI: sh/dash syntax, mocked isolated /opt install/start/stop/remove, wrong digest, foreign collision, unknown PID, modified binary and immutable KAS-core sentinel; Go race/shutdown tests, ARM64 compilation.
-- Not yet proven on native guest: auto-start across reboot, clean stop with actual active importer, resource usage and power loss.
-- No authenticated LAN listener, dedicated install package, password/session or remote-browser access.
+- Stage 3 localhost-mode native guest lifecycle PASS; Stage 4 Home bridge access, reboot, resource usage and power loss require their own acceptance.
+- No WAN publication or automatic KeenDNS configuration. The optional LAN password file, exact reverse-proxy origin and bridge guard are documented in LAN.md.
 - Crash/SIGKILL during import can lose in-memory operation state. A safe offline recovery policy requires separate evidence.
 - Stage 2 Web import native E2E (emulator PR #39) must PASS separately. Host code tests alone are insufficient.
 
