@@ -4,13 +4,11 @@ import (
  "bytes"
  "crypto/sha256"
  "encoding/base64"
- "net"
  "net/http"
  "net/http/httptest"
  "net/netip"
  "os"
  "path/filepath"
- "strings"
  "testing"
 )
 
@@ -65,15 +63,47 @@ func TestHomeLANOptionalPasswordAndOrigin(t *testing.T){
  if r:=request(a.origin(),"kas",secret);r.Code!=202{t.Fatal("authorized upload",r.Code,r.Body.String())}
 }
 
-func TestPasswordFileNotMandatoryAndPrivate(t *testing.T){
- // Pure password handling; interface-br0 runtime selection is guest-tested.
+func TestProxyOriginValidation(t *testing.T){
+ for _,good:=range []string{"https://kas.example.keenetic.pro","https://kas.example.keenetic.pro:8443"} {
+  if _,err:=validateProxyOrigin(good);err!=nil{t.Errorf("valid proxy origin %s: %v",good,err)}
+ }
+ for _,bad:=range []string{"http://example.com","https://user:password@example.com","https://example.com/path","https://example.com?x=1","https://example.com/#fragment","https://example.com."}{
+  if _,err:=validateProxyOrigin(bad);err==nil{t.Errorf("bad proxy origin accepted: %s",bad)}
+ }
+}
+
+func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
+ a:=newApp("192.168.1.1:18081",nil)
+ a.lan=&homeLAN{clients:netip.MustParsePrefix("192.168.1.0/24")}
+ a.proxyOrigin="https://kas.example.keenetic.pro"
+ a.proxyHost="kas.example.keenetic.pro"
+ a.importer=[]byte("exit 0")
+ a.runImport=func([]byte,string)(int,error){return 0,nil}
+ req:=func(host,origin,client string)int{
+  r:=httptest.NewRequest(http.MethodPost,"http://192.168.1.1:18081/api/config/import",
+    bytes.NewBufferString("mixed-port: 7890\\n"))
+  r.Host=host;r.RemoteAddr=client
+  r.Header.Set("Origin",origin)
+  r.Header.Set("Content-Type","application/x-yaml")
+  r.Header.Set("X-KAS-Confirm","apply")
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,r)
+  return w.Code
+ }
+ if code:=req(a.proxyHost,"http://kas.example.keenetic.pro","127.0.0.1:1000");code!=403{t.Fatalf("proxy HTTP origin accepted: %d",code)}
+ if code:=req(a.proxyHost,a.proxyOrigin,"127.0.0.1:1000");code!=202{t.Fatalf("trusted HTTPS proxy rejected: %d",code)}
+ if code:=req(a.host,a.proxyOrigin,"192.168.1.20:1100");code!=403{t.Fatalf("wrong host/origin combination: %d",code)}
+ if code:=req("evil.example",a.proxyOrigin,"127.0.0.1:1000");code!=403{t.Fatalf("untrusted Host accepted: %d",code)}
+ if code:=req(a.host,"http://192.168.1.1:18081","127.0.0.1:1000");code!=403{t.Fatalf("loopback bypassed direct origin guard: %d",code)}
+}
+
+func TestPasswordFilePolicy(t *testing.T){
  dir:=t.TempDir()
  p:=filepath.Join(dir,"pass")
- if err:=os.WriteFile(p,[]byte("valid-long-password\n"),0600);err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(p,[]byte("valid-long-password\\n"),0600);err!=nil{t.Fatal(err)}
  st,err:=os.Lstat(p)
- if err!=nil || !st.Mode().IsRegular() || st.Mode().Perm()!=0600{t.Fatal("private file invalid")}
+ if err!=nil||!st.Mode().IsRegular()||st.Mode().Perm()!=0600{t.Fatal("private password permissions")}
  if err:=os.Chmod(p,0644);err!=nil{t.Fatal(err)}
  st,_=os.Lstat(p)
- if st.Mode().Perm()&0077==0{t.Fatal("test did not make password public")}
- if strings.HasPrefix(net.JoinHostPort("192.168.1.1","18081"),"0.0.0.0") {t.Fatal("wildcard")}
+ if st.Mode().Perm()&0077==0{t.Fatal("permissions unexpectedly private")}
 }
+
