@@ -81,7 +81,7 @@ func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
  a.runImport=func([]byte,string)(int,error){return 0,nil}
  req:=func(host,origin,client string)int{
   r:=httptest.NewRequest(http.MethodPost,"http://192.168.1.1:18081/api/config/import",
-    bytes.NewBufferString("mixed-port: 7890\\n"))
+    bytes.NewBufferString("mixed-port: 7890\n"))
   r.Host=host;r.RemoteAddr=client
   r.Header.Set("Origin",origin)
   r.Header.Set("Content-Type","application/x-yaml")
@@ -99,7 +99,7 @@ func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
 func TestPasswordFilePolicy(t *testing.T){
  dir:=t.TempDir()
  p:=filepath.Join(dir,"pass")
- if err:=os.WriteFile(p,[]byte("valid-long-password\\n"),0600);err!=nil{t.Fatal(err)}
+ if err:=os.WriteFile(p,[]byte("valid-long-password\n"),0600);err!=nil{t.Fatal(err)}
  st,err:=os.Lstat(p)
  if err!=nil||!st.Mode().IsRegular()||st.Mode().Perm()!=0600{t.Fatal("private password permissions")}
  if err:=os.Chmod(p,0644);err!=nil{t.Fatal(err)}
