@@ -102,7 +102,7 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  }
  // Do not queue imports or start a second importer/Doctor.
  a.mu.Lock()
- if a.importRunning||a.running{
+ if a.importRunning||a.running||a.shuttingDown{
   a.mu.Unlock()
   respondImport(w,http.StatusConflict,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"BUSY"});return
  }
