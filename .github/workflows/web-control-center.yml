@@ -56,9 +56,12 @@ jobs:
           if (ru.length === 0 || JSON.stringify(ru) !== JSON.stringify(en)) {
             throw Error('Translation key mismatch: ' + JSON.stringify({ru, en}));
           }
+          const pairBlock = source.match(/for\(const \[id,key\] of (\[[^\n]+\])\)/);
+          if (!pairBlock) throw Error('Translation bindings missing');
+          const pairKeys = vm.runInNewContext(pairBlock[1]).map(pair => pair[1]);
           const used = new Set([
             ...[...source.matchAll(/\bt\('([^']+)'/g)].map(x => x[1]),
-            ...[...source.matchAll(/\['[^']+','([^']+)'\]/g)].map(x => x[1])
+            ...pairKeys
           ]);
           for (const key of used) {
             if (!(key in dictionaries.ru) || !(key in dictionaries.en)) {
