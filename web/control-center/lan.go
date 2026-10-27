@@ -65,6 +65,9 @@ func checkedPrivateFile(path string, requireSecret bool)([]byte,error) {
  if !st.Mode().IsRegular() || st.Mode().Perm()&0077!=0 {
   return nil,errors.New("private file must be regular and inaccessible to group/others")
  }
+ if raw,ok:=st.Sys().(*syscall.Stat_t);ok && raw.Uid!=uint32(os.Geteuid()){
+  return nil,errors.New("private file must be owned by service user")
+ }
  if requireSecret && st.Size()>128 {return nil,errors.New("auth secret file too large")}
  return os.ReadFile(path)
 }
