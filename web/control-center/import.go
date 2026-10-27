@@ -78,7 +78,7 @@ func (a *app)handleImportStatus(w http.ResponseWriter,r *http.Request){
 }
 func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodPost{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
- if r.Header.Get("Origin")!="http://"+a.host ||
+ if r.Header.Get("Origin")!=a.origin() ||
   r.Header.Get("Content-Type")!="application/x-yaml" ||
   r.Header.Get("X-KAS-Confirm")!="apply"{
   respondImport(w,http.StatusForbidden,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"REQUEST_BLOCKED"});return
