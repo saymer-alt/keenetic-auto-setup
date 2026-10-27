@@ -22,7 +22,7 @@ When the owner has configured a 4th-level KeenDNS reverse-proxy hostname AND sep
 
     https://kas.myrouter.keenetic.pro
 
-The service then accepts the exact proxy hostname + HTTPS Origin pair (no generic X-Forwarded-Host or X-Forwarded-Proto trust), in addition to direct Home IP HTTP requests. This optional setting **does not publish** the application or enable KeenDNS: the router's proxy/authentication/firewall still need to be configured, tested and reviewed independently.
+The service then accepts the exact proxy hostname + HTTPS Origin pair (no generic X-Forwarded-Host or X-Forwarded-Proto trust), in addition to direct Home IP HTTP requests. **Router authentication is delegated, not reimplemented by KAS**: with the optional LAN password enabled, proxy requests do not get a second KAS login *only when* their actual TCP peer is the router's own Home IPv4 or loopback, and the proxy hostname matches exactly. Ordinary LAN clients cannot bypass the optional password simply by forging Host. KAS does not verify a Keenetic login session or turn on any router authorization itself. The owner MUST explicitly enable and test router authentication for the published KeenDNS domain; without it, a public unauthenticated proxy to KAS would be unsafe. This optional setting **does not publish** the application or enable KeenDNS: the router's proxy/authentication/firewall still need to be configured, tested and reviewed independently.
 
 ## Scope of defenses without complexity
 - Home bridge br0 private address and actual prefix are checked at runtime; invalid/ambiguous configurations refuse to bind.
