@@ -14,7 +14,9 @@ import (
  "net/http"
  "os"
  "os/exec"
+ "os/signal"
  "regexp"
+ "syscall"
  "strings"
  "sync"
  "time"
@@ -41,6 +43,7 @@ type app struct {
  mu sync.Mutex
  running bool
  importRunning bool
+ shuttingDown bool
  importResult importStatus
  last time.Time
  runDoctor func(context.Context, []byte)(string,int,error)
@@ -79,7 +82,7 @@ func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
   writeJSON(w,http.StatusBadRequest,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"INVALID_BODY"});return
  }
  a.mu.Lock()
- if a.running||a.importRunning||time.Since(a.last)<5*time.Second{
+ if a.running||a.importRunning||a.shuttingDown||time.Since(a.last)<5*time.Second{
   a.mu.Unlock()
   writeJSON(w,http.StatusTooManyRequests,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"BUSY"});return
  }
@@ -153,5 +156,26 @@ func main(){
  app.importer=importer
  srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
  fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)
- log.Fatal(srv.ListenAndServe())
+ runErrors:=make(chan error,1)
+ go func(){runErrors<-srv.ListenAndServe()}()
+ signals:=make(chan os.Signal,1)
+ signal.Notify(signals,os.Interrupt,syscall.SIGTERM)
+ select {
+ case err:=<-runErrors:
+  if err!=nil && !errors.Is(err,http.ErrServerClosed){log.Fatal(err)}
+  return
+ case <-signals:
+ }
+ // Never interrupt canonical config-import.sh halfway through its atomic
+ // replace/rollback. Stop accepting NEW mutating requests and drain workers.
+ app.mu.Lock();app.shuttingDown=true;app.mu.Unlock()
+ for {
+  app.mu.Lock();busy:=app.importRunning||app.running;app.mu.Unlock()
+  if !busy{break}
+  time.Sleep(250*time.Millisecond)
+ }
+ ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second)
+ defer cancel()
+ if err:=srv.Shutdown(ctx);err!=nil{log.Printf("shutdown error: %v",err)}
+
 }
