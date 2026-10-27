@@ -1,2 +1,4 @@
 # Generated only from the canonical root script. Never edit this copy.
 /scripts/mihomo-doctor.sh
+
+/scripts/config-import.sh
