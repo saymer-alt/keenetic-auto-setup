@@ -130,7 +130,7 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  a.mu.Lock()
  a.importResult=entry
  a.mu.Unlock()
- go func(){
+ go func(entry importStatus){
   defer os.Remove(path)
   // The importer's own preconditions and transaction are authoritative.
   exit,runErr:=a.runImport(a.importer,path)
@@ -144,6 +144,6 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
   a.importResult=entry
   a.importRunning=false
   a.mu.Unlock()
- }()
+ }(entry)
  respondImport(w,http.StatusAccepted,entry)
 }
