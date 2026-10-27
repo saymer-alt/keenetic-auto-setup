@@ -41,6 +41,13 @@ running() {
     run_pid=$(pid_value) || return 1
     kill -0 "$run_pid" 2>/dev/null && pid_matches "$run_pid"
 }
+untracked_running() {
+    for proc in /proc/[0-9]*; do
+        [ -r "$proc/cmdline" ] || continue
+        tr '\000' '\n' < "$proc/cmdline" 2>/dev/null | grep -Fxq "$BIN" && return 0
+    done
+    return 1
+}
 verify_owned() {
     is_managed || deny "service init is not a managed KAS Web component"
     [ ! -L "$BIN" ] && [ -f "$BIN" ] || deny "managed binary missing/unsafe"
@@ -96,6 +103,7 @@ start_ui() {
     verify_owned
     if running; then message "RUNNING"; return 0; fi
     if [ -e "$PID" ] || [ -L "$PID" ]; then deny "stale/unverifiable pid; inspect manually"; fi
+    untracked_running && deny "untracked Web process found; refusing duplicate"
     mkdir -p "$ROOT/var/run" || deny "runtime directory unavailable"
     "$BIN" -listen 127.0.0.1:18081 </dev/null >/dev/null 2>&1 &
     child=$!
@@ -115,7 +123,7 @@ stop_ui() {
     kill -TERM "$run_pid" || deny "cannot signal Web process"
     # Go server drains any in-flight importer on SIGTERM; no SIGKILL fallback.
     n=0
-    while kill -0 "$run_pid" 2>/dev/null; do
+    while running; do
         [ "$n" -lt 60 ] || deny "Web process still draining; do not force kill during import"
         sleep 1
         n=$((n+1))
@@ -127,6 +135,7 @@ remove_ui() {
     [ "$#" -eq 0 ] || deny "remove takes no arguments"
     verify_owned
     stop_ui
+    untracked_running && deny "untracked Web process found; refusing removal"
     # Only three owned files. NEVER clean /opt/etc/mihomo, /tmp maintenance
     # locks, configs, backups, watchdog, MagiTrickle or foreign services.
     rm "$BIN" "$INIT" "$MANIFEST" || deny "partial Web-only removal"
