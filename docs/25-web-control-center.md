@@ -70,3 +70,14 @@ This prototype now exposes a **loopback-only** upload/paste-and-apply path:
 - Server transport is HTTP on loopback only: SSH forwarding is acceptable for test development, not a final replacement for SSH.
 
 Tests in the branch cover bounds, bad Host/Origin/Content-Type/confirmation, duplicate requests, temporary-file mode, absence of secret echoes, truthful failure exit and non-TTY file-argument handoff. They are unit/adapter tests, **not** the full KAS importer end-to-end proof.
+
+
+## Updated laboratory evidence and experimental Stage 4 (27 October 2026)
+
+The earlier Stage 1/2 paragraphs above are **historical snapshots**, not the current implementation status.
+
+- [Native QEMU Web E2E PASS](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/40507797691): real Ported 5.1.8 + Entware, pinned native KAS install, actual ARM64 Go HTTP server, accepted valid config.yaml, Mihomo rejection of invalid config, restored original config, and separate Web-only install/start/stop/remove with unchanged core YAML.
+- [Normal KAS lifecycle PASS](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/40507797650).
+- [Opt-in Stage 3 service](../web/control-center/LIFECYCLE.md) remains a separate, loopback-only component and **does not** install automatically with KAS.
+- [Stage 4 draft](../web/control-center/LAN.md): an explicit **experimental** HTTPS/TLS 1.3 + 256-bit Basic Auth mode, private IPv4 listener pinned by SO_BINDTODEVICE to a named LAN interface, RFC1918 source CIDR, Host/Origin enforcement and one-time self-signed IP SAN cert/key provisioning. The default remains loopback-only. Stage 3 init scripts **do not enable** LAN mode.
+- Remaining acceptance: full native LAN test with a separate client from the management VLAN, KeeneticOS interface/policy/guest isolation audit, mobile/browser trust workflow, resource measurements and unplanned process/power-loss recovery. No real router or `main`/`stable` change is authorized by lab success.
