@@ -57,10 +57,10 @@ func TestHomeLANOptionalPasswordAndOrigin(t *testing.T){
   if user!="" {req.Header.Set("Authorization","Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+password)))}
   res:=httptest.NewRecorder();a.handler().ServeHTTP(res,req);return res
  }
- if r:=request(a.origin(),"","");r.Code!=401{t.Fatal("no password",r.Code)}
- if r:=request(a.origin(),"kas","bad");r.Code!=401{t.Fatal("wrong password",r.Code)}
+ if r:=request(a.expectedOrigin(a.host),"","");r.Code!=401{t.Fatal("no password",r.Code)}
+ if r:=request(a.expectedOrigin(a.host),"kas","bad");r.Code!=401{t.Fatal("wrong password",r.Code)}
  if r:=request("https://evil.example","kas",secret);r.Code!=403{t.Fatal("cross origin",r.Code)}
- if r:=request(a.origin(),"kas",secret);r.Code!=202{t.Fatal("authorized upload",r.Code,r.Body.String())}
+ if r:=request(a.expectedOrigin(a.host),"kas",secret);r.Code!=202{t.Fatal("authorized upload",r.Code,r.Body.String())}
 }
 
 func TestProxyOriginValidation(t *testing.T){
