@@ -45,3 +45,28 @@ Further: existing Mihomo and MagiTrickle update commands; Doctor/route diagnosti
 Local Go tests cover Host/Origin gate, loopback-only listener, throttling, representative redaction, exit-code handling and no invented network health. CI should run these plus bundle-equality and ARM64 build. This does NOT certify KeeneticOS compatibility, auth, safe LAN write access, YAML import, independent install/uninstall, emulator tests, device memory consumption or resource budget.
 
 No merge to main/stable, no production router installs and no release without review and emulator/test-hardware evidence.
+
+
+## Stage 2 work-in-progress (stacked branch feat/kas-control-center-yaml-import)
+
+This prototype now exposes a **loopback-only** upload/paste-and-apply path:
+
+- The browser uploads an entire YAML file with explicit confirmation (max 1 MiB). No URL/subscription fetch, arbitrary filesystem path, YAML construction or config download.
+- The adapter creates a 0600 O_EXCL temporary candidate in /tmp, invokes its build-time bundled copy of **the canonical config-import.sh** via `sh -s -- <staged-file>`, then removes the candidate. Both importer and Doctor are copied by `go generate` from the reviewed source revision; no runtime `curl | sh`.
+- Canonical KAS importer owns the lifecycle lock, one-Mihomo pre-validation, backup and rollback. The GUI intentionally does **not** implement a second rollback or attempt to pre-validate with a second Mihomo daemon.
+- HTTP response is 202 with an operation ID, and GET /api/config/operation returns just the latest running/success/failure state and actual exit code. The work continues after browser disconnect. The GUI polls only while an operation is RUNNING; it does not run a background health loop.
+- No uploaded YAML, subscription URL, password, shell output or raw exception is returned through the import API or written to app logs. Errors have generic machine-readable codes. This is deliberate: Mihomo validation output could otherwise reveal configuration secrets despite heuristic redaction.
+- Concurrent import/Doctor invocations are blocked in the adapter. Core KAS locking independently remains authoritative.
+- A successful importer exit shows only that the importer reported success; a failure does not assert rollback until independently verified. An unresponsive importer remains RUNNING rather than being SIGKILLed mid-transaction.
+
+### Known blockers before any router test or release
+
+- Staging listener remains 127.0.0.1 only (or explicit ::1). No password/session implementation, no verified trusted management-LAN boundary, no WAN/guest/IPv6 protection beyond loopback.
+- No GUI package lifecycle, IPK, service supervision or operator-friendly independent install/uninstall yet.
+- Full real `config-import.sh` emulator E2E, failed post-commit rollback, reboot, storage-full tests and memory/CPU benchmarks have **not** been completed as part of Stage 2.
+- The in-memory latest-operation record is not durable across GUI restart. A restart during an import can leave the last state UNKNOWN; do not infer a rollback. Never test a live router until the service lifecycle and crash semantics are evaluated.
+- Independent `Проверить YAML` without side effects is not supplied: the existing canonical importer must temporarily stop Mihomo for its one-instance validation. We will not pretend that a read-only preflight is equivalent.
+- The 1 MiB input limit is deliberately conservative. Larger configs require a separate evidence-backed decision.
+- Server transport is HTTP on loopback only: SSH forwarding is acceptable for test development, not a final replacement for SSH.
+
+Tests in the branch cover bounds, bad Host/Origin/Content-Type/confirmation, duplicate requests, temporary-file mode, absence of secret echoes, truthful failure exit and non-TTY file-argument handoff. They are unit/adapter tests, **not** the full KAS importer end-to-end proof.
