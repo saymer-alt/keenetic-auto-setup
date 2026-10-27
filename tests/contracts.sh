@@ -604,7 +604,7 @@ grep -q '^project_script_download()' "$ROOT/install.sh" || fail "installer must 
 grep -q '^project_script_curl_retry()' "$ROOT/install.sh" || fail "project-script delivery must centralize bounded curl compatibility retries"
 grep -Fq 'if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then' "$ROOT/install.sh" || fail "project-script delivery must try raw GitHub with bounded curl retries first"
 grep -Fq -- '--connect-timeout 5 --max-time 20 -4 --curves X25519' "$ROOT/install.sh" || fail "installer must retain the bounded X25519 TLS compatibility retry"
-grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet wget fallback"
+grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" -T 20 "$_psd_raw"' "$ROOT/install.sh" || fail "project-script delivery must retain quiet, timeout-bounded wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
@@ -633,7 +633,7 @@ grep -Fq 'rm -f "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater mus
 pass "Mihomo updater network acquisition uses curl/wget fallback without weakening transactions"
 
 grep -q '^download_watchdog_candidate()' "$ROOT/update-watchdog.sh" || fail "watchdog updater must centralize resilient candidate download"
-grep -Fq 'wget -qO "$TMP_FILE" "$_dw_url" 2>/dev/null' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain quiet wget fallback"
+grep -Fq 'wget -qO "$TMP_FILE" -T 20 "$_dw_url" 2>/dev/null' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain quiet, bounded wget fallback"
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/update-watchdog.sh" || fail "watchdog updater must retain GitHub Contents API fallback for managed source"
 grep -Fq 'if [ -z "${WATCHDOG_URL:-}" ]' "$ROOT/update-watchdog.sh" || fail "watchdog updater API fallback must not override a caller-provided WATCHDOG_URL"
 grep -Fq 'rm -f "$TMP_FILE"' "$ROOT/update-watchdog.sh" || fail "watchdog updater must clear partial candidates between transports"

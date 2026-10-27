@@ -58,6 +58,9 @@ jobs:
       - name: First-fetch README command offline shell regression
         run: python3 tests/bootstrap-readme-regression.py
 
+      - name: Internal wget fallback timeout and cleanup regression
+        run: python3 tests/setup-wget-regression.py
+
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
 

@@ -109,7 +109,7 @@ retry_wget_to_file() {
     command -v wget >/dev/null 2>&1 || return 1
     for _rw_try in 1 2 3; do
         rm -f "$_rw_dst" 2>/dev/null || true
-        if wget -qO "$_rw_dst" "$_rw_url" 2>/dev/null; then
+        if wget -qO "$_rw_dst" -T 20 "$_rw_url" 2>/dev/null; then
             return 0
         fi
         rm -f "$_rw_dst" 2>/dev/null || true

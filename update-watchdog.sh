@@ -444,7 +444,7 @@ download_watchdog_candidate() {
     if command -v wget >/dev/null 2>&1; then
         for _dw_try in 1 2 3; do
             rm -f "$TMP_FILE" 2>/dev/null || true
-            if wget -qO "$TMP_FILE" "$_dw_url" 2>/dev/null; then
+            if wget -qO "$TMP_FILE" -T 20 "$_dw_url" 2>/dev/null; then
                 return 0
             fi
             rm -f "$TMP_FILE" 2>/dev/null || true

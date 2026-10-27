@@ -1117,7 +1117,7 @@ project_script_download() {
 
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
         rm -f "$_psd_tmp" || return 1
-        if retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" "$_psd_raw"; then
+        if retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" -T 20 "$_psd_raw"; then
             if project_script_candidate_ok "$_psd_tmp"; then
                 :
             else
