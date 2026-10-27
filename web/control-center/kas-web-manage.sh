@@ -111,7 +111,17 @@ install_ui() {
 start_ui() {
     verify_owned
     if running; then message "RUNNING"; return 0; fi
-    if [ -e "$PID" ] || [ -L "$PID" ]; then deny "stale/unverifiable pid; inspect manually"; fi
+    if [ -e "$PID" ] || [ -L "$PID" ]; then
+        # Persistent /opt keeps the recorded PID across a hard reboot while
+        # the process is gone; a verifiably dead record must not block the
+        # native boot autostart. A live or unparseable record stays a
+        # manual inspection case.
+        stale=$(pid_value) || deny "stale/unverifiable pid; inspect manually"
+        if kill -0 "$stale" 2>/dev/null; then
+            deny "recorded pid is alive; inspect manually"
+        fi
+        rm -f "$PID" || deny "cannot clear stale pid"
+    fi
     untracked_running && deny "untracked Web process found; refusing duplicate"
     check_parent_dirs
     mkdir -p "$ROOT/var/run" || deny "runtime directory unavailable"

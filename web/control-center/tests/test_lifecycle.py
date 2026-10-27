@@ -2,10 +2,12 @@
 """Opt-in KAS Control Center lifecycle regression: isolated fake /opt only."""
 import hashlib
 import os
-from pathlib import Path
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
+from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'kas-web-manage.sh'
 
@@ -98,6 +100,46 @@ class LifecycleTests(unittest.TestCase):
         self.call('stop', code=2)
         self.call('remove', code=2)
         self.assertTrue(self.target.exists())
+
+    def wait_dead(self, pid):
+        for _ in range(100):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        self.fail('simulated crashed process %d is still alive' % pid)
+
+    def test_stale_pid_from_hard_reboot_recovers_on_start(self):
+        # A hard VM/router reboot kills the daemon while its pid file stays on
+        # persistent root; the next start (the boot autostart path) must
+        # recover by itself instead of requiring manual cleanup.
+        self.install()
+        self.call('start')
+        dead = int(self.pid.read_text())
+        try:
+            os.kill(dead, signal.SIGKILL)
+            self.wait_dead(dead)
+            self.assertEqual(self.call('status', code=2).strip(), 'UNKNOWN')
+            self.call('start')
+            self.assertEqual(self.call('status').strip(), 'RUNNING')
+            self.call('stop')
+            self.assertEqual(self.call('status').strip(), 'NOT_RUNNING')
+        finally:
+            if self.pid.exists():
+                try:
+                    os.kill(int(self.pid.read_text()), signal.SIGKILL)
+                except (ProcessLookupError, ValueError):
+                    pass
+                self.pid.unlink()
+
+    def test_alive_foreign_pid_still_blocks_start(self):
+        # Recovery never clears a record whose PID is alive: the conservative
+        # manual-inspection posture is unchanged for ambiguous state.
+        self.install()
+        self.pid.write_text(str(os.getpid()) + '\n')
+        self.call('start', code=2)
+        self.assertTrue(self.pid.exists())
 
 
 if __name__ == '__main__':
