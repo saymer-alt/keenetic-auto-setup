@@ -1,4 +1,4 @@
-// KAS Control Center Stage 1: optional read-only, loopback-only prototype.
+// KAS Control Center: optional, loopback-only staged Status/Doctor/YAML prototype.
 package main
 
 import (
@@ -20,8 +20,8 @@ import (
  "time"
 )
 
-//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh"
-//go:embed web/* scripts/mihomo-doctor.sh
+//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh"
+//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh
 var assets embed.FS
 
 type apiResult struct {
@@ -37,12 +37,16 @@ type apiResult struct {
 type app struct {
  host string
  doctor []byte
+ importer []byte
  mu sync.Mutex
  running bool
+ importRunning bool
+ importResult importStatus
  last time.Time
  runDoctor func(context.Context, []byte)(string,int,error)
+ runImport func([]byte,string)(int,error)
 }
-func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand} }
+func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
 func validateBind(address string) error {
  host,port,err:=net.SplitHostPort(address)
  if err!=nil{return err}
@@ -75,7 +79,7 @@ func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
   writeJSON(w,http.StatusBadRequest,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"INVALID_BODY"});return
  }
  a.mu.Lock()
- if a.running||time.Since(a.last)<5*time.Second{
+ if a.running||a.importRunning||time.Since(a.last)<5*time.Second{
   a.mu.Unlock()
   writeJSON(w,http.StatusTooManyRequests,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"BUSY"});return
  }
@@ -129,6 +133,8 @@ func (a *app)handler()http.Handler{
  mux.Handle("/",http.FileServer(http.FS(sub)))
  mux.HandleFunc("/api/status",a.handleStatus)
  mux.HandleFunc("/api/doctor",a.handleDoctor)
+ mux.HandleFunc("/api/config/import",a.handleImport)
+ mux.HandleFunc("/api/config/operation",a.handleImportStatus)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Host!=a.host{http.Error(w,"invalid host",http.StatusForbidden);return}
   w.Header().Set("X-Frame-Options","DENY")
@@ -142,8 +148,10 @@ func main(){
  flag.Parse()
  if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
  script,err:=assets.ReadFile("scripts/mihomo-doctor.sh");if err!=nil{log.Fatal(err)}
+ importer,err:=assets.ReadFile("scripts/config-import.sh");if err!=nil{log.Fatal(err)}
  app:=newApp(*listen,script)
+ app.importer=importer
  srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
- fmt.Printf("KAS Stage 1 (loopback only): http://%s\n",*listen)
+ fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)
  log.Fatal(srv.ListenAndServe())
 }
