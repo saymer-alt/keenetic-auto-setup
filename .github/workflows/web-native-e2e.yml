@@ -1,0 +1,25 @@
+name: KAS Web native ARM64 import E2E (experimental)
+
+on:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - 'config-import.sh'
+      - 'mihomo-doctor.sh'
+      - '.github/workflows/web-native-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kas-web-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-web-import:
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@314f80b21e3f86339c9ba93631ad76b3cc5407b6
+    with:
+      emulator_ref: 314f80b21e3f86339c9ba93631ad76b3cc5407b6
+      kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      stage: web
