@@ -76,6 +76,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.init.read_text(), '#!/bin/sh\n# FOREIGN\n')
         self.assertFalse(self.target.exists())
 
+    def test_symlinked_web_bin_directory_is_rejected(self):
+        foreign = Path(self.tmp.name) / 'foreign'
+        foreign.mkdir()
+        (self.root / 'bin').symlink_to(foreign, target_is_directory=True)
+        self.call('install', str(self.binary), self.digest, code=2)
+        self.assertEqual(list(foreign.iterdir()), [])
+        self.assertEqual(self.core.read_text().splitlines()[-1], '# CORE MUST NEVER CHANGE')
+
     def test_modified_owned_binary_cannot_be_uninstalled(self):
         self.install()
         self.target.write_text('#!/bin/sh\n# FOREIGN MODIFICATION\n')
