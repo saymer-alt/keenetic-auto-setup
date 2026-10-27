@@ -1,0 +1,57 @@
+name: KAS Control Center prototype
+
+on:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - 'mihomo-doctor.sh'
+      - '.github/workflows/web-control-center.yml'
+  push:
+    branches:
+      - 'feat/kas-control-center-stage1'
+    paths:
+      - 'web/control-center/**'
+      - 'mihomo-doctor.sh'
+      - '.github/workflows/web-control-center.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web-prototype:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Snapshot canonical Doctor from current commit
+        run: |
+          cd web/control-center
+          go generate ./...
+          cmp -s ../../mihomo-doctor.sh scripts/mihomo-doctor.sh
+      - name: Test read-only adapter
+        run: |
+          cd web/control-center
+          go test ./...
+          go vet ./...
+      - name: Validate offline browser sources
+        run: |
+          node --check web/control-center/web/app.js
+          python3 - <<'PY'
+          import pathlib,re
+          js=pathlib.Path("web/control-center/web/app.js").read_text()
+          found=re.search(r"ru:\{(.*?)\},\s*en:\{(.*?)\}\s*\};",js,re.S)
+          assert found, "two flat dictionaries required"
+          extract=lambda s:set(re.findall(r"(?:^|,)([a-z]+):'",s))
+          ru,en=map(extract,found.groups())
+          assert ru and ru==en, f"RU/EN keys differ: {ru^en}"
+          assert "words.en[key]" in js, "English fallback missing"
+          print(f"RU/EN parity: {len(ru)} keys")
+          PY
+      - name: Cross compile ARM64 staging binary
+        run: |
+          cd web/control-center
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/kas-control-center-arm64 .
+          du -h /tmp/kas-control-center-arm64
