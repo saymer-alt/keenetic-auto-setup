@@ -3,6 +3,7 @@ package main
 
 import (
  "context"
+ "crypto/tls"
  "embed"
  "encoding/json"
  "errors"
@@ -38,6 +39,8 @@ type apiResult struct {
 }
 type app struct {
  host string
+ scheme string
+ lan *lanPolicy
  doctor []byte
  importer []byte
  mu sync.Mutex
@@ -49,7 +52,8 @@ type app struct {
  runDoctor func(context.Context, []byte)(string,int,error)
  runImport func([]byte,string)(int,error)
 }
-func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
+func newApp(host string, doctor []byte)*app { return &app{host:host, scheme:"http", doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
+func (a *app) origin()string{return a.scheme+"://"+a.host}
 func validateBind(address string) error {
  host,port,err:=net.SplitHostPort(address)
  if err!=nil{return err}
@@ -70,7 +74,7 @@ func (a *app)handleStatus(w http.ResponseWriter,r *http.Request){
 func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodPost{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
  origin:=r.Header.Get("Origin")
- if origin!="http://"+a.host||r.Header.Get("Content-Type")!="application/json"{
+ if origin!=a.origin()||r.Header.Get("Content-Type")!="application/json"{
   writeJSON(w,http.StatusForbidden,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"REQUEST_BLOCKED"});return
  }
  if site:=r.Header.Get("Sec-Fetch-Site");site!=""&&site!="same-origin"{
@@ -140,6 +144,7 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Host!=a.host{http.Error(w,"invalid host",http.StatusForbidden);return}
+  if a.lan!=nil && !a.lan.allowed(w,r){return}
   w.Header().Set("X-Frame-Options","DENY")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -147,17 +152,43 @@ func (a *app)handler()http.Handler{
  })
 }
 func main(){
- listen:=flag.String("listen","127.0.0.1:18081","loopback-only listen address")
+ listen:=flag.String("listen","127.0.0.1:18081","explicit local IPv4 listen address")
+ lanMode:=flag.Bool("lan",false,"EXPERIMENTAL: HTTPS-authenticated RFC1918 interface-bound LAN mode")
+ lanInterface:=flag.String("lan-interface","","trusted LAN device, e.g. br0")
+ lanCIDR:=flag.String("lan-clients","","trusted client CIDR, e.g. 192.168.1.0/24")
+ secretFile:=flag.String("lan-secret-file","","root-only file containing random 32-byte base64url token")
+ certFile:=flag.String("tls-cert","","HTTPS certificate PEM")
+ keyFile:=flag.String("tls-key","","HTTPS private key PEM")
  flag.Parse()
- if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
+ var policy *lanPolicy
+ if *lanMode {
+  var err error
+  policy,err=loadLANPolicy(*listen,*lanInterface,*lanCIDR,*secretFile,*certFile,*keyFile)
+  if err!=nil{log.Fatal(err)}
+ }else{
+  if *lanInterface!=""||*lanCIDR!=""||*secretFile!=""||*certFile!=""||*keyFile!=""{
+   log.Fatal("LAN/TLS parameters require explicit -lan")
+  }
+  if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
+ }
  script,err:=assets.ReadFile("scripts/mihomo-doctor.sh");if err!=nil{log.Fatal(err)}
  importer,err:=assets.ReadFile("scripts/config-import.sh");if err!=nil{log.Fatal(err)}
  app:=newApp(*listen,script)
  app.importer=importer
+ app.lan=policy
+ if *lanMode {app.scheme="https"}
  srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
- fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)
+ if *lanMode{srv.TLSConfig=&tls.Config{MinVersion:tls.VersionTLS13}}
  runErrors:=make(chan error,1)
- go func(){runErrors<-srv.ListenAndServe()}()
+ go func(){
+  if *lanMode {
+   listener,err:=listenLAN(*listen,policy)
+   if err!=nil{runErrors<-err;return}
+   runErrors<-srv.ServeTLS(listener,*certFile,*keyFile)
+  }else{
+   runErrors<-srv.ListenAndServe()
+  }
+ }()
  signals:=make(chan os.Signal,1)
  signal.Notify(signals,os.Interrupt,syscall.SIGTERM)
  select {
