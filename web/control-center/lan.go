@@ -9,6 +9,7 @@ import (
  "net"
  "net/http"
  "net/netip"
+ "net/url"
  "os"
  "strings"
 )
@@ -96,4 +97,16 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
 func (p *homeLAN) describe()string{
  if p.passwordEnabled{return fmt.Sprintf("Home LAN HTTP %s; optional password enabled",p.address)}
  return fmt.Sprintf("Home LAN HTTP %s; no app password",p.address)
+}
+
+func validateProxyOrigin(value string)(string,error){
+ u,err:=url.Parse(value)
+ if err!=nil||u.Scheme!="https"||u.Host==""||u.Hostname()==""||
+   u.User!=nil||u.Path!=""||u.RawQuery!=""||u.Fragment!=""{
+  return "",errors.New("proxy-origin must be a complete HTTPS origin without path, userinfo or query")
+ }
+ if strings.HasSuffix(u.Hostname(),".") || strings.Contains(u.Host,"@"){
+  return "",errors.New("invalid proxy-origin hostname")
+ }
+ return u.Host,nil
 }
