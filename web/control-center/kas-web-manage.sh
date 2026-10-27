@@ -18,6 +18,12 @@ MANIFEST="$ROOT/etc/kas-control-center.web.sha256"
 PID="$ROOT/var/run/kas-control-center.pid"
 MARKER="# KAS-CONTROL-CENTER-MANAGED-v1"
 
+check_parent_dirs() {
+    # Never follow a redirected Entware/Web directory into foreign storage.
+    for d in "$ROOT" "$ROOT/bin" "$ROOT/etc" "$ROOT/etc/init.d" "$ROOT/var" "$ROOT/var/run"; do
+        [ ! -L "$d" ] || deny "unsafe symlink in Web service directory"
+    done
+}
 message() { printf '%s\n' "$*"; }
 deny() { message "BLOCKED: $*" >&2; exit 2; }
 is_managed() {
@@ -74,13 +80,16 @@ install_ui() {
         deny "web component paths already exist; no overwrite"
     actual=$(sha256sum "$source" | cut -d ' ' -f 1) || deny "checksum unavailable"
     [ "$actual" = "$digest" ] || deny "binary SHA256 mismatch"
+    check_parent_dirs
     mkdir -p "$ROOT/bin" "$ROOT/etc/init.d" "$ROOT/var/run" || deny "cannot create Web dirs"
+    check_parent_dirs
     stage_bin="$ROOT/bin/.kas-control-center.$$"
     stage_init="$ROOT/etc/init.d/.S98kas-control-center.$$"
     stage_manifest="$ROOT/etc/.kas-control-center.web.sha256.$$"
     [ ! -e "$stage_bin" ] && [ ! -e "$stage_init" ] && [ ! -e "$stage_manifest" ] ||
         deny "unexpected staging collision"
-    trap 'rm -f "$stage_bin" "$stage_init" "$stage_manifest"' EXIT HUP INT TERM
+    trap 'rm -f "$stage_bin" "$stage_init" "$stage_manifest"' EXIT
+    trap 'exit 1' HUP INT TERM
     cp "$source" "$stage_bin" || deny "copy failed"
     chmod 700 "$stage_bin" || deny "chmod failed"
     [ "$(sha256sum "$stage_bin" | cut -d ' ' -f 1)" = "$digest" ] ||
@@ -104,6 +113,7 @@ start_ui() {
     if running; then message "RUNNING"; return 0; fi
     if [ -e "$PID" ] || [ -L "$PID" ]; then deny "stale/unverifiable pid; inspect manually"; fi
     untracked_running && deny "untracked Web process found; refusing duplicate"
+    check_parent_dirs
     mkdir -p "$ROOT/var/run" || deny "runtime directory unavailable"
     "$BIN" -listen 127.0.0.1:18081 </dev/null >/dev/null 2>&1 &
     child=$!
@@ -133,6 +143,7 @@ stop_ui() {
 }
 remove_ui() {
     [ "$#" -eq 0 ] || deny "remove takes no arguments"
+    check_parent_dirs
     verify_owned
     stop_ui
     untracked_running && deny "untracked Web process found; refusing removal"
