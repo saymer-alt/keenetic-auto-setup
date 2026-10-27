@@ -2,5 +2,10 @@
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><link rel="stylesheet" href="/style.css"></head>
 <body><main><header><h1>KAS Control Center</h1><nav><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></nav></header>
 <p id="scope"></p><section><h2 id="status-heading"></h2><p id="status-text"></p><p id="binary-text"></p><button id="refresh" type="button"></button></section>
+<section><h2 id="config-heading"></h2><p id="config-help"></p>
+<label id="file-label" for="config-file"></label><input id="config-file" type="file" accept=".yaml,.yml,text/yaml,text/x-yaml">
+<label id="paste-label" for="yaml-paste"></label><textarea id="yaml-paste" rows="7" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="mixed-port: 7890"></textarea>
+<p id="config-warning"></p><button id="apply" type="button"></button><p id="config-state" role="status" aria-live="polite"></p>
+</section>
 <section><h2 id="doctor-heading"></h2><p id="doctor-help"></p><button id="run" type="button"></button> <button id="copy" type="button" disabled></button><p id="doctor-state" role="status" aria-live="polite"></p><details><summary id="details-label"></summary><pre id="output"></pre></details></section>
 <footer><p id="footer"></p></footer></main><script src="/app.js" defer></script></body></html>
