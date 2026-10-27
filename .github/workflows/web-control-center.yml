@@ -5,6 +5,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'mihomo-doctor.sh'
+      - 'config-import.sh'
       - '.github/workflows/web-control-center.yml'
   push:
     branches:
@@ -12,6 +13,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'mihomo-doctor.sh'
+      - 'config-import.sh'
       - '.github/workflows/web-control-center.yml'
 
 permissions:
@@ -31,6 +33,7 @@ jobs:
           cd web/control-center
           go generate ./...
           cmp -s ../../mihomo-doctor.sh scripts/mihomo-doctor.sh
+          cmp -s ../../config-import.sh scripts/config-import.sh
       - name: Test read-only adapter
         run: |
           cd web/control-center
