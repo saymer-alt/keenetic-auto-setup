@@ -159,7 +159,16 @@ func main(){
  secretFile:=flag.String("lan-secret-file","","root-only file containing random 32-byte base64url token")
  certFile:=flag.String("tls-cert","","HTTPS certificate PEM")
  keyFile:=flag.String("tls-key","","HTTPS private key PEM")
+ setupIP:=flag.String("setup-lan-ip","","create LAN HTTPS certificate/secret for private IPv4 (does not start server)")
+ setupDir:=flag.String("setup-lan-dir","","new, private directory for LAN credentials")
  flag.Parse()
+ if *setupIP!="" || *setupDir!="" {
+  if *setupIP=="" || *setupDir==""{log.Fatal("LAN credential setup needs both -setup-lan-ip and -setup-lan-dir")}
+  output,err:=setupLANCredentials(*setupIP,*setupDir)
+  if err!=nil{log.Fatal(err)}
+  fmt.Print(output)
+  return
+ }
  var policy *lanPolicy
  if *lanMode {
   var err error
