@@ -18,8 +18,8 @@ concurrency:
 
 jobs:
   native-web-import:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@fb5dc7908b3f01e8a30198ee5cb13d95960e3e69
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@2248dba04f3b1a7354f58151e2d5105a38e3681b
     with:
-      emulator_ref: fb5dc7908b3f01e8a30198ee5cb13d95960e3e69
+      emulator_ref: 2248dba04f3b1a7354f58151e2d5105a38e3681b
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web
