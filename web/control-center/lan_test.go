@@ -7,6 +7,7 @@ import (
  "crypto/x509"
  "encoding/base64"
  "encoding/pem"
+ "net"
  "net/http"
  "net/http/httptest"
  "net/netip"
@@ -110,4 +111,54 @@ func TestLANSecretsRejectSymlink(t *testing.T){
  if err:=os.WriteFile(source,[]byte("not a secret"),0600);err!=nil{t.Fatal(err)}
  if err:=os.Symlink(source,link);err!=nil{t.Fatal(err)}
  if _,err:=checkedPrivateFile(link,true);err==nil{t.Fatal("followed token symlink")}
+}
+
+
+func TestLANRealTLS13WithPinnedSelfSignedCertAndAuth(t *testing.T) {
+ dir:=filepath.Join(t.TempDir(),"creds")
+ if _,err:=setupLANCredentials("192.168.1.1",dir);err!=nil{t.Fatal(err)}
+ keypair,err:=tls.LoadX509KeyPair(filepath.Join(dir,"server.crt"),filepath.Join(dir,"server.key"))
+ if err!=nil{t.Fatal(err)}
+ raw,err:=os.ReadFile(filepath.Join(dir,"server.crt"))
+ if err!=nil{t.Fatal(err)}
+ roots:=x509.NewCertPool()
+ if !roots.AppendCertsFromPEM(raw){t.Fatal("could not trust pinned test cert")}
+ tokenBytes,err:=os.ReadFile(filepath.Join(dir,"auth.token"))
+ if err!=nil{t.Fatal(err)}
+ token:=strings.TrimSpace(string(tokenBytes))
+ a:=newApp("192.168.1.1:18081",nil)
+ a.scheme="https"
+ // The test socket is loopback, but the *production* LAN validation rejects
+ // all loopback client prefixes. This is only a TLS protocol test.
+ a.lan=&lanPolicy{clients:netip.MustParsePrefix("127.0.0.0/8"),
+   tokenDigest:sha256.Sum256([]byte(token))}
+ socket,err:=net.Listen("tcp4","127.0.0.1:0")
+ if err!=nil{t.Fatal(err)}
+ srv:=&http.Server{Handler:a.handler(),TLSConfig:&tls.Config{
+  Certificates:[]tls.Certificate{keypair},MinVersion:tls.VersionTLS13}}
+ done:=make(chan struct{})
+ go func(){_ = srv.ServeTLS(socket,"","");close(done)}()
+ defer func(){_ = srv.Close();<-done}()
+ cli:=&http.Client{Timeout:3*time.Second,Transport:&http.Transport{
+  TLSClientConfig:&tls.Config{RootCAs:roots,ServerName:"192.168.1.1",
+   MinVersion:tls.VersionTLS13}}}
+ req,err:=http.NewRequest(http.MethodGet,
+  "https://"+socket.Addr().String()+"/api/status",nil)
+ if err!=nil{t.Fatal(err)}
+ req.Host="192.168.1.1:18081"
+ resp,err:=cli.Do(req)
+ if err!=nil{t.Fatal(err)}
+ _ = resp.Body.Close()
+ if resp.StatusCode!=401{t.Fatalf("unauthenticated real TLS: %d",resp.StatusCode)}
+ req,err=http.NewRequest(http.MethodGet,
+  "https://"+socket.Addr().String()+"/api/status",nil)
+ if err!=nil{t.Fatal(err)}
+ req.Host="192.168.1.1:18081"
+ req.SetBasicAuth("kas",token)
+ resp,err=cli.Do(req)
+ if err!=nil{t.Fatal(err)}
+ _ = resp.Body.Close()
+ if resp.StatusCode!=200||resp.TLS==nil||resp.TLS.Version!=tls.VersionTLS13{
+  t.Fatalf("authorized real TLS 1.3 expected: %d %v",resp.StatusCode,resp.TLS)
+ }
 }
