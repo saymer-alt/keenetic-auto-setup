@@ -83,10 +83,22 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
  host,_,err:=net.SplitHostPort(r.RemoteAddr)
  if err!=nil{http.Error(w,"forbidden",http.StatusForbidden);return false}
  client,err:=netip.ParseAddr(host)
- if err!=nil||(!p.clients.Contains(client.Unmap()) && !(client.IsLoopback() && proxyHost!="" && r.Host==proxyHost)){
+ if err!=nil{http.Error(w,"forbidden",http.StatusForbidden);return false}
+ client=client.Unmap()
+ // KeenDNS authentication happens in the ROUTER, before forwarding.
+ // Accept this trust boundary only from an explicitly configured proxy Host
+ // and a router-local TCP peer (loopback or the router's own Home IPv4).
+ // A Home client can forge Host/Origin, but not the TCP peer's source IP.
+ ownHost,_,ownErr:=net.SplitHostPort(p.address)
+ ownIP,ipErr:=netip.ParseAddr(ownHost)
+ routerProxy:=(proxyHost!="" && r.Host==proxyHost &&
+     (client.IsLoopback() || (ownErr==nil && ipErr==nil && client==ownIP)))
+ if !p.clients.Contains(client) && !routerProxy{
   http.Error(w,"forbidden",http.StatusForbidden);return false
  }
- if p.passwordEnabled{
+ // Password option covers direct LAN clients only; do not require a SECOND
+ // account after the router has already authenticated a KeenDNS client.
+ if p.passwordEnabled && !routerProxy{
   name,password,ok:=r.BasicAuth()
   received:=sha256.Sum256([]byte(password))
   if !ok||name!="kas"||subtle.ConstantTimeCompare(received[:],p.passwordDigest[:])!=1{
