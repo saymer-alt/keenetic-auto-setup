@@ -118,11 +118,17 @@ start_ui() {
     # Default is the actual private IP of Home bridge br0, not wildcard.
     # Optional local-only password lives in a user-owned 0600 config file.
     password_file="$ROOT/etc/kas-control-center.password"
+    proxy_file="$ROOT/etc/kas-control-center.proxy-origin"
+    set -- -lan -listen auto -lan-interface br0
     if [ -e "$password_file" ] || [ -L "$password_file" ]; then
-        "$BIN" -lan -listen auto -lan-interface br0 -password-file "$password_file" </dev/null >/dev/null 2>&1 &
-    else
-        "$BIN" -lan -listen auto -lan-interface br0 </dev/null >/dev/null 2>&1 &
+        set -- "$@" -password-file "$password_file"
     fi
+    if [ -e "$proxy_file" ] || [ -L "$proxy_file" ]; then
+        [ -f "$proxy_file" ] && [ ! -L "$proxy_file" ] || deny "unsafe optional proxy origin file"
+        proxy_origin=$(cat "$proxy_file") || deny "cannot read proxy origin"
+        set -- "$@" -proxy-origin "$proxy_origin"
+    fi
+    "$BIN" "$@" </dev/null >/dev/null 2>&1 &
     child=$!
     printf '%s\n' "$child" > "$PID" || deny "cannot record service pid"
     sleep 1
