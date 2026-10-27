@@ -57,22 +57,26 @@ func newHomeLAN(bind,iface,passwordFile string)(*homeLAN,error){
   address=bind
  }
  p:=&homeLAN{address:address,clients:prefix}
- if passwordFile!=""{
-  st,e:=os.Lstat(passwordFile)
-  if e!=nil{return nil,errors.New("password file unavailable")}
-  if !st.Mode().IsRegular()||st.Mode().Perm()&0077!=0||st.Size()<1||st.Size()>256{
-   return nil,errors.New("password file must be private regular file")
-  }
-  raw,e:=os.ReadFile(passwordFile)
-  if e!=nil{return nil,e}
-  password:=strings.TrimSpace(string(raw))
-  if len(password)<12||len(password)>128||strings.ContainsAny(password,"\r\n:"){
-   return nil,errors.New("password must have 12-128 characters, no colon or newline")
-  }
-  p.passwordDigest=sha256.Sum256([]byte(password))
-  p.passwordEnabled=true
- }
+ if err:=p.loadOptionalPassword(passwordFile);err!=nil{return nil,err}
  return p,nil
+}
+
+func (p *homeLAN)loadOptionalPassword(passwordFile string)error{
+ if passwordFile=="" {return nil}
+ st,e:=os.Lstat(passwordFile)
+ if e!=nil{return errors.New("password file unavailable")}
+ if !st.Mode().IsRegular()||st.Mode().Perm()&0077!=0||st.Size()<1||st.Size()>256{
+  return errors.New("password file must be private regular file")
+ }
+ raw,e:=os.ReadFile(passwordFile)
+ if e!=nil{return e}
+ password:=strings.TrimSpace(string(raw))
+ if len(password)<12||len(password)>128||strings.ContainsAny(password,"\r\n:"){
+  return errors.New("password must have 12-128 characters, no colon or newline")
+ }
+ p.passwordDigest=sha256.Sum256([]byte(password))
+ p.passwordEnabled=true
+ return nil
 }
 
 func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string)bool{
