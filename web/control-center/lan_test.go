@@ -96,6 +96,32 @@ func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
  if code:=req(a.host,"http://192.168.1.1:18081","127.0.0.1:1000");code!=403{t.Fatalf("loopback bypassed direct origin guard: %d",code)}
 }
 
+func TestRouterAuthenticationDelegationWithOptionalLANPassword(t *testing.T){
+ secret:="owner-sets-optional-password"
+ a:=newApp("192.168.1.1:18081",nil)
+ a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.1.0/24"),
+  passwordEnabled:true,passwordDigest:sha256.Sum256([]byte(secret))}
+ a.proxyHost="kas.example.keenetic.pro"
+ a.proxyOrigin="https://kas.example.keenetic.pro"
+ call:=func(client,host string,withPassword bool)int{
+  req:=httptest.NewRequest(http.MethodGet,"http://192.168.1.1:18081/api/status",nil)
+  req.RemoteAddr=client
+  req.Host=host
+  if withPassword{req.SetBasicAuth("kas",secret)}
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,req)
+  return w.Code
+ }
+ // The router can authenticate the remote user once at its KeenDNS proxy.
+ if n:=call("127.0.0.1:2345",a.proxyHost,false);n!=200{t.Fatalf("loopback router proxy required second login: %d",n)}
+ if n:=call("192.168.1.1:2345",a.proxyHost,false);n!=200{t.Fatalf("router Home-address proxy required second login: %d",n)}
+ // A client on Home may forge Host, but not the TCP source IP of the router.
+ if n:=call("192.168.1.44:2345",a.proxyHost,false);n!=401{t.Fatalf("LAN forged proxy Host bypassed password: %d",n)}
+ if n:=call("192.168.1.44:2345",a.host,false);n!=401{t.Fatalf("direct Home without password: %d",n)}
+ if n:=call("192.168.1.44:2345",a.host,true);n!=200{t.Fatalf("direct Home with password: %d",n)}
+ if n:=call("203.0.113.4:2345",a.proxyHost,false);n!=403{t.Fatalf("external proxy Host bypass: %d",n)}
+ if n:=call("192.168.1.1:2345",a.host,false);n!=401{t.Fatalf("router peer without proxy Host bypassed password: %d",n)}
+}
+
 func TestPasswordFilePolicy(t *testing.T){
  dir:=t.TempDir()
  p:=filepath.Join(dir,"pass")
