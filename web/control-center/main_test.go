@@ -35,6 +35,7 @@ func TestHostOriginGuardsAndDoctor(t *testing.T){
  var data apiResult
  if err:=json.Unmarshal(r.Body.Bytes(),&data);err!=nil{t.Fatal(err)}
  if strings.Contains(data.Details,"secret123"){t.Fatal("secret leaked")}
+ if data.State!="UNKNOWN"{t.Fatal("Doctor exit zero cannot prove network OK")}
  if count!=1{t.Fatal("expected exactly one call",count)}
  if request("127.0.0.1:18081","http://127.0.0.1:18081","application/json").Code!=429{t.Fatal("throttle failed")}
 }
