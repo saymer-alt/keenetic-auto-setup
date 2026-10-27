@@ -115,7 +115,14 @@ start_ui() {
     untracked_running && deny "untracked Web process found; refusing duplicate"
     check_parent_dirs
     mkdir -p "$ROOT/var/run" || deny "runtime directory unavailable"
-    "$BIN" -listen 127.0.0.1:18081 </dev/null >/dev/null 2>&1 &
+    # Default is the actual private IP of Home bridge br0, not wildcard.
+    # Optional local-only password lives in a user-owned 0600 config file.
+    password_file="$ROOT/etc/kas-control-center.password"
+    if [ -e "$password_file" ] || [ -L "$password_file" ]; then
+        "$BIN" -lan -listen auto -lan-interface br0 -password-file "$password_file" </dev/null >/dev/null 2>&1 &
+    else
+        "$BIN" -lan -listen auto -lan-interface br0 </dev/null >/dev/null 2>&1 &
+    fi
     child=$!
     printf '%s\n' "$child" > "$PID" || deny "cannot record service pid"
     sleep 1
@@ -123,7 +130,7 @@ start_ui() {
         rm -f "$PID"
         deny "Web process did not remain active"
     fi
-    message "RUNNING: 127.0.0.1:18081"
+    message "RUNNING: Home LAN TCP/18081 (br0)"
 }
 stop_ui() {
     if [ ! -e "$PID" ] && [ ! -L "$PID" ]; then
