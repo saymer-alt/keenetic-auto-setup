@@ -11,14 +11,15 @@ The caller automatically runs on pull requests that change **anything other than
 
 ## What this caller tests
 
-The KAS caller runs on pull requests and can also be dispatched manually with
-a full 40-character `kas_ref`. It delegates to the Router Emulator reusable
-workflow at the pinned SHA **shown in the caller's YAML**. That pinned
-laboratory runs the `kas` lifecycle stage, including a *deliberate refusal*
-from the historical `uninstall.sh --remove`. A green GitHub Actions job in this
-stage **does not prove the new package uninstaller worked**. Consult the
-individual gate labels in the sanitized `ported-gates` artifact; an overall
-report may remain BLOCKED when a gate was not attempted.
+The KAS caller uses an immutable Router Emulator revision (`1abea236...`),
+which was the exact source of the successful targeted package-removal run
+[#40313388777](https://github.com/saymer-alt/router-emulator/actions/runs/40313388777).
+Normal KAS pull requests **always** run the existing `kas` lifecycle stage,
+with the PR head's complete SHA passed as `kas_ref`. The stage proves install,
+Doctor and reboot, and intentionally observes a *blocked* legacy
+`uninstall.sh --remove`; it **does not prove ordinary OPKG removal**. Read the
+sanitized per-gate statuses in the `ported-gates` artifact rather than treating
+an overall green workflow as a PASS for every stage.
 
 ## Accepted minimal uninstaller
 
@@ -31,12 +32,26 @@ passed. The same production package uninstaller also passed the KN-1010
 hardware test, documented in
 [KAS PR #235](https://github.com/saymer-alt/keenetic-auto-setup/pull/235).
 
-To repeat that targeted test, dispatch the **Router Emulator**
-`ported-entware-kas.yml` workflow with `stage=uninstall-packages`, a full
-SHA of the KAS commit under test (`kas_ref`) and a full SHA of the
-compatible Router Emulator commit (`emulator_ref`); use the already accepted
-run's exact inputs when reproducing that evidence. Do not infer any result
-from an unrelated `kas` lifecycle workflow.
+To rerun that specific test from **this KAS repository**:
+
+1. Open **Actions → Keenetic Ported native KAS E2E → Run workflow**.
+2. Select `stage=uninstall-packages`, optionally enter the full 40-character
+   `kas_ref` of the KAS commit being tested (leave empty to use the selected
+   dispatch branch's commit), then start the single job.
+3. Inspect sanitized `ported-gates` / `summary.md`: require
+   `KAS_UNINSTALL_PACKAGES=PASS` **and**
+   `KAS_UNINSTALL_PACKAGES_REPEAT=PASS` and
+   `KAS_UNINSTALL_PACKAGES_REBOOT=PASS` in independent checks. A `BLOCKED`,
+   `FAIL` or `NOT_TESTED` result for one of those is not an acceptance PASS.
+
+Manual `stage=kas` preserves the original installation/Doctor/reboot stage.
+The stage selector does **not** add a second automatic QEMU job to pull requests.
+Both the called workflow code and its checked-out emulator version are pinned
+to the same full immutable SHA. The KAS commit SHA is independently pinned per
+run. Retest explicitly when promoting a newer Router Emulator revision; never
+change the pin to a floating `main`/branch. The previous native uninstaller
+acceptance proof remains [run #40313388777](https://github.com/saymer-alt/router-emulator/actions/runs/40313388777),
+not a claim about this caller's manual workflow until it is separately run.
 
 ## Security and limitations
 

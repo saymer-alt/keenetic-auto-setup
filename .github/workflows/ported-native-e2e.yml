@@ -13,6 +13,14 @@ on:
         description: Full KAS commit SHA (empty selects this dispatch commit)
         required: false
         type: string
+      stage:
+        description: 'Laboratory stage (manual runs only); PRs always test kas lifecycle'
+        required: true
+        type: choice
+        default: kas
+        options:
+          - kas
+          - uninstall-packages
 
 permissions:
   contents: read
@@ -23,7 +31,9 @@ concurrency:
 
 jobs:
   native-kas:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@94de3b98154dca985e100cd97c4a91e1fd047008
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@1abea236920bd33f61a81975ecc4b52a9825f5ef
     with:
-      emulator_ref: 94de3b98154dca985e100cd97c4a91e1fd047008
+      emulator_ref: 1abea236920bd33f61a81975ecc4b52a9825f5ef
       kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
+      # PRs keep the established full lifecycle; only manual dispatch opts into removal.
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'kas' }}
