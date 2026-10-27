@@ -36,4 +36,5 @@ jobs:
       emulator_ref: 1abea236920bd33f61a81975ecc4b52a9825f5ef
       kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       # PRs keep the established full lifecycle; only manual dispatch opts into removal.
-      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'kas' }}
+      # TEMPORARY acceptance of the real KAS reusable caller; never merge this PR.
+      stage: uninstall-packages
