@@ -38,6 +38,7 @@ type apiResult struct {
 }
 type app struct {
  host string
+ lan *homeLAN
  doctor []byte
  importer []byte
  mu sync.Mutex
@@ -140,6 +141,7 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Host!=a.host{http.Error(w,"invalid host",http.StatusForbidden);return}
+  if a.lan!=nil && !a.lan.allowed(w,r){return}
   w.Header().Set("X-Frame-Options","DENY")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
@@ -147,15 +149,28 @@ func (a *app)handler()http.Handler{
  })
 }
 func main(){
- listen:=flag.String("listen","127.0.0.1:18081","loopback-only listen address")
+ listen:=flag.String("listen","127.0.0.1:18081","IPv4 address:port, or auto with -lan")
+ lanMode:=flag.Bool("lan",false,"listen on private Home br0 IPv4, HTTP, no password by default")
+ lanInterface:=flag.String("lan-interface","br0","Home LAN bridge (currently br0 only)")
+ passwordFile:=flag.String("password-file","","optional private file with KAS panel password")
  flag.Parse()
- if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
+ var lan *homeLAN
+ if *lanMode {
+  var err error
+  lan,err=newHomeLAN(*listen,*lanInterface,*passwordFile)
+  if err!=nil{log.Fatal(err)}
+  *listen=lan.address
+ }else{
+  if *passwordFile!=""{log.Fatal("password-file requires -lan")}
+  if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
+ }
  script,err:=assets.ReadFile("scripts/mihomo-doctor.sh");if err!=nil{log.Fatal(err)}
  importer,err:=assets.ReadFile("scripts/config-import.sh");if err!=nil{log.Fatal(err)}
  app:=newApp(*listen,script)
  app.importer=importer
+ app.lan=lan
  srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
- fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)
+ if lan!=nil {fmt.Println(lan.describe())}else{fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)}
  runErrors:=make(chan error,1)
  go func(){runErrors<-srv.ListenAndServe()}()
  signals:=make(chan os.Signal,1)
