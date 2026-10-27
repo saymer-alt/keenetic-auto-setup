@@ -46,9 +46,11 @@ jobs:
           const fs = require('fs');
           const vm = require('vm');
           const source = fs.readFileSync('web/control-center/web/app.js', 'utf8');
-          const found = source.match(/const words=\{([\s\S]*?)\};/);
-          if (!found) throw Error('RU/EN dictionary missing');
-          const dictionaries = vm.runInNewContext('({' + found[1] + '})');
+          const start = source.indexOf('const words=');
+          const end = source.indexOf('\nlet lang=', start);
+          if (start < 0 || end < 0) throw Error('RU/EN dictionary missing');
+          const expression = source.slice(start + 'const words='.length, end).trim().replace(/;$/, '');
+          const dictionaries = vm.runInNewContext('(' + expression + ')');
           const ru = Object.keys(dictionaries.ru).sort();
           const en = Object.keys(dictionaries.en).sort();
           if (ru.length === 0 || JSON.stringify(ru) !== JSON.stringify(en)) {
