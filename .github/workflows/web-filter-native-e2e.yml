@@ -19,8 +19,8 @@ concurrency:
 
 jobs:
   native-web-filter:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@a6b382f88e586fea109390a3dfa36e99367270a3
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@4824859c1d0ac77dfbcf87a3ecbfd4d4d09c1628
     with:
-      emulator_ref: a6b382f88e586fea109390a3dfa36e99367270a3
+      emulator_ref: 4824859c1d0ac77dfbcf87a3ecbfd4d4d09c1628
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web-filter
