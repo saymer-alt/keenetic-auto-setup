@@ -119,8 +119,7 @@ func patchProviderFilter(input []byte,provider string,selected []string,clear bo
  }
  old:=p.Existing
  if p.filterLine>=0{
-  if clear{lines=append(lines[:p.filterLine],lines[p.filterLine+1:]...)}
-  else{
+  if clear{lines=append(lines[:p.filterLine],lines[p.filterLine+1:]...)} else {
    encoded,err:=json.Marshal(replacement)
    if err!=nil{return nil,"","",errFilterInvalid}
    lines[p.filterLine]="    exclude-filter: "+string(encoded)
