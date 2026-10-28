@@ -29,3 +29,12 @@ Reuse the opt-in local Mihomo provider-names snapshot from [KAS PR #261](https:/
 - Native: `.github/workflows/web-filter-native-e2e.yml` (stage `web-filter`) runs the editor in the Router Emulator guest with two real HTTP providers served from the committed fixtures, verifies the actual Mihomo provider listing after apply and clear, and exercises the real importer gate directly on the guest.
 
 This PR must stay Draft until the native web-filter E2E and independent hardware results pass plus owner GO.
+
+## KN-1010 UI feedback (28 Oct 2026)
+
+Use two explicit actions: **Exclude selected** and **Clear filter**. Each performs
+the existing server preview, asks for confirmation, and applies via the canonical
+importer. No separate “apply shown change” button. Cancellation or failed preview
+never starts import; clear is disabled without an existing filter. The selected
+provider, node names and source SHA are captured across the async preview/apply.
+No changes to importer validation, version gates, locking or rollback.

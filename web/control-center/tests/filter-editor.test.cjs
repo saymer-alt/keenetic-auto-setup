@@ -6,17 +6,19 @@ const path=require('node:path');
 const vm=require('node:vm');
 
 class Element {
- constructor(){this.children=[];this.style={};this.disabled=false;this.checked=false;this.value='';this.textContent='';this.files=[];}
+ constructor(){this.children=[];this.style={};this.disabled=false;this.checked=false;this.value='';this.textContent='';this.files=[];this.handlers={};}
  replaceChildren(...children){this.children=children;}
  appendChild(child){this.children.push(child);return child;}
- addEventListener(){}
+ addEventListener(event,handler){this.handlers[event]=handler;}
+ click(){if(!this.disabled)return this.handlers.click?.();}
  setAttribute(){}
- querySelectorAll(){return this.children.flatMap(label=>label.children||[]).filter(x=>x.checked);}
+ querySelectorAll(selector){const inputs=this.children.flatMap(label=>label.children||[]).filter(x=>x.type==='checkbox');return selector==='input:checked'?inputs.filter(x=>x.checked):inputs;}
 }
 const response=(status,data)=>({ok:status>=200&&status<300,status,json:async()=>data});
-function ui(namesResult,inspectStatus=200,operationState='UNKNOWN'){
+function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
+ const ids=new Set([...fs.readFileSync(path.join(__dirname,'../web/index.html'),'utf8').matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]));
  const elements=new Map();
- const el=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
+ const el=id=>{assert.ok(ids.has(id),'missing DOM element '+id);if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
  const requests=[];
  let homeOnly=false;
  const context=vm.createContext({
@@ -29,12 +31,13 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN'){
     if(options.method==='POST')homeOnly=JSON.parse(options.body).home_only;
     return response(200,{home_only:homeOnly});
    }
-   if(url==='/api/filter/providers')return response(inspectStatus,{source_sha:'a'.repeat(64),providers:[{name:'P',http:true,has_filter:true,existing_filter:'Old'}]});
+   if(url==='/api/filter/providers')return response(inspectStatus,{source_sha:'a'.repeat(64),providers:[{name:'P',http:true,has_filter:fixture.hasFilter!==false,existing_filter:fixture.hasFilter===false?'':'Old'}]});
    if(url==='/api/providers/names'){
     if(namesResult instanceof Error)throw namesResult;
     return namesResult;
    }
-   if(url==='/api/filter/preview')return response(200,{existing_filter:'Old',proposed_filter:''});
+   if(url==='/api/filter/preview'&&fixture.beforePreview)await fixture.beforePreview();
+   if(url==='/api/filter/preview')return fixture.previewFail?response(422,{error_code:'UNSUPPORTED_PROVIDER_YAML'}):response(200,{existing_filter:'Old',proposed_filter:JSON.parse(options.body||'null')?.clear?'':'New'});
    if(url==='/api/filter/apply')return response(202,{id:'operation',state:'RUNNING'});
    return response(200,{state:operationState});
   }
@@ -54,17 +57,16 @@ for(const [label,namesResult] of [
  assert.equal(app.el('filter-clear').disabled,false);
  assert.equal(app.el('filter-preview').disabled,true);
  assert.match(app.el('filter-state').textContent,/снять|clear/i);
- await app.run('previewFilterChange(true)');
- assert.equal(app.el('filter-apply').disabled,false);
- await app.run('applyFilterChange()');
+ await app.el('filter-clear').click();
  const request=app.requests.find(x=>x.url==='/api/filter/apply');
+ assert.ok(request,'clear action did not apply');
  assert.deepEqual(JSON.parse(request.options.body),{provider:'P',names:[],clear:true,source_sha:'a'.repeat(64)});
 });
 
 test('failed inspection disables all changes even when names loaded',async()=>{
  const app=ui(response(200,{providers:{P:{proxies:[{name:'X'}]}}}),503);
  await app.run('loadFilterEditor()');
- for(const id of ['filter-clear','filter-preview','filter-apply'])assert.equal(app.el(id).disabled,true);
+ for(const id of ['filter-clear','filter-preview'])assert.equal(app.el(id).disabled,true);
 });
 
 test('reloading after a names failure restores node selection',async()=>{
@@ -81,8 +83,7 @@ test('reloading after a names failure restores node selection',async()=>{
  test('successful import preserves the names-unavailable warning',async()=>{
  const app=ui(response(502,{error_code:'MIHOMO_UNAVAILABLE'}),200,'OK');
  await app.run('loadFilterEditor()');
- await app.run('previewFilterChange(true)');
- await app.run('applyFilterChange()');
+ await app.el('filter-clear').click();
  await app.run('refreshImport()');
  assert.match(app.el('filter-state').textContent,/недоступны/);
  assert.doesNotMatch(app.el('filter-state').textContent,/Список узлов обновлён/);
@@ -105,4 +106,57 @@ test('Home-only checkbox defaults off and saves explicit user choice',async()=>{
  app.el('access-home-only').checked=false;
  await app.run('saveAccess()');
  assert.equal(app.el('access-home-only').checked,false);
+});
+
+test('exclude action previews then applies after confirmation without a separate apply button',async()=>{
+ const app=ui(response(200,{providers:{P:{proxies:[{name:'X'}]}}}));
+ await app.run('loadFilterEditor()');
+ app.el('filter-node-list').children[0].children[0].checked=true;
+ assert.equal(app.el('filter-preview').textContent,'Исключить выбранные');
+ await app.el('filter-preview').click();
+ const change=app.requests.find(x=>x.url==='/api/filter/apply');
+ assert.ok(change,'exclude button did not apply the previewed change');
+ assert.deepEqual(JSON.parse(change.options.body),{provider:'P',names:['X'],clear:false,source_sha:'a'.repeat(64)});
+ const html=fs.readFileSync(path.join(__dirname,'../web/index.html'),'utf8');
+ assert.doesNotMatch(html,/id="filter-apply"/);
+});
+
+test('cancel and preview error never start an importer',async()=>{
+ for(const previewFail of [false,true]){
+  const app=ui(response(200,{providers:{P:{proxies:[{name:'X'}]}}}),200,'UNKNOWN',{previewFail});
+  await app.run('loadFilterEditor()');
+  app.el('filter-node-list').children[0].children[0].checked=true;
+  if(!previewFail)app.run('window.confirm=()=>false');
+  await app.el('filter-preview').click();
+  assert.equal(app.requests.some(x=>x.url==='/api/filter/apply'),false);
+ }
+});
+
+test('clear is disabled when no filter exists',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{hasFilter:false});
+ await app.run('loadFilterEditor()');
+ assert.equal(app.el('filter-clear').disabled,true);
+ await app.el('filter-clear').click();
+ assert.equal(app.requests.some(x=>x.url==='/api/filter/preview'),false);
+});
+
+test('double-click does not submit duplicate filter operations',async()=>{
+ const app=ui(response(200,{providers:{P:{proxies:[{name:'X'}]}}}));
+ await app.run('loadFilterEditor()');
+ app.el('filter-node-list').children[0].children[0].checked=true;
+ await Promise.all([app.el('filter-preview').click(),app.el('filter-preview').click()]);
+ assert.equal(app.requests.filter(x=>x.url==='/api/filter/apply').length,1);
+});
+
+test('asynchronous page changes cannot retarget the approved provider or source version',async()=>{
+ let app;
+ app=ui(response(200,{providers:{P:{proxies:[{name:'X'}]}}}),200,'UNKNOWN',{
+  beforePreview:async()=>app.run("filterSelectedProvider='Q';filterInspect.source_sha='b'.repeat(64)")
+ });
+ await app.run('loadFilterEditor()');
+ app.el('filter-node-list').children[0].children[0].checked=true;
+ await app.el('filter-preview').click();
+ const request=app.requests.find(x=>x.url==='/api/filter/apply');
+ assert.ok(request);
+ assert.deepEqual(JSON.parse(request.options.body),{provider:'P',names:['X'],clear:false,source_sha:'a'.repeat(64)});
 });

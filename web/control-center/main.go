@@ -15,6 +15,7 @@ import (
  "os"
  "os/exec"
  "os/signal"
+ "path/filepath"
  "regexp"
  "syscall"
  "strings"
@@ -70,11 +71,18 @@ func (a *app) expectedOrigin(host string)string {
 }
 func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func fileExists(path string)bool{st,err:=os.Stat(path);return err==nil&&!st.IsDir()}
+// Filesystem evidence only; these paths do not prove a running service.
+func componentFiles(root string)(bool,bool){
+ mihomo:=fileExists(filepath.Join(root,"bin","mihomo"))||fileExists(filepath.Join(root,"sbin","mihomo"))
+ mt:=fileExists(filepath.Join(root,"bin","magitrickled"))||fileExists(filepath.Join(root,"bin","magitrickle"))
+ return mihomo,mt
+}
 func (a *app)handleStatus(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
+ mihomo,mt:=componentFiles("/opt")
  writeJSON(w,http.StatusOK,apiResult{
   State:"UNKNOWN",Time:now(),Source:"KAS filesystem evidence only; network health not tested",
-  MihomoBinary:fileExists("/opt/bin/mihomo"),MTBinary:fileExists("/opt/bin/magitrickle"),
+  MihomoBinary:mihomo,MTBinary:mt,
  })
 }
 func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
