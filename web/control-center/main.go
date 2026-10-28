@@ -51,6 +51,7 @@ type app struct {
  last time.Time
  runDoctor func(context.Context, []byte)(string,int,error)
  runImport func([]byte,string)(int,error)
+ filterConfigReader func()([]byte,error)
  providers *providerNamesExporter
 }
 func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
@@ -148,6 +149,8 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/config/import",a.handleImport)
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
  mux.HandleFunc("/api/providers/names",a.handleProviderNames)
+ mux.HandleFunc("/api/filter/providers",a.handleFilterInspect)
+ mux.HandleFunc("/api/filter/preview",a.handleFilterPreview)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Host!=a.host && (a.proxyHost==""||r.Host!=a.proxyHost){http.Error(w,"invalid host",http.StatusForbidden);return}
   if a.lan!=nil && !a.lan.allowed(w,r,a.proxyHost){return}
