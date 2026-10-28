@@ -1,0 +1,64 @@
+name: Publish KN-1010 Web test bundle
+
+on:
+  push:
+    branches:
+      - feat/kas-web-exclude-filter-apply
+    paths:
+      - '.github/workflows/web-kn1010-prerelease.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kas-web-kn1010-ef63bcc-publication
+  cancel-in-progress: false
+
+jobs:
+  publish-test-bundle:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_SHA: ef63bccf4a2c97fd232acbad06e958f5da213b98
+      TAG: kas-web-kn1010-ef63bcc
+      ARCHIVE: kas-web-kn1010-ef63bcc.tar.gz
+    steps:
+      - name: Retrieve the already tested artifact (no rebuild)
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/$GH_REPO/actions/runs/40686364136 --jq '.head_sha')" = "$SOURCE_SHA"
+          test "$(gh api repos/$GH_REPO/actions/runs/40686364136 --jq '.conclusion')" = success
+          gh run download 40686364136 --name "kas-web-kn1010-$SOURCE_SHA" --dir bundle
+          cd bundle
+          sha256sum -c SHA256SUMS
+          grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA" BUILD_INFO
+          grep -F 'GOARCH=mipsle' BUILD_INFO
+          grep -F 'GOMIPS=softfloat' BUILD_INFO
+      - name: Pack the unchanged artifact files
+        run: |
+          set -euo pipefail
+          tar -czf "$ARCHIVE" -C bundle kas-control-center-mipsle kas-web-manage.sh BUILD_INFO KN1010_TEST.md SHA256SUMS
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          sha256sum -c "$ARCHIVE.sha256"
+      - name: Publish explicitly requested prerelease (never latest)
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite published assets.' >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Тестовый комплект KAS Web для Keenetic KN-1010 (MIPSel softfloat).
+          Исходная ревизия: ef63bccf4a2c97fd232acbad06e958f5da213b98, Draft PR #263.
+          Комплект перенесён из успешного Actions artifact 40686364136 без пересборки.
+          Архив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.
+          Это аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.
+          main/stable не изменяются; автоматической установки нет.
+          NOTES
+          gh release create "$TAG" --target "$SOURCE_SHA" --prerelease --latest=false --title "KAS Web: KN-1010 test ef63bcc" --notes-file release-notes.md "$ARCHIVE" "$ARCHIVE.sha256"
