@@ -1,7 +1,6 @@
 package main
 
 import(
- "context"
  "encoding/json"
  "net/http"
  "net/http/httptest"
@@ -28,11 +27,11 @@ func TestProviderExportSanitizerUsesGeneratorShapeAndNoSecrets(t *testing.T){
 }
 
 func TestProviderExportRejectsBadResponses(t *testing.T){
- for _,s:=range []string{"",`{}`,`{"proxies":{}}`,`{"providers":[]}`,`{"providers":{`,`{"providers":{"x":{"proxies":[{"name":"    "}]} }}`} {
-  if s==`{"providers":{"x":{"proxies":[{"name":"    "}]} }}`}{continue} // blank names are dropped, not a decode failure.
+ for _,s:=range []string{"",`{}`,`{"proxies":{}}`,`{"providers":[]}`,`{"providers":{`} {
   if _,err:=sanitizeProviderNames([]byte(s));err==nil{t.Fatalf("accepted invalid upstream JSON: %s",s)}
  }
 }
+
 
 func TestProviderExportDisabledAndReadOnly(t *testing.T){
  a:=newApp("127.0.0.1:18081",nil)
@@ -95,5 +94,4 @@ func TestProviderSecretMustBePrivateRegularFile(t *testing.T){
  link:=filepath.Join(dir,"link")
  if err:=os.Symlink(path,link);err!=nil{t.Fatal(err)}
  if _,err:=newProviderNamesExporter("127.0.0.1:18081",link);err==nil{t.Fatal("symlink secret accepted")}
- _=context.Background()
 }
