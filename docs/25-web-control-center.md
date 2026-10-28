@@ -70,3 +70,14 @@ This prototype now exposes a **loopback-only** upload/paste-and-apply path:
 - Server transport is HTTP on loopback only: SSH forwarding is acceptable for test development, not a final replacement for SSH.
 
 Tests in the branch cover bounds, bad Host/Origin/Content-Type/confirmation, duplicate requests, temporary-file mode, absence of secret echoes, truthful failure exit and non-TTY file-argument handoff. They are unit/adapter tests, **not** the full KAS importer end-to-end proof.
+
+
+## Exclude Filter editor (this branch: preview + gated apply, stacked on #261)
+
+Scope: edit `proxy-providers.<HTTP provider>.exclude-filter` in the existing config only; everything else stays byte-for-byte. Unsupported YAML shapes fail closed (ordinary import still works for them). Requests/responses carry names, filter strings and SHA256 digests only — never config bytes, subscription URLs or credentials.
+
+Apply path: explicit confirmation → `/api/filter/apply` stages a 0600 candidate and the operator-approved source snapshot in `/tmp`, then invokes the bundled canonical `config-import.sh` with `KAS_EXPECTED_SOURCE=<snapshot>`. The importer proves, **under its lifecycle lock and before stopping Mihomo**, that the on-disk config is still byte-identical to the approved snapshot, repeats the comparison right before the atomic rename, and otherwise aborts with a clear error. Clearing the filter is independent of loaded provider names (already excluded nodes may be absent from the Mihomo API). One mutating operation at a time, shared with YAML import and Doctor.
+
+Concurrency contract: complete against lock-respecting KAS tools; against a writer that ignores the lock, detection covers everything up to the pre-commit comparison. A write landing between that comparison and the rename is overwritten by the candidate and survives only in `config.yaml.bak`. This residual window is pinned by `tests/config-import-filter-gate-regression.py` and is NOT claimed as eliminated; immutable attributes are unsupported on UBIFS/tmpfs and flock-style locks bind only cooperating processes, so this is the practical safe boundary on Keenetic/Entware.
+
+Tests: Go regressions (guards, stale/busy, no-op, clear without names, staging privacy, env passing, no leakage), the expected-source gate regression against the REAL importer under `sh`/BusyBox ash, transaction-invariants pinning, and the `web-filter` Router Emulator stage (two real HTTP providers from committed fixtures, apply verified through the actual Mihomo provider listing, clear, stale 409, direct importer gate/rollback runs on the guest). Hardware acceptance and reboot scenarios remain separate future gates. Draft until those pass plus owner GO.

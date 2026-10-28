@@ -1,0 +1,26 @@
+name: KAS Web native ARM64 exclude-filter E2E (experimental)
+
+on:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - 'config-import.sh'
+      - 'tests/fixtures/filter-e2e-provider-a.yaml'
+      - 'tests/fixtures/filter-e2e-provider-b.yaml'
+      - '.github/workflows/web-filter-native-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kas-web-filter-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-web-filter:
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@863b4f40103221397501520eaca7d87a93f0a00c
+    with:
+      emulator_ref: 863b4f40103221397501520eaca7d87a93f0a00c
+      kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      stage: web-filter
