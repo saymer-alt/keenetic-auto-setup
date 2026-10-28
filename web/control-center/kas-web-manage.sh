@@ -105,7 +105,7 @@ install_ui() {
     mv "$stage_manifest" "$MANIFEST" || deny "manifest install failed"
     mv "$stage_init" "$INIT" || deny "service install failed"
     trap - EXIT HUP INT TERM
-    message "INSTALLED: optional localhost-only KAS Control Center"
+    message "INSTALLED: optional KAS Control Center"
     message "START: sh $INIT start"
 }
 start_ui() {

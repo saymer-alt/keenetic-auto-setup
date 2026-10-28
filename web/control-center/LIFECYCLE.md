@@ -8,7 +8,7 @@
 - Explicit install, start, stop, status and remove operations for the panel itself.
 - Managed paths only: /opt/bin/kas-control-center, /opt/etc/init.d/S98kas-control-center, /opt/etc/kas-control-center.web.sha256, /opt/var/run/kas-control-center.pid.
 - Refuses foreign files, modified owned binary, unverified process PID and untracked process. No automatic overwrite.
-- Stage 4 experimental launcher chooses the single private IPv4 of Home br0 and serves plain HTTP on TCP/18081, without app password by default. It never selects WAN, Guest, wildcard, or IPv6; see LAN.md. This supersedes the old Stage 3 localhost-only launcher behavior on this branch.
+- Stage 4 experimental launcher chooses the single private IPv4 of Home br0 and serves plain HTTP on TCP/18081, without app password by default. It never binds WAN, Guest, wildcard, or IPv6; routed peers are allowed unless Home-only is enabled (see LAN.md). This supersedes the old Stage 3 localhost-only launcher behavior on this branch.
 - SIGTERM causes the Go process to reject new requests and wait for any running canonical importer before exit. No SIGKILL fallback from the service helper.
 - remove does NOT alter Mihomo, MagiTrickle, KAS core, Watchdog, configs, backups, policies, Entware shared packages or foreign services.
 

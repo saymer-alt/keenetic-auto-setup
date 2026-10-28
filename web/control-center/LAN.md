@@ -1,11 +1,11 @@
-# KAS Control Center — simple Home LAN HTTP mode (Stage 4, experimental)
+# KAS Control Center — Home-address HTTP and optional Home-only access (experimental)
 
 ## Decision and why
-Users already administer MT/Mihomo Web UI via local HTTP or an existing KeeneticOS KeenDNS HTTPS proxy with optional router-level authentication. KAS must NOT duplicate Keenetic TLS certificates, create a second PKI, or require an additional account. Our new experimental Stage 4 replaces the abandoned TLS-by-default design.
+Owner decision 2026-10-28: routed administrative access (including SSTP/L2TP) must work by default. Source-subnet restriction is an explicit optional panel setting, not a mandatory gate. Users already administer MT/Mihomo Web UI via local HTTP or an existing KeeneticOS KeenDNS HTTPS proxy with optional router-level authentication. KAS must NOT duplicate Keenetic TLS certificates, create a second PKI, or require an additional account. Our new experimental Stage 4 replaces the abandoned TLS-by-default design.
 
 ## Default installed service
-- Once installed as an **opt-in Web component**, start uses the Home bridge `br0` and auto-detects its single private IPv4 address and netmask. It binds **only that IPv4** on TCP port 18081, not 0.0.0.0 or WAN, and rejects clients outside the Home bridge subnet.
-- No KAS password by default. No built-in TLS, certificates, cloud accounts, login screen, or arbitrary interface scan.
+- Once installed as an **opt-in Web component**, start uses the Home bridge `br0` and auto-detects its single private IPv4 address and netmask. It binds **only that IPv4** on TCP port 18081, not 0.0.0.0 or WAN, and leaves source-subnet filtering off by default. Routed VPN clients can connect when KeeneticOS permits them.
+- Home-only filtering and KAS password are both off by default. No built-in TLS, certificates, cloud accounts, login screen, or arbitrary interface scan.
 - Home LAN example: `http://192.168.1.1:18081` (actual address can differ). Loopback command remains available explicitly: `kas-control-center -listen 127.0.0.1:18081`.
 - If `br0` is absent, down, non-private, or has ambiguous IPv4 addresses, the service refuses to start. It does NOT silently bind 0.0.0.0, a guest bridge, WAN, or a modem IP. More complex router setups need a separate compatibility study.
 - Default listener changes only for the standalone Web service in this experimental Stage 4 branch; KAS core installer and existing stable/main remain untouched.
@@ -26,7 +26,7 @@ The service then accepts the exact proxy hostname + HTTPS Origin pair (no generi
 
 ## Scope of defenses without complexity
 - Home bridge br0 private address and actual prefix are checked at runtime; invalid/ambiguous configurations refuse to bind.
-- HTTP API accepts only Home-origin requests (or configured exact HTTPS reverse-proxy origin) and checks Host, Origin and Sec-Fetch-Site for state-changing requests.
+- The HTTP API requires the actual panel Host and same Origin (or the explicitly configured exact HTTPS proxy origin), regardless of source subnet. Host/Origin/Fetch-Site checks remain enabled when Home-only filtering is off. Forwarded client-IP headers are not trusted.
 - Optional password uses a private file; invalid file fails closed, not silently disables authentication.
 - All YAML changes still use the canonical KAS importer, no Web YAML engine or second Mihomo process. Offline Go/RU-EN frontend unchanged.
 - No WAN/guest exposure rule, port forwarding, automatic TLS or KeenDNS modifications.
@@ -48,4 +48,34 @@ The exported `mihomo-providers-names.json` intentionally contains only provider 
 
 In [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/) open Mihomo Builder → Routing/DNS → Show subscription servers → Import nodes from running Mihomo → **Upload .json**, then select exclusions. Generator #322/#323 provides a manual fallback; this Web feature is an optional additional offline-JSON path and does not install or modify the generator.
 
-For field acceptance: first confirm normal KAS Web Home-LAN and KeenDNS security with export **off**. Only then enable export, test an existing controller bound to localhost **or** own Home IPv4, optional nonempty secret, node-name Unicode/duplicates, read-only contract, untrusted Guest/WAN denial, reboot and memory. If a source is unavailable, return a clear error rather than scanning the LAN or modifying Mihomo settings.
+For field acceptance: first confirm normal KAS Web Home-LAN and KeenDNS security with export **off**. Only then enable export, test an existing controller bound to localhost **or** own Home IPv4, optional nonempty secret, node-name Unicode/duplicates, read-only contract, Home-only opt-in denial of non-Home clients, reboot and memory. If a source is unavailable, return a clear error rather than scanning the LAN or modifying Mihomo settings.
+
+## Optional “Home only” switch (owner field feedback, 2026-10-28)
+
+The panel's **Panel access** section has **Allow access only from the Home subnet**,
+unchecked by default. Saving is explicit and same-origin confirmed. Switching on
+restricts actual TCP peers to the Home prefix; the existing explicitly configured
+router-local KeenDNS proxy trust boundary remains. Switching off allows clients
+from any source subnet that can reach the listener. This does not bind wildcard,
+create a WAN publication, change firewall, configure SSTP/L2TP, or add authentication.
+With password and Home-only filtering both off, anyone who can reach that listener
+can use its management functions; reachability is the router administrator's policy.
+
+The setting is applied live and retained across panel restarts in the private
+fixed file `/opt/etc/kas-control-center.home-only` (0600, contents `1`). Absence
+means off. Malformed/symlinked/non-private files refuse startup or saving rather
+than silently changing the selected policy. The launcher needs no new arguments.
+Enabling shows a warning that VPN/other-subnet clients may lose access. From such
+a client the save response succeeds, but subsequent requests receive 403.
+
+If enabled remotely by mistake, use Home access to disable it, or recover via SSH:
+
+```sh
+rm /opt/etc/kas-control-center.home-only &&
+sh /opt/etc/init.d/S98kas-control-center stop &&
+sh /opt/etc/init.d/S98kas-control-center start
+```
+
+This removes only the optional source restriction and does not alter Mihomo.
+Panel removal intentionally retains this user setting like the optional password.
+Do not broaden binding or alter KeeneticOS firewall merely to bypass this setting.

@@ -2,6 +2,10 @@
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><link rel="stylesheet" href="/style.css"></head>
 <body><main><header><h1>KAS Control Center</h1><nav><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></nav></header>
 <p id="scope"></p><section><h2 id="status-heading"></h2><p id="status-text"></p><p id="binary-text"></p><button id="refresh" type="button"></button></section>
+<section><h2 id="access-heading"></h2><p id="access-help"></p>
+<label><input id="access-home-only" type="checkbox" disabled> <span id="access-label"></span></label>
+<button id="access-save" type="button" disabled></button><p id="access-state" role="status" aria-live="polite"></p>
+</section>
 <section><h2 id="config-heading"></h2><p id="config-help"></p>
 <label id="file-label" for="config-file"></label><input id="config-file" type="file" accept=".yaml,.yml,text/yaml,text/x-yaml">
 <label id="paste-label" for="yaml-paste"></label><textarea id="yaml-paste" rows="7" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="mixed-port: 7890"></textarea>

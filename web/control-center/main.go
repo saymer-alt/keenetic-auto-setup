@@ -145,6 +145,7 @@ func (a *app)handler()http.Handler{
  mux:=http.NewServeMux()
  mux.Handle("/",http.FileServer(http.FS(sub)))
  mux.HandleFunc("/api/status",a.handleStatus)
+ mux.HandleFunc("/api/access",a.handleAccess)
  mux.HandleFunc("/api/doctor",a.handleDoctor)
  mux.HandleFunc("/api/config/import",a.handleImport)
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
@@ -175,6 +176,7 @@ func main(){
   var err error
   lan,err=newHomeLAN(*listen,*lanInterface,*passwordFile)
   if err!=nil{log.Fatal(err)}
+  if err:=lan.loadAccessPolicy(homeOnlyConfigPath);err!=nil{log.Fatal(err)}
   *listen=lan.address
  }else{
   if *passwordFile!=""||*proxyOrigin!=""{log.Fatal("password-file and proxy-origin require -lan")}

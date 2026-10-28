@@ -2,6 +2,8 @@
 
 Related: [#221](https://github.com/saymer-alt/keenetic-auto-setup/issues/221), [#223](https://github.com/saymer-alt/keenetic-auto-setup/issues/223).
 
+> Current network policy (owner decision 2026-10-28): keep the single Home-IP listener, but Home-only source filtering is optional and off by default so routed administrative VPN clients can connect. The UI switch persists across restarts; see [LAN.md](../web/control-center/LAN.md). Historical stages below describe their original boundaries.
+
 ## Proof Before Build
 
 The real need is replacing Mihomo subscriptions/config on several Keenetic routers without SSH. Existing MetaCubeXD does not implement KAS's safe import/update workflow, while current KAS CLI does. Alternatives: keep SSH; use MetaCubeXD for only Controller tasks; built-in KeeneticOS UI (does not expose KAS transaction); thin standalone GUI. Qualitative benefit: **high** for YAML import, **medium** for Status/Doctor alone. Added costs: another optional process, RAM/flash/CPU and security support. Decision: **THIN ADAPTER**. STOP if safe LAN access or resource budget cannot be demonstrated.

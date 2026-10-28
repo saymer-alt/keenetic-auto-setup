@@ -12,11 +12,14 @@ import (
  "net/url"
  "os"
  "strings"
+ "sync/atomic"
 )
 
 type homeLAN struct {
  address string
  clients netip.Prefix
+ homeOnly atomic.Bool
+ accessPath string
  passwordDigest [32]byte
  passwordEnabled bool
 }
@@ -93,7 +96,7 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
  ownIP,ipErr:=netip.ParseAddr(ownHost)
  routerProxy:=(proxyHost!="" && r.Host==proxyHost &&
      (client.IsLoopback() || (ownErr==nil && ipErr==nil && client==ownIP)))
- if !p.clients.Contains(client) && !routerProxy{
+ if p.homeOnly.Load() && !p.clients.Contains(client) && !routerProxy{
   http.Error(w,"forbidden",http.StatusForbidden);return false
  }
  // Password option covers direct LAN clients only; do not require a SECOND
@@ -112,7 +115,7 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
 }
 func (p *homeLAN) describe()string{
  if p.passwordEnabled{return fmt.Sprintf("Home LAN HTTP %s; optional password enabled",p.address)}
- return fmt.Sprintf("Home LAN HTTP %s; no app password",p.address)
+ return fmt.Sprintf("Home-address HTTP %s; Home-only restriction=%t; no app password",p.address,p.homeOnly.Load())
 }
 
 func validateProxyOrigin(value string)(string,error){

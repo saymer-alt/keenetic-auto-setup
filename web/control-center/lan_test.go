@@ -20,9 +20,21 @@ func TestHomeAddressSelectionGuards(t *testing.T){
  if _,err:=newHomeLAN("0.0.0.0:18081","br1","");err==nil{t.Fatal("allowed guest bridge as Home")}
 }
 
-func TestHomeLANNoPasswordByDefaultAndIPAllowlist(t *testing.T){
+func TestRoutedAdministrationAllowedByDefault(t *testing.T){
+ a:=newApp("192.168.107.1:18081",nil)
+ a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.107.0/24")}
+ for _,client:=range []string{"192.168.107.10:5000","172.16.3.33:5000","10.2.3.4:5000","203.0.113.4:5000"}{
+  r:=httptest.NewRequest("GET","http://"+a.host+"/api/status",nil)
+  r.RemoteAddr=client
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,r)
+  if w.Code!=200{t.Errorf("default blocked routed client %s: %d",client,w.Code)}
+ }
+}
+
+func TestHomeLANOptionalHomeOnlyAndIPAllowlist(t *testing.T){
  a:=newApp("192.168.1.1:18081",nil)
  a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.1.0/24")}
+ a.lan.homeOnly.Store(true)
  handler:=a.handler()
  check:=func(ip,host string,want int){
   req:=httptest.NewRequest(http.MethodGet,"http://192.168.1.1:18081/api/status",nil)
@@ -75,6 +87,7 @@ func TestProxyOriginValidation(t *testing.T){
 func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
  a:=newApp("192.168.1.1:18081",nil)
  a.lan=&homeLAN{clients:netip.MustParsePrefix("192.168.1.0/24")}
+ a.lan.homeOnly.Store(true)
  a.proxyOrigin="https://kas.example.keenetic.pro"
  a.proxyHost="kas.example.keenetic.pro"
  a.importer=[]byte("exit 0")
@@ -101,6 +114,7 @@ func TestRouterAuthenticationDelegationWithOptionalLANPassword(t *testing.T){
  a:=newApp("192.168.1.1:18081",nil)
  a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.1.0/24"),
   passwordEnabled:true,passwordDigest:sha256.Sum256([]byte(secret))}
+ a.lan.homeOnly.Store(true)
  a.proxyHost="kas.example.keenetic.pro"
  a.proxyOrigin="https://kas.example.keenetic.pro"
  call:=func(client,host string,withPassword bool)int{

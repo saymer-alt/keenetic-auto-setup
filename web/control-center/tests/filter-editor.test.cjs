@@ -6,7 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 
 class Element {
- constructor(){this.children=[];this.style={};this.disabled=false;this.value='';this.textContent='';this.files=[];}
+ constructor(){this.children=[];this.style={};this.disabled=false;this.checked=false;this.value='';this.textContent='';this.files=[];}
  replaceChildren(...children){this.children=children;}
  appendChild(child){this.children.push(child);return child;}
  addEventListener(){}
@@ -18,12 +18,17 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN'){
  const elements=new Map();
  const el=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
  const requests=[];
+ let homeOnly=false;
  const context=vm.createContext({
   document:{documentElement:{},getElementById:el,createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
   localStorage:{getItem:()=>null},navigator:{language:'ru'},window:{confirm:()=>true},
   setTimeout:()=>1,clearTimeout(){},TextEncoder,
   fetch:async(url,options={})=>{
    requests.push({url,options});
+   if(url==='/api/access'){
+    if(options.method==='POST')homeOnly=JSON.parse(options.body).home_only;
+    return response(200,{home_only:homeOnly});
+   }
    if(url==='/api/filter/providers')return response(inspectStatus,{source_sha:'a'.repeat(64),providers:[{name:'P',http:true,has_filter:true,existing_filter:'Old'}]});
    if(url==='/api/providers/names'){
     if(namesResult instanceof Error)throw namesResult;
@@ -81,4 +86,23 @@ test('reloading after a names failure restores node selection',async()=>{
  await app.run('refreshImport()');
  assert.match(app.el('filter-state').textContent,/недоступны/);
  assert.doesNotMatch(app.el('filter-state').textContent,/Список узлов обновлён/);
+});
+
+test('Home-only checkbox defaults off and saves explicit user choice',async()=>{
+ const app=ui(response(200,{providers:{}}));
+ await new Promise(setImmediate); // let the real page's initial GET finish
+ await app.run('refreshAccess()');
+ assert.equal(app.el('access-home-only').checked,false);
+ assert.equal(app.el('access-home-only').disabled,false);
+ app.el('access-home-only').checked=true;
+ await app.run('saveAccess()');
+ assert.equal(app.el('access-home-only').checked,true);
+ await app.run('refreshAccess()');
+ assert.equal(app.el('access-home-only').checked,true);
+ const request=app.requests.find(x=>x.url==='/api/access'&&x.options.method==='POST');
+ assert.deepEqual(JSON.parse(request.options.body),{home_only:true});
+ assert.equal(request.options.headers['X-KAS-Confirm'],'access');
+ app.el('access-home-only').checked=false;
+ await app.run('saveAccess()');
+ assert.equal(app.el('access-home-only').checked,false);
 });
