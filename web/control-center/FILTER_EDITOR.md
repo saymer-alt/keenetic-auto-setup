@@ -19,7 +19,7 @@ Reuse the opt-in local Mihomo provider-names snapshot from [KAS PR #261](https:/
 
 ## Concurrency contract (honest boundary)
 - Against KAS tools that honor the lifecycle lock, the gate is airtight: the approved version is proven under the lock.
-- A writer that ignores the lock (manual `nano` over SSH, `scp`, `rsync`) is detected if it lands before the pre-commit comparison. A write landing strictly between that final comparison and the rename itself is overwritten by the candidate; the previous bytes stay in `config.yaml.bak`. This residual window is real, is pinned by `tests/config-import-filter-gate-regression.py` (writer injected at reproducible transaction seams), and must not be described as eliminated.
+- A writer that ignores the lock (manual `nano` over SSH, `scp`, `rsync`) is detected if it lands before the pre-commit comparison. A write landing strictly between that final comparison and the rename itself is overwritten by the candidate and is NOT retained in `config.yaml.bak`; the backup contains the earlier config. Do not edit or copy `config.yaml` with other tools during an apply operation. This residual window is real, is pinned by `tests/config-import-filter-gate-regression.py` (writer injected at reproducible transaction seams), and must not be described as eliminated.
 - Prevention against arbitrary non-cooperating writers is impossible on Keenetic/Entware without invasive measures (immutable flags are unsupported on UBIFS/tmpfs, flock/fcntl only bind cooperating processes). The supported contract is: operator approval + lock serialization + version re-proof + retained backup.
 
 ## Tests

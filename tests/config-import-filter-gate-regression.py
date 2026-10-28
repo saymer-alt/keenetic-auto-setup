@@ -60,10 +60,6 @@ WRAPPERS = r'''
 pidof() {
   if [ -f "$LAB/running" ]; then echo 4242; else return 1; fi
 }
-cmp() {
-  echo cmp >> "$LAB/actions"
-  command cmp "$@"
-}
 mv() {
   case "$*" in
     *.bak.new.*)
@@ -82,6 +78,8 @@ mv() {
   esac
 }
 '''
+
+CMP_WRAPPER = 'cmp() {\n  echo cmp >> "$LAB/actions"\n  command cmp "$@"\n}\n'
 
 ORIGINAL_CONFIG = "mixed-port: 7890\nmode: rule\n"
 WRITER_CONFIG = ORIGINAL_CONFIG + "writer: landed before the import\n"
@@ -167,7 +165,8 @@ def run_case(shell, case, running=True, expected_source=True,
         posix = str(lab).replace('\\', '/') + '/'
         body = (ROOT / 'config-import.sh').read_text().replace(
             '/tmp/', posix + 'tmp/').replace('/opt/', posix + 'opt/')
-        script.write_text('#!/bin/sh\n' + WRAPPERS + '\n' + body)
+        wrappers = WRAPPERS + (CMP_WRAPPER if 'cmp' in tools else '')
+        script.write_text('#!/bin/sh\n' + wrappers + '\n' + body)
         env = dict(os.environ, LAB=str(lab), CASE=case)
         env['PATH'] = str(restricted).replace('\\', '/')
         env.pop('KAS_EXPECTED_SOURCE', None)
@@ -197,9 +196,9 @@ def run_case(shell, case, running=True, expected_source=True,
 
 
 def shells():
-    out = [['sh']]
+    out = [[shutil.which('sh') or '/bin/sh']]
     if shutil.which('busybox'):
-        out.append(['busybox', 'ash'])
+        out.append([shutil.which('busybox'), 'ash'])
     return out
 
 
@@ -269,20 +268,29 @@ def main():
         # Documented boundary: a writer landing strictly between the pre-commit
         # comparison and the atomic rename is overwritten by the candidate.
         # The import succeeds from the importer's perspective; the external
-        # change survives only in nothing (backup holds the pre-window bytes).
+        # change is lost; backup holds the pre-window bytes, not the late edit.
         failures += not check(
             'residual window boundary is real, not eliminated (%s)' % label,
             r['rc'] == 0 and r['config'] == CANDIDATE_CONFIG
             and r['backup'] == ORIGINAL_CONFIG and r['cmp_calls'] >= 2,
             repr(r['context']))
 
-        r = run_case(shell, 'cmp-missing', expected_source=False,
-                     tools=[t for t in LAB_TOOLS if t != 'cmp'],
-                     extra_env={'KAS_EXPECTED_SOURCE': 'PLACEHOLDER'})
-        # Expected-source points at a nonexistent file: the gate must fail
-        # closed without cmp on PATH and without touching anything.
+        r = run_case(shell, 'cmp-missing',
+                     tools=[t for t in LAB_TOOLS if t != 'cmp'])
+        # Keep a valid regular snapshot: this case must independently prove
+        # that missing cmp fails closed, rather than missing input failing first.
         failures += not check(
             'missing cmp fails closed (%s)' % label,
+            r['rc'] != 0 and 'gate is unusable' in r['stderr']
+            and r['config'] == ORIGINAL_CONFIG and r['service_running']
+            and 'stop' not in r['actions']
+            and not r['lock_left'] and not r['marker_left'],
+            repr(r['context']))
+
+        r = run_case(shell, 'snapshot-missing', expected_source=False,
+                     extra_env={'KAS_EXPECTED_SOURCE': 'PLACEHOLDER'})
+        failures += not check(
+            'missing snapshot fails closed with cmp available (%s)' % label,
             r['rc'] != 0 and 'gate is unusable' in r['stderr']
             and r['config'] == ORIGINAL_CONFIG and r['service_running']
             and 'stop' not in r['actions']

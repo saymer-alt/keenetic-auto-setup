@@ -179,8 +179,9 @@ ml_lifecycle_release() {
 # pre-commit comparison. A writer that ignores the lock can still land
 # inside the tiny window between that comparison and the rename itself;
 # that residual race is documented, exercised by regression seams, and
-# never claimed as eliminated. The previous-config backup remains the
-# recovery path for any lost external change.
+# never claimed as eliminated. The backup contains the pre-window config;
+# it CANNOT recover a late external write made after that backup was taken.
+# Do not edit/copy config.yaml through other tools during an apply operation.
 KAS_EXPECTED_SOURCE="${KAS_EXPECTED_SOURCE:-}"
 ci_expected_source_ready() {
     [ -f "$KAS_EXPECTED_SOURCE" ] && [ ! -L "$KAS_EXPECTED_SOURCE" ] || return 1

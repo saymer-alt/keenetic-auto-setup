@@ -4,7 +4,7 @@
 
 ## Scope
 - Standalone POSIX helper: web/control-center/kas-web-manage.sh.
-- Install from a locally provided, SHA256-verified ARM64 binary only. No remote downloads, automatic upgrades, or package installation.
+- Install from a locally provided, SHA256-verified binary for the device architecture. No remote downloads, automatic upgrades, or package installation.
 - Explicit install, start, stop, status and remove operations for the panel itself.
 - Managed paths only: /opt/bin/kas-control-center, /opt/etc/init.d/S98kas-control-center, /opt/etc/kas-control-center.web.sha256, /opt/var/run/kas-control-center.pid.
 - Refuses foreign files, modified owned binary, unverified process PID and untracked process. No automatic overwrite.
@@ -39,3 +39,9 @@ Installation does not immediately start the GUI. S*-named init can be auto-start
 - Stage 2 Web import native E2E (emulator PR #39) must PASS separately. Host code tests alone are insufficient.
 
 Keep Draft until emulator and independent test hardware results plus owner GO.
+## KN-1010 MIPSel hardware test
+
+The prototype workflow also builds a static `linux/mipsle` binary with
+`GOMIPS=softfloat` and uploads a SHA256-checked optional test bundle pinned to
+the PR head source revision. See [KN1010_TEST.md](KN1010_TEST.md) for preparation,
+manual installation and test boundaries. Compilation is not hardware acceptance.

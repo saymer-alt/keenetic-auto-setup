@@ -6,6 +6,8 @@ on:
       - 'web/control-center/**'
       - 'mihomo-doctor.sh'
       - 'config-import.sh'
+      - 'tests/config-import-filter-gate-regression.py'
+      - 'tests/transaction-invariants.py'
       - '.github/workflows/web-control-center.yml'
   push:
     branches:
@@ -25,6 +27,8 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
@@ -42,6 +46,7 @@ jobs:
       - name: Validate offline browser sources
         run: |
           node --check web/control-center/web/app.js
+          node --test web/control-center/tests/*.test.cjs
           node <<'JS'
           const fs = require('fs');
           const vm = require('vm');
@@ -70,8 +75,43 @@ jobs:
           }
           console.log('RU/EN parity: ' + ru.length + ' full keys; referenced: ' + used.size);
           JS
+      - name: Verify canonical filter gates on Linux and BusyBox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
+          sh -n config-import.sh
+          python3 tests/config-import-filter-gate-regression.py
+          python3 tests/transaction-invariants.py
       - name: Cross compile ARM64 staging binary
         run: |
           cd web/control-center
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/kas-control-center-arm64 .
           du -h /tmp/kas-control-center-arm64
+      - name: Build KN-1010 MIPSel softfloat test bundle
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p /tmp/kas-web-kn1010
+          cd web/control-center
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -trimpath -o /tmp/kas-web-kn1010/kas-control-center-mipsle .
+          go version -m /tmp/kas-web-kn1010/kas-control-center-mipsle | tee /tmp/kas-web-kn1010/BUILD_INFO
+          grep -F 'GOARCH=mipsle' /tmp/kas-web-kn1010/BUILD_INFO
+          grep -F 'GOMIPS=softfloat' /tmp/kas-web-kn1010/BUILD_INFO
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'ELF32'
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'little endian'
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'MIPS'
+          printf '\nKAS_SOURCE_SHA=%s\n' "$SOURCE_SHA" >> /tmp/kas-web-kn1010/BUILD_INFO
+          cp kas-web-manage.sh /tmp/kas-web-kn1010/
+          cp KN1010_TEST.md /tmp/kas-web-kn1010/
+          cd /tmp/kas-web-kn1010
+          sha256sum kas-control-center-mipsle kas-web-manage.sh BUILD_INFO KN1010_TEST.md > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Upload optional KN-1010 test bundle (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kas-web-kn1010-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/kas-web-kn1010/
+          if-no-files-found: error
+          retention-days: 14

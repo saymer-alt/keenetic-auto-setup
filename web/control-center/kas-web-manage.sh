@@ -67,7 +67,7 @@ verify_owned() {
     [ "$actual" = "$expected" ] || deny "installed binary was modified; refuse removal"
 }
 install_ui() {
-    [ "$#" -eq 2 ] || deny "usage: install /path/to/arm64-binary sha256"
+    [ "$#" -eq 2 ] || deny "usage: install /path/to/binary sha256"
     source=$1
     digest=$2
     case "$digest" in *[!0123456789abcdef]*|'') deny "invalid requested digest";; esac
