@@ -162,6 +162,49 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN KAS EXPECTED SOURCE GATE v1 (opt-in)
+# API callers (web control center) stage a private snapshot of the config.yaml
+# bytes the operator reviewed. When KAS_EXPECTED_SOURCE names that snapshot,
+# the current config must stay byte-identical to it at two fenced points:
+#   after-lock-pre-stop — immediately after the lifecycle lock is held and
+#                         before Mihomo is stopped or any state is mutated;
+#   pre-commit          — immediately before the atomic rename, after the
+#                         previous-config backup is committed.
+# The gate is read-only, uses only the project-proven `cmp -s` primitive
+# (update-watchdog.sh / migrate scripts already rely on it), and fails
+# closed: an unusable gate input or a missing cmp aborts the import with
+# the config unchanged. Unset keeps the historical behavior byte-for-byte.
+# Boundary: this gate serializes against lock-respecting KAS tools
+# completely, and detects a non-cooperating writer that lands before the
+# pre-commit comparison. A writer that ignores the lock can still land
+# inside the tiny window between that comparison and the rename itself;
+# that residual race is documented, exercised by regression seams, and
+# never claimed as eliminated. The previous-config backup remains the
+# recovery path for any lost external change.
+KAS_EXPECTED_SOURCE="${KAS_EXPECTED_SOURCE:-}"
+ci_expected_source_ready() {
+    [ -f "$KAS_EXPECTED_SOURCE" ] && [ ! -L "$KAS_EXPECTED_SOURCE" ] || return 1
+    [ -s "$KAS_EXPECTED_SOURCE" ] || return 1
+    command -v cmp >/dev/null 2>&1 || return 1
+    return 0
+}
+verify_expected_source() {
+    local stage restore
+    stage="$1"
+    restore="${2:-}"
+    [ -n "$KAS_EXPECTED_SOURCE" ] || return 0
+    if ! ci_expected_source_ready; then
+        [ "$restore" = restore ] && restore_old_service || true
+        error "Expected-source gate is unusable ($stage): KAS_EXPECTED_SOURCE must be a non-empty regular file and cmp must be available. Config not changed."
+    fi
+    if ! cmp -s "$KAS_EXPECTED_SOURCE" "$CONFIG_PATH"; then
+        [ "$restore" = restore ] && restore_old_service || true
+        error "Config.yaml changed since the operator-approved snapshot ($stage). The candidate was NOT applied; the current on-disk config was preserved."
+    fi
+    log "Expected-source gate passed ($stage)."
+}
+# END KAS EXPECTED SOURCE GATE v1
+
 # BEGIN MIHOMO PROCESS STATE v1
 # Identical standalone contract: 0 running, 1 stopped, 2 unknown.
 # MP_PIDS contains only positive evidence; unknown is never absence.
@@ -578,6 +621,11 @@ log "Project contract found: mixed-port 7890."
 ml_lifecycle_acquire ||
     error "Mihomo lifecycle is busy or unverifiable; config not changed. Check /tmp/mihomo-lifecycle.lock.d and its .guard."
 
+# Opt-in gate A: the config must still match the operator-approved snapshot
+# now that this process alone may mutate Mihomo state, and before it is
+# stopped. Service state is untouched on this failure path.
+verify_expected_source "after-lock-pre-stop"
+
 mp_known || error "Mihomo runtime UNKNOWN; import aborted."
 if mihomo_running; then
     SERVICE_WAS_RUNNING=1
@@ -619,6 +667,11 @@ mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
 }
 
 mp_stopped || error "Cannot prove Mihomo stopped before config commit."
+# Opt-in gate B: last read-only comparison before the atomic replacement.
+# On mismatch the previous service state is restored and the candidate is
+# abandoned; the on-disk config (including any external writer's change)
+# is preserved.
+verify_expected_source "pre-commit" restore
 log "Installing config atomically..."
 chmod 600 "$STAGE_CONFIG" 2>/dev/null || true
 CONFIG_COMMIT_STARTED=1
