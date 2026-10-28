@@ -141,3 +141,25 @@ CI скачивает его по HTTPS и проверяет закреплён
 importer drain. Перед продвижением нужны тестовый роутер каждой заявляемой архитектуры,
 install/start/reboot/upgrade/remove, занятый порт, изменённый/чужой PID, рабочий импорт
 во время SIGTERM и сохранность конфигов ядра. Не выполнять на production автоматически.
+
+
+### Проверка реального init в CI
+
+`tests/test_panel_ipk_service.sh` запускается только отдельным job `service-lifecycle`
+на одноразовом Ubuntu x86_64 runner с явным lab guard. Он устанавливает native Go
+fixture через настоящий Entware opkg в собственные предварительно пустые `/opt`
+пути и создаёт синтетический bridge `br0`. Fixture имеет aarch64 metadata **только
+для проверки hooks**; это не проверка ABI aarch64 или KeeneticOS.
+
+Проверяются реальный init/PID/proc lifecycle, HTTP default8081, отдельный пароль,
+живой перенос listener на8082, Entware root auth на синтетических `/opt/etc/passwd`
+и `/opt/etc/shadow` (правильный/неверный/locked пароль), понятный отказ при занятом
+порту без остановки чужого listener, upgrade и remove с сохранением настроек и
+core sentinel. Credentials остаются в приватных fixtures и HTTP-запросах; лог
+содержит только маркеры этапов и SHA256 сохранённой конфигурации. Cleanup посылает
+только TERM собственному Python listener, gracefully останавливает панель, удаляет
+созданный bridge и собственные fixtures. При существующем `br0`, credential-файлах
+или других test-owned путях сценарий отказывается работать до изменений.
+
+Эта проверка добавлена как отдельный обязательный CI gate; локальная среда с
+несовпадающими PID namespace её не подтверждает. Crossbuild job ожидает её успеха.

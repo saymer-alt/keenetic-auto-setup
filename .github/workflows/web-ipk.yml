@@ -6,6 +6,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'tests/test_ipk.py'
+      - 'tests/test_panel_ipk_service.sh'
       - '.github/workflows/web-ipk.yml'
   push:
     branches:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'tests/test_ipk.py'
+      - 'tests/test_panel_ipk_service.sh'
       - '.github/workflows/web-ipk.yml'
 
 permissions:
@@ -32,12 +34,39 @@ jobs:
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" python3 tests/test_ipk.py -v
-          for file in web/control-center/packaging/*.sh web/control-center/packaging/S98kas-control-center; do
+          for file in tests/test_panel_ipk_service.sh web/control-center/packaging/*.sh web/control-center/packaging/S98kas-control-center; do
             sh -n "$file"
             dash -n "$file"
           done
-  crossbuild:
+  service-lifecycle:
     needs: package-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Build native Go fixture and verify official Entware opkg
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          (cd web/control-center && go generate ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/kas-control-center-native" .)
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+      - name: Real opkg and init lifecycle on disposable Ubuntu VM (not router or ABI acceptance)
+        run: |
+          sudo env KAS_SERVICE_LAB=1 GITHUB_ACTIONS=true \
+            sh tests/test_panel_ipk_service.sh \
+            "$RUNNER_TEMP/kas-control-center-native" "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA"
+  crossbuild:
+    needs: [package-tests, service-lifecycle]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

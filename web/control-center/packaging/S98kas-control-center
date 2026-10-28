@@ -117,7 +117,8 @@ start_service() {
     fifo="/opt/var/run/.kas-control-center.ipk-startup.$$"
     [ ! -e "$fifo" ] && [ ! -L "$fifo" ] || deny 'startup pipe collision'
     mkfifo "$fifo" || deny 'cannot create startup pipe'
-    filter_startup_log "$STARTUP" < "$fifo" &
+    # Do not retain the caller's captured stdout/stderr after init exits.
+    filter_startup_log "$STARTUP" < "$fifo" >/dev/null 2>&1 &
     "$BIN" "$@" </dev/null >"$fifo" 2>&1 &
     service_pid=$!
     printf '%s\n' "$service_pid" > "$PID"
