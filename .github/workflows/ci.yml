@@ -49,6 +49,9 @@ jobs:
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
+      - name: Netfilter hook rewrite race (disposable xtables mock)
+        run: python3 tests/netfilter-hook-race-regression.py
+
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
 
