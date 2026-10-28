@@ -42,4 +42,4 @@ jobs:
           cd web/control-center
           go generate ./...
           go test -c -o "$RUNNER_TEMP/kas-panel-tests" .
-          "$EMULATOR" "$RUNNER_TEMP/kas-panel-tests" -test.v -test.timeout=5m
+          sudo env KAS_REQUIRE_ROOT_OWNERSHIP_TESTS=1 "$EMULATOR" "$RUNNER_TEMP/kas-panel-tests" -test.v -test.timeout=5m

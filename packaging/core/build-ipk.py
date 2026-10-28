@@ -30,6 +30,17 @@ def main():
     result = subprocess.run(['git', 'ls-tree', '--name-only', args.source_sha], cwd=REPO,
                             capture_output=True, text=True, check=True)
     names = sorted(name for name in result.stdout.splitlines() if name.endswith('.sh') or name == 'S00ubifs')
+    if subprocess.check_output(['git', 'rev-parse', '--is-shallow-repository'], cwd=REPO, text=True).strip() != 'false':
+        parser.error('complete Git history is required for the watchdog baseline catalogue')
+    revisions = subprocess.check_output(['git', 'log', '--format=%H', args.source_sha, '--', 'mihomo-watchdog.sh'], cwd=REPO, text=True).splitlines()
+    known = {}
+    for revision in revisions:
+        blob = subprocess.run(['git', 'show', revision + ':mihomo-watchdog.sh'], cwd=REPO, capture_output=True)
+        if blob.returncode == 0:
+            known.setdefault(hashlib.sha256(blob.stdout).hexdigest(), revision)
+    catalogue = ''.join(digest + '\t' + revision + '\n' for digest, revision in known.items()).encode()
+    if not known:
+        parser.error('watchdog history is unavailable')
     entries, scripts = [], []
     for name in names:
         if not re.fullmatch('[A-Za-z0-9_.-]+', name):
@@ -43,11 +54,21 @@ def main():
                         'sha256': hashlib.sha256(committed).hexdigest()})
     if not names or 'mihomo-watchdog.sh' not in names:
         parser.error('incomplete KAS source tree')
+    tool_source = 'packaging/core/kas-core-watchdog.sh'
+    tool = subprocess.check_output(['git', 'show', args.source_sha + ':' + tool_source], cwd=REPO)
+    if tool != (REPO / tool_source).read_bytes():
+        parser.error('activation tool differs from supplied commit')
+    tool_path = 'opt/libexec/kas/kas-core-watchdog.sh'
+    entries.append((tool_path, tool, 0o755))
     manifest = {'schema': 1, 'version': args.version, 'source_sha': args.source_sha,
-                'activation': 'not-implemented-lab-only', 'scripts': scripts}
+                'activation': 'explicit-watchdog-lab', 'scripts': scripts,
+                'tools': [{'name': 'kas-core-watchdog.sh', 'source_path': tool_source,
+                           'path': '/' + tool_path, 'sha256': hashlib.sha256(tool).hexdigest()}],
+                'watchdog_catalogue_sha256': hashlib.sha256(catalogue).hexdigest()}
     license_bytes = subprocess.check_output(['git', 'show', args.source_sha + ':LICENSE'], cwd=REPO)
     entries.extend([
         ('opt/share/kas-core/LICENSE', license_bytes, 0o644),
+        ('opt/share/kas-core/watchdog-history.tsv', catalogue, 0o644),
         ('opt/share/kas-core/BUILD_INFO', ('KAS_CORE_LAB_ONLY=1\nVersion=' + args.version +
          '\nKAS_SOURCE_SHA=' + args.source_sha + '\nArchitecture=all\n').encode(), 0o644),
         ('opt/share/kas-core/scripts.json', (json.dumps(manifest, indent=2) + '\n').encode(), 0o644)])

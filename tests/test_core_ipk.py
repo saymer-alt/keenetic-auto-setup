@@ -79,17 +79,34 @@ class CoreIPKTests(unittest.TestCase):
         self.opkg('remove', 'kas-direct-file-probe')
         self.assertFalse(watchdog.exists(), 'opkg removes operational files it owns')
 
+    def test_catalogue_contains_only_source_ancestor_watchdog_blobs(self):
+        files = self.members(self.build(), 'data.tar.gz')
+        catalogue = files['opt/share/kas-core/watchdog-history.tsv'].decode().splitlines()
+        digests = set()
+        for row in catalogue:
+            digest, revision = row.split('\t')
+            self.assertEqual(len(digest), 64)
+            self.assertNotIn(digest, digests)
+            digests.add(digest)
+            result = subprocess.run(['git', 'merge-base', '--is-ancestor', revision, SOURCE_SHA], cwd=REPO)
+            self.assertEqual(result.returncode, 0)
+            body = subprocess.check_output(['git', 'show', revision + ':mihomo-watchdog.sh'], cwd=REPO)
+            self.assertEqual(hashlib.sha256(body).hexdigest(), digest)
+        self.assertIn(hashlib.sha256((REPO / 'mihomo-watchdog.sh').read_bytes()).hexdigest(), digests)
+        manifest = json.loads(files['opt/share/kas-core/scripts.json'])
+        self.assertEqual(manifest['watchdog_catalogue_sha256'], hashlib.sha256(files['opt/share/kas-core/watchdog-history.tsv']).hexdigest())
+
     def test_archive_contains_unmodified_scripts_and_no_active_paths(self):
         files = self.members(self.build(), 'data.tar.gz')
         expected = {p.name for p in REPO.glob('*.sh')} | {'S00ubifs'}
         scripts = {name.removeprefix('opt/libexec/kas/') for name in files if name.startswith('opt/libexec/kas/')}
-        self.assertEqual(scripts, expected)
-        for name in scripts:
+        self.assertEqual(scripts, expected | {'kas-core-watchdog.sh'})
+        for name in expected:
             self.assertEqual(files['opt/libexec/kas/' + name], (REPO / name).read_bytes())
         self.assertFalse(any(name.startswith(('opt/bin/', 'opt/etc/')) for name in files))
         manifest = json.loads(files['opt/share/kas-core/scripts.json'])
-        self.assertEqual(manifest['activation'], 'not-implemented-lab-only')
-        for entry in manifest['scripts']:
+        self.assertEqual(manifest['activation'], 'explicit-watchdog-lab')
+        for entry in manifest['scripts'] + manifest['tools']:
             self.assertEqual(entry['sha256'], hashlib.sha256(files[entry['path'].lstrip('/')]).hexdigest())
         self.assertEqual(files['opt/share/kas-core/LICENSE'], (REPO / 'LICENSE').read_bytes())
         self.assertIn(b'Architecture: all\n', self.members(self.build(), 'control.tar.gz')['control'])

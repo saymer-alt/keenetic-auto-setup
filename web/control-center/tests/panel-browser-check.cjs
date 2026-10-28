@@ -3,6 +3,7 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../../..');
+const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/design-preview');fs.mkdirSync(previews,{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'ru-RU'});
@@ -17,6 +18,7 @@ const root=path.resolve(__dirname,'../../..');
    return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
+  if(url.pathname==='/api/components')data={panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
   if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true};
   if(url.pathname==='/api/access')data={home_only:false};
   if(url.pathname==='/api/settings'){
@@ -35,7 +37,10 @@ const root=path.resolve(__dirname,'../../..');
   return route.fulfill({status,json:data});
  });
  await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'найден'}).waitFor();
- await page.screenshot({path:path.join(root,'web/control-center/design-preview/overview-desktop.png'),fullPage:true});
+ await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
+ assert.match(await page.locator('#core-version').innerText(),/proof2-1/);assert.match(await page.locator('#watchdog-version').innerText(),/совпадает/);
+ assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
+ await page.screenshot({path:path.join(previews,'overview-desktop.png'),fullPage:true});
  await page.locator('#nav-subscriptions').click();await page.locator('#filter-load').click();await page.locator('#filter-node-list label').first().waitFor();
  assert.equal(await page.locator('.view:visible').count(),1);
  await page.locator('#filter-search').fill('Estonia');assert.equal(await page.locator('#filter-node-list label:visible').count(),5);
@@ -45,7 +50,7 @@ const root=path.resolve(__dirname,'../../..');
  await page.locator('#nav-subscriptions').click();assert.equal(await page.locator('#filter-node-list input:checked').count(),1);
  await page.locator('#en').click();assert.equal(await page.locator('#page-title').innerText(),'Subscriptions');assert.match(await page.locator('#filter-summary').innerText(),/Selected: 1/);
  await page.locator('#ru').click();await page.locator('#filter-search').fill('');
- await page.screenshot({path:path.join(root,'web/control-center/design-preview/subscriptions-desktop.png'),fullPage:true});
+ await page.screenshot({path:path.join(previews,'subscriptions-desktop.png'),fullPage:true});
  acceptDialog=false;await page.locator('#filter-preview').click();await page.waitForFunction(()=>document.getElementById('filter-state').textContent.includes('отменено'));assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,0);
  acceptDialog=true;await page.locator('#filter-preview').click();await page.waitForFunction(()=>document.getElementById('filter-clear').disabled===false);
  assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,1);
@@ -56,7 +61,7 @@ const root=path.resolve(__dirname,'../../..');
  await page.locator('#nav-configuration').click();assert.equal(await page.locator('#yaml-paste').inputValue(),'mixed-port: 7890\n# keep me');
  await page.locator('#nav-settings').click();await page.waitForFunction(()=>!document.getElementById('settings-save').disabled);
  assert.equal(await page.locator('#settings-port').inputValue(),'18081');
- await page.screenshot({path:path.join(root,'web/control-center/design-preview/settings-desktop.png'),fullPage:true});
+ await page.screenshot({path:path.join(previews,'settings-desktop.png'),fullPage:true});
  assert.equal(await page.locator('#settings-password').isVisible(),false);
  await page.locator('#settings-mode').selectOption('panel');assert.equal(await page.locator('#settings-repeat').isVisible(),true);
  await page.locator('#settings-password').fill('long-panel-password');await page.locator('#settings-repeat').fill('long-panel-password');
@@ -70,7 +75,7 @@ const root=path.resolve(__dirname,'../../..');
  assert.equal(await page.locator('#settings-current').inputValue(),'');
  const portBody=requests.filter(r=>r.path==='/api/settings'&&r.body).at(-1).body;assert.deepEqual(portBody,{port:8081,auth_mode:'panel',current_password:'long-panel-password'});
  await page.locator('#settings-mode').selectOption('entware');assert.equal(await page.locator('#settings-repeat').isVisible(),false);assert.match(await page.locator('#settings-login').innerText(),/root/);
- await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(root,'web/control-center/design-preview/settings-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(previews,'settings-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
  await page.locator('#settings-mode').selectOption('none');assert.equal(await page.locator('#settings-password').isVisible(),false);
  settingsReadFail=true;await page.locator('#settings-reload').click();await page.waitForFunction(()=>document.getElementById('settings-state').textContent.includes('SETTINGS_READ_FAILED'));assert.equal(await page.locator('#settings-save').isDisabled(),true);
  assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key!=='kas_lang')),[]);
@@ -84,8 +89,8 @@ const root=path.resolve(__dirname,'../../..');
   }
  }
  await page.setViewportSize({width:390,height:844});await page.locator('#nav-subscriptions').click();
- await page.screenshot({path:path.join(root,'web/control-center/design-preview/subscriptions-mobile.png'),fullPage:true});
- await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(root,'web/control-center/design-preview/subscriptions-dark-mobile.png'),fullPage:true});
+ await page.screenshot({path:path.join(previews,'subscriptions-mobile.png'),fullPage:true});
+ await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(previews,'subscriptions-dark-mobile.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; no JS errors.');
  await browser.close();
 })().catch(e=>{console.error(e);process.exitCode=1});

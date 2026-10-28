@@ -8,6 +8,7 @@ on:
       - 'packaging/core/**'
       - 'tests/test_core_ipk.py'
       - 'tests/test_core_preflight.py'
+      - 'tests/test_core_activation.py'
       - 'tests/watchdog-package-regression.py'
       - 'web/control-center/packaging/build-ipk.py'
       - '*.sh'
@@ -29,7 +30,7 @@ jobs:
       - name: Install BusyBox for target-shell regression
         run: |
           sudo apt-get update
-          sudo apt-get install -y busybox
+          sudo apt-get install -y busybox jq
       - name: Verify official Entware opkg
         run: |
           curl --fail --location --connect-timeout 15 --max-time 60 \
@@ -51,6 +52,8 @@ jobs:
           for shell in sh dash 'busybox ash'; do
             sudo env KAS_REQUIRE_NATIVE_PROC=1 KAS_WATCHDOG_TEST_SHELL="$shell" \
               python3 tests/watchdog-package-regression.py -v
+            sudo env KAS_REQUIRE_NATIVE_PROC=1 KAS_WATCHDOG_TEST_SHELL="$shell" \
+              python3 tests/test_core_activation.py -v
           done
           python3 tests/download-regression.py
           for file in packaging/core/*.sh ./*.sh ./S00ubifs; do

@@ -1,6 +1,7 @@
 'use strict';
 const words={
  ru:{
+  versionsHeading:'Версии',coreLabel:'Комплект KAS',watchdogLabel:'Применённый watchdog',versionsHelp:'Версия пакета и применённого watchdog могут различаться. Это сведения о файлах, а не проверка работающих сервисов.',projectLink:'Проект на GitHub',buildDevelopment:'сборка для разработки',versionsUnavailable:'Сведения недоступны',coreAbsent:'Не установлен как пакет',coreModified:'Файлы комплекта изменены',versionIdentity:'{version} · {sha}',watchdogCurrent:'{version} · файл совпадает с записью',watchdogUnrecorded:'Версия не подтверждена',watchdogStale:'Файл отличается от записи о применении',watchdogBundleChanged:'Применён {version}; комплект обновлён',watchdogInvalid:'Запись о применении недоступна',
   settingsHeading:'Порт и вход',settingsHelp:'По HTTP пароль передаётся без шифрования. Для защищённого подключения используйте VPN или HTTPS.',settingsPort:'Порт панели (1–65535)',settingsMode:'Вход в панель',settingsNone:'Без пароля',settingsEntware:'Учётная запись Entware / SSH',settingsPanel:'Отдельный пароль панели',settingsLogin:'Логин: {login}',settingsCurrent:'Пароль текущего входа ({login}) для подтверждения',settingsPassword:'Новый пароль панели',settingsRootPassword:'Действующий пароль root в Entware',settingsRepeat:'Повторите новый пароль',settingsPanelHelp:'Логин kas. Пароль: 12–128 байт. Пустое поле сохраняет уже заданный пароль панели.',settingsEntwareHelp:'Логин root. Проверяется действующий пароль Entware; системный пароль не изменяется. Для входа по HTTP используйте доверенную сеть или VPN.',settingsNoneHelp:'Вход без пароля; доступ определяется сетью и настройкой Home ниже.',settingsLoading:'Читаем порт и настройки входа…',settingsSaving:'Сохраняем настройки…',settingsError:'Настройки не сохранены или не прочитаны: {code}',settingsSaved:'Настройки сохранены.',settingsPortChanged:'Настройки сохранены. Откройте новый адрес панели:',settingsInvalid:'Укажите порт 1–65535 и поддерживаемый способ входа.',settingsPasswordInvalid:'Новый пароль должен занимать 12–128 байт и совпадать с повтором.',settingsCurrentRequired:'Введите текущий пароль для подтверждения.',settingsRootRequired:'Введите действующий пароль root в Entware.',settingsConfirm:'Сохранить настройки? {warning}',settingsDisableWarning:'Вход по паролю будет отключён.',settingsPortWarning:'Порт изменится с {before} на {after}; откройте новый адрес после сохранения.',settingsCancelled:'Изменение отменено.',
   operationDetails:'Подробнее',navOverview:'Обзор',navSubscriptions:'Подписки',navConfiguration:'Конфигурация',navDiagnostics:'Диагностика',navSettings:'Настройки',overviewDescription:'Основные сведения и быстрый доступ к управлению.',subscriptionsDescription:'Выбирайте, какие серверы использовать в подписках.',configurationDescription:'Загрузка готовой конфигурации Mihomo.',diagnosticsDescription:'Проверка KAS и отчёт для поиска проблем.',settingsDescription:'Параметры доступа к панели.',experiment:'Экспериментальная версия',localBadge:'Панель роутера',quickHeading:'Управление',quickSubscriptions:'Серверы подписки',quickSubscriptionsHelp:'Выбрать серверы для исключения',quickConfiguration:'Загрузить конфиг',quickConfigurationHelp:'Применить готовый YAML',searchLabel:'Поиск серверов',searchPlaceholder:'Название сервера',nodesHeading:'Серверы',selectionCount:'Выбрано: {selected} · Показано: {visible} из {total}',searchEmpty:'По этому запросу серверов нет.',filterEmpty:'Загрузите список, чтобы выбрать серверы.',filterDetails:'Действующий фильтр',exportHelpLabel:'Для чего нужен экспорт?',filePresent:'Файл найден',fileAbsent:'Файл не найден',fileUnknown:'Нет данных',footerNote:'Управление на вашем роутере',skipLink:'К содержимому',
   accessHeading:'Доступ к панели',accessHomeOnly:'Разрешать доступ только из домашней сети Home',accessHelp:'По умолчанию ограничение выключено: можно подключаться из других подсетей, включая SSTP/L2TP, если это разрешают маршруты и firewall роутера. Эта опция не открывает порты и не настраивает VPN.',accessSave:'Сохранить',accessLoading:'Читаем настройку доступа…',accessOn:'Ограничение Home включено. Другие подсети, включая VPN, отклоняются.',accessOff:'Ограничение Home выключено. Доступ определяется маршрутами и firewall роутера.',accessError:'Не удалось изменить или прочитать настройку: {code}',accessEnableConfirm:'Разрешить доступ только из Home? Подключение через VPN или другую подсеть может потерять доступ к панели. Восстановить доступ можно из Home или через SSH.',accessDisableConfirm:'Выключить ограничение Home? Панель станет доступна из других подсетей, которым firewall разрешает подключаться к её адресу.',
@@ -11,6 +12,7 @@ const words={
   doctor:'Диагностика Doctor',help:'Запуск штатного Doctor по запросу. Результат не означает, что маршрутизация каждого клиента проверена.',run:'Запустить Doctor',copy:'Копировать отчёт',copyDone:'Отчёт скопирован.',copyManual:'Браузер запретил копирование. Отчёт выделен — нажмите Ctrl+C или выберите «Копировать» в меню.',details:'Реальный вывод команды',running:'Doctor выполняется…',finished:'Команда завершена; код выхода: {exit}',failed:'Команда не завершилась успешно; код выхода: {exit}; ошибка: {code}',error:'Не удалось выполнить запрос: {code}',footer:'Перед отправкой отчёта проверьте, что в нём нет личных данных. При ошибке импорта проверьте фактическое состояние через Doctor или SSH.',timestamp:'Время: {time}',notrun:'Doctor ещё не запускался.'
  },
  en:{
+  versionsHeading:'Versions',coreLabel:'KAS tools package',watchdogLabel:'Applied watchdog',versionsHelp:'The package and applied watchdog versions can differ. These are file identities, not running-service health checks.',projectLink:'Project on GitHub',buildDevelopment:'development build',versionsUnavailable:'Information unavailable',coreAbsent:'Not installed as a package',coreModified:'Package files have changed',versionIdentity:'{version} · {sha}',watchdogCurrent:'{version} · file matches the receipt',watchdogUnrecorded:'Version not confirmed',watchdogStale:'File differs from its activation receipt',watchdogBundleChanged:'Applied {version}; package has changed',watchdogInvalid:'Activation receipt unavailable',
   settingsHeading:'Port and sign-in',settingsHelp:'HTTP sends passwords without encryption. Use VPN or HTTPS for a protected connection.',settingsPort:'Panel port (1–65535)',settingsMode:'Panel sign-in',settingsNone:'No password',settingsEntware:'Entware / SSH account',settingsPanel:'Separate panel password',settingsLogin:'Login: {login}',settingsCurrent:'Current sign-in password ({login}) to confirm changes',settingsPassword:'New panel password',settingsRootPassword:'Existing Entware root password',settingsRepeat:'Repeat new password',settingsPanelHelp:'Login kas. Password: 12–128 bytes. Leave empty to keep an existing panel password.',settingsEntwareHelp:'Login root. Verifies the existing Entware password; the system password is never changed. Use a trusted network or VPN for HTTP login.',settingsNoneHelp:'No password; network reachability and the Home setting below determine access.',settingsLoading:'Reading port and sign-in settings…',settingsSaving:'Saving settings…',settingsError:'Settings could not be saved or read: {code}',settingsSaved:'Settings saved.',settingsPortChanged:'Settings saved. Open the new panel address:',settingsInvalid:'Enter a port from 1–65535 and a supported sign-in mode.',settingsPasswordInvalid:'The new password must be 12–128 bytes and match its repeat.',settingsCurrentRequired:'Enter the current password to confirm changes.',settingsRootRequired:'Enter the existing Entware root password.',settingsConfirm:'Save settings? {warning}',settingsDisableWarning:'Password sign-in will be disabled.',settingsPortWarning:'The port will change from {before} to {after}; open the new address after saving.',settingsCancelled:'Change cancelled.',
   operationDetails:'Details',navOverview:'Overview',navSubscriptions:'Subscriptions',navConfiguration:'Configuration',navDiagnostics:'Diagnostics',navSettings:'Settings',overviewDescription:'Essential information and quick access to controls.',subscriptionsDescription:'Choose which servers to use in your subscriptions.',configurationDescription:'Upload a complete Mihomo configuration.',diagnosticsDescription:'Check KAS and collect a troubleshooting report.',settingsDescription:'Control access to this panel.',experiment:'Experimental version',localBadge:'Router panel',quickHeading:'Quick actions',quickSubscriptions:'Subscription servers',quickSubscriptionsHelp:'Choose servers to exclude',quickConfiguration:'Upload configuration',quickConfigurationHelp:'Apply a complete YAML file',searchLabel:'Search servers',searchPlaceholder:'Server name',nodesHeading:'Servers',selectionCount:'Selected: {selected} · Showing: {visible} of {total}',searchEmpty:'No servers match your search.',filterEmpty:'Load the list to choose servers.',filterDetails:'Current filter',exportHelpLabel:'What is this export for?',filePresent:'Binary file found',fileAbsent:'Binary file not found',fileUnknown:'No data',footerNote:'Management on your router',skipLink:'Skip to content',
   accessHeading:'Panel access',accessHomeOnly:'Allow access only from the Home subnet',accessHelp:'Off by default: other subnets, including SSTP/L2TP, can connect when router routing and firewall allow it. This setting does not open ports or configure VPN.',accessSave:'Save',accessLoading:'Reading access policy…',accessOn:'Home-only restriction is enabled. Other subnets, including VPN clients, are rejected.',accessOff:'Home-only restriction is off. Router routing and firewall determine access.',accessError:'Unable to save or read access policy: {code}',accessEnableConfirm:'Restrict access to Home? VPN or other-subnet clients may lose panel access. Recovery requires Home access or SSH.',accessDisableConfirm:'Disable the Home-only restriction? Other subnets allowed by the router firewall will be able to reach the panel.',
@@ -23,6 +25,7 @@ const words={
 };
 let lang=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';
 try{const s=localStorage.getItem('kas_lang');if(s==='ru'||s==='en')lang=s;}catch(_){}
+let componentsData=null;
 let statusData=null,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
 let exporting=false,providerMessage='';
 let lastOperation='import',importView='configuration',copyStatus='';
@@ -38,6 +41,7 @@ const t=(key,params={})=>{
 const set=(id,value)=>{el(id).textContent=value;};
 function draw(){
  drawSettings();
+ drawComponents();
  document.documentElement.lang=lang;
  const view=document.documentElement.dataset?.view||'overview';
  set('page-title',t({overview:'navOverview',subscriptions:'navSubscriptions',configuration:'navConfiguration',diagnostics:'navDiagnostics',settings:'navSettings'}[view]));
@@ -84,6 +88,30 @@ function draw(){
  set('copy-state',copyStatus?t(copyStatus):'');
  el('copy').disabled=!doctorData||!doctorData.details;el('run').disabled=busy||runningImport;
  el('ru').setAttribute('aria-pressed',String(lang==='ru'));el('en').setAttribute('aria-pressed',String(lang==='en'));
+}
+function validComponents(data){
+ const version=value=>typeof value==='string'&&/^(development|[0-9][A-Za-z0-9.+~-]{0,63})$/.test(value);
+ const source=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
+ if(!data||!version(data.panel?.version)||!(data.panel.source_sha===''||source(data.panel.source_sha)))return false;
+ if(!['absent','present','modified','unavailable'].includes(data.core?.state)||!['unrecorded','current','stale','bundle_changed','invalid_receipt','unverified'].includes(data.watchdog?.state))return false;
+ if(data.core.version!==undefined&&!version(data.core.version))return false;
+ if(data.core.state==='present'&&(!version(data.core.version)||!source(data.core.source_sha)))return false;
+ if(['current','bundle_changed'].includes(data.watchdog.state)&&!version(data.watchdog.recorded_version))return false;
+ return true;
+}
+function drawComponents(){
+ for(const [id,key] of [['versions-heading','versionsHeading'],['core-label','coreLabel'],['watchdog-label','watchdogLabel'],['versions-help','versionsHelp'],['project-link','projectLink']])set(id,t(key));
+ if(!componentsData){set('panel-build','KAS Web · '+t('versionsUnavailable'));set('core-version',t('versionsUnavailable'));set('watchdog-version',t('versionsUnavailable'));return;}
+ const {panel,core,watchdog}=componentsData;
+ set('panel-build','KAS Web '+(panel.version==='development'?t('buildDevelopment'):panel.version)+(panel.source_sha?' · '+panel.source_sha.slice(0,7):''));
+ set('core-version',core.state==='present'?t('versionIdentity',{version:core.version,sha:core.source_sha.slice(0,7)}):t(core.state==='absent'?'coreAbsent':core.state==='modified'?'coreModified':'versionsUnavailable'));
+ const keys={current:'watchdogCurrent',bundle_changed:'watchdogBundleChanged',stale:'watchdogStale',invalid_receipt:'watchdogInvalid'};
+ set('watchdog-version',t(keys[watchdog.state]||'watchdogUnrecorded',{version:watchdog.recorded_version||''}));
+}
+async function refreshComponents(){
+ try{const response=await fetch('/api/components',{cache:'no-store',credentials:'same-origin'}),data=await response.json();componentsData=response.ok&&validComponents(data)?data:null;}
+ catch(_){componentsData=null;}
+ draw();
 }
 // Credentials stay only in these transient form inputs and the request body.
 function clearSettingsPasswords(){for(const id of ['settings-current','settings-password','settings-repeat'])el(id).value='';}
@@ -186,6 +214,7 @@ async function saveAccess(){
  finally{accessBusy=false;draw();}
 }
 async function refresh(){
+ refreshComponents();
  try{const resp=await fetch('/api/status',{cache:'no-store'});if(!resp.ok)throw Error('HTTP '+resp.status);statusData=await resp.json();}
  catch(e){statusData=null;set('status-text',t('error',{code:String(e)}));return;}
  draw();

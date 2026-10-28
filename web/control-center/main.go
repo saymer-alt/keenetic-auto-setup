@@ -157,6 +157,7 @@ func (a *app)handler()http.Handler{
  mux:=http.NewServeMux()
  mux.Handle("/",http.FileServer(http.FS(sub)))
  mux.HandleFunc("/api/status",a.handleStatus)
+ mux.HandleFunc("/api/components",a.handleComponents)
  mux.HandleFunc("/api/access",a.handleAccess)
  mux.HandleFunc("/api/settings",a.handleSettings)
  mux.HandleFunc("/api/doctor",a.handleDoctor)
@@ -176,6 +177,7 @@ func (a *app)handler()http.Handler{
  })
 }
 func main(){
+ versionOnly:=flag.Bool("version",false,"print compiled panel version and source, then exit")
  listen:=flag.String("listen","","IP:port; default loopback without -lan, Home br0 with -lan")
  lanMode:=flag.Bool("lan",false,"listen on private Home br0 IPv4, HTTP, no password by default")
  lanInterface:=flag.String("lan-interface","br0","Home LAN bridge (currently br0 only)")
@@ -186,6 +188,7 @@ func main(){
  settingsFile:=flag.String("settings-file",panelSettingsPath,"private persistent panel settings")
  initialPort:=flag.Int("initial-port",8081,"default port when no settings exist")
  flag.Parse()
+ if *versionOnly {identity:=compiledPanelIdentity();fmt.Printf("KAS Control Center %s",identity.Version);if identity.SourceSHA!=""{fmt.Printf(" (%s)",identity.SourceSHA)};fmt.Println();return}
  if *initialPort<1||*initialPort>65535{log.Fatal("invalid initial port")}
  var config *panelConfig
  if *lanMode {var err error;config,err=readPanelConfig(*settingsFile);if err!=nil{log.Fatal(err)}}

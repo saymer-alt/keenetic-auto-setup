@@ -28,6 +28,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
   setTimeout:()=>1,clearTimeout(){},TextEncoder,
   fetch:async(url,options={})=>{
    requests.push({url,options});
+   if(url==='/api/components')return response(200,fixture.components||{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}});
    if(url==='/api/settings'){
     if(fixture.settingsFail)return response(503,{error_code:'SETTINGS_READ_FAILED'});
     if(options.method==='POST'){
@@ -295,4 +296,20 @@ test('Doctor result stays in diagnostics; only a running Doctor has a global ban
  assert.match(app.el('operation-message').textContent,/Doctor/);
  app.run("document.documentElement.dataset={view:'diagnostics'};draw();");
  assert.equal(app.el('operation-banner').hidden,true);
+});
+
+test('component versions distinguish installed bundle from applied watchdog',async()=>{
+ const fixture={components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'bundle_changed',recorded_version:'0.0.0~proof1-1'}}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
+ await app.run('refreshComponents()');
+ assert.match(app.el('panel-build').textContent,/0\.1\.0.*aaaaaaa/);
+ assert.match(app.el('core-version').textContent,/proof2-1/);
+ assert.match(app.el('watchdog-version').textContent,/proof1-1/);
+ assert.doesNotMatch(app.el('watchdog-version').textContent,/совпадает/);
+ fixture.components.watchdog={state:'stale',recorded_version:'0.0.0~proof1-1'};
+ await app.run('refreshComponents()');
+ assert.match(app.el('watchdog-version').textContent,/отличается/);
+ fixture.components.panel.version='SECRET-TOKEN';
+ await app.run('refreshComponents()');
+ assert.doesNotMatch(app.el('panel-build').textContent,/SECRET|TOKEN/);
 });

@@ -3,7 +3,7 @@
 This directory implements the first evidence gate of the approved package plan.
 It is **not a deployable KAS core**. Live-root installation is explicitly refused
 by all hooks; only disposable `--offline-root` transactions are permitted.
-Existing KAS runtime scripts and the current panel package remain unchanged.
+Existing KAS runtime scripts retain their normal behavior. The panel adds read-only component identity; it does not activate this lab package.
 
 ## Proven problem and decision
 
@@ -44,7 +44,10 @@ binding the UI to `kas-core` or shipping any package.
 The 17 tracked top-level scripts (including `S00ubifs`) are copied
 byte-for-byte to `/opt/libexec/kas/`. Nothing is executed on package installation.
 The list includes installers and uninstallers as archive content, not Web actions.
-`/opt/share/kas-core/` contains `BUILD_INFO`, `scripts.json`, `SHA256SUMS` and the project `LICENSE`.
+A source-pinned `kas-core-watchdog.sh` helper is included alongside those scripts.
+`/opt/share/kas-core/` contains `BUILD_INFO`, `scripts.json`, `SHA256SUMS`,
+`watchdog-history.tsv` and the project `LICENSE`. The catalogue contains unique
+watchdog digests from the selected commit ancestry; shallow histories are refused.
 The source SHA is checked against the actual committed script bytes; assigning a
 SHA from a different script revision is refused.
 
@@ -105,9 +108,8 @@ host root or launch any bundled installer/service. CI pins the same binary hash.
 - No router/guest boot evidence from these host offline-root tests.
 - No claim that current native Web stages boot the new panel IPK; they do not.
 
-Next: integrate the guarded activation primitive with a recognized-release
-baseline catalogue and package activation state/recovery policy. Then install the
-actual IPK in disposable guest firmware, reboot and verify auth/port persistence.
+Next: qualify reboot/recovery and production adoption policy. Install the actual
+panel IPK in disposable guest firmware, reboot and verify auth/port persistence.
 The panel/core/full package integration follows only after those gates.
 
 ## Next proof: pre-opkg launch and guarded watchdog activation
@@ -140,8 +142,9 @@ Ordinary updater network sources and fallback behavior remain available unchange
 
 A SHA is not an age or authenticity assertion. The caller must recognize the old
 file and trust the candidate through an approved package/release manifest. This
-proof adds the guarded activation primitive; it does not yet implement that
-release-baseline catalogue, general adoption, or automatic postinst activation.
+proof now connects the guarded primitive to a source-ancestor catalogue. It does
+not establish a signed release catalogue, general adoption, or automatic postinst
+activation.
 
 The local mode creates exclusive private input/target stages and a verified
 same-filesystem recovery copy. It never copies through preexisting stage symlinks.
@@ -154,8 +157,7 @@ inspected. Uncooperative external writers are not covered by the shared lock; an
 unrecognized output is preserved rather than blindly overwritten on recovery.
 
 SIGKILL, power loss and persistence after storage failure are not solved by shell
-traps. Reboot/recovery policy, package-version activation records and full firmware
-acceptance remain separate gates. No new cron entry, watchdog execution, Mihomo
+traps. Reboot/recovery policy and full firmware acceptance remain separate gates. No new cron entry, watchdog execution, Mihomo
 restart, or router-setting change is performed by this local activation mode.
 
 Tests run the full updater with `/opt` and `/tmp` redirected to temporary fixtures.
@@ -166,3 +168,39 @@ does not match mounted `/proc`, fixtures explicitly seed the updater's existing
 identity cache with the actual host process identity. This is disclosed fixture
 adaptation, not native identity evidence. CI requires native PID/proc identity and
 runs the suite on sh, dash and BusyBox ash without this adaptation.
+
+## Explicit activation receipts and panel identity
+
+The lab helper accepts only `status` or `apply`. It validates the installed bundle,
+opkg ownership baseline, catalogue and exact canonical watchdog digest. `status`
+returns JSON without creating persistent state. `apply` invokes the existing
+guarded updater only for a recognized body and supported schedule. It never runs
+the watchdog itself or creates a schedule.
+
+A verified receipt is written atomically to `/opt/etc/kas-core/watchdog.json`
+(file mode 0600, directory 0700), outside the package payload. Applying an already
+current version is idempotent. The helper snapshots and hashes its updater and
+candidate, reloads package metadata after acquiring its lock and after activation,
+and cannot report current if the package changed during the operation.
+
+The canonical file and receipt are not one filesystem transaction. If runtime
+replacement succeeds but receipt commit fails, the previous receipt is retained
+and the command fails. Status reports the discrepancy; a subsequent explicit
+apply can reconcile it. Unknown/custom bodies, unsafe paths and invalid receipts
+are refused. Catalogue ancestry is neither a semantic version ordering nor an
+authenticity signature.
+
+The panel binary embeds its own package version/source SHA (`-version` prints
+them without starting a listener). Authenticated, Host-checked GET
+`/api/components` reports bounded identities from root-owned, protected metadata
+and actual watchdog bytes. The overview distinguishes bundle version from applied
+watchdog state and links to the project. Missing, stale, modified or unverified
+records do not become successful version claims. This inventory executes no
+commands and reads no subscription configuration or credentials; file identity
+does not prove service health. There is no new Web activation/update endpoint.
+
+Qualification adds `tests/test_core_activation.py` (redirected temporary paths),
+root inventory tests, UI tests and a browser fixture. Native CI requires actual
+PID/proc identity and runs activation under sh, dash and BusyBox ash. Root-owned
+file checks are mandatory in CI, including ARM64/MIPSel Go emulation; local
+unprivileged environments may skip ownership-only cases explicitly.

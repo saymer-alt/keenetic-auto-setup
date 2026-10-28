@@ -33,7 +33,7 @@ validate_bundle() {
     owned_bundle || deny 'missing package ownership or incomplete bundle'
     # opkg's recorded md5sums is an installed-file baseline, not an authenticity
     # signature. SHA256SUMS separately checks the declared source payload.
-    awk 'NF != 2 || length($1) != 32 || $1 ~ /[^0-9a-f]/ || $2 !~ /^opt\/(libexec\/kas\/[A-Za-z0-9_.-]+|share\/kas-core\/(BUILD_INFO|SHA256SUMS|scripts.json|LICENSE))$/ {bad=1} END {exit bad || NR == 0}' "$SUMS" || deny 'invalid ownership baseline'
+    awk 'NF != 2 || length($1) != 32 || $1 ~ /[^0-9a-f]/ || $2 !~ /^opt\/(libexec\/kas\/[A-Za-z0-9_.-]+|share\/kas-core\/(BUILD_INFO|SHA256SUMS|scripts.json|LICENSE|watchdog-history.tsv))$/ {bad=1} END {exit bad || NR == 0}' "$SUMS" || deny 'invalid ownership baseline'
     [ -d "$LIB" ] && [ -d "$META" ] || deny 'incomplete bundle directories'
     [ -z "$(find "$LIB" "$META" ! -type d ! -type f -print)" ] || deny 'nonregular bundle member refused'
     actual=$(find "$LIB" "$META" -type f -print | while IFS= read -r file; do printf '%s\n' "${file#"$ROOT"/}"; done | LC_ALL=C sort)

@@ -10,3 +10,5 @@
 .view-nav button[aria-current=page]:hover:enabled{background:var(--soft);color:var(--accent)}
 
 .settings-grid{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:18px}#settings-form input[type=number],#settings-form input[type=password]{display:block;width:100%;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);padding:11px 12px}#settings-address{display:inline-block;margin-top:14px;overflow-wrap:anywhere}@media(max-width:680px){.settings-grid{grid-template-columns:1fr;gap:0}}
+
+.version-list{margin:16px 0 0}.version-list>div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}.version-list dt{color:var(--muted);font-size:13px}.version-list dd{margin:0;text-align:right;font-size:13px;overflow-wrap:anywhere;min-width:0}#panel-build{overflow-wrap:anywhere}@media(max-width:680px){.version-list>div{display:block}.version-list dd{text-align:left;margin-top:4px}}
