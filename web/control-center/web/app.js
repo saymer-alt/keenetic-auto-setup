@@ -8,7 +8,7 @@ const words={
   config:'Конфигурация Mihomo',configHelp:'Загрузите готовый config.yaml или вставьте его содержимое. Если выбран файл, будет использован он. Данные не сохраняются в хранилище браузера.',fileLabel:'Выберите файл YAML',pasteLabel:'Или вставьте конфигурацию',warning:'Внимание: применение может временно остановить Mihomo. Предыдущая конфигурация сохраняется и откатывается штатным импортером при предусмотренных им ошибках. Во время операции не перезагружайте роутер.',apply:'Применить YAML',confirm:'Заменить текущий config.yaml? Mihomo может быть временно перезапущен.',applying:'Импорт выполняется. Не выключайте роутер…',importOk:'Импортер завершён успешно. Код выхода: {exit}',importFail:'Импортер сообщил об ошибке. Код выхода: {exit}. Подробности и фактическое состояние проверьте через Doctor/SSH. {code}',importNone:'Импорт ещё не выполнялся.',importError:'Не удалось выполнить запрос импорта: {code}',fileTooLarge:'YAML слишком большой (лимит 1 МиБ).',emptyFile:'Выберите YAML или вставьте его содержимое.',
   providers:'Экспорт имён серверов',providersHelp:'Если администратор включил экспорт, можно скачать совместимый с Mihomo Unified Generator JSON: только имена узлов и провайдеров, без паролей и адресов. Затем в генераторе выберите «Импорт узлов из работающего Mihomo» → «Загрузить .json». Сам Mihomo не изменяется.',providersDownload:'Скачать JSON имён узлов',providersDisabled:'Экспорт не включён администратором',providersWorking:'Получаем список из работающего Mihomo…',providersSuccess:'Файл имён узлов сохранён. Загрузите его в Mihomo Builder и выберите исключения.',providersError:'Не удалось получить имена: {code}. Проверьте доступность локального API Mihomo и его secret.',
   filterHeading:"Серверы подписки",filterHelp:"Отметьте серверы, которые нужно исключить из подписки. Остальные настройки конфига сохранятся.",filterLoad:"Загрузить список серверов",filterProviderLabel:'Провайдер:',filterPreview:"Исключить выбранные",filterClear:"Снять фильтр",filterHint:"Галочка означает исключить сервер. Уже исключённые серверы могут отсутствовать в списке. Снятие фильтра отменяет все его исключения.",filterNoProvider:'Поддерживаемых HTTP-провайдеров нет',filterExisting:'Существующий exclude-filter: {filter}',filterNoFilter:'не задан',filterLoading:'Читаем локальные данные…',filterLoaded:'Провайдеры загружены. Выберите исключения.',filterNamesUnavailable:'Имена узлов недоступны: {code}. Существующий фильтр можно снять; выбор исключений станет доступен после обновления списка.',filterCannotLoad:'Не удалось прочитать данные: {code}',filterNoNames:'Доступных узлов нет (либо они уже скрыты действующим фильтром).',filterTooMany:'Показаны первые {count} узлов; полный список доступен в JSON-экспорте.',filterPreviewing:"Проверяем изменение…",filterPreviewReady:"Изменение проверено.",filterPreviewError:'Ошибка предпросмотра: {code}',filterNothing:'Выберите хотя бы один узел.',filterProposed:"Фильтр сейчас: {before}\nПосле изменения: {after}",filterApply:'Применить показанное изменение',filterClearConfirm:"Снять фильтр провайдера «{provider}»? Это отменит все исключения этого фильтра. Mihomo может быть кратковременно перезапущен.",filterCancelled:"Изменение отменено.",filterApplyConfirm:"Исключить выбранные серверы ({count}) из провайдера «{provider}»? Существующий фильтр будет заменён. Mihomo может быть кратковременно перезапущен.",filterApplying:'Применение выполняется штатным импортёром. Не выключайте роутер…',filterApplyDone:'Штатный импортёр завершён успешно.',filterApplyReady:"Фильтр обновлён. Список серверов загружен заново.",filterApplyNoChange:"Изменения не требуются.",filterApplyError:'Не удалось запустить применение: {code}',filterApplyFail:'Импортёр сообщил об ошибке. Изменение могло не примениться; фактическое состояние проверьте через Doctor/SSH.',
-  doctor:'Диагностика Doctor',help:'Запуск штатного Doctor по запросу. Результат не означает, что маршрутизация каждого клиента проверена.',run:'Запустить Doctor',copy:'Копировать отчёт',details:'Реальный вывод команды',running:'Doctor выполняется…',finished:'Команда завершена; код выхода: {exit}',failed:'Команда не завершилась успешно; код выхода: {exit}; ошибка: {code}',error:'Не удалось выполнить запрос: {code}',footer:'Перед отправкой отчёта проверьте, что в нём нет личных данных. При ошибке импорта проверьте фактическое состояние через Doctor или SSH.',timestamp:'Время: {time}',notrun:'Doctor ещё не запускался.'
+  doctor:'Диагностика Doctor',help:'Запуск штатного Doctor по запросу. Результат не означает, что маршрутизация каждого клиента проверена.',run:'Запустить Doctor',copy:'Копировать отчёт',copyDone:'Отчёт скопирован.',copyManual:'Браузер запретил копирование. Отчёт выделен — нажмите Ctrl+C или выберите «Копировать» в меню.',details:'Реальный вывод команды',running:'Doctor выполняется…',finished:'Команда завершена; код выхода: {exit}',failed:'Команда не завершилась успешно; код выхода: {exit}; ошибка: {code}',error:'Не удалось выполнить запрос: {code}',footer:'Перед отправкой отчёта проверьте, что в нём нет личных данных. При ошибке импорта проверьте фактическое состояние через Doctor или SSH.',timestamp:'Время: {time}',notrun:'Doctor ещё не запускался.'
  },
  en:{
   settingsHeading:'Port and sign-in',settingsHelp:'HTTP sends passwords without encryption. Use VPN or HTTPS for a protected connection.',settingsPort:'Panel port (1–65535)',settingsMode:'Panel sign-in',settingsNone:'No password',settingsEntware:'Entware / SSH account',settingsPanel:'Separate panel password',settingsLogin:'Login: {login}',settingsCurrent:'Current sign-in password ({login}) to confirm changes',settingsPassword:'New panel password',settingsRootPassword:'Existing Entware root password',settingsRepeat:'Repeat new password',settingsPanelHelp:'Login kas. Password: 12–128 bytes. Leave empty to keep an existing panel password.',settingsEntwareHelp:'Login root. Verifies the existing Entware password; the system password is never changed. Use a trusted network or VPN for HTTP login.',settingsNoneHelp:'No password; network reachability and the Home setting below determine access.',settingsLoading:'Reading port and sign-in settings…',settingsSaving:'Saving settings…',settingsError:'Settings could not be saved or read: {code}',settingsSaved:'Settings saved.',settingsPortChanged:'Settings saved. Open the new panel address:',settingsInvalid:'Enter a port from 1–65535 and a supported sign-in mode.',settingsPasswordInvalid:'The new password must be 12–128 bytes and match its repeat.',settingsCurrentRequired:'Enter the current password to confirm changes.',settingsRootRequired:'Enter the existing Entware root password.',settingsConfirm:'Save settings? {warning}',settingsDisableWarning:'Password sign-in will be disabled.',settingsPortWarning:'The port will change from {before} to {after}; open the new address after saving.',settingsCancelled:'Change cancelled.',
@@ -18,14 +18,14 @@ const words={
   config:'Mihomo configuration',configHelp:'Upload a complete config.yaml or paste its contents. A selected file takes precedence. Configuration data is not saved in browser storage.',fileLabel:'YAML file (takes precedence if selected):',pasteLabel:'Or paste complete YAML:',warning:'Warning: applying may temporarily stop Mihomo. The canonical importer maintains previous-config backup and rollback for the failures it handles. Do not reboot the router mid-operation.',apply:'Apply YAML',confirm:'Replace current config.yaml? Mihomo might restart temporarily.',applying:'Import is running. Do not power off the router…',importOk:'Importer finished successfully. Exit code: {exit}',importFail:'Importer failed. Exit code: {exit}. Check the actual state with Doctor/SSH. {code}',importNone:'No import has been started.',importError:'Import request failed: {code}',fileTooLarge:'YAML exceeds 1 MiB.',emptyFile:'Select a YAML file or paste its contents.',
   providers:'Export server names',providersHelp:'If the administrator enabled export, download a JSON compatible with Mihomo Unified Generator: provider and node names only, no server addresses or passwords. In the builder use “Import nodes from running Mihomo” → “Upload .json”. This does not change Mihomo.',providersDownload:'Download node names JSON',providersDisabled:'Export is not enabled by the administrator',providersWorking:'Reading active Mihomo providers…',providersSuccess:'Names JSON saved. Upload it to Mihomo Builder and choose exclusions.',providersError:'Unable to read names: {code}. Check the local Mihomo API and its secret.',
   filterHeading:"Subscription servers",filterHelp:"Select servers to exclude from this subscription. Other configuration settings are preserved.",filterLoad:"Load server list",filterProviderLabel:'Provider:',filterPreview:"Exclude selected",filterClear:"Clear filter",filterHint:"Checked servers will be excluded. Already excluded servers may be absent from the list. Clearing the filter removes all of its exclusions.",filterNoProvider:'No supported HTTP providers',filterExisting:'Existing exclude-filter: {filter}',filterNoFilter:'not set',filterLoading:'Reading local data…',filterLoaded:'Providers loaded. Select exclusions.',filterNamesUnavailable:'Node names unavailable: {code}. You can clear the existing filter; exclusion selection requires refreshing the node list.',filterCannotLoad:'Cannot read data: {code}',filterNoNames:'No visible nodes (or already hidden by the active filter).',filterTooMany:'Showing first {count} nodes; full list is available via JSON export.',filterPreviewing:"Checking the change…",filterPreviewReady:"Change checked.",filterPreviewError:'Preview error: {code}',filterNothing:'Select at least one node.',filterProposed:"Current filter: {before}\nAfter change: {after}",filterApply:'Apply shown change',filterClearConfirm:"Clear the filter for provider \u201c{provider}\u201d? This removes all exclusions in that filter. Mihomo may restart briefly.",filterCancelled:"Change cancelled.",filterApplyConfirm:"Exclude selected servers ({count}) from provider “{provider}”? The existing filter will be replaced. Mihomo may restart briefly.",filterApplying:'Applying through the canonical importer. Do not power off the router…',filterApplyDone:'The canonical importer completed successfully.',filterApplyReady:"Filter updated. Server list refreshed.",filterApplyNoChange:"No changes needed.",filterApplyError:'Could not start the apply: {code}',filterApplyFail:'The importer reported an error. The change may not be applied; check the actual state with Doctor/SSH.',
-  doctor:'Doctor diagnostics',help:'Run the canonical Doctor on demand. This does not prove every client route.',run:'Run Doctor',copy:'Copy report',details:'Original command output',running:'Doctor is running…',finished:'Command finished; exit code: {exit}',failed:'Command did not complete successfully; exit code: {exit}; error: {code}',error:'Request failed: {code}',footer:'Do not claim rollback without checking the actual router state. Review diagnostics manually before sharing.',timestamp:'Time: {time}',notrun:'Doctor has not been run yet.'
+  doctor:'Doctor diagnostics',help:'Run the canonical Doctor on demand. This does not prove every client route.',run:'Run Doctor',copy:'Copy report',copyDone:'Report copied.',copyManual:'The browser blocked copying. The report is selected — press Ctrl+C or choose Copy from the menu.',details:'Original command output',running:'Doctor is running…',finished:'Command finished; exit code: {exit}',failed:'Command did not complete successfully; exit code: {exit}; error: {code}',error:'Request failed: {code}',footer:'Do not claim rollback without checking the actual router state. Review diagnostics manually before sharing.',timestamp:'Time: {time}',notrun:'Doctor has not been run yet.'
  }
 };
 let lang=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';
 try{const s=localStorage.getItem('kas_lang');if(s==='ru'||s==='en')lang=s;}catch(_){}
 let statusData=null,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
 let exporting=false,providerMessage='';
-let lastOperation='import',importView='configuration';
+let lastOperation='import',importView='configuration',copyStatus='';
 let accessData=null,accessBusy=false,accessStatus='';
 let settingsData=null,settingsBusy=false,settingsStatus='';
 let filterInspect=null,filterNodes=null,filterStatus='',filterSelectedProvider='',filterLoading=false,filterBusy=false;
@@ -62,13 +62,13 @@ function draw(){
  if(importMessage)message=importMessage;
  set('config-state',message);
  const hasImportResult=['OK','FAIL'].includes(importData?.state)||Boolean(importMessage);
- const showDoctor=busy||(lastOperation==='doctor'&&doctorData&&!runningImport);
+ // Finished Doctor output belongs to Diagnostics; keep only progress global.
+ const showDoctor=busy&&view!=='diagnostics';
  const showImport=runningImport||hasImportResult;
  el('operation-banner').hidden=!showDoctor&&!showImport;
- const doctorResult=doctorData?((doctorData.error_code||doctorData.exit_code!==0)?t('failed',{exit:doctorData.exit_code??'?',code:doctorData.error_code??'EXIT_NONZERO'}):t('finished',{exit:doctorData.exit_code})):'';
- set('operation-message',showDoctor?(busy?t('running'):doctorResult):showImport?message:'');
+ set('operation-message',showDoctor?t('running'):showImport?message:'');
  el('operation-open').setAttribute('data-view',showDoctor?'diagnostics':importView);
- el('operation-banner').setAttribute('data-state',showDoctor?(doctorData?.error_code||doctorData?.exit_code!==0?'warning':'done'):importData?.state==='FAIL'?'warning':'done');
+ el('operation-banner').setAttribute('data-state',showDoctor?'running':importData?.state==='FAIL'?'warning':'done');
  el('apply').disabled=submitting||runningImport;
  set('filter-state',filterLoading?t('filterLoading'):filterStatus);
  el('filter-load').disabled=filterLoading||filterBusy;
@@ -81,6 +81,7 @@ function draw(){
  el('providers-download').disabled=exporting;
  set('doctor-state',busy?t('running'):doctorData?((doctorData.error_code||doctorData.exit_code!==0)?t('failed',{exit:doctorData.exit_code??'?',code:doctorData.error_code??'EXIT_NONZERO'}):t('finished',{exit:doctorData.exit_code}))+ ' — '+t('timestamp',{time:doctorData.timestamp}):t('notrun'));
  set('output',doctorData?.details||'');
+ set('copy-state',copyStatus?t(copyStatus):'');
  el('copy').disabled=!doctorData||!doctorData.details;el('run').disabled=busy||runningImport;
  el('ru').setAttribute('aria-pressed',String(lang==='ru'));el('en').setAttribute('aria-pressed',String(lang==='en'));
 }
@@ -191,7 +192,7 @@ async function refresh(){
 }
 async function runDoctor(){
  lastOperation='doctor';
- if(busy||importData?.state==='RUNNING')return;busy=true;draw();
+ if(busy||importData?.state==='RUNNING')return;busy=true;copyStatus='';draw();
  try{const resp=await fetch('/api/doctor',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
   doctorData=await resp.json();if(!resp.ok&&!doctorData.error_code)doctorData.error_code='HTTP_'+resp.status;}
  catch(e){doctorData={error_code:String(e),timestamp:new Date().toISOString(),details:''};}
@@ -407,6 +408,32 @@ el('filter-clear').addEventListener('click',()=>changeFilter(true));
 
 el('apply').addEventListener('click',applyYAML);
 el('providers-download').addEventListener('click',exportProviders);
-el('copy').addEventListener('click',async()=>{if(!doctorData?.details)return;try{await navigator.clipboard.writeText(doctorData.details)}catch(_){}});
+// HTTP LAN origins do not expose the modern Clipboard API in Chromium.
+// Keep the user-triggered copy fallback and explain browser denial visibly.
+async function copyDoctorReport(){
+ if(!doctorData?.details)return;
+ let copied=false;
+ try{
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(doctorData.details);copied=true;}
+ }catch(_){} // A denied modern API may still allow a user-triggered copy command.
+ if(!copied){
+  // A textarea preserves whitespace, including the report's trailing newline.
+  const previous=document.activeElement,area=document.createElement('textarea');
+  area.value=doctorData.details;area.readOnly=true;area.setAttribute('aria-label',t('copy'));
+  area.style.position='fixed';area.style.left='-9999px';
+  document.body.appendChild(area);
+  try{area.select();copied=document.execCommand('copy');}catch(_){}
+  finally{area.remove();previous?.focus({preventScroll:true});}
+ }
+ if(!copied){
+  const output=el('output');output.closest('details').open=true;
+  const range=document.createRange();range.selectNodeContents(output);
+  const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+ }
+ copyStatus=copied?'copyDone':'copyManual';
+ // Do not redraw the report: that would discard the manual-copy selection.
+ set('copy-state',t(copyStatus));
+}
+el('copy').addEventListener('click',copyDoctorReport);
 window.kasDraw=draw;
 draw();refresh();refreshImport();refreshAccess();refreshSettings();

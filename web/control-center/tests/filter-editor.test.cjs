@@ -56,6 +56,33 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
  return {el,requests,stored,run:code=>vm.runInContext(code,context)};
 }
 
+test('Doctor copies the full report through the modern clipboard API',async()=>{
+ const app=ui(response(200,{providers:{}}));
+ await new Promise(setImmediate);
+ app.run(`doctorData={details:'Doctor\\nОтчёт\\n'};navigator.clipboard={writeText:async text=>{globalThis.copied=text;}};draw();`);
+ await app.el('copy').click();
+ assert.equal(app.run('copied'),'Doctor\nОтчёт\n');
+ assert.match(app.el('copy-state').textContent,/скопирован/i);
+});
+
+for(const modern of ['absent','denied'])test('Doctor falls back when modern clipboard is '+modern,async()=>{
+ const app=ui(response(200,{providers:{}}));
+ await new Promise(setImmediate);
+ app.run(`
+ doctorData={details:'Doctor\\nОтчёт\\n'};
+ globalThis.area=null;globalThis.removed=false;
+ document.body={appendChild:node=>{globalThis.area=node;}};
+ document.createElement=()=>({style:{},setAttribute(){},select(){},remove(){globalThis.removed=true;}});
+ document.execCommand=command=>{if(command==='copy'){globalThis.copied=area.value;return true;}return false;};
+ `);
+ app.run('draw()');
+ if(modern==='denied')app.run(`navigator.clipboard={writeText:async()=>{throw Error('Denied');}};`);
+ await app.el('copy').click();
+ assert.equal(app.run('copied'),'Doctor\nОтчёт\n');
+ assert.equal(app.run('removed'),true);
+ assert.match(app.el('copy-state').textContent,/скопирован/i);
+});
+
 for(const [label,namesResult] of [
  ['HTTP failure',response(502,{error_code:'MIHOMO_UNAVAILABLE'})],
  ['network failure',new Error('offline')],
@@ -250,4 +277,22 @@ test('existing Entware mode uses current proof only and never asks for a new roo
  assert.equal(app.el('settings-current-row').hidden,false);assert.equal(app.el('settings-password-row').hidden,true);assert.equal(app.el('settings-repeat-row').hidden,true);
  app.el('settings-current').value='existing-root';app.el('settings-password').value='stale-hidden';await app.run('saveSettings()');assert.deepEqual(JSON.parse(settingsPosts(app)[0].options.body),{port:8081,auth_mode:'entware',current_password:'existing-root'});
  assert.equal(app.el('settings-current').value,'');assert.equal(app.el('settings-password').value,'');
+});
+
+// A completed diagnostic is not a result of unrelated settings or config actions.
+test('Doctor result stays in diagnostics; only a running Doctor has a global banner',async()=>{
+ const app=ui(response(200,{providers:{}}));
+ await new Promise(setImmediate);
+ app.run("lastOperation='doctor';doctorData={exit_code:0,details:'Doctor report',timestamp:'test'};");
+ for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
+  app.run("document.documentElement.dataset={view:'"+view+"'};draw();");
+  assert.equal(app.el('operation-banner').hidden,true,'completed Doctor leaked into '+view);
+  assert.match(app.el('doctor-state').textContent,/0/);
+  assert.equal(app.el('output').textContent,'Doctor report');
+ }
+ app.run("document.documentElement.dataset={view:'settings'};busy=true;draw();");
+ assert.equal(app.el('operation-banner').hidden,false);
+ assert.match(app.el('operation-message').textContent,/Doctor/);
+ app.run("document.documentElement.dataset={view:'diagnostics'};draw();");
+ assert.equal(app.el('operation-banner').hidden,true);
 });
