@@ -8,7 +8,7 @@ const vm=require('node:vm');
 class Element {
  constructor(){this.children=[];this.style={};this.disabled=false;this.checked=false;this.value='';this.textContent='';this.files=[];this.handlers={};}
  replaceChildren(...children){this.children=children;}
- appendChild(child){this.children.push(child);return child;}
+ appendChild(child){this.children.push(child);child.parentElement=this;return child;}
  addEventListener(event,handler){this.handlers[event]=handler;}
  click(){if(!this.disabled)return this.handlers.click?.();}
  setAttribute(){}
@@ -159,4 +159,31 @@ test('asynchronous page changes cannot retarget the approved provider or source 
  const request=app.requests.find(x=>x.url==='/api/filter/apply');
  assert.ok(request);
  assert.deepEqual(JSON.parse(request.options.body),{provider:'P',names:['X'],clear:false,source_sha:'a'.repeat(64)});
+});
+
+ test('search preserves hidden selections and counts them in apply',async()=>{
+ const app=ui(response(200,{providers:{P:{proxies:[{name:'Estonia Hy2'},{name:'Sweden Reality'}]}}}));
+ await app.run('loadFilterEditor()');
+ const list=app.el('filter-node-list');
+ list.children[0].children[0].checked=true;
+ app.el('filter-search').value='SWEDEN';
+ await app.run('updateFilterSearch()');
+ assert.equal(list.children[0].hidden,true);
+ assert.equal(list.children[1].hidden,false);
+ assert.match(app.el('filter-summary').textContent,/Выбрано: 1/);
+ app.el('filter-search').value='no match';
+ await app.run('updateFilterSearch()');
+ assert.equal(app.el('filter-search-empty').hidden,false);
+ await app.el('filter-preview').click();
+ const request=app.requests.find(r=>r.url==='/api/filter/apply');
+ assert.deepEqual(JSON.parse(request.options.body).names,['Estonia Hy2']);
+});
+
+test('completed and failed imports remain visible in the global operation banner',async()=>{
+ for(const state of ['OK','FAIL']){
+  const app=ui(response(200,{providers:{}}),200,state);
+  await app.run('refreshImport()');
+  assert.equal(app.el('operation-banner').hidden,false);
+  assert.match(app.el('operation-message').textContent,state==='OK'?/успешно/:/ошибке/);
+ }
 });

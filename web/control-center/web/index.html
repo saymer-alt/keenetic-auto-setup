@@ -1,30 +1,57 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><link rel="stylesheet" href="/style.css"></head>
-<body><main><header><h1>KAS Control Center</h1><nav><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></nav></header>
-<p id="scope"></p><section><h2 id="status-heading"></h2><p id="status-text"></p><p id="binary-text"></p><button id="refresh" type="button"></button></section>
-<section><h2 id="access-heading"></h2><p id="access-help"></p>
-<label><input id="access-home-only" type="checkbox" disabled> <span id="access-label"></span></label>
-<button id="access-save" type="button" disabled></button><p id="access-state" role="status" aria-live="polite"></p>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<a class="skip-link" href="#content" id="skip-link">К содержимому</a>
+<div class="app-shell">
+<aside class="sidebar">
+<a class="brand" href="#overview" data-view="overview"><span class="brand-mark" aria-hidden="true">K</span><span>KAS<span class="brand-subtitle">Control Center</span></span></a>
+<nav class="view-nav" aria-label="KAS" id="view-nav">
+<button type="button" id="nav-overview" data-view="overview" aria-controls="view-overview" aria-current="page">Обзор</button>
+<button type="button" id="nav-subscriptions" data-view="subscriptions" aria-controls="view-subscriptions">Подписки</button>
+<button type="button" id="nav-configuration" data-view="configuration" aria-controls="view-configuration">Конфигурация</button>
+<button type="button" id="nav-diagnostics" data-view="diagnostics" aria-controls="view-diagnostics">Диагностика</button>
+<button type="button" id="nav-settings" data-view="settings" aria-controls="view-settings">Настройки</button>
+</nav>
+<div class="sidebar-footer"><span class="experiment" id="experiment">Экспериментальная версия</span><div class="language-switch" role="group" aria-label="Language"><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></div></div>
+</aside>
+<main id="content" tabindex="-1">
+<header class="page-header"><div><p class="eyebrow">KEENETIC AUTO SETUP</p><h1 id="page-title">Обзор</h1><p id="page-description">Основные сведения и быстрый доступ к управлению.</p></div><span class="local-badge" id="local-badge">Панель роутера</span></header>
+<div class="operation-banner" id="operation-banner" role="status" aria-live="polite" hidden><span id="operation-message"></span><button type="button" id="operation-open" class="secondary" data-view="configuration">Подробнее</button></div>
+<div class="view" id="view-overview">
+<section class="card"><div class="section-header"><h2 id="status-heading"></h2><button id="refresh" type="button" class="secondary"></button></div><p id="status-text" class="muted"></p>
+<div class="component-grid"><div class="component"><span class="component-icon" aria-hidden="true">M</span><div><h3>Mihomo</h3><p id="mihomo-file"></p></div></div><div class="component"><span class="component-icon" aria-hidden="true">MT</span><div><h3>MagiTrickle</h3><p id="magitrickle-file"></p></div></div></div>
+<p id="binary-text" class="caption"></p></section>
+<section class="card"><h2 id="quick-heading">Управление</h2><div class="quick-grid"><button type="button" class="quick-action" data-view="subscriptions"><strong id="quick-subscriptions">Серверы подписки</strong><span id="quick-subscriptions-help">Выбрать серверы для исключения</span><b aria-hidden="true">↗</b></button><button type="button" class="quick-action" data-view="configuration"><strong id="quick-configuration">Загрузить конфиг</strong><span id="quick-configuration-help">Применить готовый YAML</span><b aria-hidden="true">↗</b></button></div></section>
+<p id="scope" class="caption"></p>
+</div>
+<div class="view" id="view-subscriptions" hidden>
+<section id="filter-editor" class="card">
+<div class="section-header"><h2 id="filter-heading"></h2><button id="filter-load" type="button" class="secondary"></button></div><p id="filter-help" class="muted"></p>
+<div class="filter-toolbar"><div><label id="filter-provider-label" for="filter-provider"></label><select id="filter-provider" disabled></select></div><div><label id="filter-search-label" for="filter-search">Поиск серверов</label><input id="filter-search" type="search" autocomplete="off" placeholder="Название сервера"></div></div>
+<details class="filter-details"><summary id="filter-details-label">Действующий фильтр</summary><p id="filter-existing" class="code-text"></p></details>
+<div class="list-heading"><span id="nodes-heading">Серверы</span><span id="filter-summary" class="caption" role="status" aria-live="polite"></span></div>
+<div id="filter-node-list" role="group" aria-labelledby="nodes-heading"><p id="filter-empty" class="empty-state">Загрузите список, чтобы выбрать серверы.</p></div>
+<p id="filter-search-empty" class="empty-state" hidden></p>
+<p id="filter-hint" class="caption"></p>
+<div class="action-bar"><button id="filter-preview" type="button" disabled></button><button id="filter-clear" type="button" class="secondary" disabled></button></div>
+<p id="filter-state" role="status" aria-live="polite" class="operation-state"></p><pre id="filter-result"></pre>
 </section>
-<section><h2 id="config-heading"></h2><p id="config-help"></p>
-<label id="file-label" for="config-file"></label><input id="config-file" type="file" accept=".yaml,.yml,text/yaml,text/x-yaml">
-<label id="paste-label" for="yaml-paste"></label><textarea id="yaml-paste" rows="7" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="mixed-port: 7890"></textarea>
-<p id="config-warning"></p><button id="apply" type="button"></button><p id="config-state" role="status" aria-live="polite"></p>
-</section>
-<section><h2 id="providers-heading"></h2><p id="providers-help"></p>
-<button id="providers-download" type="button"></button><p id="providers-state" role="status" aria-live="polite"></p>
-</section>
-<section id="filter-editor">
-<h2 id="filter-heading"></h2><p id="filter-help"></p>
-<button id="filter-load" type="button"></button>
-<label id="filter-provider-label" for="filter-provider"></label>
-<select id="filter-provider" disabled></select>
-<p id="filter-existing"></p><div id="filter-node-list" role="group" aria-label="Available Mihomo node names"></div>
-<p id="filter-hint"></p>
-<button id="filter-preview" type="button" disabled></button>
-<button id="filter-clear" type="button" disabled></button>
-<p id="filter-state" role="status" aria-live="polite"></p>
-<pre id="filter-result"></pre>
-</section>
-<section><h2 id="doctor-heading"></h2><p id="doctor-help"></p><button id="run" type="button"></button> <button id="copy" type="button" disabled></button><p id="doctor-state" role="status" aria-live="polite"></p><details><summary id="details-label"></summary><pre id="output"></pre></details></section>
-<footer><p id="footer"></p></footer></main><script src="/app.js" defer></script></body></html>
+<section class="card compact"><h2 id="providers-heading"></h2><details class="help"><summary id="export-help-label">Для чего нужен экспорт?</summary><p id="providers-help"></p></details><button id="providers-download" type="button" class="secondary"></button><p id="providers-state" role="status" aria-live="polite"></p></section>
+</div>
+<div class="view" id="view-configuration" hidden>
+<section class="card"><h2 id="config-heading"></h2><p id="config-help" class="muted"></p>
+<div class="file-field"><label id="file-label" for="config-file"></label><input id="config-file" type="file" accept=".yaml,.yml,text/yaml,text/x-yaml"></div>
+<label id="paste-label" for="yaml-paste"></label><textarea id="yaml-paste" rows="12" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="mixed-port: 7890"></textarea>
+<p id="config-warning" class="notice"></p><button id="apply" type="button"></button><p id="config-state" role="status" aria-live="polite" class="operation-state"></p>
+</section></div>
+<div class="view" id="view-diagnostics" hidden>
+<section class="card"><h2 id="doctor-heading"></h2><p id="doctor-help" class="muted"></p><div class="action-bar"><button id="run" type="button"></button><button id="copy" type="button" class="secondary" disabled></button></div><p id="doctor-state" role="status" aria-live="polite" class="operation-state"></p><details class="help"><summary id="details-label"></summary><pre id="output"></pre></details><p id="footer" class="caption"></p></section>
+</div>
+<div class="view" id="view-settings" hidden>
+<section class="card"><h2 id="access-heading"></h2><p id="access-help" class="muted"></p><label class="setting-row"><input id="access-home-only" type="checkbox" disabled><span id="access-label"></span></label><button id="access-save" type="button" disabled></button><p id="access-state" role="status" aria-live="polite" class="operation-state"></p></section>
+</div>
+<footer class="page-footer">KAS Control Center <span aria-hidden="true">·</span> <span id="footer-note">Управление на вашем роутере</span></footer>
+</main></div>
+<script src="/navigation.js" defer></script><script src="/app.js" defer></script>
+</body></html>
