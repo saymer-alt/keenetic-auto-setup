@@ -1,0 +1,58 @@
+name: Publish optional KAS panel IPK prerelease
+on:
+  push:
+    branches: ['publish/kas-web-ipk-c0dac74']
+    paths: ['.github/workflows/web-ipk-prerelease.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: saymer-alt/keenetic-auto-setup
+      SOURCE_SHA: c0dac7471aeda115dbcb2c3f4276e4c603eb4b33
+      PACKAGE_RUN: '40714391285'
+      TAG: kas-web-ipk-c0dac74
+    steps:
+      - name: Wait for exact-source acceptance checks
+        run: |
+          for run_id in 40714996788 40714996721 40714996746 40714391285 40714997634 40714997948 40714997910 40714996760; do
+            test "$(gh run view "$run_id" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+            gh run watch "$run_id" --exit-status --interval 15
+          done
+      - name: Download verified source-pinned IPKs
+        run: |
+          mkdir -p packages
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            gh run download "$PACKAGE_RUN" --name "kas-control-center-ipk-$arch-$SOURCE_SHA" --dir "download-$arch"
+            (cd "download-$arch" && sha256sum -c SHA256SUMS)
+            test "$(find "download-$arch" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
+            cp "download-$arch/"*.ipk packages/
+            ipk=$(find "download-$arch" -maxdepth 1 -name '*.ipk')
+            tar xOzf "$ipk" ./data.tar.gz | tar xOz opt/share/kas-control-center/BUILD_INFO | grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA"
+          done
+          cd packages
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create non-latest experimental release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing prerelease" >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Optional experimental KAS Control Center IPKs: tabbed UI, authentication settings and configurable port.
+
+          Fresh IPK installations default to port8081. Authentication and Home-only restriction are optional/off by default. Entware mode verifies the existing root password without storing or changing it. A separate panel password uses login kas.
+
+          Install only by choice on a test device. Existing manual panel installations must be removed by their original helper before IPK installation; preserve/save the desired old port first. The package refuses foreign/manual files. Start the panel explicitly after install/update; no KAS auto-install. User settings and KAS core are preserved on package removal.
+
+          Source: c0dac7471aeda115dbcb2c3f4276e4c603eb4b33. The release tag points at the publication workflow commit; each package BUILD_INFO records the tested binary source. CI checks include real Entware opkg offline-root transactions, Go/race/Node, ARM64/MIPSel CPU emulation and existing native KeeneticOS importer/filter/lifecycle checks. These do not constitute physical acceptance of these IPKs on every architecture.
+
+          Instructions: https://github.com/saymer-alt/keenetic-auto-setup/blob/c0dac7471aeda115dbcb2c3f4276e4c603eb4b33/web/control-center/packaging/README.md
+          Review: https://github.com/saymer-alt/keenetic-auto-setup/pull/265
+          NOTES
+          gh release create "$TAG" packages/*.ipk packages/SHA256SUMS --target "$GITHUB_SHA" --title "KAS Web: optional experimental IPKs (c0dac74)" --notes-file release-notes.md --prerelease --latest=false
