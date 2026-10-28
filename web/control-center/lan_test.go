@@ -45,7 +45,7 @@ func TestHomeLANOptionalPasswordAndOrigin(t *testing.T){
  a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.1.0/24"),
   passwordEnabled:true,passwordDigest:sha256.Sum256([]byte(secret))}
  a.importer=[]byte("exit 0")
- a.runImport=func([]byte,string)(int,error){return 0,nil}
+ a.runImport=func([]byte,string,[]string)(int,error){return 0,nil}
  request:=func(origin,user,password string)*httptest.ResponseRecorder{
   req:=httptest.NewRequest(http.MethodPost,"http://192.168.1.1:18081/api/config/import",
     bytes.NewBufferString("mixed-port: 7890\n"))
@@ -78,7 +78,7 @@ func TestProxyHostAndHTTPSOriginPairing(t *testing.T){
  a.proxyOrigin="https://kas.example.keenetic.pro"
  a.proxyHost="kas.example.keenetic.pro"
  a.importer=[]byte("exit 0")
- a.runImport=func([]byte,string)(int,error){return 0,nil}
+ a.runImport=func([]byte,string,[]string)(int,error){return 0,nil}
  req:=func(host,origin,client string)int{
   r:=httptest.NewRequest(http.MethodPost,"http://192.168.1.1:18081/api/config/import",
     bytes.NewBufferString("mixed-port: 7890\n"))

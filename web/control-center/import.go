@@ -42,9 +42,10 @@ func respondImport(w http.ResponseWriter,code int,s importStatus){
 func jsonEncodeImport(w io.Writer,s importStatus)error{
  return json.NewEncoder(w).Encode(s)
 }
-func importCommand(script []byte,path string)(int,error){
- cmd:=exec.Command("sh","-s","--",path)
- cmd.Stdin=bytes.NewReader(script)
+func importCommand(script []byte,path string,extraEnv []string)(int,error){
+	cmd:=exec.Command("sh","-s","--",path)
+	if len(extraEnv)>0{cmd.Env=append(os.Environ(),extraEnv...)}
+	cmd.Stdin=bytes.NewReader(script)
  cmd.Stdout=io.Discard
  cmd.Stderr=io.Discard
  // Deliberately not tied to HTTP request context: closing the browser must
@@ -133,7 +134,7 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  go func(entry importStatus){
   defer os.Remove(path)
   // The importer's own preconditions and transaction are authoritative.
-  exit,runErr:=a.runImport(a.importer,path)
+  exit,runErr:=a.runImport(a.importer,path,nil)
   entry.Time=now()
   entry.ExitCode=&exit
   if runErr!=nil{

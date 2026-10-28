@@ -60,7 +60,7 @@ func TestImportSuccessfulPrivateStagingAndDuplicate(t *testing.T){
  started:=make(chan struct{})
  release:=make(chan struct{})
  var once sync.Once
- a.runImport=func(script []byte,path string)(int,error){
+ a.runImport=func(script []byte,path string,extraEnv []string)(int,error){
   if string(script)!="canonical test script"{t.Error("unexpected importer")}
   st,err:=os.Stat(path);if err!=nil{t.Error(err);return -1,err}
   if st.Mode().Perm()!=0600{t.Errorf("temp permissions = %o",st.Mode().Perm())}
@@ -88,7 +88,7 @@ func TestImportSuccessfulPrivateStagingAndDuplicate(t *testing.T){
 }
 func TestImportFailedExitDoesNotClaimRollback(t *testing.T){
  a:=newApp("127.0.0.1:18081",nil);a.importer=[]byte("script")
- a.runImport=func(_ []byte,_ string)(int,error){return 27,errors.New("bad config SECRET-PASSWORD")}
+ a.runImport=func(_ []byte,_ string,_ []string)(int,error){return 27,errors.New("bad config SECRET-PASSWORD")}
  h:=a.handler()
  r:=importReq(h,"http://127.0.0.1:18081","application/x-yaml","apply",[]byte("mixed-port: 7890\n"))
  if r.Code!=202{t.Fatal(r.Code,r.Body.String())}
@@ -103,6 +103,6 @@ func TestImportActualShellArgumentNoTTY(t *testing.T){
  defer os.Remove(f.Name())
  if _,err=io.WriteString(f,"mixed-port: 7890\n");err!=nil{t.Fatal(err)}
  if err=f.Close();err!=nil{t.Fatal(err)}
- exit,err:=importCommand(script,f.Name())
+ exit,err:=importCommand(script,f.Name(),nil)
  if err!=nil||exit!=0{t.Fatalf("script failed: %v exit=%d",err,exit)}
 }
