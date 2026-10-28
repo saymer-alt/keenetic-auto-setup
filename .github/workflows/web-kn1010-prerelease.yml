@@ -61,6 +61,7 @@ jobs:
           Комплект перенесён из успешного Actions artifact 40691209145 без пересборки.
           Архив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.
           Это аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.
+          Тег указывает на коммит публикации; исходная ревизия бинарника отдельно закреплена выше и в BUILD_INFO.
           main/stable не изменяются; автоматической установки нет.
           NOTES
-          gh release create "$TAG" --target "$SOURCE_SHA" --prerelease --latest=false --title "KAS Web: KN-1010 SSTP test 58ff21d" --notes-file release-notes.md "$ARCHIVE" "$ARCHIVE.sha256"
+          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --latest=false --title "KAS Web: KN-1010 SSTP test 58ff21d" --notes-file release-notes.md "$ARCHIVE" "$ARCHIVE.sha256"
