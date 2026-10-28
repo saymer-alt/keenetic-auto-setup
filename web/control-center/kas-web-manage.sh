@@ -131,7 +131,7 @@ start_ui() {
     proxy_file="$ROOT/etc/kas-control-center.proxy-origin"
     names_export_file="$ROOT/etc/kas-control-center.export-names"
     api_secret_file="$ROOT/etc/kas-control-center.mihomo-api-secret"
-    set -- -lan -listen auto -lan-interface br0
+    set -- -lan -listen auto -lan-interface br0 -initial-port 18081 -settings-file "$ROOT/etc/kas-control-center.settings.json"
     if [ -e "$password_file" ] || [ -L "$password_file" ]; then
         set -- "$@" -password-file "$password_file"
     fi
@@ -150,15 +150,24 @@ start_ui() {
             set -- "$@" -provider-secret-file "$api_secret_file"
         fi
     fi
-    "$BIN" "$@" </dev/null >/dev/null 2>&1 &
+    start_log="$ROOT/var/run/.kas-control-center-start.$$"
+    (set -C; : > "$start_log") || deny "cannot create private startup log"
+    "$BIN" "$@" </dev/null >"$start_log" 2>&1 &
     child=$!
     printf '%s\n' "$child" > "$PID" || deny "cannot record service pid"
     sleep 1
     if ! running; then
         rm -f "$PID"
+        if grep -q 'PORT_BIND_FAILED:' "$start_log"; then
+            rm -f "$start_log"
+            deny "panel port is occupied or unavailable; choose another port; other services unchanged"
+        fi
+        rm -f "$start_log"
         deny "Web process did not remain active"
     fi
-    message "RUNNING: Home LAN TCP/18081 (br0)"
+    effective=$(sed -n 's/^Home-address HTTP \([0-9][0-9.:]*\);.*/\1/p' "$start_log")
+    rm -f "$start_log"
+    message "RUNNING: Home LAN ${effective:-address configured in panel settings} (br0)"
 }
 stop_ui() {
     if [ ! -e "$PID" ] && [ ! -L "$PID" ]; then

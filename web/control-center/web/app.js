@@ -19,12 +19,19 @@ const words={
   doctor:'Doctor diagnostics',help:'Run the canonical Doctor on demand. This does not prove every client route.',run:'Run Doctor',copy:'Copy report',details:'Original command output',running:'Doctor is running…',finished:'Command finished; exit code: {exit}',failed:'Command did not complete successfully; exit code: {exit}; error: {code}',error:'Request failed: {code}',footer:'Do not claim rollback without checking the actual router state. Review diagnostics manually before sharing.',timestamp:'Time: {time}',notrun:'Doctor has not been run yet.'
  }
 };
+Object.assign(words.ru,{
+ settingsHeading:'Порт и вход',settingsHelp:'По HTTP пароль передаётся без шифрования. Для защищённого подключения используйте VPN или HTTPS.',settingsPort:'Порт панели (1–65535)',settingsMode:'Вход в панель',settingsNone:'Без пароля',settingsEntware:'Учётная запись Entware / SSH',settingsPanel:'Отдельный пароль панели',settingsLogin:'Логин: {login}',settingsCurrent:'Пароль текущего входа ({login}) для подтверждения',settingsPassword:'Новый пароль панели',settingsRootPassword:'Действующий пароль root в Entware',settingsRepeat:'Повторите новый пароль',settingsPanelHelp:'Логин kas. Пароль: 12–128 байт. Пустое поле сохраняет уже заданный пароль панели.',settingsEntwareHelp:'Логин root. Проверяется действующий пароль Entware; системный пароль не изменяется. Для входа по HTTP используйте доверенную сеть или VPN.',settingsNoneHelp:'Вход без пароля; доступ определяется сетью и настройкой Home ниже.',settingsLoading:'Читаем порт и настройки входа…',settingsSaving:'Сохраняем настройки…',settingsError:'Настройки не сохранены или не прочитаны: {code}',settingsSaved:'Настройки сохранены.',settingsPortChanged:'Настройки сохранены. Откройте новый адрес панели:',settingsInvalid:'Укажите порт 1–65535 и поддерживаемый способ входа.',settingsPasswordInvalid:'Новый пароль должен занимать 12–128 байт и совпадать с повтором.',settingsCurrentRequired:'Введите текущий пароль для подтверждения.',settingsRootRequired:'Введите действующий пароль root в Entware.',settingsConfirm:'Сохранить настройки? {warning}',settingsDisableWarning:'Вход по паролю будет отключён.',settingsPortWarning:'Порт изменится с {before} на {after}; откройте новый адрес после сохранения.',settingsCancelled:'Изменение отменено.'
+});
+Object.assign(words.en,{
+ settingsHeading:'Port and sign-in',settingsHelp:'HTTP sends passwords without encryption. Use VPN or HTTPS for a protected connection.',settingsPort:'Panel port (1–65535)',settingsMode:'Panel sign-in',settingsNone:'No password',settingsEntware:'Entware / SSH account',settingsPanel:'Separate panel password',settingsLogin:'Login: {login}',settingsCurrent:'Current sign-in password ({login}) to confirm changes',settingsPassword:'New panel password',settingsRootPassword:'Existing Entware root password',settingsRepeat:'Repeat new password',settingsPanelHelp:'Login kas. Password: 12–128 bytes. Leave empty to keep an existing panel password.',settingsEntwareHelp:'Login root. Verifies the existing Entware password; the system password is never changed. Use a trusted network or VPN for HTTP login.',settingsNoneHelp:'No password; network reachability and the Home setting below determine access.',settingsLoading:'Reading port and sign-in settings…',settingsSaving:'Saving settings…',settingsError:'Settings could not be saved or read: {code}',settingsSaved:'Settings saved.',settingsPortChanged:'Settings saved. Open the new panel address:',settingsInvalid:'Enter a port from 1–65535 and a supported sign-in mode.',settingsPasswordInvalid:'The new password must be 12–128 bytes and match its repeat.',settingsCurrentRequired:'Enter the current password to confirm changes.',settingsRootRequired:'Enter the existing Entware root password.',settingsConfirm:'Save settings? {warning}',settingsDisableWarning:'Password sign-in will be disabled.',settingsPortWarning:'The port will change from {before} to {after}; open the new address after saving.',settingsCancelled:'Change cancelled.'
+});
 let lang=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';
 try{const s=localStorage.getItem('kas_lang');if(s==='ru'||s==='en')lang=s;}catch(_){}
 let statusData=null,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
 let exporting=false,providerMessage='';
 let lastOperation='import',importView='configuration';
 let accessData=null,accessBusy=false,accessStatus='';
+let settingsData=null,settingsBusy=false,settingsStatus='';
 let filterInspect=null,filterNodes=null,filterStatus='',filterSelectedProvider='',filterLoading=false,filterBusy=false;
 let filterPending=null,filterAwaitingApply=false;
 const el=id=>document.getElementById(id);
@@ -34,6 +41,7 @@ const t=(key,params={})=>{
 };
 const set=(id,value)=>{el(id).textContent=value;};
 function draw(){
+ drawSettings();
  document.documentElement.lang=lang;
  const view=document.documentElement.dataset?.view||'overview';
  set('page-title',t({overview:'navOverview',subscriptions:'navSubscriptions',configuration:'navConfiguration',diagnostics:'navDiagnostics',settings:'navSettings'}[view]));
@@ -79,6 +87,81 @@ function draw(){
  set('output',doctorData?.details||'');
  el('copy').disabled=!doctorData||!doctorData.details;el('run').disabled=busy||runningImport;
  el('ru').setAttribute('aria-pressed',String(lang==='ru'));el('en').setAttribute('aria-pressed',String(lang==='en'));
+}
+// Credentials stay only in these transient form inputs and the request body.
+function clearSettingsPasswords(){for(const id of ['settings-current','settings-password','settings-repeat'])el(id).value='';}
+function validSettings(data){return data&&Number.isInteger(data.port)&&data.port>=1&&data.port<=65535&&['none','panel','entware'].includes(data.auth_mode)&&data.login===({none:'',panel:'kas',entware:'root'}[data.auth_mode])&&typeof data.password_set==='boolean';}
+function drawSettings(){
+ for(const [id,key] of [['settings-heading','settingsHeading'],['settings-help','settingsHelp'],['settings-port-label','settingsPort'],['settings-mode-label','settingsMode'],['settings-none','settingsNone'],['settings-entware','settingsEntware'],['settings-panel','settingsPanel'],['settings-repeat-label','settingsRepeat'],['settings-save','accessSave'],['settings-reload','refresh']])set(id,t(key));
+ set('settings-current-label',t('settingsCurrent',{login:settingsData?.login||''}));
+ const mode=el('settings-mode').value;
+ const panel=mode==='panel',root=mode==='entware'&&settingsData?.auth_mode!=='entware';
+ el('settings-current-row').hidden=!settingsData||settingsData.auth_mode==='none';
+ el('settings-password-row').hidden=!panel&&!root;
+ el('settings-repeat-row').hidden=!panel;
+ set('settings-password-label',t(root?'settingsRootPassword':'settingsPassword'));
+ set('settings-login',mode==='none'?'':t('settingsLogin',{login:panel?'kas':'root'}));
+ set('settings-mode-help',t(panel?'settingsPanelHelp':mode==='entware'?'settingsEntwareHelp':'settingsNoneHelp'));
+ for(const id of ['settings-port','settings-mode','settings-current','settings-password','settings-repeat','settings-save'])el(id).disabled=settingsBusy||!settingsData;
+ el('settings-reload').disabled=settingsBusy;
+ set('settings-state',settingsBusy?t(settingsData?'settingsSaving':'settingsLoading'):settingsStatus);
+}
+async function refreshSettings(){
+ if(settingsBusy)return;
+ settingsBusy=true;settingsData=null;settingsStatus='';clearSettingsPasswords();el('settings-address').hidden=true;draw();
+ try{
+  const response=await fetch('/api/settings',{cache:'no-store',credentials:'same-origin'}),data=await response.json();
+  if(!response.ok||!validSettings(data))throw Error(data.error_code||'HTTP_'+response.status);
+  settingsData={port:data.port,auth_mode:data.auth_mode,login:data.login,password_set:data.password_set};
+  el('settings-port').value=String(data.port);el('settings-mode').value=data.auth_mode;
+ }catch(e){settingsStatus=t('settingsError',{code:e.message||'UNKNOWN'});}
+ finally{settingsBusy=false;draw();}
+}
+function safeSettingsAddress(value,port){
+ try{
+  const url=new URL(value),current=new URL(window.location.href);
+  // Display only the current router host, the committed port, and a plain HTTP root URL.
+  if(url.protocol!=='http:'||url.hostname!==current.hostname||url.username||url.password||url.pathname!=='/'||url.search||url.hash)return '';
+  const host=url.hostname.includes(':')?'['+url.hostname.replace(/^\[|\]$/g,'')+']':url.hostname;
+  const expected='http://'+host+':'+port;
+  if(value!==expected&&value!==expected+'/')return '';
+  return expected+'/';
+ }catch(_){return '';}
+}
+async function saveSettings(){
+ if(settingsBusy||!settingsData)return;
+ const port=Number(el('settings-port').value),mode=el('settings-mode').value;
+ const password=el('settings-password').value,repeat=el('settings-repeat').value,current=el('settings-current').value;
+ clearSettingsPasswords();el('settings-address').hidden=true;
+ const fail=key=>{settingsStatus=t(key);draw();};
+ if(!Number.isInteger(port)||port<1||port>65535||!['none','panel','entware'].includes(mode))return fail('settingsInvalid');
+ if(settingsData.auth_mode!=='none'&&!current)return fail('settingsCurrentRequired');
+ const body={port,auth_mode:mode};
+ if(mode==='panel'){
+  const length=new TextEncoder().encode(password).length;
+  if((password&&(length<12||length>128||password!==repeat))||(!password&&(repeat||settingsData.auth_mode!=='panel'||!settingsData.password_set)))return fail('settingsPasswordInvalid');
+  if(password)body.password=password;
+ }else if(mode==='entware'&&settingsData.auth_mode!=='entware'){
+  if(!password)return fail('settingsRootRequired');
+  body.password=password;
+ }
+ if(settingsData.auth_mode!=='none')body.current_password=current;
+ const warning=[];
+ if(mode==='none'&&settingsData.auth_mode!=='none')warning.push(t('settingsDisableWarning'));
+ if(port!==settingsData.port)warning.push(t('settingsPortWarning',{before:settingsData.port,after:port}));
+ if(!window.confirm(t('settingsConfirm',{warning:warning.join(' ')})))return fail('settingsCancelled');
+ settingsBusy=true;settingsStatus='';draw();
+ try{
+  const response=await fetch('/api/settings',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json','X-KAS-Confirm':'settings'},body:JSON.stringify(body)}),data=await response.json();
+  if(!response.ok||!validSettings(data))throw Error(data.error_code||'HTTP_'+response.status);
+  const changed=data.port!==settingsData.port;
+  settingsData={port:data.port,auth_mode:data.auth_mode,login:data.login,password_set:data.password_set};
+  el('settings-port').value=String(data.port);el('settings-mode').value=data.auth_mode;
+  settingsStatus=t('settingsSaved');
+  const address=changed?safeSettingsAddress(data.url,data.port):'';
+  if(address){el('settings-address').href=address;set('settings-address',address);el('settings-address').hidden=false;settingsStatus=t('settingsPortChanged');}
+ }catch(e){settingsStatus=t('settingsError',{code:e.message||'UNKNOWN'});}
+ finally{settingsBusy=false;clearSettingsPasswords();draw();}
 }
 async function refreshAccess(){
  if(accessBusy)return;
@@ -170,7 +253,10 @@ async function applyYAML(){
  finally{submitting=false;draw();}
 }
 for(const l of ['ru','en'])el(l).addEventListener('click',()=>{lang=l;try{localStorage.setItem('kas_lang',l)}catch(_){}draw();});
-el('refresh').addEventListener('click',()=>{refresh();refreshAccess();});
+el('refresh').addEventListener('click',()=>{refresh();refreshAccess();refreshSettings();});
+el('settings-form').addEventListener('submit',event=>{event.preventDefault();saveSettings();});
+el('settings-mode').addEventListener('change',()=>{clearSettingsPasswords();draw();});
+el('settings-reload').addEventListener('click',refreshSettings);
 el('access-save').addEventListener('click',saveAccess);
 el('run').addEventListener('click',runDoctor);
 async function exportProviders(){
@@ -327,4 +413,4 @@ el('apply').addEventListener('click',applyYAML);
 el('providers-download').addEventListener('click',exportProviders);
 el('copy').addEventListener('click',async()=>{if(!doctorData?.details)return;try{await navigator.clipboard.writeText(doctorData.details)}catch(_){}});
 window.kasDraw=draw;
-draw();refresh();refreshImport();refreshAccess();
+draw();refresh();refreshImport();refreshAccess();refreshSettings();

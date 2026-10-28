@@ -19,14 +19,24 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
  const ids=new Set([...fs.readFileSync(path.join(__dirname,'../web/index.html'),'utf8').matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]));
  const elements=new Map();
  const el=id=>{assert.ok(ids.has(id),'missing DOM element '+id);if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
- const requests=[];
+ const requests=[],stored=[];
+ let settings=fixture.settings||{port:18081,auth_mode:'none',login:'',password_set:false};
  let homeOnly=false;
  const context=vm.createContext({
   document:{documentElement:{},getElementById:el,createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
-  localStorage:{getItem:()=>null},navigator:{language:'ru'},window:{confirm:()=>true},
+  localStorage:{getItem:()=>null,setItem:(...args)=>stored.push(args)},navigator:{language:'ru'},window:{confirm:()=>true,location:{href:'http://router.test:18081/'}},URL,
   setTimeout:()=>1,clearTimeout(){},TextEncoder,
   fetch:async(url,options={})=>{
    requests.push({url,options});
+   if(url==='/api/settings'){
+    if(fixture.settingsFail)return response(503,{error_code:'SETTINGS_READ_FAILED'});
+    if(options.method==='POST'){
+     if(fixture.settingsPost)return fixture.settingsPost;
+     const body=JSON.parse(options.body);settings={port:body.port,auth_mode:body.auth_mode,login:({none:'',panel:'kas',entware:'root'})[body.auth_mode],password_set:body.auth_mode!=='none'};
+     return response(200,{...settings,url:'http://router.test:'+settings.port});
+    }
+    return response(200,settings);
+   }
    if(url==='/api/access'){
     if(options.method==='POST')homeOnly=JSON.parse(options.body).home_only;
     return response(200,{home_only:homeOnly});
@@ -43,7 +53,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
   }
  });
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/app.js'),'utf8'),context);
- return {el,requests,run:code=>vm.runInContext(code,context)};
+ return {el,requests,stored,run:code=>vm.runInContext(code,context)};
 }
 
 for(const [label,namesResult] of [
@@ -186,4 +196,58 @@ test('completed and failed imports remain visible in the global operation banner
   assert.equal(app.el('operation-banner').hidden,false);
   assert.match(app.el('operation-message').textContent,state==='OK'?/успешно/:/ошибке/);
  }
+});
+
+const settingsFixture=async fixture=>{const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);return app;};
+const settingsPosts=app=>app.requests.filter(r=>r.url==='/api/settings'&&r.options.method==='POST');
+test('settings read uses actual existing port and read failure disables mutation',async()=>{
+ const app=await settingsFixture({});assert.equal(app.el('settings-port').value,'18081');assert.equal(app.el('settings-save').disabled,false);
+ const failed=await settingsFixture({settingsFail:true});assert.equal(failed.el('settings-save').disabled,true);assert.match(failed.el('settings-state').textContent,/SETTINGS_READ_FAILED/);
+ await failed.run('saveSettings()');assert.equal(settingsPosts(failed).length,0);
+});
+test('settings mode controls fields and clears stale credentials',async()=>{
+ const app=await settingsFixture({settings:{port:8081,auth_mode:'panel',login:'kas',password_set:true}});
+ assert.equal(app.el('settings-current-row').hidden,false);assert.equal(app.el('settings-repeat-row').hidden,false);
+ app.el('settings-password').value='cached password';app.el('settings-mode').value='entware';await app.run("el('settings-mode').handlers.change()");
+ assert.equal(app.el('settings-password').value,'');assert.equal(app.el('settings-repeat-row').hidden,true);assert.equal(app.el('settings-password-row').hidden,false);assert.match(app.el('settings-login').textContent,/root/);
+ app.el('settings-mode').value='none';await app.run('draw()');assert.equal(app.el('settings-password-row').hidden,true);
+});
+test('settings cancellation posts nothing and removes typed credentials',async()=>{
+ const app=await settingsFixture({});app.el('settings-port').value='8081';app.el('settings-mode').value='panel';app.el('settings-password').value=app.el('settings-repeat').value='long-password-123';app.run('window.confirm=()=>false');
+ await app.run('saveSettings()');assert.equal(settingsPosts(app).length,0);assert.equal(app.el('settings-password').value,'');assert.equal(app.stored.length,0);
+});
+test('settings keep existing panel password without accidental credential fields',async()=>{
+ const app=await settingsFixture({settings:{port:18081,auth_mode:'panel',login:'kas',password_set:true}});
+ app.el('settings-current').value='proof';await app.run('saveSettings()');
+ assert.deepEqual(JSON.parse(settingsPosts(app)[0].options.body),{port:18081,auth_mode:'panel',current_password:'proof'});
+ assert.equal(settingsPosts(app)[0].options.headers['X-KAS-Confirm'],'settings');assert.equal(app.el('settings-current').value,'');assert.equal(app.stored.length,0);
+});
+test('settings reject invalid new passwords and require current proof despite browser auth',async()=>{
+ const app=await settingsFixture({settings:{port:18081,auth_mode:'panel',login:'kas',password_set:true}});
+ app.el('settings-mode').value='none';await app.run('saveSettings()');assert.equal(settingsPosts(app).length,0);
+ const fresh=await settingsFixture({});fresh.el('settings-mode').value='panel';fresh.el('settings-password').value=fresh.el('settings-repeat').value='too-short';await fresh.run('saveSettings()');assert.equal(settingsPosts(fresh).length,0);
+ fresh.el('settings-password').value=fresh.el('settings-repeat').value='я'.repeat(65);await fresh.run('saveSettings()');assert.equal(settingsPosts(fresh).length,0);
+});
+test('settings root proof and disable/port warnings share one confirmation',async()=>{
+ const app=await settingsFixture({});app.el('settings-mode').value='entware';app.el('settings-password').value='existing-root';await app.run('saveSettings()');
+ assert.deepEqual(JSON.parse(settingsPosts(app)[0].options.body),{port:18081,auth_mode:'entware',password:'existing-root'});
+ app.el('settings-mode').value='none';app.el('settings-port').value='8081';app.el('settings-current').value='existing-root';app.run("window.prompts=[];window.confirm=message=>{window.prompts.push(message);return true}");await app.run('saveSettings()');
+ assert.equal(app.run('window.prompts.length'),1);assert.match(app.run('window.prompts[0]'),/отключён/);assert.match(app.run('window.prompts[0]'),/18081.*8081/);
+ assert.equal(app.stored.length,0);
+});
+test('settings port conflict keeps old committed address and successful port offers safe link',async()=>{
+ const conflict=await settingsFixture({settingsPost:response(409,{error_code:'PORT_IN_USE'})});conflict.el('settings-port').value='8081';await conflict.run('saveSettings()');assert.equal(conflict.run('settingsData.port'),18081);assert.equal(conflict.el('settings-address').hidden,true);assert.match(conflict.el('settings-state').textContent,/PORT_IN_USE/);
+ const app=await settingsFixture({});app.el('settings-port').value='8081';await app.run('saveSettings()');assert.equal(app.el('settings-address').href,'http://router.test:8081/');assert.equal(app.el('settings-address').hidden,false);
+ for(const value of ['http://evil.test:8081','http://router.test:8081/path','http://user@router.test:8081','javascript:alert(1)','http://router.test'])assert.equal(app.run('safeSettingsAddress('+JSON.stringify(value)+',8081)'), '');
+});
+
+test('new installation displays server default 8081 without client override',async()=>{
+ const app=await settingsFixture({settings:{port:8081,auth_mode:'none',login:'',password_set:false}});assert.equal(app.el('settings-port').value,'8081');
+ app.el('settings-password').value='stale-hidden-password';app.el('settings-current').value='stale-hidden-current';await app.run('saveSettings()');assert.deepEqual(JSON.parse(settingsPosts(app)[0].options.body),{port:8081,auth_mode:'none'});
+});
+test('existing Entware mode uses current proof only and never asks for a new root password',async()=>{
+ const app=await settingsFixture({settings:{port:8081,auth_mode:'entware',login:'root',password_set:true}});
+ assert.equal(app.el('settings-current-row').hidden,false);assert.equal(app.el('settings-password-row').hidden,true);assert.equal(app.el('settings-repeat-row').hidden,true);
+ app.el('settings-current').value='existing-root';app.el('settings-password').value='stale-hidden';await app.run('saveSettings()');assert.deepEqual(JSON.parse(settingsPosts(app)[0].options.body),{port:8081,auth_mode:'entware',current_password:'existing-root'});
+ assert.equal(app.el('settings-current').value,'');assert.equal(app.el('settings-password').value,'');
 });

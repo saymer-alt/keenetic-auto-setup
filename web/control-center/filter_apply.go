@@ -62,7 +62,7 @@ func(a *app)handleFilterApply(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodPost{filterError(w,405,"METHOD_NOT_ALLOWED");return}
  if a.providers==nil{filterError(w,404,"EDITOR_DISABLED");return}
  if len(a.importer)==0{filterError(w,503,"IMPORTER_UNAVAILABLE");return}
- if r.Host!=a.host && r.Host!=a.proxyHost{filterError(w,403,"REQUEST_BLOCKED");return}
+ if !a.directHost(r.Host) && r.Host!=a.proxyHost{filterError(w,403,"REQUEST_BLOCKED");return}
  if r.Header.Get("Origin")!=a.expectedOrigin(r.Host)||
     r.Header.Get("Content-Type")!="application/json"||
     r.Header.Get("X-KAS-Confirm")!="apply"{

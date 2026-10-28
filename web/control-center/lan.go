@@ -20,6 +20,8 @@ type homeLAN struct {
  clients netip.Prefix
  homeOnly atomic.Bool
  accessPath string
+ panel atomic.Pointer[panelConfig]
+ entwareRoot string
  passwordDigest [32]byte
  passwordEnabled bool
 }
@@ -51,7 +53,7 @@ func homeIPv4(iface string)(netip.Addr,netip.Prefix,error){
 func newHomeLAN(bind,iface,passwordFile string)(*homeLAN,error){
  ip,prefix,err:=homeIPv4(iface)
  if err!=nil{return nil,err}
- address:=net.JoinHostPort(ip.String(),"18081")
+ address:=net.JoinHostPort(ip.String(),"8081")
  if bind!=""&&bind!="auto"{
   host,port,e:=net.SplitHostPort(bind)
   if e!=nil||port==""||port=="0"||host!=ip.String(){
@@ -101,7 +103,14 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
  }
  // Password option covers direct LAN clients only; do not require a SECOND
  // account after the router has already authenticated a KeenDNS client.
- if p.passwordEnabled && !routerProxy{
+ if config:=p.panel.Load();config!=nil&&!routerProxy{
+  name,password,ok:=r.BasicAuth()
+  if config.AuthMode!="none"&&(!ok||!p.credentialsValid(config,name,password)){
+   w.Header().Set("WWW-Authenticate",`Basic realm="KAS Control Center"`)
+   w.Header().Set("Cache-Control","no-store")
+   http.Error(w,"authentication required",http.StatusUnauthorized);return false
+  }
+ }else if p.passwordEnabled && !routerProxy{
   name,password,ok:=r.BasicAuth()
   received:=sha256.Sum256([]byte(password))
   if !ok||name!="kas"||subtle.ConstantTimeCompare(received[:],p.passwordDigest[:])!=1{
@@ -114,8 +123,8 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
  return true
 }
 func (p *homeLAN) describe()string{
- if p.passwordEnabled{return fmt.Sprintf("Home LAN HTTP %s; optional password enabled",p.address)}
- return fmt.Sprintf("Home-address HTTP %s; Home-only restriction=%t; no app password",p.address,p.homeOnly.Load())
+ mode:="none";if config:=p.panel.Load();config!=nil{mode=config.mode()}else if p.passwordEnabled{mode="panel"}
+ return fmt.Sprintf("Home-address HTTP %s; Home-only restriction=%t; authentication=%s",p.address,p.homeOnly.Load(),mode)
 }
 
 func validateProxyOrigin(value string)(string,error){

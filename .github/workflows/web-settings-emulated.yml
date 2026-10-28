@@ -1,0 +1,45 @@
+name: KAS panel settings on emulated CPUs
+on:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - '.github/workflows/web-settings-emulated.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  settings-emulated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: arm64
+            emulator: qemu-aarch64
+          - goarch: mipsle
+            emulator: qemu-mipsel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Install CPU emulators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+      - name: Test actual ARM64 or MIPSel settings adapter on emulated CPU
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOMIPS: softfloat
+          EMULATOR: ${{ matrix.emulator }}
+        run: |
+          cd web/control-center
+          go generate ./...
+          go test -c -o "$RUNNER_TEMP/kas-panel-tests" .
+          "$EMULATOR" "$RUNNER_TEMP/kas-panel-tests" -test.v -test.timeout=5m

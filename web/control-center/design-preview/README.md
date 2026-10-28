@@ -8,6 +8,8 @@ the router binary embeds only `web/*` and the canonical scripts.
 - [Desktop subscriptions](subscriptions-desktop.png)
 - [Mobile subscriptions](subscriptions-mobile.png)
 - [Dark mobile subscriptions](subscriptions-dark-mobile.png)
+- [Desktop settings](settings-desktop.png)
+- [Mobile settings](settings-mobile.png)
 
 Checks: `node --test web/control-center/tests/*.test.cjs`; Go test/vet.
 Optional real Chromium check: install Playwright in the developer environment and

@@ -1,0 +1,91 @@
+name: Optional experimental Control Center IPKs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - 'tests/test_ipk.py'
+      - '.github/workflows/web-ipk.yml'
+  push:
+    branches:
+      - 'feat/kas-web-ipk-panel'
+    paths:
+      - 'web/control-center/**'
+      - 'tests/test_ipk.py'
+      - '.github/workflows/web-ipk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Inspect actual archives and isolated maintainer hooks
+        run: |
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+          KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" python3 tests/test_ipk.py -v
+          for file in web/control-center/packaging/*.sh web/control-center/packaging/S98kas-control-center; do
+            sh -n "$file"
+            dash -n "$file"
+          done
+  crossbuild:
+    needs: package-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Build source-pinned experimental IPK (no installation or release)
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python3 web/control-center/packaging/build-ipk.py \
+            --arch "$PACKAGE_ARCH" --version "0.0.0~git${SOURCE_SHA:0:12}-1" \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/ipk"
+          cd "$RUNNER_TEMP/ipk"
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          tar xzf ./*.ipk ./data.tar.gz
+          tar xzf data.tar.gz
+          go version -m opt/bin/kas-control-center | tee BUILD_INFO
+          grep -F 'CGO_ENABLED=0' BUILD_INFO
+          if [ "$PACKAGE_ARCH" = mipsel-3.4 ] || [ "$PACKAGE_ARCH" = mips-3.4 ]; then
+            grep -F 'GOMIPS=softfloat' BUILD_INFO
+          fi
+          readelf -h opt/bin/kas-control-center | tee ELF_INFO
+          case "$PACKAGE_ARCH" in
+            aarch64-3.10) grep -F 'AArch64' ELF_INFO; grep -F 'ELF64' ELF_INFO;;
+            armv7-3.2) grep -F 'ARM' ELF_INFO; grep -F 'ELF32' ELF_INFO; grep -F 'GOARM=7' BUILD_INFO;;
+            mipsel-3.4) grep -F 'MIPS' ELF_INFO; grep -F 'little endian' ELF_INFO;;
+            mips-3.4) grep -F 'MIPS' ELF_INFO; grep -F 'big endian' ELF_INFO;;
+          esac
+          rm -rf opt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kas-control-center-ipk-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/ipk/*.ipk
+            ${{ runner.temp }}/ipk/SHA256SUMS
+            ${{ runner.temp }}/ipk/BUILD_INFO
+          if-no-files-found: error
+          retention-days: 14

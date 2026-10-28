@@ -49,6 +49,15 @@
 <section class="card"><h2 id="doctor-heading"></h2><p id="doctor-help" class="muted"></p><div class="action-bar"><button id="run" type="button"></button><button id="copy" type="button" class="secondary" disabled></button></div><p id="doctor-state" role="status" aria-live="polite" class="operation-state"></p><details class="help"><summary id="details-label"></summary><pre id="output"></pre></details><p id="footer" class="caption"></p></section>
 </div>
 <div class="view" id="view-settings" hidden>
+<section class="card"><h2 id="settings-heading"></h2><p id="settings-help" class="muted"></p>
+<form id="settings-form" autocomplete="off" novalidate>
+<div class="settings-grid"><div><label id="settings-port-label" for="settings-port"></label><input id="settings-port" type="number" min="1" max="65535" step="1" inputmode="numeric" required disabled></div><div><label id="settings-mode-label" for="settings-mode"></label><select id="settings-mode" disabled><option id="settings-none" value="none"></option><option id="settings-entware" value="entware"></option><option id="settings-panel" value="panel"></option></select></div></div>
+<p id="settings-login" class="caption"></p><p id="settings-mode-help" class="help"></p>
+<div id="settings-current-row" hidden><label id="settings-current-label" for="settings-current"></label><input id="settings-current" type="password" autocomplete="off" maxlength="128" disabled></div>
+<div id="settings-password-row" hidden><label id="settings-password-label" for="settings-password"></label><input id="settings-password" type="password" autocomplete="new-password" maxlength="128" disabled></div>
+<div id="settings-repeat-row" hidden><label id="settings-repeat-label" for="settings-repeat"></label><input id="settings-repeat" type="password" autocomplete="new-password" maxlength="128" disabled></div>
+<div class="action-bar"><button id="settings-save" type="submit" disabled></button><button id="settings-reload" type="button" class="secondary"></button></div>
+</form><p id="settings-state" role="status" aria-live="polite" class="operation-state"></p><a id="settings-address" hidden></a></section>
 <section class="card"><h2 id="access-heading"></h2><p id="access-help" class="muted"></p><label class="setting-row"><input id="access-home-only" type="checkbox" disabled><span id="access-label"></span></label><button id="access-save" type="button" disabled></button><p id="access-state" role="status" aria-live="polite" class="operation-state"></p></section>
 </div>
 <footer class="page-footer">KAS Control Center <span aria-hidden="true">·</span> <span id="footer-note">Управление на вашем роутере</span></footer>

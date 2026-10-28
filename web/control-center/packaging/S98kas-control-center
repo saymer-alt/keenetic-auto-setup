@@ -1,0 +1,157 @@
+#!/bin/sh
+# KAS-CONTROL-CENTER-IPK-v1
+# opkg-owned service; independent of kas-web-manage.sh's manual ownership.
+set -eu
+umask 077
+SERVICE_ROOT=${IPKG_INSTROOT:-${PKG_ROOT:-}}
+SERVICE_ROOT=${SERVICE_ROOT%/}
+[ -z "$SERVICE_ROOT" ] || { echo 'offline root: service execution disabled' >&2; exit 1; }
+BIN=/opt/bin/kas-control-center
+PID=/opt/var/run/kas-control-center.ipk.pid
+LOCK=/opt/var/run/kas-control-center.ipk.lock
+STARTUP=/opt/var/run/kas-control-center.ipk.startup
+deny() { echo "kas-control-center: $*" >&2; exit 1; }
+check_dirs() {
+    for d in /opt /opt/bin /opt/etc /opt/var /opt/var/run; do
+        [ ! -L "$d" ] || deny "unsafe directory: $d"
+    done
+}
+pid_value() {
+    [ -f "$PID" ] && [ ! -L "$PID" ] || return 1
+    value=$(cat "$PID") || return 1
+    case "$value" in ''|*[!0-9]*) return 1;; esac
+    [ "$value" -gt 1 ] 2>/dev/null || return 1
+    printf '%s\n' "$value"
+}
+identity() {
+    [ -r "/proc/$1/cmdline" ] && [ "/proc/$1/exe" -ef "$BIN" ] || return 1
+    tr '\000' '\n' < "/proc/$1/cmdline" | grep -Fxq "$BIN"
+}
+alive() { kill -0 "$1" 2>/dev/null; }
+untracked() {
+    for proc in /proc/[0-9]*; do
+        candidate=${proc##*/}
+        identity "$candidate" && return 0
+    done
+    return 1
+}
+stop_service() {
+    if [ ! -e "$PID" ] && [ ! -L "$PID" ]; then
+        untracked && deny 'untracked process; inspect manually'
+        return 0
+    fi
+    service_pid=$(pid_value) || deny 'invalid pid file; inspect manually'
+    if ! alive "$service_pid"; then rm -f "$PID"; return 0; fi
+    identity "$service_pid" || deny 'pid identity unverified; refusing signal'
+    kill -TERM "$service_pid" || deny 'cannot send TERM'
+    n=0
+    while alive "$service_pid"; do
+        # A zombie has exited and cannot retain an importer transaction.
+        if [ -r "/proc/$service_pid/stat" ]; then
+            state=$(sed 's/.*) //' "/proc/$service_pid/stat" | cut -d ' ' -f 1)
+            [ "$state" != Z ] || break
+        fi
+        identity "$service_pid" || deny 'pid identity changed while draining'
+        [ "$n" -lt 60 ] || deny 'still draining; no force kill; retry later'
+        sleep 1
+        n=$((n+1))
+    done
+    rm -f "$PID"
+}
+# Consume daemon output without persisting arbitrary errors, paths or secrets.
+# At most two fixed records are written, independent of log volume.
+filter_startup_log() {
+    target=$1
+    saw_bind=0
+    saw_address=0
+    while IFS= read -r line; do
+        case "$line" in
+            *PORT_BIND_FAILED:*)
+                if [ "$saw_bind" -eq 0 ]; then
+                    printf '%s\n' 'PORT_BIND_FAILED: requested panel address is unavailable; choose another panel port' >> "$target"
+                    saw_bind=1
+                fi;;
+            'Home LAN HTTP '*|'Home-address HTTP '*)
+                if [ "$saw_address" -eq 0 ]; then
+                    address=$(printf '%s\n' "$line" | sed 's/^Home LAN HTTP //;s/^Home-address HTTP //;s/;.*//')
+                    if printf '%s\n' "$address" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]{1,5}$'; then
+                        printf 'PANEL_ADDRESS: %s\n' "$address" >> "$target"
+                        saw_address=1
+                    fi
+                fi;;
+        esac
+    done
+}
+start_service() {
+    [ -f "$BIN" ] && [ -x "$BIN" ] && [ ! -L "$BIN" ] || deny 'unsafe binary'
+    if [ -e "$PID" ] || [ -L "$PID" ]; then
+        service_pid=$(pid_value) || deny 'invalid pid file'
+        if alive "$service_pid"; then
+            identity "$service_pid" || deny 'pid belongs to another process'
+            echo RUNNING; return 0
+        fi
+        rm -f "$PID"
+    fi
+    untracked && deny 'untracked process; refusing duplicate'
+    set -- -lan -listen auto -settings-file /opt/etc/kas-control-center.settings.json
+    for name in password proxy-origin export-names mihomo-api-secret; do
+        file="/opt/etc/kas-control-center.$name"
+        if [ -e "$file" ] || [ -L "$file" ]; then
+            [ -f "$file" ] && [ ! -L "$file" ] || deny "unsafe optional file: $file"
+        fi
+    done
+    file=/opt/etc/kas-control-center.password
+    [ ! -f "$file" ] || set -- "$@" -password-file "$file"
+    file=/opt/etc/kas-control-center.proxy-origin
+    [ ! -f "$file" ] || set -- "$@" -proxy-origin "$(cat "$file")"
+    if [ -f /opt/etc/kas-control-center.export-names ]; then
+        set -- "$@" -provider-names-export
+        file=/opt/etc/kas-control-center.mihomo-api-secret
+        [ ! -f "$file" ] || set -- "$@" -provider-secret-file "$file"
+    fi
+    command -v mkfifo >/dev/null 2>&1 || deny 'mkfifo unavailable; cannot safely capture startup status'
+    [ ! -L "$STARTUP" ] || deny 'unsafe startup status file'
+    [ ! -e "$STARTUP" ] || [ -f "$STARTUP" ] || deny 'unsafe startup status file'
+    : > "$STARTUP"
+    chmod 600 "$STARTUP"
+    fifo="/opt/var/run/.kas-control-center.ipk-startup.$$"
+    [ ! -e "$fifo" ] && [ ! -L "$fifo" ] || deny 'startup pipe collision'
+    mkfifo "$fifo" || deny 'cannot create startup pipe'
+    filter_startup_log "$STARTUP" < "$fifo" &
+    "$BIN" "$@" </dev/null >"$fifo" 2>&1 &
+    service_pid=$!
+    printf '%s\n' "$service_pid" > "$PID"
+    sleep 1
+    rm -f "$fifo"
+    if ! identity "$service_pid"; then
+        if ! alive "$service_pid"; then
+            rm -f "$PID"
+        elif [ -r "/proc/$service_pid/stat" ]; then
+            state=$(sed 's/.*) //' "/proc/$service_pid/stat" | cut -d ' ' -f 1)
+            [ "$state" != Z ] || rm -f "$PID"
+        fi
+        if grep -q '^PORT_BIND_FAILED:' "$STARTUP"; then
+            deny 'PORT_BIND_FAILED: requested panel address is unavailable; choose another panel port'
+        fi
+        deny 'process failed to remain active; check settings and private optional files'
+    fi
+    echo RUNNING
+    grep '^PANEL_ADDRESS: ' "$STARTUP" || :
+}
+check_dirs
+mkdir -p /opt/var/run
+check_dirs
+# Serializes service commands. A stale lock is a manual inspection, never deletion.
+mkdir "$LOCK" 2>/dev/null || deny 'service command locked; inspect stale lock if necessary'
+trap 'rmdir "$LOCK"' EXIT
+trap 'exit 1' HUP INT TERM
+case "${1:-}" in
+    start) start_service;;
+    stop) stop_service;;
+    restart) stop_service; start_service;;
+    status)
+        service_pid=$(pid_value) || { echo NOT_RUNNING; exit 1; }
+        alive "$service_pid" && identity "$service_pid" || { echo UNKNOWN; exit 1; }
+        echo RUNNING;;
+    *) deny 'usage: S98kas-control-center start|stop|restart|status';;
+esac

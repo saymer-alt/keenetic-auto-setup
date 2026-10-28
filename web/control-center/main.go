@@ -20,6 +20,7 @@ import (
  "syscall"
  "strings"
  "sync"
+ "sync/atomic"
  "time"
 )
 
@@ -39,6 +40,9 @@ type apiResult struct {
 }
 type app struct {
  host string
+ liveHost atomic.Pointer[string]
+ settingsPath string
+ listeners *panelListeners
  proxyHost string
  proxyOrigin string
  lan *homeLAN
@@ -65,7 +69,7 @@ func validateBind(address string) error {
  return nil
 }
 func (a *app) expectedOrigin(host string)string {
- if host==a.host{return "http://"+a.host}
+ if a.directHost(host){return "http://"+strings.TrimSuffix(host,":80")}
  if host==a.proxyHost && a.proxyOrigin!=""{return a.proxyOrigin}
  return ""
 }
@@ -154,6 +158,7 @@ func (a *app)handler()http.Handler{
  mux.Handle("/",http.FileServer(http.FS(sub)))
  mux.HandleFunc("/api/status",a.handleStatus)
  mux.HandleFunc("/api/access",a.handleAccess)
+ mux.HandleFunc("/api/settings",a.handleSettings)
  mux.HandleFunc("/api/doctor",a.handleDoctor)
  mux.HandleFunc("/api/config/import",a.handleImport)
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
@@ -162,7 +167,7 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/filter/preview",a.handleFilterPreview)
  mux.HandleFunc("/api/filter/apply",a.handleFilterApply)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  if r.Host!=a.host && (a.proxyHost==""||r.Host!=a.proxyHost){http.Error(w,"invalid host",http.StatusForbidden);return}
+  if !a.directHost(r.Host) && (a.proxyHost==""||r.Host!=a.proxyHost){http.Error(w,"invalid host",http.StatusForbidden);return}
   if a.lan!=nil && !a.lan.allowed(w,r,a.proxyHost){return}
   w.Header().Set("X-Frame-Options","DENY")
   w.Header().Set("X-Content-Type-Options","nosniff")
@@ -178,17 +183,29 @@ func main(){
  proxyOrigin:=flag.String("proxy-origin","","optional existing KeenDNS HTTPS URL allowed via router reverse proxy")
  providerExport:=flag.Bool("provider-names-export",false,"enable explicit read-only local Mihomo names export")
  providerSecretFile:=flag.String("provider-secret-file","","optional 0600 file with local Mihomo API secret; requires export")
+ settingsFile:=flag.String("settings-file",panelSettingsPath,"private persistent panel settings")
+ initialPort:=flag.Int("initial-port",8081,"default port when no settings exist")
  flag.Parse()
+ if *initialPort<1||*initialPort>65535{log.Fatal("invalid initial port")}
+ var config *panelConfig
+ if *lanMode {var err error;config,err=readPanelConfig(*settingsFile);if err!=nil{log.Fatal(err)}}
  var lan *homeLAN
  if *lanMode {
   var err error
   lan,err=newHomeLAN(*listen,*lanInterface,*passwordFile)
   if err!=nil{log.Fatal(err)}
   if err:=lan.loadAccessPolicy(homeOnlyConfigPath);err!=nil{log.Fatal(err)}
+  host,_,_:=net.SplitHostPort(lan.address)
+  if *listen==""||*listen=="auto"{
+   port:=*initialPort;if config!=nil{port=config.Port};lan.address=net.JoinHostPort(host,fmt.Sprint(port))
+  }else if config!=nil{_,port,_:=net.SplitHostPort(lan.address);if port!=fmt.Sprint(config.Port){log.Fatal("explicit listener conflicts with saved port")}}
   *listen=lan.address
+  if config==nil{_,port,_:=net.SplitHostPort(*listen);n:=0;fmt.Sscan(port,&n);mode:="none";if lan.passwordEnabled{mode="legacy"};config=&panelConfig{Version:1,Port:n,AuthMode:mode}}
+  if config.AuthMode=="legacy"&&!lan.passwordEnabled{log.Fatal("legacy password file required")}
+  lan.panel.Store(config)
  }else{
   if *passwordFile!=""||*proxyOrigin!=""{log.Fatal("password-file and proxy-origin require -lan")}
-  if *listen==""{*listen="127.0.0.1:18081"}
+  if *listen==""{*listen=fmt.Sprintf("127.0.0.1:%d",*initialPort)}
   if err:=validateBind(*listen);err!=nil{log.Fatal(err)}
  }
  script,err:=assets.ReadFile("scripts/mihomo-doctor.sh");if err!=nil{log.Fatal(err)}
@@ -196,6 +213,7 @@ func main(){
  app:=newApp(*listen,script)
  app.importer=importer
  app.lan=lan
+ app.settingsPath=*settingsFile
  if *providerSecretFile!="" && !*providerExport { log.Fatal("provider secret file requires provider names export") }
  if *providerExport {
   exporter,err:=newProviderNamesExporter(*listen,*providerSecretFile)
@@ -208,14 +226,15 @@ func main(){
   app.proxyOrigin=*proxyOrigin
   app.proxyHost=host
  }
- srv:=&http.Server{Addr:*listen,Handler:app.handler(),ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:100*time.Second,IdleTimeout:30*time.Second,MaxHeaderBytes:8192}
+ listener,err:=net.Listen("tcp",*listen)
+ if err!=nil{log.Fatalf("PORT_BIND_FAILED: panel address %s is unavailable; choose another panel port (other services unchanged)",*listen)}
+ app.listeners=newPanelListeners(app)
+ app.listeners.replace(listener)
  if lan!=nil {fmt.Println(lan.describe())}else{fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)}
- runErrors:=make(chan error,1)
- go func(){runErrors<-srv.ListenAndServe()}()
  signals:=make(chan os.Signal,1)
  signal.Notify(signals,os.Interrupt,syscall.SIGTERM)
  select {
- case err:=<-runErrors:
+ case err:=<-app.listeners.errors:
   if err!=nil && !errors.Is(err,http.ErrServerClosed){log.Fatal(err)}
   return
  case <-signals:
@@ -230,6 +249,6 @@ func main(){
  }
  ctx,cancel:=context.WithTimeout(context.Background(),5*time.Second)
  defer cancel()
- if err:=srv.Shutdown(ctx);err!=nil{log.Printf("shutdown error: %v",err)}
+ if err:=app.listeners.shutdown(ctx);err!=nil{log.Printf("shutdown error: %v",err)}
 
 }
