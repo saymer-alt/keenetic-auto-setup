@@ -10,5 +10,17 @@
 <section><h2 id="providers-heading"></h2><p id="providers-help"></p>
 <button id="providers-download" type="button"></button><p id="providers-state" role="status" aria-live="polite"></p>
 </section>
+<section id="filter-editor">
+<h2 id="filter-heading"></h2><p id="filter-help"></p>
+<button id="filter-load" type="button"></button>
+<label id="filter-provider-label" for="filter-provider"></label>
+<select id="filter-provider" disabled></select>
+<p id="filter-existing"></p><div id="filter-node-list" role="group" aria-label="Available Mihomo node names"></div>
+<p id="filter-hint"></p>
+<button id="filter-preview" type="button" disabled></button>
+<button id="filter-clear" type="button" disabled></button>
+<p id="filter-state" role="status" aria-live="polite"></p>
+<pre id="filter-result"></pre>
+</section>
 <section><h2 id="doctor-heading"></h2><p id="doctor-help"></p><button id="run" type="button"></button> <button id="copy" type="button" disabled></button><p id="doctor-state" role="status" aria-live="polite"></p><details><summary id="details-label"></summary><pre id="output"></pre></details></section>
 <footer><p id="footer"></p></footer></main><script src="/app.js" defer></script></body></html>
