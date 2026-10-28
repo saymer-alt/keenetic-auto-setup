@@ -42,16 +42,27 @@ stop_service() {
     fi
     service_pid=$(pid_value) || deny 'invalid pid file; inspect manually'
     if ! alive "$service_pid"; then rm -f "$PID"; return 0; fi
-    identity "$service_pid" || deny 'pid identity unverified; refusing signal'
-    kill -TERM "$service_pid" || deny 'cannot send TERM'
+    if ! identity "$service_pid"; then
+        if ! alive "$service_pid"; then rm -f "$PID"; return 0; fi
+        deny 'pid identity unverified; refusing signal'
+    fi
+    if ! kill -TERM "$service_pid"; then
+        if ! alive "$service_pid"; then rm -f "$PID"; return 0; fi
+        deny 'cannot send TERM'
+    fi
     n=0
     while alive "$service_pid"; do
         # A zombie has exited and cannot retain an importer transaction.
         if [ -r "/proc/$service_pid/stat" ]; then
-            state=$(sed 's/.*) //' "/proc/$service_pid/stat" | cut -d ' ' -f 1)
+            state=$(sed 's/.*) //' "/proc/$service_pid/stat" 2>/dev/null | cut -d ' ' -f 1)
             [ "$state" != Z ] || break
         fi
-        identity "$service_pid" || deny 'pid identity changed while draining'
+        if ! identity "$service_pid"; then
+            # The verified process may exit after kill-0 but before this check.
+            # A still-live replacement PID remains a refusal; never signal it.
+            alive "$service_pid" && deny 'pid identity changed while draining'
+            break
+        fi
         [ "$n" -lt 60 ] || deny 'still draining; no force kill; retry later'
         sleep 1
         n=$((n+1))
@@ -81,6 +92,12 @@ filter_startup_log() {
                 fi;;
         esac
     done
+}
+read_startup_pipe() {
+    # Permanent redirection BEFORE FIFO open: shell function redirections alone
+    # retain saved caller stdout/stderr FDs for restoration until the reader exits.
+    exec >/dev/null 2>&1
+    filter_startup_log "$1" < "$2"
 }
 start_service() {
     [ -f "$BIN" ] && [ -x "$BIN" ] && [ ! -L "$BIN" ] || deny 'unsafe binary'
@@ -118,7 +135,7 @@ start_service() {
     [ ! -e "$fifo" ] && [ ! -L "$fifo" ] || deny 'startup pipe collision'
     mkfifo "$fifo" || deny 'cannot create startup pipe'
     # Do not retain the caller's captured stdout/stderr after init exits.
-    filter_startup_log "$STARTUP" < "$fifo" >/dev/null 2>&1 &
+    read_startup_pipe "$STARTUP" "$fifo" &
     "$BIN" "$@" </dev/null >"$fifo" 2>&1 &
     service_pid=$!
     printf '%s\n' "$service_pid" > "$PID"
@@ -128,7 +145,7 @@ start_service() {
         if ! alive "$service_pid"; then
             rm -f "$PID"
         elif [ -r "/proc/$service_pid/stat" ]; then
-            state=$(sed 's/.*) //' "/proc/$service_pid/stat" | cut -d ' ' -f 1)
+            state=$(sed 's/.*) //' "/proc/$service_pid/stat" 2>/dev/null | cut -d ' ' -f 1)
             [ "$state" != Z ] || rm -f "$PID"
         fi
         if grep -q '^PORT_BIND_FAILED:' "$STARTUP"; then
