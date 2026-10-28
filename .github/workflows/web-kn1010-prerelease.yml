@@ -3,7 +3,7 @@ name: Publish KN-1010 Web test bundle
 on:
   push:
     branches:
-      - feat/kas-web-exclude-filter-apply
+      - publish/kas-web-kn1010-ui-66ab147
     paths:
       - '.github/workflows/web-kn1010-prerelease.yml'
 
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: kas-web-kn1010-sstp-58ff21d-publication
+  group: kas-web-kn1010-ui-66ab147-publication
   cancel-in-progress: false
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      SOURCE_SHA: 58ff21d2f60383c43f8bd637548de817464410b6
-      TAG: kas-web-kn1010-sstp-58ff21d
-      ARCHIVE: kas-web-kn1010-sstp-58ff21d.tar.gz
+      SOURCE_SHA: 66ab147bb6c1526f7317239b0543968b8ea6623f
+      TAG: kas-web-kn1010-ui-66ab147
+      ARCHIVE: kas-web-kn1010-ui-66ab147.tar.gz
     steps:
       - name: Retrieve the already tested artifact (no rebuild)
         run: |
           set -euo pipefail
-          test "$(gh api repos/$GH_REPO/actions/runs/40691209145 --jq '.head_sha')" = "$SOURCE_SHA"
-          test "$(gh api repos/$GH_REPO/actions/runs/40691209145 --jq '.conclusion')" = success
-          gh run download 40691209145 --name "kas-web-kn1010-$SOURCE_SHA" --dir bundle
+          test "$(gh api repos/$GH_REPO/actions/runs/40697645736 --jq '.head_sha')" = "$SOURCE_SHA"
+          test "$(gh api repos/$GH_REPO/actions/runs/40697645736 --jq '.conclusion')" = success
+          gh run download 40697645736 --name "kas-web-kn1010-$SOURCE_SHA" --dir bundle
           cd bundle
           sha256sum -c SHA256SUMS
           grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA" BUILD_INFO
@@ -55,13 +55,15 @@ jobs:
           fi
           cat > release-notes.md <<'NOTES'
           Тестовый комплект KAS Web для Keenetic KN-1010 (MIPSel softfloat).
+          Две кнопки фильтра: Исключить выбранные и Снять фильтр, с подтверждением без отдельного шага применения.
+          Исправлено определение установленного magitrickled; индикация остаётся проверкой наличия файла.
           Home-only ограничение выключено по умолчанию: доступ из SSTP/L2TP и других подсетей определяется firewall/маршрутами KeeneticOS.
           Ограничение можно включить в панели; настройка сохраняется. Слушатель остаётся на адресе Home, без wildcard/WAN-привязки.
-          Исходная ревизия: 58ff21d2f60383c43f8bd637548de817464410b6, Draft PR #263.
-          Комплект перенесён из успешного Actions artifact 40691209145 без пересборки.
+          Исходная ревизия: 66ab147bb6c1526f7317239b0543968b8ea6623f, Draft PR #263.
+          Комплект перенесён из успешного Actions artifact 40697645736 без пересборки.
           Архив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.
           Это аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.
           Тег указывает на коммит публикации; исходная ревизия бинарника отдельно закреплена выше и в BUILD_INFO.
           main/stable не изменяются; автоматической установки нет.
           NOTES
-          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --latest=false --title "KAS Web: KN-1010 SSTP test 58ff21d" --notes-file release-notes.md "$ARCHIVE" "$ARCHIVE.sha256"
+          gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --latest=false --title "KAS Web: KN-1010 UI test 66ab147" --notes-file release-notes.md "$ARCHIVE" "$ARCHIVE.sha256"
