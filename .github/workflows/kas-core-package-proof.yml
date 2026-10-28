@@ -1,0 +1,45 @@
+name: KAS core package qualification (offline roots only)
+
+on:
+  push:
+    branches: ['feat/kas-core-ipk']
+  pull_request:
+    paths:
+      - 'packaging/core/**'
+      - 'tests/test_core_ipk.py'
+      - 'web/control-center/packaging/build-ipk.py'
+      - '*.sh'
+      - 'S00ubifs'
+      - '.github/workflows/kas-core-package-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-opkg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Verify official Entware opkg
+        run: |
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+      - name: Qualify raw opkg semantics and protected script bundle
+        env:
+          KAS_TEST_OPKG: ${{ runner.temp }}/entware-opkg
+        run: |
+          sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" \
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" \
+            python3 tests/test_core_ipk.py -v
+          sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" python3 tests/test_ipk.py -v
+          for file in packaging/core/*.sh ./*.sh ./S00ubifs; do
+            sh -n "$file"
+            dash -n "$file"
+          done
+          git diff --exit-code
