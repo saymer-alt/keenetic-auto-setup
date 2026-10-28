@@ -129,6 +129,8 @@ start_ui() {
     # Optional local-only password lives in a user-owned 0600 config file.
     password_file="$ROOT/etc/kas-control-center.password"
     proxy_file="$ROOT/etc/kas-control-center.proxy-origin"
+    names_export_file="$ROOT/etc/kas-control-center.export-names"
+    api_secret_file="$ROOT/etc/kas-control-center.mihomo-api-secret"
     set -- -lan -listen auto -lan-interface br0
     if [ -e "$password_file" ] || [ -L "$password_file" ]; then
         set -- "$@" -password-file "$password_file"
@@ -137,6 +139,16 @@ start_ui() {
         [ -f "$proxy_file" ] && [ ! -L "$proxy_file" ] || deny "unsafe optional proxy origin file"
         proxy_origin=$(cat "$proxy_file") || deny "cannot read proxy origin"
         set -- "$@" -proxy-origin "$proxy_origin"
+    fi
+    # Export is explicitly opt-in: the user creates a regular local flag
+    # file. A secret, if configured, stays in a 0600 file and never in argv.
+    if [ -e "$names_export_file" ] || [ -L "$names_export_file" ]; then
+        [ -f "$names_export_file" ] && [ ! -L "$names_export_file" ] || deny "unsafe provider export flag"
+        set -- "$@" -provider-names-export
+        if [ -e "$api_secret_file" ] || [ -L "$api_secret_file" ]; then
+            [ -f "$api_secret_file" ] && [ ! -L "$api_secret_file" ] || deny "unsafe Mihomo API secret file"
+            set -- "$@" -provider-secret-file "$api_secret_file"
+        fi
     fi
     "$BIN" "$@" </dev/null >/dev/null 2>&1 &
     child=$!

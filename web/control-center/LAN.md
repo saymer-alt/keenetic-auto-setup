@@ -36,3 +36,16 @@ The service then accepts the exact proxy hostname + HTTPS Origin pair (no generi
 - Stage 4 LAN configuration and reverse-proxy Host/Origin tests require CI. Real router Home bridge and guest isolation need field acceptance before merging.
 - A private/grey ISP address is NOT itself a firewall or protection if explicit proxy or router-port publication is enabled. Review WAN, guest/IoT/VPN, and proxy authentication separately. Never publish unauthenticated KAS YAML management to the public Internet.
 - Manual installed-service opt-in remains separate from core KAS. No modifications to main/stable or actual router without approval.
+## Optional provider names export for Mihomo Unified Generator (experimental)
+
+The **subscription server list** can be read from an already running Mihomo without browser CORS or HTTPS Pages → HTTP Mixed Content. This is a **different project feature** from the existing #322 manual fallback in link-generators. It does not fetch subscriptions and does not fix browser subscription-preview connectivity.
+
+This export is **disabled by default**. To opt in on a disposable test router, create a regular local flag file `/opt/etc/kas-control-center.export-names` (e.g. `touch ... && chmod 600 ...`) and restart the KAS Web service using the normal service helper. Export is read-only: an explicit click requests GET `/api/providers/names` from KAS, which asks only `127.0.0.1:9090` or the router's **own Home IPv4** on TCP/9090 for `GET /providers/proxies`. No arbitrary URL or cross-network proxy support, no mutations and no subscriptions fetched remotely.
+
+If the existing Mihomo API uses a nonempty `secret`, an administrator may separately create a private regular 0600 file `/opt/etc/kas-control-center.mihomo-api-secret` containing it. The file is read only at KAS Web startup; the secret does not appear in command-line arguments, UI, downloaded JSON, JS storage, or public logs. If no file exists, export requests are made unauthenticated; 401/403 is a failure, not an invitation to weaken the API. The original Mihomo config and API secret are never modified.
+
+The exported `mihomo-providers-names.json` intentionally contains only provider names, optional `vehicleType`, and proxy `name` fields (shape `{ "providers": {"Provider": {"proxies": [{"name":"Node"}]}}}`). It strips server addresses, ports, UUIDs, passwords, latency history and API metadata. **Names may still contain sensitive labels:** do not post the file publicly. The output is bounded in size and always marked `Cache-Control: no-store`.
+
+In [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/) open Mihomo Builder → Routing/DNS → Show subscription servers → Import nodes from running Mihomo → **Upload .json**, then select exclusions. Generator #322/#323 provides a manual fallback; this Web feature is an optional additional offline-JSON path and does not install or modify the generator.
+
+For field acceptance: first confirm normal KAS Web Home-LAN and KeenDNS security with export **off**. Only then enable export, test an existing controller bound to localhost **or** own Home IPv4, optional nonempty secret, node-name Unicode/duplicates, read-only contract, untrusted Guest/WAN denial, reboot and memory. If a source is unavailable, return a clear error rather than scanning the LAN or modifying Mihomo settings.

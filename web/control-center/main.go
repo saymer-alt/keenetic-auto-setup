@@ -51,6 +51,7 @@ type app struct {
  last time.Time
  runDoctor func(context.Context, []byte)(string,int,error)
  runImport func([]byte,string)(int,error)
+ providers *providerNamesExporter
 }
 func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
 func validateBind(address string) error {
@@ -146,6 +147,7 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/doctor",a.handleDoctor)
  mux.HandleFunc("/api/config/import",a.handleImport)
  mux.HandleFunc("/api/config/operation",a.handleImportStatus)
+ mux.HandleFunc("/api/providers/names",a.handleProviderNames)
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Host!=a.host && (a.proxyHost==""||r.Host!=a.proxyHost){http.Error(w,"invalid host",http.StatusForbidden);return}
   if a.lan!=nil && !a.lan.allowed(w,r,a.proxyHost){return}
@@ -161,6 +163,8 @@ func main(){
  lanInterface:=flag.String("lan-interface","br0","Home LAN bridge (currently br0 only)")
  passwordFile:=flag.String("password-file","","optional private file with KAS panel password")
  proxyOrigin:=flag.String("proxy-origin","","optional existing KeenDNS HTTPS URL allowed via router reverse proxy")
+ providerExport:=flag.Bool("provider-names-export",false,"enable explicit read-only local Mihomo names export")
+ providerSecretFile:=flag.String("provider-secret-file","","optional 0600 file with local Mihomo API secret; requires export")
  flag.Parse()
  var lan *homeLAN
  if *lanMode {
@@ -178,6 +182,12 @@ func main(){
  app:=newApp(*listen,script)
  app.importer=importer
  app.lan=lan
+ if *providerSecretFile!="" && !*providerExport { log.Fatal("provider secret file requires provider names export") }
+ if *providerExport {
+  exporter,err:=newProviderNamesExporter(*listen,*providerSecretFile)
+  if err!=nil{log.Fatal(err)}
+  app.providers=exporter
+ }
  if *proxyOrigin!=""{
   host,err:=validateProxyOrigin(*proxyOrigin)
   if err!=nil{log.Fatal(err)}
