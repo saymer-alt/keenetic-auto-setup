@@ -7,6 +7,8 @@ on:
     paths:
       - 'packaging/core/**'
       - 'tests/test_core_ipk.py'
+      - 'tests/test_core_preflight.py'
+      - 'tests/watchdog-package-regression.py'
       - 'web/control-center/packaging/build-ipk.py'
       - '*.sh'
       - 'S00ubifs'
@@ -24,12 +26,17 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Install BusyBox for target-shell regression
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
       - name: Verify official Entware opkg
         run: |
           curl --fail --location --connect-timeout 15 --max-time 60 \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
+          sudo chown 0:0 "$RUNNER_TEMP/entware-opkg"
       - name: Qualify raw opkg semantics and protected script bundle
         env:
           KAS_TEST_OPKG: ${{ runner.temp }}/entware-opkg
@@ -38,6 +45,14 @@ jobs:
             GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" \
             python3 tests/test_core_ipk.py -v
           sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" python3 tests/test_ipk.py -v
+          sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" \
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" \
+            python3 tests/test_core_preflight.py -v
+          for shell in sh dash 'busybox ash'; do
+            sudo env KAS_REQUIRE_NATIVE_PROC=1 KAS_WATCHDOG_TEST_SHELL="$shell" \
+              python3 tests/watchdog-package-regression.py -v
+          done
+          python3 tests/download-regression.py
           for file in packaging/core/*.sh ./*.sh ./S00ubifs; do
             sh -n "$file"
             dash -n "$file"

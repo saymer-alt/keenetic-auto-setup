@@ -98,14 +98,71 @@ host root or launch any bundled installer/service. CI pins the same binary hash.
 
 ## Limits and next gates
 
-- No canonical-file adoption or automatic watchdog activation yet.
+- No automatic canonical-file adoption or package-hook watchdog activation yet.
 - No UI dependency or runtime switch from embedded scripts yet.
 - No component update buttons or release-manifest protocol yet.
 - No inference that an unrecognized SHA is older or safe to overwrite.
 - No router/guest boot evidence from these host offline-root tests.
 - No claim that current native Web stages boot the new panel IPK; they do not.
 
-Next: prove guarded adoption and transactional activation/recovery, including
-interrupted package configuration and concurrent maintenance. Then install the
+Next: integrate the guarded activation primitive with a recognized-release
+baseline catalogue and package activation state/recovery policy. Then install the
 actual IPK in disposable guest firmware, reboot and verify auth/port persistence.
 The panel/core/full package integration follows only after those gates.
+
+## Next proof: pre-opkg launch and guarded watchdog activation
+
+`lab-opkg.sh ROOT VERIFIED_OPKG install ABSOLUTE_IPK` (or `remove kas-core`)
+checks the canonical offline root, database, temporary paths, root ownership and
+write permissions **before** starting opkg. It rejects root aliases, symlinks,
+unexpected arguments and a binary differing from the pinned official host opkg.
+A private per-root lock prevents overlapping cooperative lab launches; stale locks
+require inspection. Inherited package-hook root variables are removed. Arguments
+cannot select a different destination or force overwrites.
+
+This launcher accepts **trusted project-built lab packages only**. It is not an OS
+sandbox: package maintainer hooks run as root and must be reviewed. It is host
+qualification tooling, not an Entware router entry point. Raw-opkg tests remain
+separate to demonstrate why hooks alone cannot prevent database redirection.
+
+The canonical `update-watchdog.sh` now has an opt-in local input:
+
+```text
+sh update-watchdog.sh --package-candidate FILE CANDIDATE_SHA INSTALLED_SHA
+```
+
+This does not download or execute the candidate. Under the existing lifecycle
+lock it validates a root-owned local source, pinned candidate digest, caller-known
+installed digest, executable canonical watchdog, exact cron wrapper and a single
+canonical direct schedule. Unknown/run-parts/legacy/duplicate cron layouts are
+refused without migration; use the explicit existing migration/update path first.
+Ordinary updater network sources and fallback behavior remain available unchanged.
+
+A SHA is not an age or authenticity assertion. The caller must recognize the old
+file and trust the candidate through an approved package/release manifest. This
+proof adds the guarded activation primitive; it does not yet implement that
+release-baseline catalogue, general adoption, or automatic postinst activation.
+
+The local mode creates exclusive private input/target stages and a verified
+same-filesystem recovery copy. It never copies through preexisting stage symlinks.
+The installed digest is rechecked immediately before atomic rename. During the
+pending commit, controlled failures or handled INT/TERM/HUP restore and verify the
+old canonical watchdog. Repeated handled signals are ignored during recovery.
+On recovery failure, a private backup is retained and recovery is **not** reported
+as successful. Stale recovery copies block subsequent package activation until
+inspected. Uncooperative external writers are not covered by the shared lock; an
+unrecognized output is preserved rather than blindly overwritten on recovery.
+
+SIGKILL, power loss and persistence after storage failure are not solved by shell
+traps. Reboot/recovery policy, package-version activation records and full firmware
+acceptance remain separate gates. No new cron entry, watchdog execution, Mihomo
+restart, or router-setting change is performed by this local activation mode.
+
+Tests run the full updater with `/opt` and `/tmp` redirected to temporary fixtures.
+Faults cover checksum mismatch, stale baseline, foreign/duplicate cron, concurrent
+maintenance, staging failure, failure after rename, handled signals, stage/input/
+backup aliases and restoration failure. Where the local executor's PID namespace
+does not match mounted `/proc`, fixtures explicitly seed the updater's existing
+identity cache with the actual host process identity. This is disclosed fixture
+adaptation, not native identity evidence. CI requires native PID/proc identity and
+runs the suite on sh, dash and BusyBox ash without this adaptation.
