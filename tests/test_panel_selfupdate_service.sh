@@ -80,6 +80,10 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var/run /opt/tmp "$LAB/opkg-tmp" "$LAB/serve"
+# The runner image may ship a world-writable /opt/lib; the panel refuses
+# group/world-writable inventory parents by design, so normalize the tree to
+# the Entware layout this fixture models.
+chmod 755 /opt /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var/run /opt/tmp
 printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > "$LAB/opkg.conf"
 # The worker runs plain `opkg install` without -f; mirror the router feed file.
 printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > /etc/opkg.conf
