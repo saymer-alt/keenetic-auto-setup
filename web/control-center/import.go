@@ -91,11 +91,15 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
   respondImport(w,http.StatusServiceUnavailable,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"IMPORTER_UNAVAILABLE"});return
  }
  if r.ContentLength>maxYAMLBytes{
+  // Drain a bounded amount so the client can actually receive FILE_TOO_LARGE
+  // instead of a connection reset while it is still uploading the body.
+  _,_=io.Copy(io.Discard,io.LimitReader(r.Body,8*maxYAMLBytes))
   respondImport(w,http.StatusRequestEntityTooLarge,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"FILE_TOO_LARGE"});return
  }
  r.Body=http.MaxBytesReader(w,r.Body,maxYAMLBytes+1)
  body,err:=io.ReadAll(r.Body)
  if err!=nil||len(body)>maxYAMLBytes{
+  _,_=io.Copy(io.Discard,io.LimitReader(r.Body,8*maxYAMLBytes))
   respondImport(w,http.StatusRequestEntityTooLarge,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"FILE_TOO_LARGE"});return
  }
  if !validYAMLBody(body){
