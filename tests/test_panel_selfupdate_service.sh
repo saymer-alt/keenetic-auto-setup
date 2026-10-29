@@ -247,8 +247,18 @@ def poll_operation(state, timeout=150):
         try:
             last = operation()
         except (urllib.error.URLError, OSError):
-            # The daemon is legitimately down between preinst stop and start.
+            # The daemon is legitimately down between preinst stop and start;
+            # the private state file is the documented source of truth then.
             last = None
+            job_path = update_dir / 'job.json'
+            if job_path.exists():
+                try:
+                    job = json.loads(job_path.read_text())
+                    last = {'ID': job.get('id'), 'State': job.get('state'),
+                            'Phase': job.get('phase'), 'ErrorCode': job.get('error_code'),
+                            'Gate': (update_dir / 'gate').exists()}
+                except ValueError:
+                    last = None
         if isinstance(last, dict) and last.get('State') == state:
             return last
         time.sleep(1)
