@@ -154,4 +154,3 @@ func TestPasswordFilePolicy(t *testing.T){
  if err:=os.WriteFile(p,[]byte("short"),0600);err!=nil{t.Fatal(err)}
  if err:=(&homeLAN{}).loadOptionalPassword(p);err==nil{t.Fatal("accepted too-short password")}
 }
-
