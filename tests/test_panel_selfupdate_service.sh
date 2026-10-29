@@ -379,7 +379,7 @@ try:
     probe = run(['go', 'test', '-count=1', '-run', '^TestPanelLabInventoryProbe$', '-v', '.'],
                 cwd=repo + '/web/control-center', env={**os.environ, 'KAS_LAB_PROBE': '1'})
     for line in probe.stdout.splitlines():
-        if 'inventory ' in line or 'installed:' in line or 'integrity ' in line:
+        if line.strip() and ('panel_update_labprobe_test.go' in line or line.startswith('---') or 'PASS' in line or 'FAIL' in line):
             print('LAB-PROBE', line.strip(), flush=True)
     require(final.get('ErrorCode') == 'PANEL_DOWNLOAD_FAILED', f'expected download failure, got {final}')
     require(final.get('Gate') is False, 'download failure retained the gate')
