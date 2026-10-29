@@ -1,0 +1,73 @@
+name: Publish optional KAS panel IPK prerelease
+on:
+  push:
+    branches: ['publish/kas-web-ipk-77ac40e']
+    paths: ['.github/workflows/web-ipk-prerelease.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: kas-web-ipk-77ac40e-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: saymer-alt/keenetic-auto-setup
+      SOURCE_SHA: 77ac40efcc4ffd84de5ead5b44f33c62c87e0a57
+      PACKAGE_RUN: '40882006271'
+      TAG: kas-web-ipk-77ac40e
+    steps:
+      - name: Wait for exact-source acceptance checks
+        run: |
+          set -euo pipefail
+          for run_id in 40882006217 40882006271 40882006935 40882006125 40882006387 40882007278 40882007088; do
+            test "$(gh run view "$run_id" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+            gh run watch "$run_id" --exit-status --interval 15
+          done
+      - name: Download verified source-pinned IPKs
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            gh run download "$PACKAGE_RUN" --name "kas-control-center-ipk-$arch-$SOURCE_SHA" --dir "download-$arch"
+            (cd "download-$arch" && sha256sum -c SHA256SUMS)
+            test "$(find "download-$arch" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
+            cp "download-$arch/"*.ipk packages/
+            ipk=$(find "download-$arch" -maxdepth 1 -name '*.ipk')
+            tar xOzf "$ipk" ./data.tar.gz | tar xOz opt/share/kas-control-center/BUILD_INFO | grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA"
+          done
+          cd packages
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create non-latest experimental release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing prerelease" >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Экспериментальная KAS Web 0.0.1~test15.77ac40efcc4f-1.
+
+          Новое в test15: после ручного запуска Doctor в «Диагностике» показана RU/EN сводка того же отчёта — модель/KeeneticOS, тип хранилища /opt, filesystem/source, свободное/общее место /opt и /tmp, RAM/подкачка, процессы и история watchdog. Переключение языка не запускает новые проверки. Полный технический отчёт и копирование сохранены.
+
+          Это сведения последнего Doctor, не отдельный live-монитор. Неизвестные версии/неполный или противоречивый отчёт не объявляются здоровыми. WARN/FAIL сохраняются с локализованной категорией и раскрываемыми техническими сведениями. Не все английские сообщения переведены; отсутствие подкачки пока может отображаться как «Не удалось определить». Сводка не диагностирует причину недоступности каждого сайта и не определяет стабильность провайдера.
+
+          Исправлена залипшая плашка импорта: активная операция видна во всех вкладках, свежий завершённый результат — только во вкладке её запуска; добавлена кнопка закрытия. Завершённая операция, полученная при перезагрузке страницы, не создаёт новое глобальное уведомление. Сам результат сохраняется в соответствующих блоках.
+
+          Сохранены изменения test13: редактор фильтра доступен при штатном запуске IPK без старого export-names; ссылка на интерфейс роутера; Doctor 1.2.19 с исправленным выбором пакета Mihomo. Применение фильтра по-прежнему через подтверждение и штатный импортёр; возможен краткий перезапуск Mihomo.
+
+          Публикация разрешена только после успеха всех семи проверок точного SOURCE_SHA. IPK скопированы из сборки 40882006271 без пересборки. Локально 63 Node, Go/vet и 9 IPK PASS; независимое ревью выполнено, найденный пропуск preamble-warning исправлен с RED→GREEN тестом. Лабораторные результаты не заменяют аппаратную приёмку test15.
+
+          Обновление самой панели из Web (#273), дальнейшие сведения о панели в shell Doctor (#274), подробные рекомендации и новые диагностические инструменты (#270) ещё не реализованы. История старых пакетов и автоматический откат версий не включены.
+
+          Можно обновить test13 обычным opkg install, затем явно запустить S98kas-control-center start и обновить страницу Ctrl+F5. Настройки панели сохраняются. Только необязательная панель, без лабораторного kas-core; main/stable/latest не изменяются.
+
+          Исходники: 77ac40efcc4ffd84de5ead5b44f33c62c87e0a57. Тег указывает на коммит публикации; BUILD_INFO фиксирует проверенные исходники.
+          Изменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/276 и https://github.com/saymer-alt/keenetic-auto-setup/pull/277
+          Инструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/77ac40efcc4ffd84de5ead5b44f33c62c87e0a57/web/control-center/DOCTOR_REPORT.md
+          NOTES
+          gh release create "$TAG" packages/*.ipk packages/SHA256SUMS --target "$GITHUB_SHA" --title "KAS Web test15: readable Doctor overview and import notices (77ac40e)" --notes-file release-notes.md --prerelease --latest=false
