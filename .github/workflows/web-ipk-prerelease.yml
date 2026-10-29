@@ -1,0 +1,66 @@
+name: Publish optional KAS panel IPK prerelease
+on:
+  push:
+    branches: ['publish/kas-web-ipk-894a524']
+    paths: ['.github/workflows/web-ipk-prerelease.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: kas-web-ipk-894a524-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: saymer-alt/keenetic-auto-setup
+      SOURCE_SHA: 894a5248d53d983c5d66e8ea7bcce5b9a2f10e23
+      PACKAGE_RUN: '40756647892'
+      TAG: kas-web-ipk-894a524
+    steps:
+      - name: Wait for exact-source acceptance checks
+        run: |
+          set -euo pipefail
+          for run_id in 40756648899 40756648932 40756648632 40756648658 40756647888 40756647943 40756647910 40756647892 40756639986; do
+            test "$(gh run view "$run_id" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+            gh run watch "$run_id" --exit-status --interval 15
+          done
+      - name: Download verified source-pinned IPKs
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            gh run download "$PACKAGE_RUN" --name "kas-control-center-ipk-$arch-$SOURCE_SHA" --dir "download-$arch"
+            (cd "download-$arch" && sha256sum -c SHA256SUMS)
+            test "$(find "download-$arch" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
+            cp "download-$arch/"*.ipk packages/
+            ipk=$(find "download-$arch" -maxdepth 1 -name '*.ipk')
+            tar xOzf "$ipk" ./data.tar.gz | tar xOz opt/share/kas-control-center/BUILD_INFO | grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA"
+          done
+          cd packages
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create non-latest experimental release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing prerelease" >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Optional experimental KAS Control Center IPKs: tabbed UI, authentication settings, configurable port, compiled panel version and read-only component inventory. Includes a project GitHub link.
+
+          Fresh IPK installations default to port8081. Authentication and Home-only restriction are optional/off by default. Entware mode verifies the existing root password without storing or changing it. A separate panel password uses login kas.
+
+          Install only by choice on a test device. Existing manual panel installations must be removed by their original helper before IPK installation; preserve/save the desired old port first. The package refuses foreign/manual files. Start the panel explicitly after install/update; no KAS auto-install. User settings and KAS core are preserved on package removal.
+
+          Source: 894a5248d53d983c5d66e8ea7bcce5b9a2f10e23. The release tag points at the publication workflow commit; each package BUILD_INFO records the tested binary source. CI checks include real Entware opkg offline-root transactions, Go/race/Node, ARM64/MIPSel CPU emulation and existing native KeeneticOS importer/filter/lifecycle checks. These do not constitute physical acceptance of these IPKs on every architecture.
+
+          This release contains ONLY the optional panel, not the laboratory kas-core package. Existing KAS script installations may show the core bundle as absent and watchdog as unrecorded; this does not mean their services are stopped. Doctor command-completion wording remains unchanged.
+
+          Instructions: https://github.com/saymer-alt/keenetic-auto-setup/blob/894a5248d53d983c5d66e8ea7bcce5b9a2f10e23/web/control-center/packaging/README.md
+          Review: https://github.com/saymer-alt/keenetic-auto-setup/pull/267
+          NOTES
+          gh release create "$TAG" packages/*.ipk packages/SHA256SUMS --target "$GITHUB_SHA" --title "KAS Web: optional experimental IPKs (894a524)" --notes-file release-notes.md --prerelease --latest=false
