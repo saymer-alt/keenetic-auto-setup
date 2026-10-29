@@ -1,0 +1,70 @@
+name: Publish optional KAS panel IPK prerelease
+on:
+  push:
+    branches: ['publish/kas-web-ipk-08ae70e']
+    paths: ['.github/workflows/web-ipk-prerelease.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: kas-web-ipk-08ae70e-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: saymer-alt/keenetic-auto-setup
+      SOURCE_SHA: 08ae70e37291d90c3807b2ac231c7a9e87fd1372
+      PACKAGE_RUN: '40838236999'
+      TAG: kas-web-ipk-08ae70e
+    steps:
+      - name: Wait for exact-source acceptance checks
+        run: |
+          set -euo pipefail
+          for run_id in 40838237803 40838237024 40838236985 40838236984 40838236999 40838237726 40838237718; do
+            test "$(gh run view "$run_id" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+            gh run watch "$run_id" --exit-status --interval 15
+          done
+      - name: Download verified source-pinned IPKs
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            gh run download "$PACKAGE_RUN" --name "kas-control-center-ipk-$arch-$SOURCE_SHA" --dir "download-$arch"
+            (cd "download-$arch" && sha256sum -c SHA256SUMS)
+            test "$(find "download-$arch" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
+            cp "download-$arch/"*.ipk packages/
+            ipk=$(find "download-$arch" -maxdepth 1 -name '*.ipk')
+            tar xOzf "$ipk" ./data.tar.gz | tar xOz opt/share/kas-control-center/BUILD_INFO | grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA"
+          done
+          cd packages
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create non-latest experimental release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing prerelease" >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Экспериментальная KAS Web 0.0.1~test9.08ae70e37291-1: ручная проверка обновлений Mihomo и запуск штатного update-mihomo.sh после подтверждения в панели. Автоматических проверок и обновлений нет.
+
+          Обновление панели устанавливается через opkg поверх предыдущего IPK. Сохранённые настройки панели сохраняются. После установки запустите панель явно: sh /opt/etc/init.d/S98kas-control-center start. Порт новой установки — 8081. Этот релиз содержит только необязательную панель, без лабораторного kas-core.
+
+          Проверка обновлений обращается к фиксированному каналу saymer-alt/entware-go:latest. Применение использует встроенную точную копию штатного скрипта без произвольных команд, URL и аргументов. Скрипт сохраняет штатные блокировки, правило одного Mihomo, проверку конфигурации и восстановление при предусмотренных ошибках. Закрытие браузера не останавливает операцию. Во время обновления Mihomo может временно остановиться; не перезагружайте роутер.
+
+          В интерфейсе различаются изменение бинарного файла, отсутствие изменений и неподтверждённый результат. При ошибке панель не утверждает, что восстановление прошло успешно: проверьте состояние сервиса и Doctor.
+
+          Исходники бинарного файла: 08ae70e37291d90c3807b2ac231c7a9e87fd1372. Тег релиза указывает на отдельный коммит публикации; BUILD_INFO внутри каждого пакета фиксирует проверенные исходники. Пакеты скопированы без пересборки из успешного CI. Все семь проверок этих исходников прошли: Go/race/Node, ARM64/MIPSel CPU, IPK/lifecycle и нативные KeeneticOS сценарии импорта, фильтрации и установки KAS. Новое обновление через HTTP дополнительно проверено на полном штатном скрипте в изолированных файловых сценариях: замена, отсутствие обновления, ошибка запуска с восстановлением старого бинарного файла и сервиса. Эти сценарии используют синтетические PID и не заменяют аппаратную приёмку нового обновления через Web.
+
+          Известное ограничение: метаданные релиза с активами в состоянии starter отклоняются строже, чем в штатном CLI. Обновление MagiTrickle, watchdog и самой панели через Web в этот релиз не входит.
+
+          Проверка на KN-1010: обновите только IPK панели, выполните жёсткое обновление страницы, проверьте версию test9 и кнопку «Проверить обновления». Если доступная версия Mihomo старее установленной, применение должно быть недоступно. Не требуется понижать Mihomo ради теста.
+
+          Инструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/08ae70e37291d90c3807b2ac231c7a9e87fd1372/web/control-center/packaging/README.md
+          Изменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/268
+          NOTES
+          gh release create "$TAG" packages/*.ipk packages/SHA256SUMS --target "$GITHUB_SHA" --title "KAS Web: manual Mihomo updates (08ae70e)" --notes-file release-notes.md --prerelease --latest=false
