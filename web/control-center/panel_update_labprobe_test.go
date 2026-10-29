@@ -43,10 +43,10 @@ func TestPanelLabInventoryProbe(t *testing.T) {
 		}
 	}
 	if st, e := os.Lstat(p.root + "/etc"); e == nil {
-		t.Logf("etc mode=%v uid=%d", st.Mode(), st.Uid())
+		t.Logf("etc mode=%v", st.Mode())
 	}
 	if st, e := os.Lstat(p.root + "/etc/mihomo"); e == nil {
-		t.Logf("etc/mihomo mode=%v uid=%d", st.Mode(), st.Uid())
+		t.Logf("etc/mihomo mode=%v", st.Mode())
 	} else {
 		t.Logf("etc/mihomo err=%v", e)
 	}
