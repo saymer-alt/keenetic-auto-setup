@@ -28,10 +28,18 @@ identity() {
     tr '\000' '\n' < "/proc/$1/cmdline" | grep -Fxq "$BIN"
 }
 alive() { kill -0 "$1" 2>/dev/null; }
+# A fixed internal CLI invocation execs the same binary without ever binding a
+# listener, so it must not count as a second daemon: the recovery launched from
+# this very path would otherwise refuse its own controlled restart.
+cli_mode() {
+    tr '\000' '\n' < "/proc/$1/cmdline" | grep -Eq '^-(panel-update-worker|recover-panel-update)$'
+}
 untracked() {
     for proc in /proc/[0-9]*; do
         candidate=${proc##*/}
-        identity "$candidate" && return 0
+        if identity "$candidate" && ! cli_mode "$candidate"; then
+            return 0
+        fi
     done
     return 1
 }
