@@ -525,6 +525,24 @@ try:
         print('G-DIAG init marker=', b'KAS-CONTROL-CENTER-IPK-v1' in Path('/opt/etc/init.d/S98kas-control-center').read_bytes(), flush=True)
         print('G-DIAG var-run=', sorted(os.listdir('/opt/var/run')), flush=True)
         print('G-DIAG tmp=', sorted(entry.name for entry in Path('/opt/tmp').iterdir()), flush=True)
+        lock_path = Path('/opt/tmp/opkg.lock')
+        if lock_path.exists():
+            print('G-DIAG opkg.lock mode=', oct(os.lstat(lock_path).st_mode & 0o777), flush=True)
+            try:
+                probe_lock = open(lock_path, 'a+')
+                fcntl.lockf(probe_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                print('G-DIAG opkg.lock is FREE', flush=True)
+                fcntl.lockf(probe_lock, fcntl.LOCK_UN)
+            except OSError as error:
+                print('G-DIAG opkg.lock is HELD:', error, flush=True)
+        stage_dir = Path('/opt/tmp') / '.kas-panel-update-' + final.get('ID', '')
+        candidate_ipk = stage_dir / 'candidate.ipk'
+        if candidate_ipk.exists():
+            dry = subprocess.run(['/opt/bin/opkg', '--tmp-dir', str(stage_dir), '--noaction', 'install', str(candidate_ipk)],
+                                 capture_output=True, text=True, timeout=60)
+            print('G-DIAG noaction rc=', dry.returncode, flush=True)
+            print('G-DIAG noaction stdout=', dry.stdout[-500:], flush=True)
+            print('G-DIAG noaction stderr=', dry.stderr[-500:], flush=True)
     require(final.get('ErrorCode') == 'PANEL_START_FAILED', f'unexpected start-failure result: {final}')
     require(final.get('Gate') is True, 'start failure must retain the gate')
     require('Version: 0.0.0~selftest-2' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
