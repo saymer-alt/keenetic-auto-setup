@@ -4,8 +4,9 @@ const {chromium}=require('playwright');
 const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../../..');
 const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/design-preview');fs.mkdirSync(previews,{recursive:true});
+let browser;
 (async()=>{
- const browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
+ browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'ru-RU'});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
@@ -46,6 +47,19 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
  assert.match(await page.locator('#core-version').innerText(),/proof2-1/);assert.match(await page.locator('#watchdog-version').innerText(),/совпадает/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
+ assert.equal(await page.locator('#open-mt').getAttribute('href'),'http://kas.test:8080/');
+ assert.equal(await page.locator('#open-mihomo').getAttribute('href'),'http://kas.test:9090/ui/');
+ assert.equal(await page.locator('#open-generator').getAttribute('href'),'https://saymer-alt.github.io/link-generators/');
+ for(const id of ['open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
+ await page.emulateMedia({colorScheme:'light'});await page.locator('#nav-settings').click();
+ await page.locator('#theme-mode').selectOption('dark');
+ const background=()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor);
+ assert.equal(await background(),'rgb(17, 23, 34)');
+ await page.reload();await page.locator('#nav-settings').click();await page.locator('#theme-mode').waitFor();assert.equal(await page.locator('#theme-mode').inputValue(),'dark');assert.equal(await background(),'rgb(17, 23, 34)');
+ await page.emulateMedia({colorScheme:'dark'});await page.locator('#theme-mode').selectOption('light');assert.equal(await background(),'rgb(243, 245, 249)');
+ await page.locator('#theme-mode').selectOption('auto');assert.equal(await background(),'rgb(17, 23, 34)');
+ await page.emulateMedia({colorScheme:'light'});assert.equal(await background(),'rgb(243, 245, 249)');
+ await page.locator('#nav-overview').click();
  assert.match(await page.locator('#mihomo-file').innerText(),/1\.19\.33.*API/);assert.match(await page.locator('#magitrickle-file').innerText(),/0\.8\.2-1.*пакет/);
  assert.equal(requests.filter(r=>r.path==='/api/updates/check').length,0);
  await page.locator('#update-check').click();await page.waitForFunction(()=>!document.getElementById('update-mihomo').disabled);
@@ -102,7 +116,7 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(previews,'settings-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
  await page.locator('#settings-mode').selectOption('none');assert.equal(await page.locator('#settings-password').isVisible(),false);
  settingsReadFail=true;await page.locator('#settings-reload').click();await page.waitForFunction(()=>document.getElementById('settings-state').textContent.includes('SETTINGS_READ_FAILED'));assert.equal(await page.locator('#settings-save').isDisabled(),true);
- assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key!=='kas_lang')),[]);
+ assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage).filter(key=>!['kas_lang','kas_theme'].includes(key))),[]);
  settingsReadFail=false;await page.locator('#settings-reload').click();await page.waitForFunction(()=>!document.getElementById('settings-save').disabled);
  await page.locator('#nav-overview').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#nav-subscriptions').getAttribute('aria-current'),'page');
  for(const width of [360,390,768,1440]){
@@ -117,4 +131,4 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(previews,'subscriptions-dark-mobile.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; no JS errors.');
  await browser.close();
-})().catch(e=>{console.error(e);process.exitCode=1});
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{await browser?.close();});

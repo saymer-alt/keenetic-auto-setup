@@ -23,8 +23,8 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
  let settings=fixture.settings||{port:18081,auth_mode:'none',login:'',password_set:false};
  let homeOnly=false;
  const context=vm.createContext({
-  document:{documentElement:{},getElementById:el,createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
-  localStorage:{getItem:()=>null,setItem:(...args)=>stored.push(args)},navigator:{language:'ru'},window:{confirm:()=>true,location:{href:'http://router.test:18081/'}},URL,
+  document:{documentElement:{setAttribute(name,value){this[name]=value;}},getElementById:el,createElement:()=>new Element(),createTextNode:text=>({textContent:text})},
+  localStorage:{getItem:key=>{if(fixture.storageFail)throw Error('storage unavailable');return key==='kas_theme'?fixture.theme||null:null;},setItem:(...args)=>{if(fixture.storageFail)throw Error('storage unavailable');stored.push(args);}},navigator:{language:'ru'},window:{confirm:()=>true,location:{href:fixture.href||'http://router.test:18081/'}},URL,
   setTimeout:()=>1,clearTimeout(){},TextEncoder,
   fetch:async(url,options={})=>{
    requests.push({url,options});
@@ -60,6 +60,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
    return response(200,{state:operationState});
   }
  });
+ const themePath=path.join(__dirname,'../web/theme.js');if(fs.existsSync(themePath))vm.runInContext(fs.readFileSync(themePath,'utf8'),context);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/app.js'),'utf8'),context);
  return {el,requests,stored,run:code=>vm.runInContext(code,context)};
 }
@@ -439,4 +440,28 @@ for(const component of ['mihomo','magitrickle'])test('lost '+component+' request
  await app.el(component==='mihomo'?'update-mihomo':'update-mt').click();
  const text=app.el(component==='mihomo'?'updates-state':'mt-state').textContent;
  assert.match(text,/не удалось/i);assert.doesNotMatch(text,/обновлён|завершено/i);
+});
+
+test('service links use this router, standard ports and no panel query or credentials',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{href:'http://192.168.107.1:8081/?private=value#overview'});await new Promise(setImmediate);
+ assert.equal(app.el('open-mt').href,'http://192.168.107.1:8080/');
+ assert.equal(app.el('open-mihomo').href,'http://192.168.107.1:9090/ui/');
+ for(const id of ['open-mt','open-mihomo','open-generator']){assert.equal(app.el(id).target,'_blank');assert.equal(app.el(id).rel,'noopener noreferrer');}
+ assert.equal(app.el('open-generator').href,'https://saymer-alt.github.io/link-generators/');
+});
+test('HTTPS proxy does not invent local service URLs',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{href:'https://panel.example/'});await new Promise(setImmediate);
+ assert.equal(app.el('open-mt').hidden,true);assert.equal(app.el('open-mihomo').hidden,true);assert.match(app.el('service-links-note').textContent,/локальн/);
+ assert.equal(app.el('open-generator').hidden,false);
+});
+for(const theme of ['auto','light','dark','invalid'])test('theme preference '+theme+' is local and validated',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{theme});await new Promise(setImmediate);
+ assert.equal(app.run('document.documentElement["data-theme"]'),theme==='invalid'?'auto':theme);
+ const before=app.requests.length;app.el('theme-mode').value='dark';app.el('theme-mode').handlers.change();
+ assert.equal(app.run('document.documentElement["data-theme"]'),'dark');assert.equal(app.requests.length,before);
+ assert.ok(app.stored.some(x=>x[0]==='kas_theme'&&x[1]==='dark'));
+});
+test('theme works when browser storage is unavailable',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{storageFail:true});await new Promise(setImmediate);
+ app.el('theme-mode').value='dark';app.el('theme-mode').handlers.change();assert.equal(app.run('document.documentElement["data-theme"]'),'dark');
 });

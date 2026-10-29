@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><link rel="stylesheet" href="/style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KAS Control Center</title><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"></head>
 <body>
 <a class="skip-link" href="#content" id="skip-link">К содержимому</a>
 <div class="app-shell">
@@ -20,8 +20,8 @@
 <div class="operation-banner" id="operation-banner" role="status" aria-live="polite" hidden><span id="operation-message"></span><button type="button" id="operation-open" class="secondary" data-view="configuration">Подробнее</button></div>
 <div class="view" id="view-overview">
 <section class="card"><div class="section-header"><h2 id="status-heading"></h2><button id="refresh" type="button" class="secondary"></button></div><p id="status-text" class="muted"></p>
-<div class="component-grid"><div class="component"><span class="component-icon" aria-hidden="true">M</span><div><h3>Mihomo</h3><p id="mihomo-file"></p></div></div><div class="component"><span class="component-icon" aria-hidden="true">MT</span><div><h3>MagiTrickle</h3><p id="magitrickle-file"></p></div></div></div>
-<p id="binary-text" class="caption"></p></section>
+<div class="component-grid"><div class="component"><span class="component-icon" aria-hidden="true">M</span><div><h3>Mihomo</h3><p id="mihomo-file"></p><a id="open-mihomo" target="_blank" rel="noopener noreferrer" hidden></a></div></div><div class="component"><span class="component-icon" aria-hidden="true">MT</span><div><h3>MagiTrickle</h3><p id="magitrickle-file"></p><a id="open-mt" target="_blank" rel="noopener noreferrer" hidden></a></div></div></div>
+<p id="binary-text" class="caption"></p><p id="service-links-note" class="caption"></p></section>
 <section class="card"><h2 id="versions-heading">Версии</h2><dl class="version-list"><div><dt id="core-label">Комплект KAS</dt><dd id="core-version"></dd></div><div><dt id="watchdog-label">Применённый watchdog</dt><dd id="watchdog-version"></dd></div></dl><p id="versions-help" class="caption"></p></section>
 <section class="card"><h2 id="updates-heading">Обновления</h2><p id="updates-help" class="muted"></p><div class="action-bar"><button id="update-check" type="button" class="secondary">Проверить обновления Mihomo</button><button id="update-mihomo" type="button" disabled>Обновить Mihomo</button></div><p id="updates-state" role="status" aria-live="polite"></p></section>
 <section class="card"><h2 id="mt-heading">Обновления MagiTrickle</h2><p id="mt-help" class="muted"></p><div class="action-bar"><button id="mt-check" type="button" class="secondary">Проверить обновления MagiTrickle</button><button id="update-mt" type="button" disabled>Обновить MagiTrickle</button></div><p id="mt-state" role="status" aria-live="polite"></p></section>
@@ -43,7 +43,7 @@
 <section class="card compact"><h2 id="providers-heading"></h2><details class="help"><summary id="export-help-label">Для чего нужен экспорт?</summary><p id="providers-help"></p></details><button id="providers-download" type="button" class="secondary"></button><p id="providers-state" role="status" aria-live="polite"></p></section>
 </div>
 <div class="view" id="view-configuration" hidden>
-<section class="card"><h2 id="config-heading"></h2><p id="config-help" class="muted"></p>
+<section class="card"><h2 id="config-heading"></h2><p id="config-help" class="muted"></p><a id="open-generator" class="button-link" href="https://saymer-alt.github.io/link-generators/" target="_blank" rel="noopener noreferrer">Открыть генератор конфигов</a>
 <div class="file-field"><label id="file-label" for="config-file"></label><input id="config-file" type="file" accept=".yaml,.yml,text/yaml,text/x-yaml"></div>
 <label id="paste-label" for="yaml-paste"></label><textarea id="yaml-paste" rows="12" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="mixed-port: 7890"></textarea>
 <p id="config-warning" class="notice"></p><button id="apply" type="button"></button><p id="config-state" role="status" aria-live="polite" class="operation-state"></p>
@@ -52,6 +52,7 @@
 <section class="card"><h2 id="doctor-heading"></h2><p id="doctor-help" class="muted"></p><div class="action-bar"><button id="run" type="button"></button><button id="copy" type="button" class="secondary" disabled></button></div><p id="copy-state" role="status" aria-live="polite"></p><p id="doctor-state" role="status" aria-live="polite" class="operation-state"></p><details class="help"><summary id="details-label"></summary><pre id="output"></pre></details><p id="footer" class="caption"></p></section>
 </div>
 <div class="view" id="view-settings" hidden>
+<section class="card"><h2 id="appearance-heading">Внешний вид</h2><label id="theme-label" for="theme-mode">Тема</label><select id="theme-mode"><option id="theme-auto" value="auto">Как в системе</option><option id="theme-light" value="light">Светлая</option><option id="theme-dark" value="dark">Тёмная</option></select><p id="theme-help" class="caption"></p></section>
 <section class="card"><h2 id="settings-heading"></h2><p id="settings-help" class="muted"></p>
 <form id="settings-form" autocomplete="off" novalidate>
 <div class="settings-grid"><div><label id="settings-port-label" for="settings-port"></label><input id="settings-port" type="number" min="1" max="65535" step="1" inputmode="numeric" required disabled></div><div><label id="settings-mode-label" for="settings-mode"></label><select id="settings-mode" disabled><option id="settings-none" value="none"></option><option id="settings-entware" value="entware"></option><option id="settings-panel" value="panel"></option></select></div></div>
