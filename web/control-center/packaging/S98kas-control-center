@@ -59,7 +59,13 @@ stop_service() {
         fi
         if ! identity "$service_pid"; then
             # The verified process may exit after kill-0 but before this check.
-            # A still-live replacement PID remains a refusal; never signal it.
+            # Re-read the state first: an already-exited (zombie) process also
+            # answers kill -0, and must break, not deny. A still-live
+            # replacement PID remains a refusal; never signal it.
+            if [ -r "/proc/$service_pid/stat" ]; then
+                state=$(sed 's/.*) //' "/proc/$service_pid/stat" 2>/dev/null | cut -d ' ' -f 1)
+                [ "$state" != Z ] || break
+            fi
             alive "$service_pid" && deny 'pid identity changed while draining'
             break
         fi
