@@ -108,6 +108,7 @@ install -m 755 "$OPKG" /opt/bin/opkg
 python3 - "$REPO" "$LAB" "$SOURCE_SHA" "$OLD_BINARY" "$NEW_BINARY" <<'PY'
 import base64
 import fcntl
+import hashlib
 import http.server
 import json
 import os
@@ -201,6 +202,38 @@ def reset_update_state():
 
 def operation():
     return api(8081, 'GET', '/api/updates/panel/operation')
+
+def integrity_replica():
+    import stat as stat_module
+    def walk(relative, max_size):
+        target = Path('/opt') / relative
+        directory = target.parent
+        while True:
+            st = os.lstat(directory)
+            safe = (not (st.st_mode & 0o200022) and (st.st_mode & 0o170000) == 0o040000
+                    and not stat_module.S_ISLNK(st.st_mode) and st.st_uid == 0 and st.st_gid == 0)
+            print(f'REPLICA dir {directory}: mode={oct(st.st_mode)} uid={st.st_uid} safe={safe}', flush=True)
+            if not safe or directory == Path('/opt'):
+                break
+            directory = directory.parent
+        st = os.lstat(target)
+        print(f'REPLICA file {target}: mode={oct(st.st_mode)} uid={st.st_uid} size={st.st_size}', flush=True)
+        return target.read_bytes()
+
+    control = walk('lib/opkg/info/kas-control-center.control', 65536).decode()
+    fields = dict(line.partition(': ')[::2] for line in control.splitlines() if ': ' in line)
+    print('REPLICA control package=', fields.get('Package'), 'version=', fields.get('Version'), flush=True)
+    build_info = walk('share/kas-control-center/BUILD_INFO', 8192).decode()
+    info = dict(line.partition('=')[::2] for line in build_info.splitlines() if '=' in line)
+    digest = hashlib.sha256(walk('bin/kas-control-center', 32 << 20)).hexdigest()
+    print('REPLICA binary digest match=', digest == info.get('Binary_SHA256'), flush=True)
+    init_script = walk('etc/init.d/S98kas-control-center', 128 << 10)
+    print('REPLICA init marker=', b'# KAS-CONTROL-CENTER-IPK-v1' in init_script, flush=True)
+    listing = walk('lib/opkg/info/kas-control-center.list', 65536).decode()
+    for entry in ('/opt/bin/kas-control-center', '/opt/etc/init.d/S98kas-control-center',
+                  '/opt/share/kas-control-center/BUILD_INFO'):
+        found = (chr(10) + listing + chr(10)).find(chr(10) + entry + chr(10)) >= 0
+        print('REPLICA list has', entry, '=', found, flush=True)
 
 def poll_operation(state, timeout=150):
     deadline = time.monotonic() + timeout
@@ -342,50 +375,12 @@ try:
             f'unexpected check: {check}')
     api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL')
+    integrity_replica()
     require(final.get('ErrorCode') == 'PANEL_DOWNLOAD_FAILED', f'expected download failure, got {final}')
     require(final.get('Gate') is False, 'download failure retained the gate')
     api(8081, 'GET', '/api/settings')
     ok('download failure reports FAIL, releases the gate and keeps the old daemon')
     write_asset(False)
-
-    # Integrity bisect: replicate the worker's exact checks at failure time.
-    def inventory_replica(relative, max_size, private=False):
-        target = Path('/opt') / relative
-        directory = target.parent
-        while True:
-            st = os.lstat(directory)
-            verdict = ('ok' if not (st.st_mode & 0o200022 or (st.st_mode & 0o170000) != 0o040000
-                                    or stat.S_ISLNK(st.st_mode) or st.st_uid != 0 or st.st_gid != 0)
-                       else 'UNSAFE')
-            print(f'REPLICA dir {directory}: mode={oct(st.st_mode)} uid={st.st_uid} -> {verdict}', flush=True)
-            if verdict == 'UNSAFE' or directory == Path('/opt'):
-                break
-            directory = directory.parent
-        st = os.lstat(target)
-        print(f'REPLICA file {target}: mode={oct(st.st_mode)} uid={st.st_uid} size={st.st_size}', flush=True)
-        return target.read_bytes()
-
-    import stat as stat_module
-    control = inventory_replica('lib/opkg/info/kas-control-center.control', 65536)
-    fields = {}
-    for line in control.decode().splitlines():
-        key, _, value = line.partition(': ')
-        fields[key] = value
-    print('REPLICA control package=', fields.get('Package'), 'version=', fields.get('Version'), flush=True)
-    build_info = inventory_replica('share/kas-control-center/BUILD_INFO', 8192)
-    info = {}
-    for line in build_info.decode().splitlines():
-        key, _, value = line.partition('=')
-        info[key] = value
-    import hashlib
-    digest = hashlib.sha256(inventory_replica('bin/kas-control-center', 32 << 20)).hexdigest()
-    print('REPLICA binary digest match=', digest == info.get('Binary_SHA256'), flush=True)
-    init_script = inventory_replica('etc/init.d/S98kas-control-center', 128 << 10)
-    print('REPLICA init marker=', b'# KAS-CONTROL-CENTER-IPK-v1' in init_script, flush=True)
-    listing = inventory_replica('lib/opkg/info/kas-control-center.list', 65536).decode()
-    for entry in ('/opt/bin/kas-control-center', '/opt/etc/init.d/S98kas-control-center',
-                  '/opt/share/kas-control-center/BUILD_INFO'):
-        print('REPLICA list has', entry, '=', (chr(10) + listing + chr(10)).find(chr(10) + entry + chr(10)) >= 0, flush=True)
 
     # C. Tampered channel index fails the check before any job exists.
     reset_update_state()
