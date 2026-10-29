@@ -55,7 +55,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-mkdir -p /opt/tmp /opt/bin /opt/etc/init.d /opt/share /opt/var/run "$LAB/opkg-tmp"
+mkdir -p /opt/tmp /opt/bin /opt/etc/init.d /opt/share /opt/lib /opt/var/run "$LAB/opkg-tmp"
 chmod 755 /opt /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var/run /opt/tmp
 printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > "$LAB/opkg.conf"
 install -m 700 "$OPKG" "$LAB/opkg"
