@@ -466,7 +466,33 @@ try:
     holder.terminate()
     holder.wait(timeout=10)
     holder = None
-    run(['/opt/bin/kas-control-center', '-recover-panel-update'])
+    recovery = subprocess.run(['/opt/bin/kas-control-center', '-recover-panel-update'],
+                             capture_output=True, text=True, timeout=180)
+    if recovery.returncode != 0:
+        print('RECOVERY-FAIL rc=', recovery.returncode, 'stderr=', recovery.stderr.strip(), flush=True)
+        status = subprocess.run(['sh', str(init), 'status'], capture_output=True, text=True)
+        print('RECOVERY-DIAG status rc=', status.returncode, 'out=', status.stdout.strip(),
+              'err=', status.stderr.strip(), flush=True)
+        for entry in sorted(os.listdir('/opt/var/run')):
+            entry_path = Path('/opt/var/run') / entry
+            st = os.lstat(entry_path)
+            content = ''
+            if entry_path.is_file() and st.st_size < 64:
+                content = entry_path.read_text().strip()
+            print(f'RECOVERY-DIAG {entry}: mode={oct(st.st_mode)} size={st.st_size} {content}', flush=True)
+        pid_text = ''
+        pid_path = Path('/opt/var/run/kas-control-center.ipk.pid')
+        if pid_path.is_file():
+            pid_text = pid_path.read_text().strip()
+            try:
+                exe = os.readlink('/proc/' + pid_text + '/exe')
+                st = os.stat('/opt/bin/kas-control-center')
+                import posix
+                print('RECOVERY-DIAG pid', pid_text, 'exe=', exe, 'bin_ino=', st.st_ino, flush=True)
+            except OSError as error:
+                print('RECOVERY-DIAG pid', pid_text, 'dead-or-unreadable:', error, flush=True)
+        raise RuntimeError('recovery failed: rc=%d stderr=%s' % (recovery.returncode, recovery.stderr.strip()))
+
     final = operation()
     require(final.get('State') == 'FAIL' and final.get('Phase') == 'recovered' and final.get('Gate') is False,
             f'recovery did not complete cleanly: {final}')
