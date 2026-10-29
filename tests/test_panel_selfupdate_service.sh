@@ -68,7 +68,8 @@ cleanup() {
     if [ -f "$LAB/hosts.backup" ]; then cat "$LAB/hosts.backup" > /etc/hosts; fi
     rm -f /usr/local/share/ca-certificates/kas-selfupdate-lab.crt
     update-ca-certificates >/dev/null 2>&1 || result=1
-    rm -f /etc/opkg.conf /opt/tmp/opkg.lock /opt/var/run/kas-control-center.ipk.startup /opt/bin/opkg
+    rm -f /etc/opkg.conf /opt/tmp/opkg.lock /opt/bin/opkg
+    rm -rf /opt/var/run/kas-control-center.ipk.startup
     rm -f /opt/etc/kas-control-center.settings.json /opt/etc/passwd /opt/etc/shadow
     rm -rf /opt/etc/kas-control-center-update /opt/etc/mihomo /opt/etc/ssl
     rm -rf /opt/lib/opkg /opt/share/kas-control-center
@@ -514,6 +515,16 @@ try:
     api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
     api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL', timeout=150)
+    if final.get('ErrorCode') != 'PANEL_START_FAILED':
+        ctl = Path('/opt/lib/opkg/info/kas-control-center.control')
+        print('G-DIAG control=', ctl.read_text().replace(chr(10), ' | ') if ctl.exists() else 'MISSING', flush=True)
+        print('G-DIAG binary sha=', hashlib.sha256(Path('/opt/bin/kas-control-center').read_bytes()).hexdigest()[:16], flush=True)
+        status = Path('/opt/lib/opkg/status')
+        if status.exists():
+            print('G-DIAG status tail=', status.read_text()[-400:].replace(chr(10), ' | '), flush=True)
+        print('G-DIAG init marker=', b'KAS-CONTROL-CENTER-IPK-v1' in Path('/opt/etc/init.d/S98kas-control-center').read_bytes(), flush=True)
+        print('G-DIAG var-run=', sorted(os.listdir('/opt/var/run')), flush=True)
+        print('G-DIAG tmp=', sorted(entry.name for entry in Path('/opt/tmp').iterdir()), flush=True)
     require(final.get('ErrorCode') == 'PANEL_START_FAILED', f'unexpected start-failure result: {final}')
     require(final.get('Gate') is True, 'start failure must retain the gate')
     require('Version: 0.0.0~selftest-2' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
