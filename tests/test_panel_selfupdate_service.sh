@@ -127,7 +127,7 @@ repo, lab, sha, old_binary, new_binary = sys.argv[1:6]
 # The hosted runner image may hand this process a permissive umask; the lab
 # models the router layout, where daemon- and driver-created private files
 # are 0600/0700. Pin it so every fixture mode is deterministic.
-os.umask(0o077)
+print('DRIVER-UMASK was', oct(os.umask(0o077)), flush=True)
 lab = Path(lab)
 serve = lab / 'serve'
 init = Path('/opt/etc/init.d/S98kas-control-center')
@@ -347,6 +347,9 @@ try:
     sentinel = Path('/opt/etc/mihomo/config.yaml')
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text('# self-update settings sentinel: never mutate\n')
+    # Deterministic modes regardless of any inherited process mask.
+    sentinel.parent.chmod(0o700)
+    sentinel.chmod(0o600)
     sentinel_before = sentinel.read_bytes()
     old_pid = int(Path('/opt/var/run/kas-control-center.ipk.pid').read_text())
     ok('old daemon authenticated on port 8081; credentials live outside the package')
