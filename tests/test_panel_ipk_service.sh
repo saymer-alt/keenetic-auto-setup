@@ -106,6 +106,12 @@ def require(condition, marker):
 
 def run(args, expected=0):
     result = subprocess.run(list(map(str, args)), capture_output=True, text=True, timeout=90)
+    if result.returncode != expected:
+        # Captured output is the only evidence for init deny messages; print it
+        # before raising so a CI failure is diagnosable without a rerun.
+        print('FAIL-ARGS: ' + ' '.join(map(str, args)), flush=True)
+        print('FAIL-STDOUT: ' + result.stdout[-2000:], flush=True)
+        print('FAIL-STDERR: ' + result.stderr[-2000:], flush=True)
     require(result.returncode == expected, 'command failed: ' + Path(str(args[0])).name)
     return result
 
