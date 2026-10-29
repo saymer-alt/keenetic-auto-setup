@@ -41,7 +41,7 @@ for path in /opt/bin/kas-control-center /opt/bin/opkg /opt/etc/init.d/S98kas-con
     /opt/etc/kas-control-center.mihomo-api-secret /opt/etc/kas-control-center.web.sha256 \
     /opt/etc/kas-control-center-update /opt/etc/mihomo /opt/etc/ssl \
     /opt/share/kas-control-center /opt/lib/opkg /opt/etc/passwd /opt/etc/shadow \
-    /opt/tmp/opkg.lock /opt/var/run/kas-control-center.ipk.startup /etc/opkg.conf \
+    /opt/tmp/opkg.lock /opt/var/run/kas-control-center.ipk.startup /opt/etc/opkg.conf \
     /usr/local/share/ca-certificates/kas-selfupdate-lab.crt; do
     [ ! -e "$path" ] && [ ! -L "$path" ] || fail "test-owned path already exists: $path"
 done
@@ -68,7 +68,7 @@ cleanup() {
     if [ -f "$LAB/hosts.backup" ]; then cat "$LAB/hosts.backup" > /etc/hosts; fi
     rm -f /usr/local/share/ca-certificates/kas-selfupdate-lab.crt
     update-ca-certificates >/dev/null 2>&1 || result=1
-    rm -f /etc/opkg.conf /opt/tmp/opkg.lock /opt/bin/opkg
+    rm -f /opt/etc/opkg.conf /opt/tmp/opkg.lock /opt/bin/opkg
     rm -rf /opt/var/run/kas-control-center.ipk.startup
     rm -f /opt/etc/kas-control-center.settings.json /opt/etc/passwd /opt/etc/shadow
     rm -rf /opt/etc/kas-control-center-update /opt/etc/mihomo /opt/etc/ssl
@@ -87,7 +87,7 @@ mkdir -p /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var
 chmod 755 /opt /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var/run /opt/tmp
 printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > "$LAB/opkg.conf"
 # The worker runs plain `opkg install` without -f; mirror the router feed file.
-printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > /etc/opkg.conf
+printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > /opt/etc/opkg.conf
 ip link add br0 type bridge
 BRIDGE_CREATED=1
 ip address add 192.168.254.1/24 dev br0
