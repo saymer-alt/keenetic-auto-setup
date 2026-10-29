@@ -110,7 +110,10 @@ start_service() {
         rm -f "$PID"
     fi
     untracked && deny 'untracked process; refusing duplicate'
-    set -- -lan -listen auto -settings-file /opt/etc/kas-control-center.settings.json
+    # The packaged subscription editor requires the bounded local names API.
+    # Legacy manual launches retain their explicit CLI opt-in; the IPK enables
+    # its advertised editor without depending on an old export-names flag.
+    set -- -lan -listen auto -settings-file /opt/etc/kas-control-center.settings.json -provider-names-export
     for name in password proxy-origin export-names mihomo-api-secret; do
         file="/opt/etc/kas-control-center.$name"
         if [ -e "$file" ] || [ -L "$file" ]; then
@@ -121,11 +124,8 @@ start_service() {
     [ ! -f "$file" ] || set -- "$@" -password-file "$file"
     file=/opt/etc/kas-control-center.proxy-origin
     [ ! -f "$file" ] || set -- "$@" -proxy-origin "$(cat "$file")"
-    if [ -f /opt/etc/kas-control-center.export-names ]; then
-        set -- "$@" -provider-names-export
-        file=/opt/etc/kas-control-center.mihomo-api-secret
-        [ ! -f "$file" ] || set -- "$@" -provider-secret-file "$file"
-    fi
+    file=/opt/etc/kas-control-center.mihomo-api-secret
+    [ ! -f "$file" ] || set -- "$@" -provider-secret-file "$file"
     command -v mkfifo >/dev/null 2>&1 || deny 'mkfifo unavailable; cannot safely capture startup status'
     [ ! -L "$STARTUP" ] || deny 'unsafe startup status file'
     [ ! -e "$STARTUP" ] || [ -f "$STARTUP" ] || deny 'unsafe startup status file'

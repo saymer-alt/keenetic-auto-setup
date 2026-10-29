@@ -153,6 +153,26 @@ class IPKTests(unittest.TestCase):
             'opt/share/kas-control-center/BUILD_INFO', 'opt/share/kas-control-center/THIRD_PARTY_NOTICES'})
         self.assertIn('a' * 40, (self.root / 'opt/share/kas-control-center/BUILD_INFO').read_text())
 
+    def test_package_start_enables_editor_without_legacy_export_flag(self):
+        # Execute the real argument construction on a redirected private root;
+        # no host /opt, daemon, socket or router is touched.
+        init = (PACK / 'S98kas-control-center').read_text()
+        start = init.index('    set -- -lan')
+        end = init.index('    command -v mkfifo', start)
+        script = init[start:end].replace('/opt/', str(self.root / 'opt') + '/')
+        command = 'deny(){ exit 9; };\n' + script + '\nprintf "%s\\n" "$@"\n'
+        for secret in (False, True):
+            path = self.root / 'opt/etc/kas-control-center.mihomo-api-secret'
+            if secret:
+                path.write_text('fixture-secret\n')
+                path.chmod(0o600)
+            result = subprocess.run(['sh'], input=command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = result.stdout.splitlines()
+            self.assertEqual(args.count('-provider-names-export'), 1)
+            self.assertEqual('-provider-secret-file' in args, secret)
+            self.assertNotIn('fixture-secret', result.stdout)
+
     def test_preinst_refuses_manual_and_foreign_payload(self):
         result = self.hook('preinst')
         self.assertNotEqual(result.returncode, 0)

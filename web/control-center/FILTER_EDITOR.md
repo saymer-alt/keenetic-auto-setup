@@ -3,6 +3,12 @@
 ## Decision
 Reuse the opt-in local Mihomo provider-names snapshot from [KAS PR #261](https://github.com/saymer-alt/keenetic-auto-setup/pull/261), then offer a **separate** local editor of `proxy-providers.<name>.exclude-filter`. Do **not** embed the full link-generators builder, subscription downloader, HWID management or Cloudflare Worker.
 
+## Availability
+The IPK service enables the bounded local provider-names API and filter editor
+without the legacy `export-names` file. Standalone binary launches still require
+`-provider-names-export`. Discovery does not apply changes; applying or clearing
+a filter requires explicit confirmation and the canonical importer.
+
 ## Stage 1 scope
 - Pure Go, no new dependency: `patchProviderFilter` modifies **one exact YAML line** or removes it; the rest of the YAML stays byte-for-byte. Never return the full modified config through HTTP.
 - Only explicitly selected HTTP providers; exact selected Unicode names escaped with Go regexp.QuoteMeta; 512-name / 8 KiB regex bounds. Replacement or explicit clear, not hidden merging of an existing manual regex.

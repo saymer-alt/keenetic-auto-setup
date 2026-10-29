@@ -52,7 +52,7 @@ cleanup() {
         fi
         # Exactly the fixtures created after the exclusive preflight above.
         rm -f /opt/etc/kas-control-center.settings.json /opt/etc/passwd /opt/etc/shadow
-        rm -f /opt/etc/mihomo/kas-ipk-service.sentinel
+        rm -f /opt/etc/mihomo/kas-ipk-service.sentinel /opt/etc/mihomo/config.yaml
         rmdir /opt/etc/mihomo 2>/dev/null || :
         rm -f /opt/var/run/kas-control-center.ipk.startup /opt/var/run/kas-control-center.ipk.pid
         rmdir /opt/var/run/kas-control-center.ipk.lock 2>/dev/null || :
@@ -166,6 +166,17 @@ try:
     wait_port(8081, True)
     require(request(8081)['port'] == 8081, 'default port differs from 8081')
     ok('actual package init starts Go on default port 8081')
+    config = Path('/opt/etc/mihomo/config.yaml')
+    config.parent.mkdir(exist_ok=True)
+    config.write_text('proxy-providers:\n  P:\n    type: http\n    url: https://subscription.invalid/private-token\n    path: ./proxy_provider/P.yaml\n')
+    config.chmod(0o600)
+    with opener.open(f'http://{address}:8081/api/filter/providers', timeout=5) as response:
+        data = response.read()
+        require(response.status == 200, 'packaged editor disabled without legacy export flag')
+    require(b'private-token' not in data and b'subscription.invalid' not in data, 'editor leaked subscription URL')
+    require(json.loads(data)['providers'][0]['name'] == 'P', 'editor did not inspect HTTP provider')
+    config.unlink()
+    ok('actual package service enables subscription editor without legacy flag; URLs stay private')
     request(8081, body={'port': 8081, 'auth_mode': 'panel', 'password': panel_password})
     request(8081, expected=401)
     request(8081, ('kas', panel_password))

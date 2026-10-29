@@ -84,14 +84,18 @@ umask 077
 Точный текущий адрес после изменения порта нужно смотреть в настройках панели;
 init не утверждает, что импортированный порт равен defaults.
 
+Штатная служба IPK включает локальный API имён и редактор фильтра подписки
+без дополнительного файла-флага. Прямой запуск бинарника по-прежнему требует
+`-provider-names-export`. Применение фильтра требует явного подтверждения.
+
 Совместимые необязательные пользовательские файлы:
 
 | Файл `/opt/etc/kas-control-center.*` | Аргумент |
 | --- | --- |
 | `password` | `-password-file` (legacy password) |
 | `proxy-origin` | `-proxy-origin` |
-| `export-names` | `-provider-names-export` (явный opt-in) |
-| `mihomo-api-secret` | `-provider-secret-file`, только вместе с export |
+| `export-names` | Legacy-флаг; установленному IPK больше не требуется |
+| `mihomo-api-secret` | `-provider-secret-file`, если файл существует |
 
 Settings и эти файлы не входят в package payload. Пакет не читает и не переписывает
 секреты в hooks; init передаёт секретные файлы по пути, а не содержимое в argv.

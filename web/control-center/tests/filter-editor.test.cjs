@@ -49,7 +49,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
     if(options.method==='POST')homeOnly=JSON.parse(options.body).home_only;
     return response(200,{home_only:homeOnly});
    }
-   if(url==='/api/filter/providers')return response(inspectStatus,{source_sha:'a'.repeat(64),providers:[{name:'P',http:true,has_filter:fixture.hasFilter!==false,existing_filter:fixture.hasFilter===false?'':'Old'}]});
+   if(url==='/api/filter/providers')return response(inspectStatus,fixture.inspectError?{error_code:fixture.inspectError}:{source_sha:'a'.repeat(64),providers:[{name:'P',http:true,has_filter:fixture.hasFilter!==false,existing_filter:fixture.hasFilter===false?'':'Old'}]});
    if(url==='/api/providers/names'){
     if(namesResult instanceof Error)throw namesResult;
     return namesResult;
@@ -464,4 +464,14 @@ for(const theme of ['auto','light','dark','invalid'])test('theme preference '+th
 test('theme works when browser storage is unavailable',async()=>{
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{storageFail:true});await new Promise(setImmediate);
  app.el('theme-mode').value='dark';app.el('theme-mode').handlers.change();assert.equal(app.run('document.documentElement["data-theme"]'),'dark');
+});
+test('router panel link opens router root without the KAS port, credentials or query',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{href:'http://user:password@192.168.107.1:8081/?private=value#overview'});await new Promise(setImmediate);
+ assert.equal(app.el('local-badge').href,'http://192.168.107.1/');
+ assert.equal(app.el('local-badge').target,'_blank');assert.equal(app.el('local-badge').rel,'noopener noreferrer');assert.equal(app.el('local-badge').hidden,false);
+});
+test('standalone disabled editor explains unavailability without a raw backend code',async()=>{
+ const app=ui(response(200,{providers:{}}),404,'UNKNOWN',{inspectError:'EDITOR_DISABLED'});await new Promise(setImmediate);
+ await app.el('filter-load').click();assert.doesNotMatch(app.el('filter-state').textContent,/EDITOR_DISABLED/);assert.match(app.el('filter-state').textContent,/режим.*запуска/);
+ assert.equal(app.el('filter-preview').disabled,true);
 });

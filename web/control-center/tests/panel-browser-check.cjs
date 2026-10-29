@@ -50,7 +50,8 @@ let browser;
  assert.equal(await page.locator('#open-mt').getAttribute('href'),'http://kas.test:8080/');
  assert.equal(await page.locator('#open-mihomo').getAttribute('href'),'http://kas.test:9090/ui/');
  assert.equal(await page.locator('#open-generator').getAttribute('href'),'https://saymer-alt.github.io/link-generators/');
- for(const id of ['open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
+ assert.equal(await page.locator('#local-badge').getAttribute('href'),'http://kas.test/');
+ for(const id of ['local-badge','open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
  await page.emulateMedia({colorScheme:'light'});await page.locator('#nav-settings').click();
  await page.locator('#theme-mode').selectOption('dark');
  const background=()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor);
@@ -123,6 +124,7 @@ let browser;
   await page.setViewportSize({width,height:900});
   for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
    await page.locator('#nav-'+view).click();
+   assert.ok(await page.locator('#local-badge').isVisible(),`router link hidden at ${width}/${view}`);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}/${view}`);
   }
  }
