@@ -144,8 +144,8 @@ def require(condition, marker):
     if not condition:
         raise RuntimeError(marker)
 
-def run(args, expected=0):
-    result = subprocess.run(list(map(str, args)), capture_output=True, text=True, timeout=120)
+def run(args, expected=0, cwd=None, env=None):
+    result = subprocess.run(list(map(str, args)), capture_output=True, text=True, timeout=180, cwd=cwd, env=env)
     if result.returncode != expected:
         print('FAIL-ARGS: ' + ' '.join(map(str, args)), flush=True)
         print('FAIL-STDOUT: ' + result.stdout[-2000:], flush=True)
@@ -376,6 +376,11 @@ try:
     api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL')
     integrity_replica()
+    probe = run(['go', 'test', '-count=1', '-run', '^TestPanelLabInventoryProbe$', '-v', '.'],
+                cwd=repo + '/web/control-center', env={**os.environ, 'KAS_LAB_PROBE': '1'})
+    for line in probe.stdout.splitlines():
+        if 'inventory ' in line or 'installed:' in line or 'integrity ' in line:
+            print('LAB-PROBE', line.strip(), flush=True)
     require(final.get('ErrorCode') == 'PANEL_DOWNLOAD_FAILED', f'expected download failure, got {final}')
     require(final.get('Gate') is False, 'download failure retained the gate')
     api(8081, 'GET', '/api/settings')
