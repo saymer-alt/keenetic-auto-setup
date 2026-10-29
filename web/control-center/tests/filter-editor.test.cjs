@@ -31,6 +31,9 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
    if(url==='/api/updates/check')return response(200,fixture.updateCheck||{state:'AVAILABLE',available_version:'1.20.0',current_version:'1.19.33',package_release:2,relation:'newer'});
    if(url==='/api/updates/mihomo'&&fixture.updatePostError)throw Error('response lost');
    if(url==='/api/updates/mihomo')return response(202,{id:'update-op',state:'RUNNING'});
+   if(url==='/api/updates/magitrickle/check')return response(200,fixture.mtCheck||{state:'AVAILABLE',current_version:'0.8.2-1',available_version:'0.8.2-2',relation:'newer'});
+   if(url==='/api/updates/magitrickle'&&fixture.mtPostError)throw Error('response lost');
+   if(url==='/api/updates/magitrickle')return response(202,{id:'mt-op',component:'magitrickle',state:'RUNNING'});
    if(url==='/api/updates/operation')return response(200,fixture.updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'});
    if(url==='/api/components')return response(200,fixture.components||{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}});
    if(url==='/api/settings'){
@@ -400,4 +403,40 @@ test('lost update response reconciles the operation instead of leaving status un
  assert.ok(app.requests.filter(r=>r.url==='/api/updates/operation').length>=2);
  assert.equal(app.el('apply').disabled,true);
  assert.equal(app.run('updateOperation.id'),'accepted-op');
+});
+
+test('matching Mihomo version distinguishes opkg provenance and disables unnecessary update',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{updateCheck:{state:'AVAILABLE',current_version:'1.19.33',available_version:'1.19.33',package_release:2,installed_package_version:'1.19.32-1',relation:'same_runtime'}});await new Promise(setImmediate);
+ await app.el('update-check').click();
+ assert.equal(app.el('update-mihomo').disabled,true);
+ assert.match(app.el('updates-state').textContent,/Работающий Mihomo: 1\.19\.33/);
+ assert.match(app.el('updates-state').textContent,/opkg.*1\.19\.32-1/);
+ assert.match(app.el('updates-state').textContent,/не подтверждён/);
+ app.run("updateCheckData.relation='newer_package';draw();");assert.equal(app.el('update-mihomo').disabled,false);
+});
+test('MT check is manual, confirmation cancels and one named update blocks mutations',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ assert.equal(app.requests.filter(r=>r.url==='/api/updates/magitrickle/check').length,0);
+ assert.equal(app.el('update-mt').disabled,true);await app.el('mt-check').click();
+ assert.match(app.el('mt-state').textContent,/0\.8\.2-1.*0\.8\.2-2/);
+ assert.equal(app.el('update-mt').disabled,false);
+ app.run('window.confirm=()=>false');await app.el('update-mt').click();assert.equal(app.requests.filter(r=>r.url==='/api/updates/magitrickle').length,0);
+ app.run('window.confirm=()=>true');await Promise.all([app.el('update-mt').click(),app.el('update-mt').click()]);
+ const writes=app.requests.filter(r=>r.url==='/api/updates/magitrickle');assert.equal(writes.length,1);assert.equal(writes[0].options.body,'{}');assert.equal(writes[0].options.headers['X-KAS-Confirm'],'update-magitrickle');
+ for(const id of ['apply','run','settings-save','update-mihomo','update-mt','mt-check'])assert.equal(app.el(id).disabled,true,id);
+ assert.match(app.el('operation-message').textContent,/MagiTrickle/);
+ app.run("updateOperation={component:'magitrickle',state:'FAIL',error_code:'MT_CONFIG_CHANGED'};draw();");
+ assert.match(app.el('mt-state').textContent,/MT_CONFIG_CHANGED/);assert.doesNotMatch(app.el('mt-state').textContent,/восстановлен|откачен/);
+});
+test('MT no-upgrade result does not invent an available version or allow update',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{mtCheck:{state:'AVAILABLE',current_version:'0.8.2-1',relation:'no_upgrade'}});await new Promise(setImmediate);
+ await app.el('mt-check').click();assert.equal(app.el('update-mt').disabled,true);assert.match(app.el('mt-state').textContent,/не предлагают/);
+});
+for(const component of ['mihomo','magitrickle'])test('lost '+component+' request never presents an old successful operation as the new result',async()=>{
+ const fixture={updatePostError:component==='mihomo',mtPostError:component==='magitrickle',updateOperation:{id:'old-op',component,state:'OK',outcome:'CHANGED'}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);
+ await app.el(component==='mihomo'?'update-check':'mt-check').click();
+ await app.el(component==='mihomo'?'update-mihomo':'update-mt').click();
+ const text=app.el(component==='mihomo'?'updates-state':'mt-state').textContent;
+ assert.match(text,/не удалось/i);assert.doesNotMatch(text,/обновлён|завершено/i);
 });

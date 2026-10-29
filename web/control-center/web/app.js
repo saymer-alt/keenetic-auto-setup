@@ -1,8 +1,9 @@
 'use strict';
 const words={
  ru:{
-  updatesHeading:'Обновления Mihomo',updatesHelp:'Ручная проверка канала entware-go:latest. Обновление выполняет штатный KAS; конфиг сохраняется. Mihomo может ненадолго остановиться. Остальные компоненты здесь пока не обновляются.',updateCheck:'Проверить обновления Mihomo',updateApply:'Обновить Mihomo',updateNone:'Проверка обновлений ещё не выполнялась.',updateChecking:'Проверяем доступную версию…',updateAvailable:'Установлен: {current}. Доступен пакет: {available}-{release}.',updateOlder:'Доступная версия старее установленной. Понижение версии не предлагается.',updateSame:'Версия движка совпадает; KAS дополнительно проверит выпуск пакета.',updateUnknown:'Текущая версия не подтверждена; решение примет штатный скрипт KAS.',updateConfirm:'Запустить штатное обновление Mihomo из entware-go:latest? KAS заново проверит доступный пакет. Возможна короткая остановка Mihomo. Конфиг сохраняется. Не перезагружайте роутер во время операции.',updateRunning:'Обновление Mihomo выполняется. Не перезагружайте роутер.',updateChanged:'Обновление завершено. Файл Mihomo изменён.',updateUnchanged:'Обновление завершено. Файл Mihomo не изменился.',updateUnverified:'Обновление завершено; изменение файла не подтверждено. Проверьте состояние через Doctor.',updateFailed:'Обновление не завершилось успешно. Проверьте фактическое состояние через Doctor; откат не подтверждён.',updateRequestError:'Не удалось получить состояние обновления: {code}. Если операция была запущена, она может продолжаться.',updateCheckError:'Не удалось проверить обновления: {code}.',updateCancelled:'Обновление отменено до запуска.',
+  updatesHeading:'Обновления Mihomo',updatesHelp:'Ручная проверка канала entware-go:latest. Обновление выполняет штатный KAS; конфиг сохраняется. Mihomo может ненадолго остановиться. Обновление MagiTrickle доступно в отдельном блоке ниже.',updateCheck:'Проверить обновления Mihomo',updateApply:'Обновить Mihomo',updateNone:'Проверка обновлений ещё не выполнялась.',updateChecking:'Проверяем доступную версию…',updateAvailable:'Работающий Mihomo: {current}. Пакет на GitHub: {available}-{release}.',updateOlder:'Доступная версия старее установленной. Понижение версии не предлагается.',updateSame:'Версия Mihomo совпадает. Выпуск пакета по записи KAS не подтверждён.',updatePackageMetadata:'Данные opkg: {version} (могут отличаться от работающего файла).',updateSamePackage:'Обновление не требуется: версия и записанный выпуск пакета совпадают.',updateNewerPackage:'Доступен новый выпуск пакета для этой версии Mihomo.',updateOlderPackage:'Доступный выпуск пакета старее записи KAS. Понижение не предлагается.',updateInvalidState:'Запись KAS не соответствует текущему файлу. Обновление этого выпуска заблокировано; проверьте Doctor.',updateUnknown:'Текущая версия не подтверждена; решение примет штатный скрипт KAS.',updateConfirm:'Запустить штатное обновление Mihomo из entware-go:latest? KAS заново проверит доступный пакет. Возможна короткая остановка Mihomo. Конфиг сохраняется. Не перезагружайте роутер во время операции.',updateRunning:'Обновление Mihomo выполняется. Не перезагружайте роутер.',updateChanged:'Обновление завершено. Файл Mihomo изменён.',updateUnchanged:'Обновление завершено. Файл Mihomo не изменился.',updateUnverified:'Обновление завершено; изменение файла не подтверждено. Проверьте состояние через Doctor.',updateFailed:'Обновление не завершилось успешно. Проверьте фактическое состояние через Doctor; откат не подтверждён.',updateRequestError:'Не удалось получить состояние обновления: {code}. Если операция была запущена, она может продолжаться.',updateCheckError:'Не удалось проверить обновления: {code}.',updateCancelled:'Обновление отменено до запуска.',
 
+  mtHeading:'Обновления MagiTrickle',mtHelp:'Проверка обновляет индексы подключённых репозиториев opkg. Установка обновляет только пакет MagiTrickle и его зависимости; сервис перезапускается, возможен перерыв DNS и маршрутизации. Автоматический откат пакета не предусмотрен.',mtCheck:'Проверить обновления MagiTrickle',mtApply:'Обновить MagiTrickle',mtChecking:'Обновляем индексы opkg и проверяем MagiTrickle…',mtAvailable:'Установленный пакет: {current}. Доступно обновление: {available}.',mtNoUpgrade:'Установленный пакет: {current}. Подключённые репозитории не предлагают обновление.',mtConfirm:'Обновить пакет MagiTrickle через opkg и перезапустить сервис? Возможен временный перерыв DNS и маршрутизации. Пакет сохраняет изменённые конфиги по правилам opkg; автоматического отката нет. Не перезагружайте роутер.',mtRunning:'Обновление MagiTrickle выполняется. Не перезагружайте роутер.',mtChanged:'Пакет MagiTrickle обновлён; процесс запущен, конфиги не изменились. Доступ клиентов не проверен.',mtUnchanged:'Обновление MagiTrickle не требуется. Сервис не перезапускался.',mtFailed:'Обновление MagiTrickle не подтверждено: {code}. Проверьте состояние через Doctor; автоматического отката нет.',
   processRunning:'Процесс запущен',processStopped:'Процесс не найден',processAbsent:'Не установлен',processUnknown:'Процесс не удалось проверить',runtimeVersion:'{version} (API)',packageVersion:'{version} (пакет)',watchdogDigest:'Установлен · SHA256 {sha}',doctorOK:'Диагностика завершена. Ошибок и предупреждений не обнаружено.',doctorWARN:'Диагностика завершена. Предупреждения: {warn}; ошибки: {fail}.',doctorFAIL:'Диагностика завершена. Ошибки: {fail}; предупреждения: {warn}.',doctorUnknown:'Диагностика завершена. Итоговый результат не распознан — проверьте отчёт.',processHelp:'Процессы проверены по исполняемым файлам. Это не проверка доступа в Интернет. Версия пакета может отличаться от работающей программы.',
   versionsHeading:'Версии',coreLabel:'Комплект KAS',watchdogLabel:'Применённый watchdog',versionsHelp:'Версия пакета и применённого watchdog могут различаться. Это сведения о файлах, а не проверка работающих сервисов.',projectLink:'Проект на GitHub',buildDevelopment:'сборка для разработки',versionsUnavailable:'Сведения недоступны',coreAbsent:'Без пакета kas-core',coreModified:'Файлы комплекта изменены',versionIdentity:'{version} · {sha}',watchdogCurrent:'{version} · файл совпадает с записью',watchdogUnrecorded:'Версия не подтверждена',watchdogStale:'Файл отличается от записи о применении',watchdogBundleChanged:'Применён {version}; комплект обновлён',watchdogInvalid:'Запись о применении недоступна',
   settingsHeading:'Порт и вход',settingsHelp:'По HTTP пароль передаётся без шифрования. Для защищённого подключения используйте VPN или HTTPS.',settingsPort:'Порт панели (1–65535)',settingsMode:'Вход в панель',settingsNone:'Без пароля',settingsEntware:'Учётная запись Entware / SSH',settingsPanel:'Отдельный пароль панели',settingsLogin:'Логин: {login}',settingsCurrent:'Пароль текущего входа ({login}) для подтверждения',settingsPassword:'Новый пароль панели',settingsRootPassword:'Действующий пароль root в Entware',settingsRepeat:'Повторите новый пароль',settingsPanelHelp:'Логин kas. Пароль: 12–128 байт. Пустое поле сохраняет уже заданный пароль панели.',settingsEntwareHelp:'Логин root. Проверяется действующий пароль Entware; системный пароль не изменяется. Для входа по HTTP используйте доверенную сеть или VPN.',settingsNoneHelp:'Вход без пароля; доступ определяется сетью и настройкой Home ниже.',settingsLoading:'Читаем порт и настройки входа…',settingsSaving:'Сохраняем настройки…',settingsError:'Настройки не сохранены или не прочитаны: {code}',settingsSaved:'Настройки сохранены.',settingsPortChanged:'Настройки сохранены. Откройте новый адрес панели:',settingsInvalid:'Укажите порт 1–65535 и поддерживаемый способ входа.',settingsPasswordInvalid:'Новый пароль должен занимать 12–128 байт и совпадать с повтором.',settingsCurrentRequired:'Введите текущий пароль для подтверждения.',settingsRootRequired:'Введите действующий пароль root в Entware.',settingsConfirm:'Сохранить настройки? {warning}',settingsDisableWarning:'Вход по паролю будет отключён.',settingsPortWarning:'Порт изменится с {before} на {after}; откройте новый адрес после сохранения.',settingsCancelled:'Изменение отменено.',
@@ -15,8 +16,9 @@ const words={
   doctor:'Диагностика Doctor',help:'Запуск штатного Doctor по запросу. Результат не означает, что маршрутизация каждого клиента проверена.',run:'Запустить Doctor',copy:'Копировать отчёт',copyDone:'Отчёт скопирован.',copyManual:'Браузер запретил копирование. Отчёт выделен — нажмите Ctrl+C или выберите «Копировать» в меню.',details:'Реальный вывод команды',running:'Doctor выполняется…',finished:'Команда завершена; код выхода: {exit}',failed:'Команда не завершилась успешно; код выхода: {exit}; ошибка: {code}',error:'Не удалось выполнить запрос: {code}',footer:'Перед отправкой отчёта проверьте, что в нём нет личных данных. При ошибке импорта проверьте фактическое состояние через Doctor или SSH.',timestamp:'Время: {time}',notrun:'Doctor ещё не запускался.'
  },
  en:{
-  updatesHeading:'Mihomo updates',updatesHelp:'Manual check of entware-go:latest. The canonical KAS updater preserves the config. Mihomo may stop briefly. Other components are not updated here yet.',updateCheck:'Check Mihomo updates',updateApply:'Update Mihomo',updateNone:'Updates have not been checked.',updateChecking:'Checking available version…',updateAvailable:'Installed: {current}. Available package: {available}-{release}.',updateOlder:'The available version is older. Downgrade is not offered.',updateSame:'The engine version matches; the canonical updater also checks the package release.',updateUnknown:'The installed version is unconfirmed; the canonical updater decides.',updateConfirm:'Run the canonical Mihomo update from entware-go:latest? The updater will recheck the available package. Mihomo may stop briefly. The config is preserved. Do not reboot during the operation.',updateRunning:'The canonical Mihomo updater is running. Do not reboot.',updateChanged:'The canonical updater finished. The Mihomo file changed.',updateUnchanged:'The canonical updater finished. The Mihomo file did not change.',updateUnverified:'The canonical updater finished; file change is unconfirmed. Check with Doctor.',updateFailed:'The update did not finish successfully. Check actual state with Doctor; rollback is unconfirmed.',updateRequestError:'Could not retrieve update state: {code}. A previously started operation may still be running.',updateCheckError:'Could not check updates: {code}.',updateCancelled:'Update cancelled before starting.',
+  updatesHeading:'Mihomo updates',updatesHelp:'Manual check of entware-go:latest. The canonical KAS updater preserves the config. Mihomo may stop briefly. MagiTrickle has separate update controls below.',updateCheck:'Check Mihomo updates',updateApply:'Update Mihomo',updateNone:'Updates have not been checked.',updateChecking:'Checking available version…',updateAvailable:'Running Mihomo: {current}. Package on GitHub: {available}-{release}.',updateOlder:'The available version is older. Downgrade is not offered.',updateSame:'The Mihomo version matches. The KAS package release is unconfirmed.',updatePackageMetadata:'opkg metadata: {version} (may differ from the running file).',updateSamePackage:'No update required: version and recorded package release match.',updateNewerPackage:'A newer package release is available for this Mihomo version.',updateOlderPackage:'The available package release is older than the KAS record. No downgrade is offered.',updateInvalidState:'The KAS record does not match the current file. Package update blocked; check Doctor.',updateUnknown:'The installed version is unconfirmed; the canonical updater decides.',updateConfirm:'Run the canonical Mihomo update from entware-go:latest? The updater will recheck the available package. Mihomo may stop briefly. The config is preserved. Do not reboot during the operation.',updateRunning:'The canonical Mihomo updater is running. Do not reboot.',updateChanged:'The canonical updater finished. The Mihomo file changed.',updateUnchanged:'The canonical updater finished. The Mihomo file did not change.',updateUnverified:'The canonical updater finished; file change is unconfirmed. Check with Doctor.',updateFailed:'The update did not finish successfully. Check actual state with Doctor; rollback is unconfirmed.',updateRequestError:'Could not retrieve update state: {code}. A previously started operation may still be running.',updateCheckError:'Could not check updates: {code}.',updateCancelled:'Update cancelled before starting.',
 
+  mtHeading:'MagiTrickle updates',mtHelp:'Checking refreshes configured opkg repository indices. Installation updates only MagiTrickle and its dependencies and restarts the service; DNS and routing may pause. No automatic package rollback.',mtCheck:'Check MagiTrickle updates',mtApply:'Update MagiTrickle',mtChecking:'Refreshing opkg indices and checking MagiTrickle…',mtAvailable:'Installed package: {current}. Available update: {available}.',mtNoUpgrade:'Installed package: {current}. Configured repositories offer no upgrade.',mtConfirm:'Update MagiTrickle through opkg and restart its service? DNS and routing may pause. opkg conffile rules apply; no automatic rollback. Do not reboot.',mtRunning:'MagiTrickle update is running. Do not reboot.',mtChanged:'MagiTrickle package updated; process running and configs unchanged. Client connectivity not tested.',mtUnchanged:'No MagiTrickle update required. Service was not restarted.',mtFailed:'MagiTrickle update is unconfirmed: {code}. Check Doctor; no automatic rollback.',
   processRunning:'Process running',processStopped:'Process not found',processAbsent:'Not installed',processUnknown:'Process could not be checked',runtimeVersion:'{version} (API)',packageVersion:'{version} (package)',watchdogDigest:'Installed · SHA256 {sha}',doctorOK:'Diagnostics completed. No errors or warnings found.',doctorWARN:'Diagnostics completed. Warnings: {warn}; errors: {fail}.',doctorFAIL:'Diagnostics completed. Errors: {fail}; warnings: {warn}.',doctorUnknown:'Diagnostics completed. Summary not recognized — review the report.',processHelp:'Processes checked against their executable files. Internet access has not been tested. Package versions can differ from running programs.',
   versionsHeading:'Versions',coreLabel:'KAS tools package',watchdogLabel:'Applied watchdog',versionsHelp:'The package and applied watchdog versions can differ. These are file identities, not running-service health checks.',projectLink:'Project on GitHub',buildDevelopment:'development build',versionsUnavailable:'Information unavailable',coreAbsent:'No kas-core package',coreModified:'Package files have changed',versionIdentity:'{version} · {sha}',watchdogCurrent:'{version} · file matches the receipt',watchdogUnrecorded:'Version not confirmed',watchdogStale:'File differs from its activation receipt',watchdogBundleChanged:'Applied {version}; package has changed',watchdogInvalid:'Activation receipt unavailable',
   settingsHeading:'Port and sign-in',settingsHelp:'HTTP sends passwords without encryption. Use VPN or HTTPS for a protected connection.',settingsPort:'Panel port (1–65535)',settingsMode:'Panel sign-in',settingsNone:'No password',settingsEntware:'Entware / SSH account',settingsPanel:'Separate panel password',settingsLogin:'Login: {login}',settingsCurrent:'Current sign-in password ({login}) to confirm changes',settingsPassword:'New panel password',settingsRootPassword:'Existing Entware root password',settingsRepeat:'Repeat new password',settingsPanelHelp:'Login kas. Password: 12–128 bytes. Leave empty to keep an existing panel password.',settingsEntwareHelp:'Login root. Verifies the existing Entware password; the system password is never changed. Use a trusted network or VPN for HTTP login.',settingsNoneHelp:'No password; network reachability and the Home setting below determine access.',settingsLoading:'Reading port and sign-in settings…',settingsSaving:'Saving settings…',settingsError:'Settings could not be saved or read: {code}',settingsSaved:'Settings saved.',settingsPortChanged:'Settings saved. Open the new panel address:',settingsInvalid:'Enter a port from 1–65535 and a supported sign-in mode.',settingsPasswordInvalid:'The new password must be 12–128 bytes and match its repeat.',settingsCurrentRequired:'Enter the current password to confirm changes.',settingsRootRequired:'Enter the existing Entware root password.',settingsConfirm:'Save settings? {warning}',settingsDisableWarning:'Password sign-in will be disabled.',settingsPortWarning:'The port will change from {before} to {after}; open the new address after saving.',settingsCancelled:'Change cancelled.',
@@ -32,7 +34,8 @@ const words={
 let lang=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';
 try{const s=localStorage.getItem('kas_lang');if(s==='ru'||s==='en')lang=s;}catch(_){}
 let componentsData=null;
-let updateCheckData=null,updateOperation=null,updateChecking=false,updateSubmitting=false,updateMessage='',updatePollTimer=null,updateEpoch=0;
+let mtCheckData=null,mtChecking=false,mtMessage='';
+let updateCheckData=null,updateOperation=null,updateChecking=false,updateSubmitting=false,updateMessage='',updatePollTimer=null,updateEpoch=0,updateKnownID=null;
 let statusData=null,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
 let exporting=false,providerMessage='';
 let lastOperation='import',importView='configuration',copyStatus='';
@@ -65,7 +68,7 @@ function draw(){
  set('binary-text',statusData?.runtime?t('processHelp'):statusData?t('binary',{m:t(statusData.mihomo_binary?'present':'absent'),mt:t(statusData.magitrickle_binary?'present':'absent')}):'');
  const runningImport=importData?.state==='RUNNING';
  const runningUpdate=updateOperation?.state==='RUNNING';
- const maintenanceBusy=runningImport||runningUpdate||updateSubmitting;
+ const maintenanceBusy=runningImport||runningUpdate||updateSubmitting||mtChecking;
  let message=t('importNone');
  if(importData){
   if(runningImport)message=t('applying');
@@ -79,7 +82,7 @@ function draw(){
  const showDoctor=busy&&view!=='diagnostics';
  const showImport=runningImport||hasImportResult;
  el('operation-banner').hidden=!showDoctor&&!showImport&&!runningUpdate;
- set('operation-message',runningUpdate?t('updateRunning'):showDoctor?t('running'):showImport?message:'');
+ set('operation-message',runningUpdate?t(updateOperation.component==='magitrickle'?'mtRunning':'updateRunning'):showDoctor?t('running'):showImport?message:'');
  el('operation-open').setAttribute('data-view',runningUpdate?'overview':showDoctor?'diagnostics':importView);
  el('operation-banner').setAttribute('data-state',showDoctor?'running':importData?.state==='FAIL'?'warning':'done');
  el('apply').disabled=submitting||maintenanceBusy;
@@ -96,7 +99,7 @@ function draw(){
  set('output',doctorData?.details||'');
  set('copy-state',copyStatus?t(copyStatus):'');
  el('copy').disabled=!doctorData||!doctorData.details;el('run').disabled=busy||maintenanceBusy;
- drawUpdates();
+ drawUpdates();drawMTUpdates();
  if(maintenanceBusy){el('settings-save').disabled=true;el('access-save').disabled=true;el('access-home-only').disabled=true;}
  el('ru').setAttribute('aria-pressed',String(lang==='ru'));el('en').setAttribute('aria-pressed',String(lang==='en'));
 }
@@ -249,7 +252,7 @@ async function refresh(){
 }
 async function runDoctor(){
  lastOperation='doctor';
- if(busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting)return;busy=true;copyStatus='';draw();
+ if(busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||mtChecking)return;busy=true;copyStatus='';draw();
  try{const resp=await fetch('/api/doctor',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
   doctorData=await resp.json();if(!resp.ok&&!doctorData.error_code)doctorData.error_code='HTTP_'+resp.status;}
  catch(e){doctorData={error_code:String(e),timestamp:new Date().toISOString(),details:''};}
@@ -281,7 +284,7 @@ async function refreshImport(){
 }
 async function applyYAML(){
  lastOperation='import';importView='configuration';
- if(submitting||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting)return;
+ if(submitting||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||mtChecking)return;
  const file=el('config-file').files[0];
  const pasted=el('yaml-paste').value;
  if(!file&&!pasted){importMessage=t('emptyFile');draw();return;}
@@ -496,6 +499,7 @@ window.kasDraw=draw;
 draw();refresh();refreshImport();refreshAccess();refreshSettings();refreshUpdateOperation();
 
 function updateResultText(){
+ if(updateOperation?.component==='magitrickle')return '';
  if(updateOperation?.state==='RUNNING')return t('updateRunning');
  if(updateOperation?.state==='FAIL')return t('updateFailed');
  if(updateOperation?.state==='OK')return t(({CHANGED:'updateChanged',UNCHANGED:'updateUnchanged'})[updateOperation.outcome]||'updateUnverified');
@@ -503,25 +507,27 @@ function updateResultText(){
 }
 function drawUpdates(){
  for(const [id,key] of [['updates-heading','updatesHeading'],['updates-help','updatesHelp'],['update-check','updateCheck'],['update-mihomo','updateApply']])set(id,t(key));
- const occupied=busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting;
+ const occupied=busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||mtChecking;
  el('update-check').disabled=occupied||updateChecking;
- el('update-mihomo').disabled=occupied||updateChecking||updateCheckData?.state!=='AVAILABLE'||updateCheckData.relation==='older';
+ el('update-mihomo').disabled=occupied||updateChecking||updateCheckData?.state!=='AVAILABLE'||!mihomoOffered(updateCheckData.relation);
  let message=updateResultText()||t('updateNone');
  if(updateCheckData?.state==='AVAILABLE'&&!['OK','FAIL'].includes(updateOperation?.state)){
   message=t('updateAvailable',{current:updateCheckData.current_version||'?',available:updateCheckData.available_version,release:updateCheckData.package_release});
-  const relationKey=({older:'updateOlder',same_runtime:'updateSame',unknown:'updateUnknown'})[updateCheckData.relation];if(relationKey)message+=' '+t(relationKey);
+  const relationKey=({older:'updateOlder',same_runtime:'updateSame',same_package:'updateSamePackage',newer_package:'updateNewerPackage',older_package:'updateOlderPackage',invalid_state:'updateInvalidState',unknown:'updateUnknown'})[updateCheckData.relation];if(relationKey)message+=' '+t(relationKey);
+  if(updateCheckData.installed_package_version)message+=' '+t('updatePackageMetadata',{version:updateCheckData.installed_package_version});
  }
  if(updateMessage)message=updateMessage;
  if(updateChecking)message=t('updateChecking');
- if(updateOperation?.state==='RUNNING')message=t('updateRunning');
+ if(updateOperation?.state==='RUNNING'&&updateOperation.component!=='magitrickle')message=t('updateRunning');
  set('updates-state',message);
 }
+function mihomoOffered(relation){return ['newer','newer_package','unknown'].includes(relation);}
 function validUpdateCheck(data){
  const version=v=>typeof v==='string'&&/^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)&&v.length<=32;
- return data?.state==='AVAILABLE'&&version(data.available_version)&&Number.isInteger(data.package_release)&&data.package_release>0&&data.package_release<=999999999&&['newer','older','same_runtime','unknown'].includes(data.relation)&&(data.current_version===undefined||typeof data.current_version==='string'&&/^[0-9][A-Za-z0-9.+~-]{0,63}$/.test(data.current_version));
+ return data?.state==='AVAILABLE'&&version(data.available_version)&&Number.isInteger(data.package_release)&&data.package_release>0&&data.package_release<=999999999&&['newer','older','same_runtime','same_package','newer_package','older_package','invalid_state','unknown'].includes(data.relation)&&(data.current_version===undefined||typeof data.current_version==='string'&&/^[0-9][A-Za-z0-9.+~-]{0,63}$/.test(data.current_version));
 }
 async function checkMihomoUpdates(){
- if(updateChecking||updateSubmitting||updateOperation?.state==='RUNNING'||busy||importData?.state==='RUNNING')return;
+ if(mtChecking||updateChecking||updateSubmitting||updateOperation?.state==='RUNNING'||busy||importData?.state==='RUNNING')return;
  const epoch=++updateEpoch;updateChecking=true;updateCheckData=null;updateOperation=null;updateMessage='';draw();
  try{
   const response=await fetch('/api/updates/check',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-KAS-Confirm':'check-updates'},body:'{}'});
@@ -540,24 +546,76 @@ async function refreshUpdateOperation(){
   const response=await fetch('/api/updates/operation',{cache:'no-store',credentials:'same-origin'}),data=await response.json();
   if(epoch!==updateEpoch)return;
   if(!response.ok||!['UNKNOWN','RUNNING','OK','FAIL'].includes(data.state))throw Error(data.error_code||'INVALID_RESPONSE');
+  if(data.id)updateKnownID=data.id;
   if(expectedID&&data.id&&data.id!==expectedID){
    updateCheckData=null;updateOperation=data.state==='RUNNING'?data:null;updateMessage=t('updateRequestError',{code:'STATUS_REPLACED'});draw();if(updateOperation?.state==='RUNNING')scheduleUpdatePoll();return;
   }
   if(data.state==='UNKNOWN'&&wasRunning){updateOperation=null;updateMessage=t('updateRequestError',{code:'STATUS_LOST'});}
   else {updateOperation=data.state==='UNKNOWN'?null:data;updateMessage='';}
-  if(wasRunning&&updateOperation&&updateOperation.state!=='RUNNING'){updateCheckData=null;refresh();}
+  if(wasRunning&&updateOperation&&updateOperation.state!=='RUNNING'){updateCheckData=null;mtCheckData=null;refresh();}
  }catch(e){updateMessage=t('updateRequestError',{code:e.message||'UNKNOWN'});}
  draw();if(updateOperation?.state==='RUNNING')scheduleUpdatePoll();
 }
 async function startMihomoUpdate(){
- if(updateSubmitting||updateOperation?.state==='RUNNING'||updateCheckData?.state!=='AVAILABLE'||updateCheckData.relation==='older'||busy||importData?.state==='RUNNING')return;
+ if(mtChecking||updateSubmitting||updateOperation?.state==='RUNNING'||updateCheckData?.state!=='AVAILABLE'||!mihomoOffered(updateCheckData.relation)||busy||importData?.state==='RUNNING')return;
  if(!window.confirm(t('updateConfirm'))){updateMessage=t('updateCancelled');draw();return;}
+ const priorID=updateKnownID;
  ++updateEpoch;updateSubmitting=true;updateCheckData=null;updateMessage='';draw();
  try{
   const response=await fetch('/api/updates/mihomo',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json','X-KAS-Confirm':'update-mihomo'},body:'{}'}),data=await response.json();
-  if(!response.ok||data.state!=='RUNNING')throw Error(data.error_code||'INVALID_RESPONSE');updateOperation=data;updateCheckData=null;scheduleUpdatePoll();
- }catch(e){const message=t('updateRequestError',{code:e.message||'UNKNOWN'});updateMessage=message;await refreshUpdateOperation();if(!updateOperation)updateMessage=message;}
+  if(!response.ok||data.state!=='RUNNING')throw Error(data.error_code||'INVALID_RESPONSE');updateOperation=data;updateKnownID=data.id;updateCheckData=null;scheduleUpdatePoll();
+ }catch(e){await reconcileUpdateStart(priorID,'mihomo',e);}
  finally{updateSubmitting=false;draw();}
 }
 el('update-check').addEventListener('click',checkMihomoUpdates);
 el('update-mihomo').addEventListener('click',startMihomoUpdate);
+
+function drawMTUpdates(){
+ for(const [id,key] of [['mt-heading','mtHeading'],['mt-help','mtHelp'],['mt-check','mtCheck'],['update-mt','mtApply']])set(id,t(key));
+ const occupied=busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||updateChecking||mtChecking;
+ el('mt-check').disabled=occupied;el('update-mt').disabled=occupied||mtCheckData?.relation!=='newer';
+ let text=t('updateNone');
+ if(mtCheckData)text=t(mtCheckData.relation==='newer'?'mtAvailable':'mtNoUpgrade',{current:mtCheckData.current_version,available:mtCheckData.available_version});
+ if(mtMessage)text=mtMessage;
+ if(mtChecking)text=t('mtChecking');
+ if(updateOperation?.component==='magitrickle'){
+  if(updateOperation.state==='RUNNING')text=t('mtRunning');
+  else if(updateOperation.state==='FAIL')text=t('mtFailed',{code:updateOperation.error_code||'UNKNOWN'});
+  else if(updateOperation.state==='OK')text=t(updateOperation.outcome==='CHANGED'?'mtChanged':'mtUnchanged');
+  if(updateMessage)text=updateMessage;
+ }
+ set('mt-state',text);
+}
+async function checkMTUpdates(){
+ if(mtChecking||updateChecking||updateSubmitting||busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING')return;
+ const epoch=++updateEpoch;mtChecking=true;mtCheckData=null;updateOperation=null;mtMessage='';updateMessage='';draw();
+ try{
+  const response=await fetch('/api/updates/magitrickle/check',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-KAS-Confirm':'check-magitrickle'},body:'{}'}),data=await response.json();
+  if(epoch!==updateEpoch)return;
+  const version=v=>typeof v==='string'&&/^[0-9][A-Za-z0-9.+~-]{0,63}$/.test(v);
+  if(!response.ok||data.state!=='AVAILABLE'||!version(data.current_version)||!['newer','no_upgrade'].includes(data.relation)||data.relation==='newer'&&!version(data.available_version))throw Error(data.error_code||'INVALID_RESPONSE');
+  mtCheckData=data;
+ }catch(e){mtMessage=t('updateCheckError',{code:e.message||'UNKNOWN'});}
+ finally{if(epoch===updateEpoch){mtChecking=false;draw();}}
+}
+async function startMTUpdate(){
+ if(mtChecking||updateChecking||updateSubmitting||busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||mtCheckData?.relation!=='newer')return;
+ if(!window.confirm(t('mtConfirm'))){mtMessage=t('updateCancelled');draw();return;}
+ const priorID=updateKnownID;
+ ++updateEpoch;updateSubmitting=true;mtCheckData=null;updateCheckData=null;mtMessage='';updateMessage='';draw();
+ try{
+  const response=await fetch('/api/updates/magitrickle',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-KAS-Confirm':'update-magitrickle'},body:'{}'}),data=await response.json();
+  if(!response.ok||data.state!=='RUNNING'||data.component!=='magitrickle')throw Error(data.error_code||'INVALID_RESPONSE');
+  updateOperation=data;updateKnownID=data.id;scheduleUpdatePoll();
+ }catch(e){await reconcileUpdateStart(priorID,'magitrickle',e);}
+ finally{updateSubmitting=false;draw();}
+}
+el('mt-check').addEventListener('click',checkMTUpdates);
+el('update-mt').addEventListener('click',startMTUpdate);
+
+async function reconcileUpdateStart(priorID,component,error){
+ const message=t('updateRequestError',{code:error.message||'UNKNOWN'});
+ await refreshUpdateOperation();
+ if(updateOperation&&(updateOperation.id===priorID||(updateOperation.component||'mihomo')!==component))updateOperation=null;
+ if(!updateOperation){if(component==='magitrickle')mtMessage=message;else updateMessage=message;}
+}

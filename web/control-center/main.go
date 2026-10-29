@@ -56,6 +56,8 @@ type app struct {
  lastUpdateCheck updateCheck
  updateChecking bool
  updateResult updateOperation
+ mt *mtMaintenance
+ lastMTCheck mtUpdateCheck
  importer []byte
  mu sync.Mutex
  running bool
@@ -68,7 +70,7 @@ type app struct {
  filterConfigReader func()([]byte,error)
  providers *providerNamesExporter
 }
-func newApp(host string, doctor []byte)*app { a:= &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand,runUpdate:updateCommand,updateDigest:func()string{return mihomoBinaryDigest("/opt")}};a.checkUpdates=a.fetchUpdateCheck;return a }
+func newApp(host string, doctor []byte)*app { a:= &app{host:host, doctor:doctor, mt:newMTMaintenance(),runDoctor:doctorCommand,runImport:importCommand,runUpdate:updateCommand,updateDigest:func()string{return mihomoBinaryDigest("/opt")}};a.checkUpdates=a.fetchUpdateCheck;return a }
 func validateBind(address string) error {
  host,port,err:=net.SplitHostPort(address)
  if err!=nil{return err}
@@ -173,6 +175,8 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/updates/check",a.handleUpdateCheck)
  mux.HandleFunc("/api/updates/mihomo",a.handleMihomoUpdate)
  mux.HandleFunc("/api/updates/operation",a.handleUpdateOperation)
+ mux.HandleFunc("/api/updates/magitrickle/check",a.handleMTCheck)
+ mux.HandleFunc("/api/updates/magitrickle",a.handleMTUpdate)
  mux.HandleFunc("/api/access",a.handleAccess)
  mux.HandleFunc("/api/settings",a.handleSettings)
  mux.HandleFunc("/api/doctor",a.handleDoctor)

@@ -30,16 +30,19 @@ type updateAsset struct {
 	Release int
 }
 type updateCheck struct {
-	State            string `json:"state"`
-	Time             string `json:"timestamp"`
-	Architecture     string `json:"architecture,omitempty"`
-	CurrentVersion   string `json:"current_version,omitempty"`
-	AvailableVersion string `json:"available_version,omitempty"`
-	PackageRelease   int    `json:"package_release,omitempty"`
-	Relation         string `json:"relation,omitempty"`
-	ErrorCode        string `json:"error_code,omitempty"`
+	State                   string `json:"state"`
+	Time                    string `json:"timestamp"`
+	Architecture            string `json:"architecture,omitempty"`
+	CurrentVersion          string `json:"current_version,omitempty"`
+	AvailableVersion        string `json:"available_version,omitempty"`
+	PackageRelease          int    `json:"package_release,omitempty"`
+	Relation                string `json:"relation,omitempty"`
+	InstalledPackageVersion string `json:"installed_package_version,omitempty"`
+	RecordedPackageRelease  int    `json:"recorded_package_release,omitempty"`
+	ErrorCode               string `json:"error_code,omitempty"`
 }
 type updateOperation struct {
+	Component string `json:"component,omitempty"`
 	ID        string `json:"id,omitempty"`
 	State     string `json:"state"`
 	Time      string `json:"timestamp"`
@@ -190,7 +193,7 @@ func (a *app) fetchUpdateCheck(ctx context.Context) (updateCheck, error) {
 		return updateCheck{}, err
 	}
 	local := a.runtimeStatus(ctx)
-	return updateCheck{State: "AVAILABLE", Architecture: arch, CurrentVersion: local.Mihomo.Version, AvailableVersion: asset.Version, PackageRelease: asset.Release, Relation: compareRuntimeVersions(local.Mihomo.Version, asset.Version)}, nil
+	return enrichMihomoCheck("/opt", updateCheck{State: "AVAILABLE", Architecture: arch, CurrentVersion: local.Mihomo.Version, AvailableVersion: asset.Version, PackageRelease: asset.Release, Relation: compareRuntimeVersions(local.Mihomo.Version, asset.Version)}), nil
 }
 func updateCommand(script []byte) (int, error) {
 	cmd := exec.Command("sh", "-s")
@@ -325,7 +328,7 @@ func (a *app) handleMihomoUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	checked, err := time.Parse(time.RFC3339, a.lastUpdateCheck.Time)
-	if err != nil || time.Since(checked) > 10*time.Minute || a.lastUpdateCheck.State != "AVAILABLE" || a.lastUpdateCheck.Relation == "older" {
+	if err != nil || time.Since(checked) > 10*time.Minute || a.lastUpdateCheck.State != "AVAILABLE" || !mihomoUpdateOffered(a.lastUpdateCheck.Relation) {
 		a.mu.Unlock()
 		updateJSON(w, 409, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "CHECK_REQUIRED"})
 		return
@@ -341,7 +344,7 @@ func (a *app) handleMihomoUpdate(w http.ResponseWriter, r *http.Request) {
 		updateJSON(w, 503, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "STAGING_FAILED"})
 		return
 	}
-	entry := updateOperation{ID: hex.EncodeToString(id), State: "RUNNING", Time: now()}
+	entry := updateOperation{ID: hex.EncodeToString(id), Component: "mihomo", State: "RUNNING", Time: now()}
 	a.importRunning = true
 	a.updateResult = entry
 	a.lastUpdateCheck = updateCheck{}

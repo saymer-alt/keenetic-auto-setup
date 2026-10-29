@@ -20,6 +20,8 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
   if(url.pathname==='/api/updates/check')data={state:'AVAILABLE',current_version:'1.19.33',available_version:'1.20.0',package_release:2,relation:'newer'};
   if(url.pathname==='/api/updates/mihomo'){updateOperation={id:'update-fixture',state:'OK',outcome:'UNCHANGED',exit_code:0};data={id:'update-fixture',state:'RUNNING'};status=202;}
+  if(url.pathname==='/api/updates/magitrickle/check')data={state:'AVAILABLE',current_version:'0.8.2-1',available_version:'0.8.2-2',relation:'newer'};
+  if(url.pathname==='/api/updates/magitrickle'){updateOperation={id:'mt-fixture',component:'magitrickle',state:'OK',outcome:'CHANGED'};data={...updateOperation,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/operation')data=updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
   if(url.pathname==='/api/components')data={panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
   if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
@@ -52,6 +54,13 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  acceptDialog=true;await page.locator('#update-mihomo').click();assert.equal(await page.locator('#apply').isDisabled(),true);
  await page.waitForFunction(()=>document.getElementById('updates-state').textContent.includes('не изменился'));
  assert.equal(requests.filter(r=>r.path==='/api/updates/mihomo').length,1);
+ assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle/check').length,0);
+ await page.locator('#mt-check').click();await page.waitForFunction(()=>!document.getElementById('update-mt').disabled);
+ assert.match(await page.locator('#mt-state').innerText(),/0\.8\.2-1.*0\.8\.2-2/);
+ acceptDialog=false;await page.locator('#update-mt').click();assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle').length,0);
+ acceptDialog=true;await page.locator('#update-mt').click();assert.equal(await page.locator('#run').isDisabled(),true);
+ await page.waitForFunction(()=>document.getElementById('mt-state').textContent.includes('процесс запущен'));
+ assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle').length,1);
  await page.screenshot({path:path.join(previews,'overview-desktop.png'),fullPage:true});
  await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('Предупреждения: 2'));
  assert.doesNotMatch(await page.locator('#doctor-state').innerText(),/код выхода|не завершилась/);
