@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,65 @@ import (
 	"testing"
 	"time"
 )
+
+// The disposable aarch64 service lab caught the real Entware behavior the
+// worker must tolerate: opkg owns its info files and the aarch64 2022 feed
+// writes the package list world-writable (0666) on real installations, while
+// the x64 2024 build honors the umask (0600). Ownership evidence stays
+// structural; a panel-owned private file keeps the strict mode contract.
+func TestPanelIntegrityAcceptsOpkgOwnedWorldWritableList(t *testing.T) {
+	root := panelUpdateRoot(t)
+	for _, dir := range []string{"bin", "etc/init.d", "share/kas-control-center", "lib/opkg/info"} {
+		if e := os.MkdirAll(filepath.Join(root, dir), 0755); e != nil {
+			t.Fatal(e)
+		}
+	}
+	payload := []byte("panel binary fixture")
+	digest := sha256.Sum256(payload)
+	info := "Version=0.0.0~integrity-1\n" +
+		"KAS_SOURCE_SHA=" + strings.Repeat("a", 40) + "\n" +
+		"Architecture=aarch64-3.10\n" +
+		"Channel=experimental\n" +
+		"CGO_ENABLED=0\n" +
+		"GOARCH=arm64\n" +
+		"Binary_SHA256=" + hex.EncodeToString(digest[:]) + "\n"
+	files := map[string][]byte{
+		"bin/kas-control-center":             payload,
+		"share/kas-control-center/BUILD_INFO": []byte(info),
+		"etc/init.d/S98kas-control-center":    []byte("#!/bin/sh\n# KAS-CONTROL-CENTER-IPK-v1\n"),
+		"lib/opkg/info/kas-control-center.control": []byte(
+			"Package: kas-control-center\nVersion: 0.0.0~integrity-1\nArchitecture: aarch64-3.10\n" +
+				"Source: " + strings.Repeat("a", 40) + "\nInstalled-Size: 1\n"),
+		"lib/opkg/info/kas-control-center.list": []byte(
+			"/opt/bin/kas-control-center\n/opt/etc/init.d/S98kas-control-center\n" +
+				"/opt/share/kas-control-center/BUILD_INFO\n"),
+	}
+	for name, body := range files {
+		if e := os.WriteFile(filepath.Join(root, name), body, 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// The mode opkg itself chose on real aarch64 installations.
+	if e := os.Chmod(filepath.Join(root, "lib/opkg/info/kas-control-center.list"), 0666); e != nil {
+		t.Fatal(e)
+	}
+	p := newPanelUpdater(root)
+	if e := p.integrity(); e != nil {
+		t.Fatalf("world-writable opkg-owned list refused: %v", e)
+	}
+	// A symlinked or replaced list still refuses; the mode is the only
+	// relaxation, never the path or ownership identity.
+	listPath := filepath.Join(root, "lib/opkg/info/kas-control-center.list")
+	if e := os.Remove(listPath); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Symlink(filepath.Join(root, "share/kas-control-center/BUILD_INFO"), listPath); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.integrity(); e == nil {
+		t.Fatal("symlinked opkg list accepted")
+	}
+}
 
 func TestPanelDurableGateBlocksOtherMutationAfterRestart(t *testing.T) {
 	root := panelUpdateRoot(t)

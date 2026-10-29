@@ -112,6 +112,51 @@ func panelFileDigest(root, relative string, max int64) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+// opkgInfoFile reads an opkg-owned info file as package-ownership evidence.
+// The file mode belongs to opkg, not to this panel: the aarch64 Entware feed
+// (opkg 2022) writes world-writable 0666 lists on real installations while
+// the x64 2024 build honors the umask (0600); both were observed in the
+// disposable service lab. Structural safety is still enforced: root-owned
+// regular file, no symlinked component, bounded size, nofollow open and a
+// stable identity between stat and read.
+func opkgInfoFile(root, relative string, max int64) ([]byte, error) {
+	target := filepath.Join(root, relative)
+	for dir := filepath.Dir(target); ; dir = filepath.Dir(dir) {
+		st, e := os.Lstat(dir)
+		if e != nil || !st.IsDir() || st.Mode().Perm()&0022 != 0 || !inventoryOwned(st) {
+			return nil, errors.New("PANEL_FILE_UNSAFE")
+		}
+		if dir == root {
+			break
+		}
+		if filepath.Dir(dir) == dir {
+			return nil, errors.New("PANEL_FILE_UNSAFE")
+		}
+	}
+	st, e := os.Lstat(target)
+	if e != nil || !st.Mode().IsRegular() || st.Size() > max || !inventoryOwned(st) {
+		return nil, errors.New("PANEL_FILE_UNSAFE")
+	}
+	f, e := os.OpenFile(target, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if e != nil {
+		return nil, e
+	}
+	opened, e := f.Stat()
+	if e != nil || !os.SameFile(st, opened) {
+		f.Close()
+		return nil, errors.New("PANEL_FILE_UNSAFE")
+	}
+	data, e := io.ReadAll(io.LimitReader(f, max+1))
+	closeErr := f.Close()
+	if e != nil || int64(len(data)) > max {
+		return nil, errors.New("PANEL_FILE_UNSAFE")
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	return data, nil
+}
 func (p *panelUpdater) integrity() error {
 	if _, _, e := p.installed(); e != nil {
 		return e
@@ -132,7 +177,7 @@ func (p *panelUpdater) integrity() error {
 	if e != nil || !strings.Contains(string(b), "# KAS-CONTROL-CENTER-IPK-v1") {
 		return errors.New("PANEL_NOT_PACKAGE_OWNED")
 	}
-	b, e = inventoryFile(p.root, "lib/opkg/info/kas-control-center.list", 65536, false)
+	b, e = opkgInfoFile(p.root, "lib/opkg/info/kas-control-center.list", 65536)
 	if e != nil {
 		return errors.New("PANEL_NOT_PACKAGE_OWNED")
 	}
