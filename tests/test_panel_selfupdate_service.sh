@@ -286,6 +286,14 @@ try:
     pkg('install', lab / 'kas-control-center_0.0.0~selftest-1_aarch64-3.10.ipk')
     require(not settings.exists(), 'install unexpectedly created settings')
     wait_port(8081, 0, timeout=5)
+    info = Path('/opt/lib/opkg/info')
+    listing = sorted(entry.name for entry in info.iterdir()) if info.is_dir() else 'MISSING'
+    print('INFO-DIR:', listing, flush=True)
+    for probe in ('/opt', '/opt/lib', '/opt/lib/opkg', '/opt/lib/opkg/info',
+                  '/opt/lib/opkg/info/kas-control-center.control'):
+        stat_result = os.stat(probe)
+        print(f'OPT-STAT {probe}: mode={oct(stat_result.st_mode)} uid={stat_result.st_uid} '
+              f'gid={stat_result.st_gid} size={stat_result.st_size}', flush=True)
     ok('old version installed by real opkg and stays stopped until explicit start')
     start_old_daemon()
     api(8081, 'POST', '/api/settings', body={'port': 8081, 'auth_mode': 'panel', 'password': password},
