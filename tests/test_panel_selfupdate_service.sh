@@ -88,12 +88,14 @@ BRIDGE_CREATED=1
 ip address add 192.168.254.1/24 dev br0
 ip link set br0 up
 # Lab TLS trust: the panel and worker keep standard certificate verification.
-openssl req -x509 -newkey rsa:2048 -keyout "$LAB/ca.key" -out "$LAB/ca.crt" -days 2 -nodes -subj '/CN=KAS Selfupdate Lab CA' >/dev/null 2>&1
+openssl req -x509 -newkey rsa:2048 -keyout "$LAB/ca.key" -out "$LAB/ca.crt" -days 2 -nodes   -subj '/CN=KAS Selfupdate Lab CA'   -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
 openssl req -newkey rsa:2048 -keyout "$LAB/server.key" -out "$LAB/server.csr" -nodes -subj '/CN=github.com' -addext 'subjectAltName=DNS:github.com,DNS:api.github.com' >/dev/null 2>&1
 printf 'subjectAltName=DNS:github.com,DNS:api.github.com\n' > "$LAB/server.ext"
 openssl x509 -req -in "$LAB/server.csr" -CA "$LAB/ca.crt" -CAkey "$LAB/ca.key" -CAcreateserial -out "$LAB/server.crt" -days 2 -extfile "$LAB/server.ext" >/dev/null 2>&1
 cat "$LAB/ca.crt" > /usr/local/share/ca-certificates/kas-selfupdate-lab.crt
 update-ca-certificates >/dev/null 2>&1
+CA_HASH=$(openssl x509 -in /usr/local/share/ca-certificates/kas-selfupdate-lab.crt -noout -hash 2>/dev/null)
+[ -e "/etc/ssl/certs/$CA_HASH.0" ] || fail 'lab CA missing from the system bundle'
 mkdir -p /opt/etc/ssl/certs
 cat "$LAB/ca.crt" > /opt/etc/ssl/certs/ca-certificates.crt
 cp /etc/hosts "$LAB/hosts.backup"
@@ -165,9 +167,11 @@ def api(port, method, path, body=None, confirm=None, expected=200, creds=credent
     except urllib.error.HTTPError as error:
         response = error
     with response:
-        require(response.status == expected,
-                f'HTTP status mismatch on {path}: expected {expected}, got {response.status}')
         raw = response.read()
+        if response.status != expected:
+            print(f'FAIL-BODY on {path}: expected {expected}, got {response.status}: '
+                  + raw[:500].decode('utf-8', 'replace'), flush=True)
+            require(False, f'HTTP status mismatch on {path}: expected {expected}, got {response.status}')
     try:
         return json.loads(raw)
     except ValueError:
@@ -297,6 +301,17 @@ try:
     old_pid = int(Path('/opt/var/run/kas-control-center.ipk.pid').read_text())
     ok('old daemon authenticated on port 8081; credentials live outside the package')
 
+    # Network fixture probe: name resolution and TLS must reach the lab server
+    # exactly as the Go client will; print evidence for a cheap CI bisect.
+    resolved = {entry[4][0] for entry in socket.getaddrinfo('github.com', 443, type=socket.SOCK_STREAM)}
+    print('DNS github.com ->', sorted(resolved), flush=True)
+    with opener.open('https://github.com/saymer-alt/keenetic-auto-setup/releases/download/'
+                     'kas-web-channel-experimental/panel-update.json', timeout=10) as probe:
+        probe_body = probe.read()
+        require(b'kas-web-ipk-' in probe_body and b'"channel": "experimental"' in probe_body,
+                'lab index not served over TLS: ' + probe_body[:120].decode('utf-8', 'replace'))
+    ok('lab TLS server serves the channel index with verification enabled')
+
     # A. Space shortage before download must fail safe on the touched filesystem.
     run(['mount', '-t', 'tmpfs', '-o', 'size=8M', 'tmpfs', '/opt/tmp'])
     api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
@@ -321,6 +336,7 @@ try:
     write_asset(False)
 
     # C. Tampered channel index fails the check before any job exists.
+    reset_update_state()
     tampered = json.loads((serve / 'index.good.json').read_text())
     first = tampered['packages'][0]['sha256'][0]
     tampered['packages'][0]['sha256'] = ('0' if first != '0' else '1') + tampered['packages'][0]['sha256'][1:]
