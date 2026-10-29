@@ -176,6 +176,7 @@ try:
     require(b'private-token' not in data and b'subscription.invalid' not in data, 'editor leaked subscription URL')
     require(json.loads(data)['providers'][0]['name'] == 'P', 'editor did not inspect HTTP provider')
     config.unlink()
+    config.parent.rmdir()
     ok('actual package service enables subscription editor without legacy flag; URLs stay private')
     request(8081, body={'port': 8081, 'auth_mode': 'panel', 'password': panel_password})
     request(8081, expected=401)
