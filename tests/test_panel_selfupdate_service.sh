@@ -124,6 +124,10 @@ import urllib.error
 import urllib.request
 
 repo, lab, sha, old_binary, new_binary = sys.argv[1:6]
+# The hosted runner image may hand this process a permissive umask; the lab
+# models the router layout, where daemon- and driver-created private files
+# are 0600/0700. Pin it so every fixture mode is deterministic.
+os.umask(0o077)
 lab = Path(lab)
 serve = lab / 'serve'
 init = Path('/opt/etc/init.d/S98kas-control-center')
