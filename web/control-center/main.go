@@ -29,6 +29,8 @@ import (
 var assets embed.FS
 
 type apiResult struct {
+ Runtime *runtimeObservation `json:"runtime,omitempty"`
+ Summary *doctorSummary `json:"summary,omitempty"`
  State string `json:"state"`
  Time string `json:"timestamp"`
  Source string `json:"source"`
@@ -84,9 +86,10 @@ func componentFiles(root string)(bool,bool){
 func (a *app)handleStatus(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
  mihomo,mt:=componentFiles("/opt")
+ runtime:=a.runtimeStatus(r.Context())
  writeJSON(w,http.StatusOK,apiResult{
-  State:"UNKNOWN",Time:now(),Source:"KAS filesystem evidence only; network health not tested",
-  MihomoBinary:mihomo,MTBinary:mt,
+  State:"UNKNOWN",Time:now(),Source:"KAS executable/process evidence and local version API; network health not tested",
+  MihomoBinary:mihomo,MTBinary:mt,Runtime:&runtime,
  })
 }
 func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
@@ -116,13 +119,15 @@ func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
  ctx,cancel:=context.WithTimeout(r.Context(),90*time.Second);defer cancel()
  output,exit,err:=a.runDoctor(ctx,a.doctor)
  result:=apiResult{State:"UNKNOWN",Time:now(),Source:"bundled mihomo-doctor.sh",ExitCode:&exit,Details:redact(output)}
- if err!=nil{
+ var commandExit *exec.ExitError
+ if ctx.Err()==nil && (err==nil || errors.As(err,&commandExit) && commandExit.ExitCode()==exit) { result.Summary=parseDoctorSummary(output,exit) }
+ if err!=nil && result.Summary==nil{
   result.ErrorCode="DOCTOR_FAILED"
   if errors.Is(ctx.Err(),context.DeadlineExceeded){result.ErrorCode="TIMEOUT"}
   writeJSON(w,http.StatusOK,result);return
  }
  // Exit code 0 proves only script completion, not full client route health.
- // Doctor exit 0 alone is not a machine-readable diagnostic verdict.
+ // A parsed footer describes Doctor findings, not full client route health.
  result.State="UNKNOWN";writeJSON(w,http.StatusOK,result)
 }
 var secretLine=regexp.MustCompile(`(?i)(password|passwd|secret|token|authorization|api.key|private.key|subscription|://[^\s/]+:[^\s/@]+@)`)

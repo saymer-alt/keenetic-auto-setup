@@ -288,7 +288,7 @@ test('Doctor result stays in diagnostics; only a running Doctor has a global ban
  for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
   app.run("document.documentElement.dataset={view:'"+view+"'};draw();");
   assert.equal(app.el('operation-banner').hidden,true,'completed Doctor leaked into '+view);
-  assert.match(app.el('doctor-state').textContent,/0/);
+  assert.match(app.el('doctor-state').textContent,/Диагностика завершена/);
   assert.equal(app.el('output').textContent,'Doctor report');
  }
  app.run("document.documentElement.dataset={view:'settings'};busy=true;draw();");
@@ -312,4 +312,29 @@ test('component versions distinguish installed bundle from applied watchdog',asy
  fixture.components.panel.version='SECRET-TOKEN';
  await app.run('refreshComponents()');
  assert.doesNotMatch(app.el('panel-build').textContent,/SECRET|TOKEN/);
+});
+
+test('overview shows process evidence and explicitly sourced versions',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ app.run(`statusData={timestamp:'test',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'stopped',version:'0.8.2-1',version_source:'package'}}};draw();`);
+ assert.match(app.el('mihomo-file').textContent,/Процесс запущен.*1\.19\.33.*API/);
+ assert.match(app.el('magitrickle-file').textContent,/Процесс не найден.*0\.8\.2-1.*пакет/);
+ app.run(`statusData.runtime.mihomo={state:'unknown',version:'<SECRET>',version_source:'api'};draw();`);
+ assert.match(app.el('mihomo-file').textContent,/не удалось проверить/);
+ assert.doesNotMatch(app.el('mihomo-file').textContent,/SECRET/);
+});
+test('Doctor warnings are findings rather than command failure',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ app.run(`doctorData={exit_code:1,timestamp:'test',details:'full report',summary:{verdict:'WARN',ok:4,warn:2,fail:0,info:3}};draw();`);
+ assert.match(app.el('doctor-state').textContent,/Предупреждения: 2/);
+ assert.doesNotMatch(app.el('doctor-state').textContent,/Команда|не завершилась|ошибка:|код выхода/);
+ app.run(`doctorData={exit_code:0,timestamp:'test',details:'incomplete report'};draw();`);
+ assert.match(app.el('doctor-state').textContent,/Диагностика завершена.*не распознан/);
+ app.run(`doctorData={exit_code:2,timestamp:'test',details:'report',summary:{verdict:'FAIL',ok:4,warn:1,fail:2,info:3}};draw();`);
+ assert.match(app.el('doctor-state').textContent,/Ошибки: 2/);
+});
+test('script-installed watchdog shows its actual digest without a fictitious version',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded',installed_sha256:'b'.repeat(64)}}});
+ await app.run('refreshComponents()');
+ assert.match(app.el('watchdog-version').textContent,/Установлен.*bbbbbbbbbbbb/);
 });

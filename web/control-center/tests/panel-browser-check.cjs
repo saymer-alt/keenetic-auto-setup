@@ -19,7 +19,8 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
   if(url.pathname==='/api/components')data={panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
-  if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true};
+  if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
+  if(url.pathname==='/api/doctor')data={timestamp:'2026-10-29T07:00:00Z',exit_code:1,details:'Doctor full report',summary:{verdict:'WARN',ok:8,warn:2,fail:0,info:4}};
   if(url.pathname==='/api/access')data={home_only:false};
   if(url.pathname==='/api/settings'){
    data=settings;
@@ -36,11 +37,15 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
   if(url.pathname==='/api/config/operation')data=operation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
   return route.fulfill({status,json:data});
  });
- await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'найден'}).waitFor();
+ await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
  await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
  assert.match(await page.locator('#core-version').innerText(),/proof2-1/);assert.match(await page.locator('#watchdog-version').innerText(),/совпадает/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
+ assert.match(await page.locator('#mihomo-file').innerText(),/1\.19\.33.*API/);assert.match(await page.locator('#magitrickle-file').innerText(),/0\.8\.2-1.*пакет/);
  await page.screenshot({path:path.join(previews,'overview-desktop.png'),fullPage:true});
+ await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('Предупреждения: 2'));
+ assert.doesNotMatch(await page.locator('#doctor-state').innerText(),/код выхода|не завершилась/);
+ await page.screenshot({path:path.join(previews,'diagnostics-desktop.png'),fullPage:true});
  await page.locator('#nav-subscriptions').click();await page.locator('#filter-load').click();await page.locator('#filter-node-list label').first().waitFor();
  assert.equal(await page.locator('.view:visible').count(),1);
  await page.locator('#filter-search').fill('Estonia');assert.equal(await page.locator('#filter-node-list label:visible').count(),5);

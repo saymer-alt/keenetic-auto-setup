@@ -91,7 +91,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python3 web/control-center/packaging/build-ipk.py \
-            --arch "$PACKAGE_ARCH" --version "0.0.0~git${SOURCE_SHA:0:12}-1" \
+            --arch "$PACKAGE_ARCH" --version "0.0.1~test${GITHUB_RUN_NUMBER}.${SOURCE_SHA:0:12}-1" \
             --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/ipk"
           cd "$RUNNER_TEMP/ipk"
           sha256sum ./*.ipk > SHA256SUMS
