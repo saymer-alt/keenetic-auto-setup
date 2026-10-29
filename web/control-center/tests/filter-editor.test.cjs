@@ -521,3 +521,19 @@ test('Doctor cards translate without re-running probes and preserve original cop
  assert.match(text(app.el('doctor-summary')),/Overview unavailable/);
  assert.doesNotMatch(text(app.el('doctor-summary')),/External storage|14115/);
 });
+
+
+test('operation navigation is hidden in its own view and honestly labelled elsewhere',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ app.run("importData={state:'RUNNING'};importView='subscriptions';document.documentElement.dataset={view:'overview'};draw();");
+ assert.equal(app.el('operation-open').hidden,false);
+ assert.equal(app.el('operation-open').textContent,'Перейти к операции');
+ app.run("document.documentElement.dataset={view:'subscriptions'};draw();");
+ assert.equal(app.el('operation-open').hidden,true);
+ app.run("importData={state:'OK',exit_code:0};draw();");
+ assert.equal(app.el('operation-open').hidden,true);
+ assert.equal(app.el('operation-dismiss').hidden,false);
+ app.run("importData=null;busy=true;document.documentElement.dataset={view:'overview'};lang='en';draw();");
+ assert.equal(app.el('operation-open').hidden,false);
+ assert.equal(app.el('operation-open').textContent,'Go to operation');
+});

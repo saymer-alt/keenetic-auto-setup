@@ -99,6 +99,7 @@ let browser;
  assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,1);
  await page.waitForFunction(()=>document.getElementById('filter-state').textContent.includes('Фильтр обновлён'));
  assert.equal(await page.locator('#operation-banner').isVisible(),true);
+ assert.equal(await page.locator('#operation-open').isVisible(),false,'operation navigation must not target the already open view');
  await page.locator('#nav-overview').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
  await page.locator('#nav-subscriptions').click();assert.match(await page.locator('#operation-message').innerText(),/успешно/);
  await page.locator('#operation-dismiss').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
