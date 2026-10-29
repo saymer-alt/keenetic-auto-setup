@@ -42,13 +42,14 @@ Files: `panel_update.go`, `panel_update_worker.go`, tests; main/components wirin
 Interfaces: `panelUpdater` check/apply/state, persistent private `panelJob`,
 `runPanelUpdateWorker`, `panelUpdateGate`, `writePanelRuntimeReceipt`.
 
-- [ ] RED: same job survives cancellation/restart, exclusive gate across processes,
+- [x] RED: same job survives cancellation/restart, exclusive gate across processes,
   failure before opkg retains old service, opkg failure never reports OK.
 - [x] Implement protected state, fixed worker CLI, download/preflight/free-space,
   detached runner, opkg install, init start, runtime receipt and explicit recovery.
-- [ ] Exclude self-worker from importer drain; central handler denies other mutating
+- [x] Exclude self-worker from importer drain; central handler denies other mutating
   API requests under durable gate, including on restarted panel.
-- [ ] Verify real two-process handoff, state writes, failure cleanup and gate behavior.
+- [x] Verify real two-process handoff, state writes, failure cleanup and gate behavior
+  (aarch64 service lab, job `selfupdate-lifecycle`).
 
 ### Task 3: Web interface
 
@@ -58,32 +59,41 @@ Interfaces: fixed `/api/updates/panel/{check,apply,operation}`; no candidate in 
 - [x] RED: explicit check/confirm, stale operation ID, lost response, reconnect,
   exact fresh `/api/components` version/SHA required before success.
 - [x] Implement RU/EN and shared busy state; store operation ID only.
-- [ ] Verify Node suite and Chromium at mobile/desktop widths.
+- [x] Verify Node suite and Chromium at mobile/desktop widths (CI `browser` job).
 
 ### Task 4: Integration and review
 
 Files: package/service lab tests, workflow gate, `PANEL_UPDATE.md`.
 
 - [x] Real Entware opkg offline install/upgrade with preserved user configuration.
-- [ ] Disposable init/service update including stop/start, browser loss, start error;
-  quantify staging reserve. Firmware emulator stays separately labelled.
-- [ ] Go suite/race/vet, Node, Python IPK tests, crossbuild four ABIs, whitespace.
+- [x] Disposable init/service update including stop/start, browser loss, start error;
+  staging reserve exercised via the space-shortage scenario. Firmware emulator stays
+  separately labelled; hardware acceptance remains the owner's step.
+- [x] Go suite/race/vet, Node, Python IPK tests, crossbuild four ABIs, whitespace.
 - [x] Independent whole-diff review; fix material findings with RED→GREEN.
-- [ ] Report verified scope and remaining CI/hardware acceptance; no real installation.
+- [x] Report verified scope and remaining CI/hardware acceptance; no real installation.
 
-## Verified checkpoint (2026-10-29)
+## Verified checkpoint (2026-10-29, exact HEAD 16dc1ca/c0f3d22 CI wave)
 
-Go full suite and actual source-built MIPSel IPK preflight pass with verified Entware
-opkg; actual offline install/upgrade/remove retains settings and worker staging.
-Node suite: 69 PASS. Four Linux architectures compile. Independent review findings
-were reproduced and fixed RED→GREEN: admitted mutation race, tilde asset names,
-reloaded stale operation identity. Added detached-session/stdout independence,
-interrupted admission and dead-worker regressions. Chromium scenario and workflow
-job prepared but NOT EXECUTED locally (no browser binary). Full firmware Web update
-and runtime receipt remain unverified; no releasable IPK publication is authorized.
+All `web-ipk` jobs green on the pushed head: package-tests, service-lifecycle,
+selfupdate-lifecycle (native aarch64 disposable VM), crossbuild (four ABIs);
+`web-prototype`, `browser` (real Chromium panel flows), `settings-emulated`
+(arm64/mipsle), lifecycle, offline-opkg also green. The selfupdate lab drives the
+real chain end to end: old daemon → explicit Web check/apply → detached session
+worker → real opkg/preinst stop/drain → explicit init start → private runtime
+receipt → fresh authenticated identity with the exact version/SHA; honest failure
+matrix: space, download, tampered index, tampered asset, wrong ABI, busy real
+opkg lock, start failure plus explicit recovery, concurrent mutation denial,
+byte-for-byte settings/YAML preservation.
 
-Executor limitation: PID namespace differs from mounted proc. Detached session test
-observes the child's own proc record; this is not a substitute for target firmware
-process/receipt acceptance. Next integration step needs a committed draft PR for CI;
-Owner explicitly authorized commit/push and draft PR on 2026-10-29.
-Handoff: 2026-10-29-panel-self-update-handoff.md.
+Environment findings fixed with RED→GREEN evidence:
+1. Flaky CI stop failure root-caused with new diagnostics: drain-loop identity
+   race where the exiting process answers kill -0 as a zombie; state re-read added.
+2. The aarch64 Entware opkg (2022) writes the package list world-writable 0666 on
+   real installations; the worker now reads opkg-owned lists as evidence while
+   panel-private files keep the strict mode contract.
+3. The init untracked guard counted the recovery CLI itself as a second daemon;
+   fixed internal CLI modes are excluded from the scan.
+
+Remaining: hardware acceptance on a real KeeneticOS device is the owner's separate
+step; no channel index publication and no releasable IPK are authorized.
