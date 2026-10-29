@@ -1,0 +1,71 @@
+name: Publish optional KAS panel IPK prerelease
+on:
+  push:
+    branches: ['publish/kas-web-ipk-b0e3c0c']
+    paths: ['.github/workflows/web-ipk-prerelease.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: kas-web-ipk-b0e3c0c-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: saymer-alt/keenetic-auto-setup
+      SOURCE_SHA: b0e3c0ca561deedcb2e8b555cd345ae121f6aada
+      PACKAGE_RUN: '40871820680'
+      TAG: kas-web-ipk-b0e3c0c
+    steps:
+      - name: Wait for exact-source acceptance checks
+        run: |
+          set -euo pipefail
+          for run_id in 40871821776 40871821839 40871821789 40871820741 40871820894 40871820680 40871820674; do
+            test "$(gh run view "$run_id" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+            gh run watch "$run_id" --exit-status --interval 15
+          done
+      - name: Download verified source-pinned IPKs
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            gh run download "$PACKAGE_RUN" --name "kas-control-center-ipk-$arch-$SOURCE_SHA" --dir "download-$arch"
+            (cd "download-$arch" && sha256sum -c SHA256SUMS)
+            test "$(find "download-$arch" -maxdepth 1 -name '*.ipk' | wc -l)" -eq 1
+            cp "download-$arch/"*.ipk packages/
+            ipk=$(find "download-$arch" -maxdepth 1 -name '*.ipk')
+            tar xOzf "$ipk" ./data.tar.gz | tar xOz opt/share/kas-control-center/BUILD_INFO | grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA"
+          done
+          cd packages
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create non-latest experimental release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing prerelease" >&2
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Экспериментальная KAS Web 0.0.1~test13.b0e3c0ca561d-1.
+
+          Редактор фильтра серверов подписки теперь доступен при штатном запуске IPK без legacy-файла export-names. Поддерживаются обычные HTTP-провайдеры; применение и снятие фильтра требуют подтверждения и выполняются штатным импортёром KAS с проверкой исходного конфига. Mihomo может временно перезапуститься. URL подписки и секреты не выдаются API редактора.
+
+          «Панель роутера» открывает HTTP-корень текущего роутера в новой вкладке без порта KAS; ссылка видна и на мобильных экранах. Через внешний HTTPS reverse proxy локальный адрес не угадывается. При нестандартном порте административного интерфейса используйте его фактический адрес.
+
+          Встроенный Doctor 1.2.19 выбирает актуальный совместимый пакет Mihomo теми же правилами, что штатный обновлятор, вместо первого совпадения в списке GitHub assets. Прежние темы, RU/EN, ссылки MT/MetaCubeXD/генератора и ручные обновления Mihomo/MT сохранены.
+
+          Все семь проверок точного SOURCE_SHA завершились успешно, включая native KAS, импорт и фильтрацию в эмуляторе, MIPSel/ARM64 settings и настоящий opkg/init lifecycle. IPK скопированы из успешной сборки 40871820680 без пересборки. Это лабораторные проверки; аппаратная приёмка этой версии ещё предстоит.
+
+          Обновление самой панели из Web, подробная RU/EN сводка Doctor и карточка свободного места пока не реализованы: задачи #273 и #274. Новые диагностические скрипты — отдельная будущая работа #270. История старых IPK и автоматический откат версий не включены.
+
+          Обновление поверх test11: обычный opkg install, затем S98kas-control-center start, проверить kas-control-center -version и обновить страницу Ctrl+F5. Настройки панели сохраняются. Пакет только панели, без лабораторного kas-core; main/stable/latest не изменяются.
+
+          Исходники: b0e3c0ca561deedcb2e8b555cd345ae121f6aada. Тег указывает на коммит публикации; BUILD_INFO внутри IPK фиксирует проверенные исходники.
+          Изменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/275
+          Инструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/b0e3c0ca561deedcb2e8b555cd345ae121f6aada/web/control-center/packaging/README.md
+          NOTES
+          gh release create "$TAG" packages/*.ipk packages/SHA256SUMS --target "$GITHUB_SHA" --title "KAS Web test13: editor enabled, router link, Doctor fix (b0e3c0c)" --notes-file release-notes.md --prerelease --latest=false
