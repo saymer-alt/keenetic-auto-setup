@@ -40,6 +40,7 @@ def main():
     ap.add_argument('--arch', choices=ARCHES, required=True)
     ap.add_argument('--version', required=True)
     ap.add_argument('--source-sha', required=True)
+    ap.add_argument('--channel', choices=['experimental', 'stable'], default='experimental')
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--binary', type=Path, help='use an already built binary (archive tests only)')
     args = ap.parse_args()
@@ -53,10 +54,10 @@ def main():
         if not args.binary:
             env = {**os.environ, 'CGO_ENABLED': '0', 'GOOS': 'linux', **ARCHES[args.arch]}
             subprocess.run(['go', 'generate', './...'], cwd=HERE.parent, env=env, check=True)
-            subprocess.run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags=-s -w -X main.panelBuildVersion=' + args.version + ' -X main.panelBuildSHA=' + args.source_sha,
+            subprocess.run(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags=-s -w -X main.panelBuildVersion=' + args.version + ' -X main.panelBuildSHA=' + args.source_sha + ' -X main.panelBuildChannel=' + args.channel,
                             '-o', str(binary), '.'], cwd=HERE.parent, env=env, check=True)
         payload = binary.read_bytes()
-        info = ('Version=' + args.version + '\nKAS_SOURCE_SHA=' + args.source_sha + '\nArchitecture=' + args.arch + '\nCGO_ENABLED=0\n' +
+        info = ('Version=' + args.version + '\nKAS_SOURCE_SHA=' + args.source_sha + '\nArchitecture=' + args.arch + '\nChannel=' + args.channel + '\nCGO_ENABLED=0\n' +
                 ''.join(k + '=' + v + '\n' for k, v in ARCHES[args.arch].items()) +
                 'Binary_SHA256=' + hashlib.sha256(payload).hexdigest() + '\n')
         data = archive([('opt/bin/kas-control-center', payload, 0o755),

@@ -295,7 +295,7 @@ func (a *app) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	if a.updateChecking || a.importRunning || a.running || a.shuttingDown {
+	if a.panelUpdateBusy() || a.updateChecking || a.importRunning || a.running || a.shuttingDown {
 		a.mu.Unlock()
 		updateJSON(w, 409, updateCheck{State: "UNKNOWN", Time: now(), ErrorCode: "BUSY"})
 		return
@@ -322,7 +322,7 @@ func (a *app) handleMihomoUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	if a.importRunning || a.running || a.shuttingDown || a.updateChecking {
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown || a.updateChecking {
 		a.mu.Unlock()
 		updateJSON(w, 409, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "BUSY"})
 		return

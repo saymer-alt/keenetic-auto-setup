@@ -36,6 +36,7 @@ const words={
 let lang=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';
 try{const s=localStorage.getItem('kas_lang');if(s==='ru'||s==='en')lang=s;}catch(_){}
 let componentsData=null;
+let panelBusy=false,panelUpdateUI=null;
 let mtCheckData=null,mtChecking=false,mtMessage='';
 let updateCheckData=null,updateOperation=null,updateChecking=false,updateSubmitting=false,updateMessage='',updatePollTimer=null,updateEpoch=0,updateKnownID=null;
 let statusData=null,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
@@ -53,6 +54,7 @@ const t=(key,params={})=>{
 };
 const set=(id,value)=>{el(id).textContent=value;};
 function draw(){
+ panelUpdateUI?.draw();
  drawSettings();
  drawComponents();
  document.documentElement.lang=lang;
@@ -65,13 +67,13 @@ function draw(){
  if(el('filter-empty'))set('filter-empty',t('filterEmpty'));
  updateFilterSearch();
  set('access-state',accessBusy?t('accessLoading'):accessStatus||(accessData?t(accessData.home_only?'accessOn':'accessOff'):''));
- el('access-home-only').disabled=accessBusy||!accessData;el('access-save').disabled=accessBusy||!accessData;
+ el('access-home-only').disabled=panelBusy||accessBusy||!accessData;el('access-save').disabled=panelBusy||accessBusy||!accessData;
  for(const [id,key] of [['operation-dismiss','operationDismiss'],['operation-open','operationDetails'],['nav-overview','navOverview'],['nav-subscriptions','navSubscriptions'],['nav-configuration','navConfiguration'],['nav-diagnostics','navDiagnostics'],['nav-settings','navSettings'],['experiment','experiment'],['local-badge','localBadge'],['quick-heading','quickHeading'],['quick-subscriptions','quickSubscriptions'],['quick-subscriptions-help','quickSubscriptionsHelp'],['quick-configuration','quickConfiguration'],['quick-configuration-help','quickConfigurationHelp'],['filter-search-label','searchLabel'],['nodes-heading','nodesHeading'],['filter-details-label','filterDetails'],['export-help-label','exportHelpLabel'],['footer-note','footerNote'],['skip-link','skipLink'],['filter-search-empty','searchEmpty'],['scope','scope'],['access-heading','accessHeading'],['access-label','accessHomeOnly'],['access-help','accessHelp'],['access-save','accessSave'],['status-heading','status'],['refresh','refresh'],['config-heading','config'],['config-help','configHelp'],['file-label','fileLabel'],['paste-label','pasteLabel'],['config-warning','warning'],['apply','apply'],['filter-heading','filterHeading'],['filter-help','filterHelp'],['filter-load','filterLoad'],['filter-provider-label','filterProviderLabel'],['filter-preview','filterPreview'],['filter-clear','filterClear'],['filter-hint','filterHint'],['providers-heading','providers'],['providers-help','providersHelp'],['providers-download','providersDownload'],['doctor-heading','doctor'],['doctor-help','help'],['run','run'],['copy','copy'],['details-label','details'],['footer','footer']])set(id,t(key));
  set('status-text',statusData?t('unknown')+' — '+t('timestamp',{time:statusData.timestamp}):t('unknown'));
  set('binary-text',statusData?.runtime?t('processHelp'):statusData?t('binary',{m:t(statusData.mihomo_binary?'present':'absent'),mt:t(statusData.magitrickle_binary?'present':'absent')}):'');
  const runningImport=importData?.state==='RUNNING';
  const runningUpdate=updateOperation?.state==='RUNNING';
- const maintenanceBusy=runningImport||runningUpdate||updateSubmitting||mtChecking;
+ const maintenanceBusy=runningImport||runningUpdate||updateSubmitting||mtChecking||panelBusy;
  let message=t('importNone');
  if(importData){
   if(runningImport)message=t('applying');
@@ -167,7 +169,7 @@ function drawSettings(){
  set('settings-password-label',t(root?'settingsRootPassword':'settingsPassword'));
  set('settings-login',mode==='none'?'':t('settingsLogin',{login:panel?'kas':'root'}));
  set('settings-mode-help',t(panel?'settingsPanelHelp':mode==='entware'?'settingsEntwareHelp':'settingsNoneHelp'));
- for(const id of ['settings-port','settings-mode','settings-current','settings-password','settings-repeat','settings-save'])el(id).disabled=settingsBusy||!settingsData;
+ for(const id of ['settings-port','settings-mode','settings-current','settings-password','settings-repeat','settings-save'])el(id).disabled=panelBusy||settingsBusy||!settingsData;
  el('settings-reload').disabled=settingsBusy;
  set('settings-state',settingsBusy?t(settingsData?'settingsSaving':'settingsLoading'):settingsStatus);
 }
@@ -522,7 +524,7 @@ function updateResultText(){
 }
 function drawUpdates(){
  for(const [id,key] of [['updates-heading','updatesHeading'],['updates-help','updatesHelp'],['update-check','updateCheck'],['update-mihomo','updateApply']])set(id,t(key));
- const occupied=busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||mtChecking;
+ const occupied=panelBusy||busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||mtChecking;
  el('update-check').disabled=occupied||updateChecking;
  el('update-mihomo').disabled=occupied||updateChecking||updateCheckData?.state!=='AVAILABLE'||!mihomoOffered(updateCheckData.relation);
  let message=updateResultText()||t('updateNone');
@@ -587,7 +589,7 @@ el('update-mihomo').addEventListener('click',startMihomoUpdate);
 
 function drawMTUpdates(){
  for(const [id,key] of [['mt-heading','mtHeading'],['mt-help','mtHelp'],['mt-check','mtCheck'],['update-mt','mtApply']])set(id,t(key));
- const occupied=busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||updateChecking||mtChecking;
+ const occupied=panelBusy||busy||importData?.state==='RUNNING'||updateOperation?.state==='RUNNING'||updateSubmitting||updateChecking||mtChecking;
  el('mt-check').disabled=occupied;el('update-mt').disabled=occupied||mtCheckData?.relation!=='newer';
  let text=t('updateNone');
  if(mtCheckData)text=t(mtCheckData.relation==='newer'?'mtAvailable':'mtNoUpgrade',{current:mtCheckData.current_version,available:mtCheckData.available_version});
@@ -647,3 +649,5 @@ function drawAppearanceLinks(){
  set('service-links-note',t(source.protocol==='http:'?'serviceLinksNote':'serviceLinksProxy'));
 }
 el('theme-mode').addEventListener('change',()=>{window.kasTheme?.set(el('theme-mode').value);draw();});
+
+if(window.KASPanelUpdate)panelUpdateUI=window.KASPanelUpdate.mount({getLang:()=>lang,isBusy:()=>busy||submitting||updateSubmitting||mtChecking||updateOperation?.state==='RUNNING'||importData?.state==='RUNNING',onBusy:value=>{panelBusy=value;draw();}});

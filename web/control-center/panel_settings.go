@@ -253,7 +253,7 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.importRunning || a.running || a.shuttingDown {
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown {
 		filterError(w, 409, "BUSY")
 		return
 	}

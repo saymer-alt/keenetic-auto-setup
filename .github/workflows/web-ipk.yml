@@ -6,6 +6,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'tests/test_ipk.py'
+      - 'tests/test_panel_manifest.py'
       - 'tests/test_panel_ipk_service.sh'
       - 'tests/test_panel_ipk_service.sh'
       - '.github/workflows/web-ipk.yml'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'web/control-center/**'
       - 'tests/test_ipk.py'
+      - 'tests/test_panel_manifest.py'
       - 'tests/test_panel_ipk_service.sh'
       - 'tests/test_panel_ipk_service.sh'
       - '.github/workflows/web-ipk.yml'
@@ -36,6 +38,7 @@ jobs:
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" python3 tests/test_ipk.py -v
+          python3 tests/test_panel_manifest.py -v
           for file in tests/test_panel_ipk_service.sh web/control-center/packaging/*.sh web/control-center/packaging/S98kas-control-center; do
             sh -n "$file"
             dash -n "$file"
@@ -65,7 +68,7 @@ jobs:
       - name: Actual opkg MT update, no-op and modified conffiles (disposable offline root)
         run: |
           cd web/control-center
-          KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" go test -count=1 -run '^TestMTRealOPKG' -v .
+          KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" go test -count=1 -run '^(TestMTRealOPKG|TestPanelRealOPKGVersion)' -v .
       - name: Real opkg and init lifecycle on disposable Ubuntu VM (not router or ABI acceptance)
         run: |
           sudo env KAS_SERVICE_LAB=1 GITHUB_ACTIONS=true \
@@ -100,6 +103,9 @@ jobs:
           cd "$RUNNER_TEMP/ipk"
           sha256sum ./*.ipk > SHA256SUMS
           sha256sum -c SHA256SUMS
+          set -- "$RUNNER_TEMP"/ipk/*.ipk
+          PACKAGE_FILE=$1
+          (cd "$GITHUB_WORKSPACE/web/control-center" && KAS_TEST_PANEL_IPK="$PACKAGE_FILE" KAS_TEST_PANEL_ARCH="$PACKAGE_ARCH" go test -count=1 -run '^TestPanelActualBuiltIPKMatchesGeneratedIndex$' -v .)
           tar xzf ./*.ipk ./data.tar.gz
           tar xzf data.tar.gz
           go version -m opt/bin/kas-control-center | tee BUILD_INFO

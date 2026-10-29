@@ -9,7 +9,7 @@ let browser;
  browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'ru-RU'});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
+ let panelOperation=null,panelTarget=false,panelLoseResponse=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
@@ -19,12 +19,15 @@ let browser;
    return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
+  if(url.pathname==='/api/updates/panel/check')data={state:'OK',channel:'experimental',installed_version:'0.1.0',runtime_version:'0.1.0',available_version:'0.1.1',relation:'newer'};
+  if(url.pathname==='/api/updates/panel/operation')data=panelOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
+  if(url.pathname==='/api/updates/panel/apply'){panelOperation={ID:'c'.repeat(24),State:'RUNNING',Phase:'install',Version:'0.1.1',SourceSHA:'d'.repeat(40),Gate:true};if(panelLoseResponse)return route.abort();data={id:panelOperation.ID,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/check')data={state:'AVAILABLE',current_version:'1.19.33',available_version:'1.20.0',package_release:2,relation:'newer'};
   if(url.pathname==='/api/updates/mihomo'){updateOperation={id:'update-fixture',state:'OK',outcome:'UNCHANGED',exit_code:0};data={id:'update-fixture',state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/magitrickle/check')data={state:'AVAILABLE',current_version:'0.8.2-1',available_version:'0.8.2-2',relation:'newer'};
   if(url.pathname==='/api/updates/magitrickle'){updateOperation={id:'mt-fixture',component:'magitrickle',state:'OK',outcome:'CHANGED'};data={...updateOperation,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/operation')data=updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
-  if(url.pathname==='/api/components')data={panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
+  if(url.pathname==='/api/components')data={panel:{version:panelTarget?'0.1.1':'0.1.0',source_sha:(panelTarget?'d':'a').repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
   if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
   if(url.pathname==='/api/doctor')data={timestamp:'2026-10-29T07:00:00Z',exit_code:0,details:fs.readFileSync(path.join(root,'web/control-center/tests/fixtures/doctor-kn1010.txt'),'utf8'),summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}};
   if(url.pathname==='/api/access')data={home_only:false};
@@ -137,6 +140,18 @@ let browser;
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}/${view}`);
   }
  }
+ await page.locator('#nav-overview').click();
+ assert.equal(requests.filter(r=>r.path==='/api/updates/panel/check').length,0,'panel check must be explicit');
+ await page.locator('#panel-update-check').click();await page.waitForFunction(()=>!document.getElementById('panel-update-apply').disabled);
+ acceptDialog=false;await page.locator('#panel-update-apply').click();assert.equal(requests.filter(r=>r.path==='/api/updates/panel/apply').length,0);
+ acceptDialog=true;panelLoseResponse=true;await page.locator('#panel-update-apply').click();
+ await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('install'));
+ assert.equal(await page.locator('#update-mihomo').isDisabled(),true);
+ await page.reload();await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('install'));
+ panelOperation={...panelOperation,State:'OK',Phase:'complete',Gate:false};
+ await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('ещё не подтверждена'));
+ panelTarget=true;await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Новая запущенная версия подтверждена'));
+ await page.locator('#en').click();assert.match(await page.locator('#panel-update-state').innerText(),/New running version verified/);await page.locator('#ru').click();
  await page.setViewportSize({width:390,height:844});await page.locator('#nav-subscriptions').click();
  await page.screenshot({path:path.join(previews,'subscriptions-mobile.png'),fullPage:true});
  await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(previews,'subscriptions-dark-mobile.png'),fullPage:true});

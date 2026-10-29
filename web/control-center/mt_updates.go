@@ -221,7 +221,7 @@ func (a *app) handleMTCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	if a.importRunning || a.running || a.shuttingDown || a.updateChecking {
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown || a.updateChecking {
 		a.mu.Unlock()
 		updateJSON(w, 409, mtUpdateCheck{State: "UNKNOWN", Time: now(), ErrorCode: "BUSY"})
 		return
@@ -247,7 +247,7 @@ func (a *app) handleMTUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	if a.importRunning || a.running || a.shuttingDown || a.updateChecking {
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown || a.updateChecking {
 		a.mu.Unlock()
 		updateJSON(w, 409, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "BUSY"})
 		return

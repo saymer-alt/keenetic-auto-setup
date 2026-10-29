@@ -87,7 +87,7 @@ func(a *app)handleFilterApply(w http.ResponseWriter,r *http.Request){
  }
  // One mutating operation at a time, shared with YAML import and Doctor.
  a.mu.Lock()
- if a.importRunning||a.running||a.shuttingDown{
+ if a.panelUpdateBusy() || a.importRunning||a.running||a.shuttingDown{
   a.mu.Unlock();filterError(w,409,"BUSY");return
  }
  a.importRunning=true

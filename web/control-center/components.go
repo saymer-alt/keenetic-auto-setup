@@ -22,6 +22,7 @@ var componentDigestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 type buildIdentity struct {
 	Version   string `json:"version"`
 	SourceSHA string `json:"source_sha"`
+ Channel string `json:"channel,omitempty"`
 }
 type coreIdentity struct {
 	State     string `json:"state"`
@@ -63,7 +64,7 @@ func compiledPanelIdentity() buildIdentity {
 	if !componentSourcePattern.MatchString(source) {
 		source = ""
 	}
-	return buildIdentity{version, source}
+	return buildIdentity{version, source, panelBuildChannel}
 }
 func inventoryFile(root, relative string, max int64, private bool) ([]byte, error) {
 	path := filepath.Join(root, relative)

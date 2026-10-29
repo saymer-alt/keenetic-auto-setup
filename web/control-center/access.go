@@ -67,7 +67,7 @@ func(a *app)handleAccess(w http.ResponseWriter,r *http.Request){
  if err:=decoder.Decode(&extra);!errors.Is(err,io.EOF){filterError(w,400,"INVALID_REQUEST");return}
  a.mu.Lock()
  defer a.mu.Unlock()
- if a.running||a.importRunning||a.shuttingDown{filterError(w,409,"BUSY");return}
+ if a.panelUpdateBusy() || a.running||a.importRunning||a.shuttingDown{filterError(w,409,"BUSY");return}
  if err:=a.lan.saveAccessPolicy(*request.HomeOnly);err!=nil{filterError(w,503,"ACCESS_SAVE_FAILED");return}
  respond()
 }

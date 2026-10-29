@@ -48,7 +48,7 @@ jobs:
           go test ./...
           go vet ./...
           go test -c -o "$RUNNER_TEMP/kas-panel-inventory-tests" .
-          sudo env KAS_REQUIRE_ROOT_OWNERSHIP_TESTS=1 "$RUNNER_TEMP/kas-panel-inventory-tests" -test.run '^TestInventory' -test.v
+          sudo env KAS_REQUIRE_ROOT_OWNERSHIP_TESTS=1 "$RUNNER_TEMP/kas-panel-inventory-tests" -test.run '^(TestInventory|TestPanel)' -test.v
           go build -ldflags '-X main.panelBuildVersion=0.1.0 -X main.panelBuildSHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -o "$RUNNER_TEMP/kas-panel-version" .
           test "$("$RUNNER_TEMP/kas-panel-version" -version -lan -settings-file "$RUNNER_TEMP/no-panel-settings")" = 'KAS Control Center 0.1.0 (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)'
       - name: Validate offline browser sources
@@ -124,3 +124,23 @@ jobs:
           path: /tmp/kas-web-kn1010/
           if-no-files-found: error
           retention-days: 14
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/kas-browser" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/kas-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify real browser flows (fixture APIs, no router writes)
+        env:
+          NODE_PATH: ${{ runner.temp }}/kas-browser/node_modules
+          KAS_PREVIEW_DIR: ${{ runner.temp }}/kas-panel-previews
+        run: node web/control-center/tests/panel-browser-check.cjs

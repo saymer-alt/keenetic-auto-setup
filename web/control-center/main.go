@@ -41,6 +41,7 @@ type apiResult struct {
  MTBinary bool `json:"magitrickle_binary,omitempty"`
 }
 type app struct {
+ panelUpdate *panelUpdater
  host string
  liveHost atomic.Pointer[string]
  settingsPath string
@@ -70,7 +71,7 @@ type app struct {
  filterConfigReader func()([]byte,error)
  providers *providerNamesExporter
 }
-func newApp(host string, doctor []byte)*app { a:= &app{host:host, doctor:doctor, mt:newMTMaintenance(),runDoctor:doctorCommand,runImport:importCommand,runUpdate:updateCommand,updateDigest:func()string{return mihomoBinaryDigest("/opt")}};a.checkUpdates=a.fetchUpdateCheck;return a }
+func newApp(host string, doctor []byte)*app { a:= &app{panelUpdate:newPanelUpdater("/opt"),host:host, doctor:doctor, mt:newMTMaintenance(),runDoctor:doctorCommand,runImport:importCommand,runUpdate:updateCommand,updateDigest:func()string{return mihomoBinaryDigest("/opt")}};a.checkUpdates=a.fetchUpdateCheck;return a }
 func validateBind(address string) error {
  host,port,err:=net.SplitHostPort(address)
  if err!=nil{return err}
@@ -116,7 +117,7 @@ func (a *app)handleDoctor(w http.ResponseWriter,r *http.Request){
   writeJSON(w,http.StatusBadRequest,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"INVALID_BODY"});return
  }
  a.mu.Lock()
- if a.running||a.importRunning||a.shuttingDown||time.Since(a.last)<5*time.Second{
+ if a.panelUpdateBusy() || a.running||a.importRunning||a.shuttingDown||time.Since(a.last)<5*time.Second{
   a.mu.Unlock()
   writeJSON(w,http.StatusTooManyRequests,apiResult{State:"UNKNOWN",Time:now(),ErrorCode:"BUSY"});return
  }
@@ -173,6 +174,9 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/status",a.handleStatus)
  mux.HandleFunc("/api/components",a.handleComponents)
  mux.HandleFunc("/api/updates/check",a.handleUpdateCheck)
+ mux.HandleFunc("/api/updates/panel/check",a.handlePanelCheck)
+ mux.HandleFunc("/api/updates/panel/apply",a.handlePanelApply)
+ mux.HandleFunc("/api/updates/panel/operation",a.handlePanelOperation)
  mux.HandleFunc("/api/updates/mihomo",a.handleMihomoUpdate)
  mux.HandleFunc("/api/updates/operation",a.handleUpdateOperation)
  mux.HandleFunc("/api/updates/magitrickle/check",a.handleMTCheck)
@@ -192,10 +196,13 @@ func (a *app)handler()http.Handler{
   w.Header().Set("X-Frame-Options","DENY")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+  if r.Method!=http.MethodGet && r.Method!=http.MethodHead && a.panelUpdate.gate(){updateJSON(w,409,updateOperation{State:"UNKNOWN",ErrorCode:"PANEL_UPDATE_BUSY"});return}
   mux.ServeHTTP(w,r)
  })
 }
 func main(){
+ workerOnly:=flag.Bool("panel-update-worker",false,"internal fixed panel updater job")
+ recoverUpdate:=flag.Bool("recover-panel-update",false,"explicit recovery of interrupted panel update")
  versionOnly:=flag.Bool("version",false,"print compiled panel version and source, then exit")
  listen:=flag.String("listen","","IP:port; default loopback without -lan, Home br0 with -lan")
  lanMode:=flag.Bool("lan",false,"listen on private Home br0 IPv4, HTTP, no password by default")
@@ -207,6 +214,7 @@ func main(){
  settingsFile:=flag.String("settings-file",panelSettingsPath,"private persistent panel settings")
  initialPort:=flag.Int("initial-port",8081,"default port when no settings exist")
  flag.Parse()
+ if *workerOnly||*recoverUpdate {p:=newPanelUpdater("/opt");var err error;if *workerOnly{err=p.runWorker()}else{err=p.recover()};if err!=nil{log.Fatal(panelErrorCode(err))};return}
  if *versionOnly {identity:=compiledPanelIdentity();fmt.Printf("KAS Control Center %s",identity.Version);if identity.SourceSHA!=""{fmt.Printf(" (%s)",identity.SourceSHA)};fmt.Println();return}
  if *initialPort<1||*initialPort>65535{log.Fatal("invalid initial port")}
  var config *panelConfig
@@ -254,6 +262,7 @@ func main(){
  if err!=nil{log.Fatalf("PORT_BIND_FAILED: panel address %s is unavailable; choose another panel port (other services unchanged)",*listen)}
  app.listeners=newPanelListeners(app)
  app.listeners.replace(listener)
+ if err:=app.panelUpdate.recordRuntime();err!=nil{log.Printf("PANEL_RECEIPT_FAILED")}
  if lan!=nil {fmt.Println(lan.describe())}else{fmt.Printf("KAS staged prototype (loopback only): http://%s\n",*listen)}
  signals:=make(chan os.Signal,1)
  signal.Notify(signals,os.Interrupt,syscall.SIGTERM)
