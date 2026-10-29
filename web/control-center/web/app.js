@@ -103,6 +103,7 @@ function draw(){
  el('providers-download').disabled=exporting;
  set('doctor-state',busy?t('running'):doctorData?doctorResultText()+' — '+t('timestamp',{time:doctorData.timestamp}):t('notrun'));
  set('output',doctorData?.details||'');
+ globalThis.kasDoctorReport?.render(el('doctor-summary'),doctorData,lang);
  set('copy-state',copyStatus?t(copyStatus):'');
  el('copy').disabled=!doctorData||!doctorData.details;el('run').disabled=busy||maintenanceBusy;
  drawUpdates();drawMTUpdates();drawAppearanceLinks();

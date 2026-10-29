@@ -60,6 +60,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
    return response(200,{state:operationState});
   }
  });
+ const reportPath=path.join(__dirname,'../web/doctor-report.js');if(fs.existsSync(reportPath))vm.runInContext(fs.readFileSync(reportPath,'utf8'),context);
  const themePath=path.join(__dirname,'../web/theme.js');if(fs.existsSync(themePath))vm.runInContext(fs.readFileSync(themePath,'utf8'),context);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/app.js'),'utf8'),context);
  return {el,requests,stored,run:code=>vm.runInContext(code,context)};
@@ -499,4 +500,24 @@ test('standalone disabled editor explains unavailability without a raw backend c
  const app=ui(response(200,{providers:{}}),404,'UNKNOWN',{inspectError:'EDITOR_DISABLED'});await new Promise(setImmediate);
  await app.el('filter-load').click();assert.doesNotMatch(app.el('filter-state').textContent,/EDITOR_DISABLED/);assert.match(app.el('filter-state').textContent,/режим.*запуска/);
  assert.equal(app.el('filter-preview').disabled,true);
+});
+
+
+test('Doctor cards translate without re-running probes and preserve original copy output',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ const report=fs.readFileSync(path.join(__dirname,'fixtures/doctor-kn1010.txt'),'utf8');
+ const data={details:report,exit_code:0,summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}};
+ app.run('doctorData='+JSON.stringify(data)+';draw();');
+ const text=node=>[node.textContent,...(node.children||[]).map(text)].join(' ');
+ assert.equal(app.el('doctor-summary').hidden,false);
+ assert.match(text(app.el('doctor-summary')),/Внешний накопитель.*14115 из 14190 МБ/);
+ assert.match(text(app.el('doctor-summary')),/Перезапуски в истории watchdog/);
+ app.run("lang='en';draw();");
+ assert.match(text(app.el('doctor-summary')),/External storage.*14115 of 14190 MB/);
+ assert.equal(app.el('output').textContent,report);
+ assert.equal(app.requests.filter(r=>r.url==='/api/doctor').length,0);
+ assert.equal(app.stored.length,0,'report must not be persisted');
+ app.run("doctorData={details:'incomplete',exit_code:0};draw();");
+ assert.match(text(app.el('doctor-summary')),/Overview unavailable/);
+ assert.doesNotMatch(text(app.el('doctor-summary')),/External storage|14115/);
 });

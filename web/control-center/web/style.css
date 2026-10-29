@@ -17,3 +17,5 @@
 .component a{font-size:12px;display:inline-block;margin-top:8px}.button-link{display:inline-flex;align-items:center;min-height:44px;padding:.68rem 1.05rem;border:1px solid var(--line);border-radius:9px;text-decoration:none;font-weight:600;font-size:14px}.button-link:hover{background:var(--soft)}
 
 #local-badge{display:inline-flex;align-items:center;min-height:44px;text-decoration:none}#local-badge:hover{background:var(--soft);color:var(--accent)}@media(max-width:680px){.page-header{flex-wrap:wrap}}
+
+.doctor-summary{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem}.doctor-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;margin:1rem 0}.doctor-facts>div{min-width:0;padding:12px;background:var(--bg);border-radius:8px}.doctor-facts dt{color:var(--muted);font-size:.9rem}.doctor-facts dd{margin:4px 0 0;font-weight:600;overflow-wrap:anywhere}.doctor-finding{padding:10px 0;border-top:1px solid var(--line)}.doctor-finding summary{cursor:pointer;min-height:44px;display:flex;align-items:center}.doctor-finding p{white-space:pre-wrap;overflow-wrap:anywhere}
