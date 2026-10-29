@@ -225,12 +225,37 @@ test('asynchronous page changes cannot retarget the approved provider or source 
  assert.deepEqual(JSON.parse(request.options.body).names,['Estonia Hy2']);
 });
 
-test('completed and failed imports remain visible in the global operation banner',async()=>{
+test('historical completed imports do not resurrect the global banner after reload',async()=>{
  for(const state of ['OK','FAIL']){
   const app=ui(response(200,{providers:{}}),200,state);
   await app.run('refreshImport()');
+  for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
+   app.run("document.documentElement.dataset={view:'"+view+"'};draw();");
+   assert.equal(app.el('operation-banner').hidden,true,'historical result leaked into '+view);
+  }
+  assert.match(app.el('config-state').textContent,state==='OK'?/успешно/:/ошибке/);
+ }
+});
+
+test('observed import completion stays in its view and can be dismissed without losing its result',async()=>{
+ for(const state of ['OK','FAIL']){
+  const app=ui(response(200,{providers:{}}),200,state);await app.run('refreshImport()');
+  app.run("importData={state:'RUNNING'};importView='subscriptions';document.documentElement.dataset={view:'overview'};draw();");
   assert.equal(app.el('operation-banner').hidden,false);
-  assert.match(app.el('operation-message').textContent,state==='OK'?/успешно/:/ошибке/);
+  assert.equal(app.el('operation-dismiss').hidden,true);
+  await app.run('refreshImport()');
+  assert.equal(app.el('operation-banner').hidden,true);
+  app.run("document.documentElement.dataset={view:'subscriptions'};draw();");
+  assert.equal(app.el('operation-banner').hidden,false);
+  assert.equal(app.el('operation-dismiss').hidden,false);
+  await app.el('operation-dismiss').click();
+  assert.equal(app.el('operation-banner').hidden,true);
+  await app.run('refreshImport()');
+  app.run("lang='en';draw();");
+  assert.equal(app.el('operation-banner').hidden,true,'poll/language change resurrected dismissed result');
+  assert.equal(app.run('importData.state'),state);
+  app.run("importData={state:'RUNNING'};draw();");
+  assert.equal(app.el('operation-banner').hidden,false,'new active operation must remain visible');
  }
 });
 
