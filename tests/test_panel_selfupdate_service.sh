@@ -535,7 +535,7 @@ try:
                 fcntl.lockf(probe_lock, fcntl.LOCK_UN)
             except OSError as error:
                 print('G-DIAG opkg.lock is HELD:', error, flush=True)
-        stage_dir = Path('/opt/tmp') / '.kas-panel-update-' + final.get('ID', '')
+        stage_dir = Path('/opt/tmp/.kas-panel-update-' + final.get('ID', ''))
         candidate_ipk = stage_dir / 'candidate.ipk'
         if candidate_ipk.exists():
             dry = subprocess.run(['/opt/bin/opkg', '--tmp-dir', str(stage_dir), '--noaction', 'install', str(candidate_ipk)],
