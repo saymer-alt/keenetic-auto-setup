@@ -114,6 +114,7 @@ import os
 from pathlib import Path
 import socket
 import ssl
+import stat
 import subprocess
 import sys
 import threading
@@ -347,6 +348,45 @@ try:
     ok('download failure reports FAIL, releases the gate and keeps the old daemon')
     write_asset(False)
 
+    # Integrity bisect: replicate the worker's exact checks at failure time.
+    def inventory_replica(relative, max_size, private=False):
+        target = Path('/opt') / relative
+        directory = target.parent
+        while True:
+            st = os.lstat(directory)
+            verdict = ('ok' if not (st.st_mode & 0o200022 or (st.st_mode & 0o170000) != 0o040000
+                                    or stat.S_ISLNK(st.st_mode) or st.st_uid != 0 or st.st_gid != 0)
+                       else 'UNSAFE')
+            print(f'REPLICA dir {directory}: mode={oct(st.st_mode)} uid={st.st_uid} -> {verdict}', flush=True)
+            if verdict == 'UNSAFE' or directory == Path('/opt'):
+                break
+            directory = directory.parent
+        st = os.lstat(target)
+        print(f'REPLICA file {target}: mode={oct(st.st_mode)} uid={st.st_uid} size={st.st_size}', flush=True)
+        return target.read_bytes()
+
+    import stat as stat_module
+    control = inventory_replica('lib/opkg/info/kas-control-center.control', 65536)
+    fields = {}
+    for line in control.decode().splitlines():
+        key, _, value = line.partition(': ')
+        fields[key] = value
+    print('REPLICA control package=', fields.get('Package'), 'version=', fields.get('Version'), flush=True)
+    build_info = inventory_replica('share/kas-control-center/BUILD_INFO', 8192)
+    info = {}
+    for line in build_info.decode().splitlines():
+        key, _, value = line.partition('=')
+        info[key] = value
+    import hashlib
+    digest = hashlib.sha256(inventory_replica('bin/kas-control-center', 32 << 20)).hexdigest()
+    print('REPLICA binary digest match=', digest == info.get('Binary_SHA256'), flush=True)
+    init_script = inventory_replica('etc/init.d/S98kas-control-center', 128 << 10)
+    print('REPLICA init marker=', b'# KAS-CONTROL-CENTER-IPK-v1' in init_script, flush=True)
+    listing = inventory_replica('lib/opkg/info/kas-control-center.list', 65536).decode()
+    for entry in ('/opt/bin/kas-control-center', '/opt/etc/init.d/S98kas-control-center',
+                  '/opt/share/kas-control-center/BUILD_INFO'):
+        print('REPLICA list has', entry, '=', (chr(10) + listing + chr(10)).find(chr(10) + entry + chr(10)) >= 0, flush=True)
+
     # C. Tampered channel index fails the check before any job exists.
     reset_update_state()
     tampered = json.loads((serve / 'index.good.json').read_text())
@@ -382,7 +422,7 @@ try:
     require(final.get('Gate') is False, 'corrupt asset retained the gate')
     api(8081, 'GET', '/api/settings')
     control = Path('/opt/lib/opkg/info/kas-control-center.control').read_text()
-    require('Version=0.0.0~selftest-1' in control, 'tampered asset mutated the package')
+    require('Version: 0.0.0~selftest-1' in control, 'tampered asset mutated the package')
     ok('corrupt asset fails validation inside the worker; installed package untouched')
     write_asset(False)
 
@@ -396,6 +436,17 @@ try:
     api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
     api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL', timeout=90)
+    try:
+        served = hashlib.sha256((serve / asset).read_bytes()).hexdigest()
+        job = json.loads((update_dir / 'job.json').read_text())
+        index_entry = json.loads((serve / 'index.json').read_text())['packages'][0]
+        print(f'BUSY-DIAG served_sha={served[:16]} index_sha={index_entry["sha256"][:16]} '
+              f'job_candidate_sha={job["candidate"]["sha256"][:16]} '
+              f'job_candidate_name={job["candidate"]["name"]} '
+              f'stage_left={sorted(entry.name for entry in Path("/opt/tmp").glob(".kas-panel-update-*"))}',
+              flush=True)
+    except Exception as error:
+        print('BUSY-DIAG failed:', error, flush=True)
     require(final.get('ErrorCode') == 'PANEL_OPKG_FAILED', f'unexpected opkg-busy result: {final}')
     require(final.get('Phase') == 'recovery_required', f'busy opkg must require recovery: {final}')
     require(final.get('Gate') is True, 'failed install must retain the gate')
@@ -415,7 +466,7 @@ try:
     require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'recovered daemon not serving')
     api(8081, 'POST', '/api/settings', confirm='settings',
         body={'port': 8081, 'auth_mode': 'panel', 'current_password': password})
-    require('Version=0.0.0~selftest-1' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
+    require('Version: 0.0.0~selftest-1' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
             'recovery changed the installed payload')
     ok('explicit recovery restarts the verified payload and releases the gate only after receipt')
     reset_update_state()
@@ -432,7 +483,7 @@ try:
     final = poll_operation('FAIL', timeout=150)
     require(final.get('ErrorCode') == 'PANEL_START_FAILED', f'unexpected start-failure result: {final}')
     require(final.get('Gate') is True, 'start failure must retain the gate')
-    require('Version=0.0.0~selftest-2' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
+    require('Version: 0.0.0~selftest-2' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
             'start failure scenario did not actually install the new payload')
     wait_port(8081, 0, timeout=10)
     ok('start failure after real install reports START_FAILED and keeps the gate')
