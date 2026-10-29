@@ -103,6 +103,7 @@ jobs:
         run: |
           python3 tests/ipk-selection-regression.py
           python3 tests/ipk-package-release-regression.py
+          python3 tests/doctor-package-selection-regression.py
 
       - name: Whitespace
         shell: bash

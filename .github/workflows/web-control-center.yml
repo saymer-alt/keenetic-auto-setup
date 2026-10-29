@@ -9,6 +9,7 @@ on:
       - 'update-mihomo.sh'
       - 'tests/config-import-filter-gate-regression.py'
       - 'tests/transaction-invariants.py'
+      - 'tests/doctor-package-selection-regression.py'
       - '.github/workflows/web-control-center.yml'
   push:
     branches:
@@ -89,6 +90,7 @@ jobs:
           sh -n config-import.sh
           python3 tests/config-import-filter-gate-regression.py
           python3 tests/transaction-invariants.py
+          python3 tests/doctor-package-selection-regression.py
       - name: Cross compile ARM64 staging binary
         run: |
           cd web/control-center
