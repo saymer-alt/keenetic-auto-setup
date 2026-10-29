@@ -2,3 +2,5 @@
 /scripts/mihomo-doctor.sh
 
 /scripts/config-import.sh
+
+/scripts/update-mihomo.sh

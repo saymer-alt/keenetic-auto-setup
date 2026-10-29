@@ -24,8 +24,8 @@ import (
  "time"
 )
 
-//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh"
-//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh
+//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh && cp ../../update-mihomo.sh scripts/update-mihomo.sh"
+//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh scripts/update-mihomo.sh
 var assets embed.FS
 
 type apiResult struct {
@@ -49,6 +49,13 @@ type app struct {
  proxyOrigin string
  lan *homeLAN
  doctor []byte
+ updater []byte
+ runUpdate func([]byte)(int,error)
+ updateDigest func()string
+ checkUpdates func(context.Context)(updateCheck,error)
+ lastUpdateCheck updateCheck
+ updateChecking bool
+ updateResult updateOperation
  importer []byte
  mu sync.Mutex
  running bool
@@ -61,7 +68,7 @@ type app struct {
  filterConfigReader func()([]byte,error)
  providers *providerNamesExporter
 }
-func newApp(host string, doctor []byte)*app { return &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand} }
+func newApp(host string, doctor []byte)*app { a:= &app{host:host, doctor:doctor, runDoctor:doctorCommand,runImport:importCommand,runUpdate:updateCommand,updateDigest:func()string{return mihomoBinaryDigest("/opt")}};a.checkUpdates=a.fetchUpdateCheck;return a }
 func validateBind(address string) error {
  host,port,err:=net.SplitHostPort(address)
  if err!=nil{return err}
@@ -163,6 +170,9 @@ func (a *app)handler()http.Handler{
  mux.Handle("/",http.FileServer(http.FS(sub)))
  mux.HandleFunc("/api/status",a.handleStatus)
  mux.HandleFunc("/api/components",a.handleComponents)
+ mux.HandleFunc("/api/updates/check",a.handleUpdateCheck)
+ mux.HandleFunc("/api/updates/mihomo",a.handleMihomoUpdate)
+ mux.HandleFunc("/api/updates/operation",a.handleUpdateOperation)
  mux.HandleFunc("/api/access",a.handleAccess)
  mux.HandleFunc("/api/settings",a.handleSettings)
  mux.HandleFunc("/api/doctor",a.handleDoctor)
@@ -220,6 +230,8 @@ func main(){
  importer,err:=assets.ReadFile("scripts/config-import.sh");if err!=nil{log.Fatal(err)}
  app:=newApp(*listen,script)
  app.importer=importer
+ updater,err:=assets.ReadFile("scripts/update-mihomo.sh");if err!=nil{log.Fatal(err)}
+ app.updater=updater
  app.lan=lan
  app.settingsPath=*settingsFile
  if *providerSecretFile!="" && !*providerExport { log.Fatal("provider secret file requires provider names export") }
@@ -247,7 +259,7 @@ func main(){
   return
  case <-signals:
  }
- // Never interrupt canonical config-import.sh halfway through its atomic
+ // Never interrupt canonical importer/updater halfway through its atomic
  // replace/rollback. Stop accepting NEW mutating requests and drain workers.
  app.mu.Lock();app.shuttingDown=true;app.mu.Unlock()
  for {

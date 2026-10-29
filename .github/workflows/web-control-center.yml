@@ -6,6 +6,7 @@ on:
       - 'web/control-center/**'
       - 'mihomo-doctor.sh'
       - 'config-import.sh'
+      - 'update-mihomo.sh'
       - 'tests/config-import-filter-gate-regression.py'
       - 'tests/transaction-invariants.py'
       - '.github/workflows/web-control-center.yml'
@@ -16,6 +17,7 @@ on:
       - 'web/control-center/**'
       - 'mihomo-doctor.sh'
       - 'config-import.sh'
+      - 'update-mihomo.sh'
       - '.github/workflows/web-control-center.yml'
 
 permissions:
@@ -38,6 +40,7 @@ jobs:
           go generate ./...
           cmp -s ../../mihomo-doctor.sh scripts/mihomo-doctor.sh
           cmp -s ../../config-import.sh scripts/config-import.sh
+          cmp -s ../../update-mihomo.sh scripts/update-mihomo.sh
       - name: Test read-only adapter
         run: |
           cd web/control-center

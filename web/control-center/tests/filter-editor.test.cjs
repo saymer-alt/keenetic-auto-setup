@@ -28,6 +28,10 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
   setTimeout:()=>1,clearTimeout(){},TextEncoder,
   fetch:async(url,options={})=>{
    requests.push({url,options});
+   if(url==='/api/updates/check')return response(200,fixture.updateCheck||{state:'AVAILABLE',available_version:'1.20.0',current_version:'1.19.33',package_release:2,relation:'newer'});
+   if(url==='/api/updates/mihomo'&&fixture.updatePostError)throw Error('response lost');
+   if(url==='/api/updates/mihomo')return response(202,{id:'update-op',state:'RUNNING'});
+   if(url==='/api/updates/operation')return response(200,fixture.updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'});
    if(url==='/api/components')return response(200,fixture.components||{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}});
    if(url==='/api/settings'){
     if(fixture.settingsFail)return response(503,{error_code:'SETTINGS_READ_FAILED'});
@@ -337,4 +341,63 @@ test('script-installed watchdog shows its actual digest without a fictitious ver
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded',installed_sha256:'b'.repeat(64)}}});
  await app.run('refreshComponents()');
  assert.match(app.el('watchdog-version').textContent,/Установлен.*bbbbbbbbbbbb/);
+});
+
+test('updates check is manual and confirmation cancellation never starts updater',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ assert.equal(app.requests.filter(r=>r.url==='/api/updates/check').length,0);
+ assert.equal(app.el('update-mihomo').disabled,true);
+ await app.run(`updateCheckData={state:'AVAILABLE',available_version:'1.20.0',current_version:'1.19.33',package_release:2,relation:'newer'};window.confirm=()=>false;draw();`);
+ assert.equal(app.el('update-mihomo').disabled,false);
+ await app.el('update-mihomo').click();
+ assert.equal(app.requests.filter(r=>r.url==='/api/updates/mihomo').length,0);
+});
+test('older update candidate is disabled and running updater blocks other mutations',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ app.run(`updateCheckData={state:'AVAILABLE',available_version:'1.19.32',current_version:'1.19.33',package_release:2,relation:'older'};draw();`);
+ assert.equal(app.el('update-mihomo').disabled,true);
+ assert.match(app.el('updates-state').textContent,/старее/);
+ app.run(`updateOperation={id:'op',state:'RUNNING'};draw();`);
+ for(const id of ['apply','run','settings-save','update-check','update-mihomo'])assert.equal(app.el(id).disabled,true,id);
+ assert.match(app.el('operation-message').textContent,/Mihomo/);
+ app.run(`updateOperation={state:'OK',outcome:'UNCHANGED'};draw();`);
+ assert.match(app.el('updates-state').textContent,/не измен/);
+ app.run(`updateOperation={state:'FAIL',error_code:'UPDATE_FAILED'};draw();`);
+ assert.match(app.el('updates-state').textContent,/Doctor/);
+ assert.doesNotMatch(app.el('updates-state').textContent,/откачен|восстановлен/);
+});
+
+test('explicit check and repeated update clicks send only fixed empty-body commands',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ await app.el('update-check').click();
+ const checks=app.requests.filter(r=>r.url==='/api/updates/check');assert.equal(checks.length,1);assert.equal(checks[0].options.body,'{}');
+ await Promise.all([app.el('update-mihomo').click(),app.el('update-mihomo').click()]);
+ const writes=app.requests.filter(r=>r.url==='/api/updates/mihomo');assert.equal(writes.length,1);assert.equal(writes[0].options.body,'{}');assert.equal(writes[0].options.headers['X-KAS-Confirm'],'update-mihomo');
+ assert.equal(app.el('apply').disabled,true);assert.equal(app.el('access-save').disabled,true);
+});
+
+test('another tab replacing the update status does not leave a phantom running operation',async()=>{
+ const fixture={updateOperation:{id:'new-op',state:'OK',outcome:'UNCHANGED'}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);
+ app.run("updateOperation={id:'old-op',state:'RUNNING'};draw();");
+ await app.run('refreshUpdateOperation()');
+ assert.doesNotMatch(app.el('updates-state').textContent,/выполняется/);
+ assert.match(app.el('updates-state').textContent,/STATUS_REPLACED/);
+ assert.equal(app.el('apply').disabled,false);
+ fixture.updateOperation={id:'other-running',state:'RUNNING'};
+ app.run("updateOperation={id:'old-op',state:'RUNNING'};draw();");
+ await app.run('refreshUpdateOperation()');
+ assert.equal(app.el('apply').disabled,true);
+ assert.equal(app.run('updateOperation.id'),'other-running');
+});
+
+test('lost update response reconciles the operation instead of leaving status unknown',async()=>{
+ const fixture={updatePostError:true,updateOperation:{state:'UNKNOWN',error_code:'NO_OPERATION'}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);
+ await app.el('update-check').click();
+ fixture.updateOperation={id:'accepted-op',state:'RUNNING'};
+ await app.el('update-mihomo').click();
+ assert.ok(app.requests.filter(r=>r.url==='/api/updates/operation').length>=2);
+ assert.equal(app.el('apply').disabled,true);
+ assert.equal(app.run('updateOperation.id'),'accepted-op');
 });

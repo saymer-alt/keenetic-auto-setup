@@ -8,7 +8,7 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  const browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'ru-RU'});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
+ let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
@@ -18,6 +18,9 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
    return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
+  if(url.pathname==='/api/updates/check')data={state:'AVAILABLE',current_version:'1.19.33',available_version:'1.20.0',package_release:2,relation:'newer'};
+  if(url.pathname==='/api/updates/mihomo'){updateOperation={id:'update-fixture',state:'OK',outcome:'UNCHANGED',exit_code:0};data={id:'update-fixture',state:'RUNNING'};status=202;}
+  if(url.pathname==='/api/updates/operation')data=updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
   if(url.pathname==='/api/components')data={panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
   if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
   if(url.pathname==='/api/doctor')data={timestamp:'2026-10-29T07:00:00Z',exit_code:1,details:'Doctor full report',summary:{verdict:'WARN',ok:8,warn:2,fail:0,info:4}};
@@ -42,6 +45,13 @@ const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/d
  assert.match(await page.locator('#core-version').innerText(),/proof2-1/);assert.match(await page.locator('#watchdog-version').innerText(),/совпадает/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
  assert.match(await page.locator('#mihomo-file').innerText(),/1\.19\.33.*API/);assert.match(await page.locator('#magitrickle-file').innerText(),/0\.8\.2-1.*пакет/);
+ assert.equal(requests.filter(r=>r.path==='/api/updates/check').length,0);
+ await page.locator('#update-check').click();await page.waitForFunction(()=>!document.getElementById('update-mihomo').disabled);
+ assert.match(await page.locator('#updates-state').innerText(),/1\.20\.0-2/);
+ acceptDialog=false;await page.locator('#update-mihomo').click();assert.equal(requests.filter(r=>r.path==='/api/updates/mihomo').length,0);
+ acceptDialog=true;await page.locator('#update-mihomo').click();assert.equal(await page.locator('#apply').isDisabled(),true);
+ await page.waitForFunction(()=>document.getElementById('updates-state').textContent.includes('не изменился'));
+ assert.equal(requests.filter(r=>r.path==='/api/updates/mihomo').length,1);
  await page.screenshot({path:path.join(previews,'overview-desktop.png'),fullPage:true});
  await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('Предупреждения: 2'));
  assert.doesNotMatch(await page.locator('#doctor-state').innerText(),/код выхода|не завершилась/);
