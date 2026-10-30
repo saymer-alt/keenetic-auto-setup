@@ -120,6 +120,8 @@ func TestPanelJobChannelAdmissionMatrix(t *testing.T) {
 		candidate  panelCandidate
 	}{
 		{"experimental", "stable", experimental},
+		{"experimental", "stable", panelCandidate{Tag: "kas-web-v0.1.0", Channel: "experimental"}},
+		{"stable", "experimental", panelCandidate{Tag: "v0.1.0-beta.3", Channel: "stable"}},
 		{"stable", "stable", experimental},
 		{"experimental", "unknown", experimental},
 		{"unknown", "experimental", experimental},
