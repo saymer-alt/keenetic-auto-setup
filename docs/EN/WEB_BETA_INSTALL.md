@@ -2,7 +2,7 @@
 
 # KAS Control Center — web panel installation and operation (beta.2)
 
-**KAS Control Center** is a separate **optional** web component for an already installed KAS. The script-based KAS installer above remains the primary way to install the core; the panel does not replace or reinstall it. It manages the Mihomo YAML through the canonical KAS importer, Doctor diagnostics, subscription exclude filters, and its own updates. KAS stays fully functional without it.
+**KAS Control Center** is a separate **optional** web component for an already installed KAS. The [script-based KAS installer](../../README.md) remains the primary way to install the core; the panel does not replace or reinstall it. It manages the Mihomo YAML through the canonical KAS importer, Doctor diagnostics, subscription exclude filters, and its own updates. KAS stays fully functional without it.
 
 > ⚠️ **Beta.** No automatic rollback. Panel availability is defined by your routing and firewall: the panel listens on the management bridge IPv4 address only and is never published to the WAN, but if you forward ports or expose it through an unauthenticated proxy, you accept that risk. A password over plain HTTP is not encrypted — use the panel on a trusted management network only.
 
@@ -29,7 +29,7 @@ The panel starts **only after an explicit start**. It binds only the private IPv
 
 **Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
 
-**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../web/control-center/PANEL_UPDATE.md) for the update system details.
+**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md) for the update system details.
 
  SHA256SUMS | sha256sum -c -
 opkg install ./kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
@@ -45,5 +45,5 @@ The panel starts **only after an explicit start**. It binds only the private IPv
 
 **Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
 
-**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../web/control-center/PANEL_UPDATE.md) for the update system details.
+**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md) for the update system details.
 
