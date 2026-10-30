@@ -1,0 +1,81 @@
+name: Prune nine verified obsolete WEB publish-only Git branch refs (keep tags/releases)
+
+on:
+  push:
+    branches:
+      - ops/kas-web-release-hygiene-20261030
+    paths:
+      - .github/workflows/ops-prune-kas-web-publish-branches.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check immutable restore ledger, protect PRs and tags before any deletion
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/targets.txt" <<'EOF'
+publish/kas-web-ipk-08ae70e bf0bccf6a0cc292e0d454faefa49e11e4e7e45a9
+publish/kas-web-ipk-57ea99c c63e0e42598380b0b24848eb626be1f77248c838
+publish/kas-web-ipk-66d976e 6f8fd2075ba9dc4718dd8bf3a74567689f32f933
+publish/kas-web-ipk-77ac40e 2baeed4d880471ff6aa630d6ef04c46c0ea548da
+publish/kas-web-ipk-894a524 bf471e7b7c26de4f1b0d018c976e113a6e169e10
+publish/kas-web-ipk-b0e3c0c 71f88fa86c06de76904e65d7aeb2428b00e8d260
+publish/kas-web-ipk-c0dac74 ea669c18ee2d985bce11b8ad67270f47d931b9f6
+publish/kas-web-ipk-c3cc2ce 4e62cdc199aa462e7af34f4e7fe6b3398a33bf73
+publish/kas-web-kn1010-ui-66ab147 a35624b9c6dfee160c903093e2cf7edd6d30f006
+          EOF
+          test "$(wc -l < "$RUNNER_TEMP/targets.txt")" -eq 9
+          gh api --paginate "repos/$GH_REPO/pulls?state=all&per_page=100" -q '.[] | [.head.ref,.base.ref] | .[]' \
+            > "$RUNNER_TEMP/pr-refs.txt"
+          while read -r ref sha; do
+            test "${#sha}" -eq 40
+            case "$ref" in publish/kas-web-ipk-*|publish/kas-web-kn1010-ui-*) :;; *) echo 'Unexpected target'; exit 1;; esac
+            if grep -Fxq "$ref" "$RUNNER_TEMP/pr-refs.txt"; then
+              echo "::error::PR dependency $ref"; exit 1
+            fi
+            actual="$(gh api "repos/$GH_REPO/git/ref/heads/$ref" --jq '.object.sha')"
+            test "$actual" = "$sha"
+            tag="${ref#publish/}"
+            tag_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+            test "$tag_sha" = "$sha"
+            echo "PASS: $ref -> $sha remains independently reachable via tag $tag"
+          done < "$RUNNER_TEMP/targets.txt"
+          echo 'PASS: all nine exact refs satisfy safety prerequisites'
+      - name: Delete only the nine listed refs, never releases/tags, restore if any later step fails
+        run: |
+          set -euo pipefail
+          touch "$RUNNER_TEMP/deleted.txt"
+          restore() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::warning::Prune partially failed; restoring deleted branch refs"
+              while read -r ref sha; do
+                gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/heads/$ref" -f sha="$sha" >/dev/null || true
+              done < "$RUNNER_TEMP/deleted.txt"
+            fi
+          }
+          trap restore EXIT
+          while read -r ref sha; do
+            test "$(gh api "repos/$GH_REPO/git/ref/heads/$ref" --jq '.object.sha')" = "$sha"
+            gh api -X DELETE "repos/$GH_REPO/git/refs/heads/$ref"
+            echo "$ref $sha" >> "$RUNNER_TEMP/deleted.txt"
+            if gh api "repos/$GH_REPO/git/ref/heads/$ref" >/dev/null 2>&1; then
+              echo "::error::Failed to delete $ref"; exit 1
+            fi
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/${ref#publish/}" --jq '.object.sha')" = "$sha"
+            echo "PRUNED publish-only branch: $ref; protected tag retained"
+          done < "$RUNNER_TEMP/targets.txt"
+          trap - EXIT
+          test "$(wc -l < "$RUNNER_TEMP/deleted.txt")" -eq 9
+          echo 'PASS: 9 branches deleted; their tags, releases and assets are intact'
