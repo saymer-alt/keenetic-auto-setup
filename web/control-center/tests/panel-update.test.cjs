@@ -16,6 +16,47 @@ test('lost apply response never accepts previous success as a new job',()=>{
 test('panel updater labels cover the same keys in RU and EN',()=>{
  assert.deepEqual(Object.keys(api.words.ru).sort(),Object.keys(api.words.en).sort());
 });
+test('version check renders public forms without exposing internal package versions',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async(path,options)=>({ok:true,json:async()=>{
+  if(options&&options.method==='POST'&&path==='/api/updates/panel/check')return{state:'OK',relation:'newer',installed_version:'0.1.0~beta.1-1',runtime_version:'0.1.0~beta.1-1',available_version:'0.1.0~beta.2-1',channel:'experimental'};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);
+  await nodes['panel-update-check'].listeners.click();
+  await new Promise(setImmediate);
+  const text=nodes['panel-update-state'].textContent;
+  assert.match(text,/Установлена: v0\.1\.0-beta\.1\./);
+  assert.match(text,/Запущена: v0\.1\.0-beta\.1\./);
+  assert.match(text,/Доступна: v0\.1\.0-beta\.2\./);
+  assert.doesNotMatch(text,/0\.1\.0~beta/);
+ }
+ finally{Object.assign(global,original);}
+});
+test('verified success announces the public version form',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};const id='a'.repeat(24);
+ global.document={getElementById:key=>nodes[key]||(nodes[key]={textContent:'',addEventListener(){}})};
+ global.sessionStorage={getItem:()=>id,setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/components')return {panel:{version:'0.1.0~beta.2-1',source_sha:'b'.repeat(40)}};
+  return {ID:id,State:'OK',Version:'0.1.0~beta.2-1',SourceSHA:'b'.repeat(40),Gate:false};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(nodes['panel-update-state'].textContent,/Новая запущенная версия подтверждена: v0\.1\.0-beta\.2\./);
+  assert.doesNotMatch(nodes['panel-update-state'].textContent,/0\.1\.0~beta/);
+ }
+ finally{Object.assign(global,original);}
+});
 test('reload during an unconfirmed apply rejects the persisted previous job',async()=>{
  const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  const nodes={};const id='a'.repeat(24);let components=0;

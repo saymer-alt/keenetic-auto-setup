@@ -48,7 +48,7 @@ let browser;
  });
  await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
  await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
- assert.match(await page.locator('#core-version').innerText(),/proof2-1/);assert.match(await page.locator('#watchdog-version').innerText(),/совпадает/);
+ assert.match(await page.locator('#core-version').innerText(),/v0\.0\.0-proof2/);assert.match(await page.locator('#watchdog-version').innerText(),/v0\.0\.0-proof2.*совпадает/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
  assert.equal(await page.locator('#open-mt').getAttribute('href'),'http://kas.test:8080/');
  assert.equal(await page.locator('#open-mihomo').getAttribute('href'),'http://kas.test:9090/ui/');

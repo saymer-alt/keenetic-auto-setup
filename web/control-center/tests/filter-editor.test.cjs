@@ -336,9 +336,9 @@ test('component versions distinguish installed bundle from applied watchdog',asy
  const fixture={components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'bundle_changed',recorded_version:'0.0.0~proof1-1'}}};
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
  await app.run('refreshComponents()');
- assert.match(app.el('panel-build').textContent,/0\.1\.0.*aaaaaaa/);
- assert.match(app.el('core-version').textContent,/proof2-1/);
- assert.match(app.el('watchdog-version').textContent,/proof1-1/);
+ assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0.*aaaaaaa/);
+ assert.match(app.el('core-version').textContent,/v0\.0\.0-proof2/);
+ assert.match(app.el('watchdog-version').textContent,/v0\.0\.0-proof1/);
  assert.doesNotMatch(app.el('watchdog-version').textContent,/совпадает/);
  fixture.components.watchdog={state:'stale',recorded_version:'0.0.0~proof1-1'};
  await app.run('refreshComponents()');
@@ -346,6 +346,31 @@ test('component versions distinguish installed bundle from applied watchdog',asy
  fixture.components.panel.version='SECRET-TOKEN';
  await app.run('refreshComponents()');
  assert.doesNotMatch(app.el('panel-build').textContent,/SECRET|TOKEN/);
+});
+
+test('panel versions render the public v-form identically in RU and EN',async()=>{
+ const fixture={components:{panel:{version:'0.1.0~beta.2-1',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
+ await app.run('refreshComponents()');
+ assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0-beta\.2 · aaaaaaa/);
+ assert.match(app.el('core-version').textContent,/v0\.0\.0-proof2 · bbbbbbb/);
+ assert.match(app.el('watchdog-version').textContent,/v0\.0\.0-proof2 · файл совпадает/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/0\.1\.0~beta/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/vv/);
+ for(const locale of ['en','ru']){
+  app.run("lang='"+locale+"';draw();");
+  assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0-beta\.2 · aaaaaaa/);
+ }
+});
+
+test('development and test-build panel versions stay honest',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}}});
+ await app.run('refreshComponents()');
+ assert.match(app.el('panel-build').textContent,/KAS Web сборка для разработки/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/v[0-9]/);
+ const lab=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.0.1~test44.9c715283d525-1',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded'}}});
+ await lab.run('refreshComponents()');
+ assert.match(lab.el('panel-build').textContent,/KAS Web v0\.0\.1-test44\.9c715283d525 · aaaaaaa/);
 });
 
 test('overview shows process evidence and explicitly sourced versions',async()=>{

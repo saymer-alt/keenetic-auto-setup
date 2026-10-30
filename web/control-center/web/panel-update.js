@@ -8,6 +8,15 @@
  const validChannel=c=>c==='experimental'||c==='stable';
  function acceptPanelOperation(beforeID,op,submitted){return validID(op?.ID)&&(!submitted||op.ID!==beforeID);}
  function verifiedPanelReturn(op,components){return op?.State==='OK'&&op.Gate===false&&typeof op.Version==='string'&&/^[a-f0-9]{40}$/.test(op.SourceSHA)&&components?.panel?.version===op.Version&&components.panel.source_sha===op.SourceSHA;}
+ // Display-only public form of an internal Entware package version:
+ // "0.1.0~beta.2-1" → "v0.1.0-beta.2" (v prefix, prerelease dash, packaging revision dropped).
+ // Never used for comparison, update decisions or API payloads; unknown values pass through unchanged.
+ function publicVersion(raw){
+  if(typeof raw!=='string')return raw;
+  const value=raw.trim();
+  if(/^[vV]/.test(value)||!/^[0-9]/.test(value))return value;
+  return 'v'+value.replace(/-\d+$/,'').split('~').join('-');
+ }
  function mount(options){
   const el=id=>document.getElementById(id);
   let check=null,working=false,checking=false,op=null,message={key:'none'},timer=null,attempts=0,beforeID='',submitted=false,expectedID='',tracking=false,channel='',channelBusy=false;
@@ -23,7 +32,7 @@
    el('panel-channel').disabled=working||checking||channelBusy||options.isBusy();
    if(document.activeElement!==el('panel-channel'))el('panel-channel').value=channel;
    let text=checking?t('checking'):t(message.key,message.params);
-   if(check&&!checking)text=t('available',{installed:check.installed_version||'?',runtime:check.runtime_version||'?',available:check.available_version||'?',channel:check.channel||'?'})+' '+text;
+   if(check&&!checking)text=t('available',{installed:publicVersion(check.installed_version||'?'),runtime:publicVersion(check.runtime_version||'?'),available:publicVersion(check.available_version||'?'),channel:check.channel||'?'})+' '+text;
    el('panel-update-state').textContent=text;
   }
   function occupy(value){working=value;options.onBusy(value);draw();}
@@ -53,7 +62,7 @@
     }else if(data.State==='OK'){
      if(!tracking){message={key:'previous'};finish();draw();return;}
      const components=await get('/api/components');
-     if(verifiedPanelReturn(data,components)){message={key:'success',params:{version:data.Version}};finish(true);}
+     if(verifiedPanelReturn(data,components)){message={key:'success',params:{version:publicVersion(data.Version)}};finish(true);}
      else{message={key:'unverified'};occupy(true);schedule();}
     }else if(data.State==='FAIL'){
      message={key:data.Gate?'recovery':'failed',params:{code:data.ErrorCode||'UNKNOWN'}};finish();
