@@ -13,7 +13,7 @@
 <button type="button" id="nav-diagnostics" data-view="diagnostics" aria-controls="view-diagnostics">Диагностика</button>
 <button type="button" id="nav-settings" data-view="settings" aria-controls="view-settings">Настройки</button>
 </nav>
-<div class="sidebar-footer"><span class="experiment" id="experiment">Экспериментальная версия</span><div class="language-switch" role="group" aria-label="Language"><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></div></div>
+<div class="sidebar-footer"><span class="experiment" id="experiment">Экспериментальная версия</span><div class="language-switch" role="group" aria-label="Language"><button type="button" id="ru">RU</button><button type="button" id="en">EN</button></div><div class="theme-quick"><label id="theme-label" for="theme-mode">Тема</label><select id="theme-mode" aria-describedby="theme-help"><option id="theme-auto" value="auto">Как в системе</option><option id="theme-light" value="light">Светлая</option><option id="theme-dark" value="dark">Тёмная</option></select><span id="theme-help" class="visually-hidden">Выбор сохраняется только в этом браузере и не меняет настройки роутера.</span></div></div>
 </aside>
 <main id="content" tabindex="-1">
 <header class="page-header"><div><p class="eyebrow">KEENETIC AUTO SETUP</p><h1 id="page-title">Обзор</h1><p id="page-description">Основные сведения и быстрый доступ к управлению.</p></div><a class="local-badge" id="local-badge" target="_blank" rel="noopener noreferrer" hidden>Панель роутера ↗</a></header>
@@ -53,7 +53,6 @@
 <section class="card"><h2 id="doctor-heading"></h2><p id="doctor-help" class="muted"></p><div class="action-bar"><button id="run" type="button"></button><button id="copy" type="button" class="secondary" disabled></button></div><p id="copy-state" role="status" aria-live="polite"></p><p id="doctor-state" role="status" aria-live="polite" class="operation-state"></p><section id="doctor-summary" class="doctor-summary" hidden aria-label="Doctor"></section><details class="help"><summary id="details-label"></summary><pre id="output"></pre></details><p id="footer" class="caption"></p></section>
 </div>
 <div class="view" id="view-settings" hidden>
-<section class="card"><h2 id="appearance-heading">Внешний вид</h2><label id="theme-label" for="theme-mode">Тема</label><select id="theme-mode"><option id="theme-auto" value="auto">Как в системе</option><option id="theme-light" value="light">Светлая</option><option id="theme-dark" value="dark">Тёмная</option></select><p id="theme-help" class="caption"></p></section>
 <section class="card"><h2 id="settings-heading"></h2><p id="settings-help" class="muted"></p>
 <form id="settings-form" autocomplete="off" novalidate>
 <div class="settings-grid"><div><label id="settings-port-label" for="settings-port"></label><input id="settings-port" type="number" min="1" max="65535" step="1" inputmode="numeric" required disabled></div><div><label id="settings-mode-label" for="settings-mode"></label><select id="settings-mode" disabled><option id="settings-none" value="none"></option><option id="settings-entware" value="entware"></option><option id="settings-panel" value="panel"></option></select></div></div>
