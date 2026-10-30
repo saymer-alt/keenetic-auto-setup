@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release/kas-web-v0.1.0-beta.2-prep
+      - feat/kas-web-beta2-channels-20261030 # candidate builds in the reviewed beta2 PR; never publishes
     paths:
       - '.github/workflows/web-beta-build.yml'
       - 'web/control-center/**'
