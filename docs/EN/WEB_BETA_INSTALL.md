@@ -1,4 +1,4 @@
-> **Status:** guide for planned release `v0.1.0-beta.2`. Download URLs work only after publication; before that, the owner pilot uses exact source-pinned CI artifacts.
+> **Status:** [WEB beta.2 is published as a GitHub Pre-release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2). It uses the canonical experimental channel and offers Beta/Stable selection. Hardware acceptance remains device-specific.
 
 # KAS Control Center — web panel installation and operation (beta.2)
 
@@ -9,6 +9,8 @@
 **Requirements:** Keenetic/Netcraze router with Entware installed, a working KAS (Mihomo), and a management bridge `br0` (not necessarily a home network) with a single private IPv4 address.
 
 **Architectures:** `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4` (**KN-1010 uses MIPSel, not ARM64**) — must match your Entware architecture (`opkg print-architecture`).
+
+**Compatibility:** older `beta.1`/test17 builds cannot use their existing WEB update button to cross to beta.2 because the canonical channel-index tag format changed. Upgrade those builds manually using a verified IPK and the safe ownership-aware procedure. From beta.2 onward, the WEB updater supports future betas and an eventual published Stable release via explicit user confirmation. Stable is not published yet.
 
 **Download and install** (aarch64 example):
 
