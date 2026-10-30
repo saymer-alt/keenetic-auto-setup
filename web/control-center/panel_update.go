@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -238,9 +237,7 @@ func (a *app) handlePanelChannel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Channel string `json:"channel"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err != nil || decoder.Decode(&req) != nil || req.Channel == "" {
+	if err != nil || strictPanelJSON(raw, &req) != nil || req.Channel == "" {
 		updateJSON(w, 400, panelChannelState{ErrorCode: "INVALID_BODY"})
 		return
 	}
