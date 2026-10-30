@@ -36,3 +36,84 @@ test('without stored ownership a historical success is not announced as a new up
  try{api.mount({getLang:()=> 'en',isBusy:()=>false,onBusy(){}});await new Promise(setImmediate);assert.equal(components,0);assert.match(nodes['panel-update-state'].textContent,/previous operation/i);}
  finally{Object.assign(global,original);}
 });
+test('a successful check with a newer version never claims no check has run',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async(path,options)=>({ok:true,json:async()=>{
+  if(options&&options.method==='POST'&&path==='/api/updates/panel/check')return{state:'OK',relation:'newer',installed_version:'a',runtime_version:'a',available_version:'b',channel:'experimental'};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);
+  await nodes['panel-update-check'].listeners.click();
+  await new Promise(setImmediate);
+  const text=nodes['panel-update-state'].textContent;
+  assert.match(text,/Доступна: b\./);
+  assert.match(text,/Доступна более новая версия/);
+  assert.doesNotMatch(text,/Проверка ещё не выполнялась/);
+  assert.equal(nodes['panel-update-apply'].disabled,false);
+ }
+ finally{Object.assign(global,original);}
+});
+test('channel selection follows server state and never enables apply by itself',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/updates/panel/channel')return {channel:'stable',build_channel:'experimental',allowed:['experimental','stable']};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.equal(nodes['panel-channel'].value,'stable');
+  assert.equal(nodes['panel-channel-experimental'].hidden,false);
+  assert.equal(nodes['panel-channel-stable'].hidden,false);
+  assert.equal(nodes['panel-update-apply'].disabled,true);
+ }
+ finally{Object.assign(global,original);}
+});
+test('channel targets outside the server-allowed list are hidden from the selector',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/updates/panel/channel')return {channel:'experimental',build_channel:'experimental',allowed:['experimental']};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'en',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.equal(nodes['panel-channel'].value,'experimental');
+  assert.equal(nodes['panel-channel-experimental'].hidden,false);
+  assert.equal(nodes['panel-channel-stable'].hidden,true);
+ }
+ finally{Object.assign(global,original);}
+});
+test('both channel directions are offered on any known build channel',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/updates/panel/channel')return {channel:'stable',build_channel:'stable',allowed:['experimental','stable']};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'en',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.equal(nodes['panel-channel'].value,'stable');
+  assert.equal(nodes['panel-channel-experimental'].hidden,false);
+  assert.equal(nodes['panel-channel-stable'].hidden,false);
+ }
+ finally{Object.assign(global,original);}
+});

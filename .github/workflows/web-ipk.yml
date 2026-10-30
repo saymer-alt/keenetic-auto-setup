@@ -97,7 +97,10 @@ jobs:
                  -o "$RUNNER_TEMP/kas-panel-old" . \
             && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath \
                  -ldflags "-X main.panelBuildVersion=0.0.0~selftest-2 -X main.panelBuildSHA=$SOURCE_SHA -X main.panelBuildChannel=experimental" \
-                 -o "$RUNNER_TEMP/kas-panel-new" .)
+                 -o "$RUNNER_TEMP/kas-panel-new" . \
+            && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath \
+                 -ldflags "-X main.panelBuildVersion=0.0.1-1 -X main.panelBuildSHA=$SOURCE_SHA -X main.panelBuildChannel=stable" \
+                 -o "$RUNNER_TEMP/kas-panel-stable" .)
           curl --fail --location --connect-timeout 15 --max-time 60 \
             https://bin.entware.net/aarch64-k3.10/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 1c59274bd25080b869f376788795f5319d0d22e91f325f74ce98a7d596f68015 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
@@ -107,7 +110,8 @@ jobs:
           sudo env KAS_SERVICE_LAB=1 GITHUB_ACTIONS=true \
             sh tests/test_panel_selfupdate_service.sh \
             "$RUNNER_TEMP/kas-panel-old" "$RUNNER_TEMP/kas-panel-new" \
-            "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA"
+            "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA" \
+            "$RUNNER_TEMP/kas-panel-stable"
   crossbuild:
     needs: [package-tests, service-lifecycle, selfupdate-lifecycle]
     runs-on: ubuntu-latest

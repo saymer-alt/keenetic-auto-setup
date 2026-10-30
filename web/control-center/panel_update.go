@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -137,6 +138,135 @@ func (p *panelUpdater) readJob() (panelJob, error) {
 	return j, nil
 }
 func isHex(s string) bool { _, e := hex.DecodeString(s); return e == nil }
+
+// The selected update channel lives in its own private file inside the update
+// state directory, never in the panel settings JSON: an unknown settings field
+// would be rejected by the strict parser of an older panel build, while this
+// file is simply ignored by beta.1. An absent or unreadable file means the
+// compiled build channel.
+func (p *panelUpdater) selectedChannel() string {
+	b, e := inventoryFile(p.root, "etc/kas-control-center-update/channel", 32, false)
+	if e != nil {
+		return ""
+	}
+	if s := string(b); s == "experimental\n" || s == "stable\n" {
+		return s[:len(s)-1]
+	}
+	return ""
+}
+func (p *panelUpdater) effectiveChannel() string {
+	if s := p.selectedChannel(); s != "" {
+		return s
+	}
+	return panelBuildChannel
+}
+
+// panelChannelTargets lists the channels this installation may select. The
+// compiled build channel is provenance, not a restriction: both channels are
+// explicit user opt-in on any build, per the beta.2 contract. Version
+// monotonicity (strictly newer via real opkg) still blocks downgrades, so a
+// stable panel sees no experimental offer until a strictly newer beta exists.
+func panelChannelTargets(build string) []string {
+	if panelChannelKnown(build) {
+		return []string{"experimental", "stable"}
+	}
+	return nil
+}
+func (p *panelUpdater) storeChannel(channel string) error {
+	if !panelChannelKnown(channel) {
+		return errors.New("PANEL_CHANNEL_UNKNOWN")
+	}
+	if e := p.prepareDir(); e != nil {
+		return e
+	}
+	f, e := os.CreateTemp(p.dir, ".channel-")
+	if e != nil {
+		return e
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if e = f.Chmod(0600); e == nil {
+		_, e = f.WriteString(channel + "\n")
+	}
+	if e == nil {
+		e = f.Sync()
+	}
+	closeErr := f.Close()
+	if e == nil {
+		e = closeErr
+	}
+	if e == nil {
+		e = os.Rename(tmp, filepath.Join(p.dir, "channel"))
+	}
+	if e == nil {
+		e = syncPanelDir(p.dir)
+	}
+	if e == nil {
+		// A candidate checked on the previous channel must never be applied.
+		p.mu.Lock()
+		p.checked = nil
+		p.mu.Unlock()
+	}
+	return e
+}
+
+type panelChannelState struct {
+	Channel      string   `json:"channel"`
+	BuildChannel string   `json:"build_channel"`
+	Allowed      []string `json:"allowed"`
+	ErrorCode    string   `json:"error_code,omitempty"`
+}
+
+func (a *app) handlePanelChannel(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		updateJSON(w, 200, panelChannelState{Channel: a.panelUpdate.effectiveChannel(), BuildChannel: panelBuildChannel, Allowed: panelChannelTargets(panelBuildChannel)})
+		return
+	}
+	if r.Method != http.MethodPost {
+		updateJSON(w, 405, panelChannelState{ErrorCode: "METHOD_NOT_ALLOWED"})
+		return
+	}
+	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "set-panel-channel" {
+		updateJSON(w, 403, panelChannelState{ErrorCode: "REQUEST_BLOCKED"})
+		return
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		updateJSON(w, 403, panelChannelState{ErrorCode: "REQUEST_BLOCKED"})
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 128))
+	var req struct {
+		Channel string `json:"channel"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err != nil || decoder.Decode(&req) != nil || req.Channel == "" {
+		updateJSON(w, 400, panelChannelState{ErrorCode: "INVALID_BODY"})
+		return
+	}
+	allowed := false
+	for _, c := range panelChannelTargets(panelBuildChannel) {
+		if c == req.Channel {
+			allowed = true
+		}
+	}
+	if !allowed {
+		updateJSON(w, 400, panelChannelState{ErrorCode: "PANEL_CHANNEL_UNKNOWN"})
+		return
+	}
+	// Selection only: switching the channel never starts a check or install.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown || a.updateChecking {
+		updateJSON(w, 409, panelChannelState{ErrorCode: "BUSY"})
+		return
+	}
+	if e := a.panelUpdate.storeChannel(req.Channel); e != nil {
+		updateJSON(w, 503, panelChannelState{ErrorCode: panelErrorCode(e)})
+		return
+	}
+	updateJSON(w, 200, panelChannelState{Channel: req.Channel, BuildChannel: panelBuildChannel, Allowed: panelChannelTargets(panelBuildChannel)})
+}
 func (p *panelUpdater) stage(j panelJob) string {
 	return filepath.Join(p.root, "tmp/.kas-panel-update-"+j.ID)
 }
@@ -258,7 +388,8 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.checked = nil
 	p.mu.Unlock()
-	result := panelCheckResult{State: "UNKNOWN", Channel: panelBuildChannel, Runtime: compiledPanelIdentity().Version}
+	channel := p.effectiveChannel()
+	result := panelCheckResult{State: "UNKNOWN", Channel: channel, Runtime: compiledPanelIdentity().Version}
 	version, sha, e := p.installed()
 	result.Installed = version
 	if e == nil && (version != compiledPanelIdentity().Version || sha != compiledPanelIdentity().SourceSHA) {
@@ -272,7 +403,7 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		var c panelCandidate
-		c, e = p.candidate(ctx, panelBuildChannel, arch)
+		c, e = p.candidate(ctx, channel, arch)
 		if e == nil {
 			var newer bool
 			newer, e = panelVersionNewer(ctx, filepath.Join(p.root, "bin/opkg"), version, c.Version)
@@ -365,7 +496,10 @@ func (a *app) handlePanelApply(w http.ResponseWriter, r *http.Request) {
 	}
 	id := make([]byte, 12)
 	_, e := rand.Read(id)
-	j := panelJob{Schema: 1, ID: hex.EncodeToString(id), State: "RUNNING", Phase: "queued", Channel: panelBuildChannel, PreviousVersion: compiledPanelIdentity().Version, Candidate: *candidate}
+	// The job channel is the channel of the checked candidate, not a fresh
+	// read of the selection: a channel switch invalidates p.checked, so this
+	// is always the channel whose index produced the candidate.
+	j := panelJob{Schema: 1, ID: hex.EncodeToString(id), State: "RUNNING", Phase: "queued", Channel: candidate.Channel, PreviousVersion: compiledPanelIdentity().Version, Candidate: *candidate}
 	if e == nil {
 		e = p.writeJob(j)
 	}

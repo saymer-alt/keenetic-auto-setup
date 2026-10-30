@@ -1,0 +1,164 @@
+name: Publish KAS Web v0.1.0-beta.2 to the experimental update channel (one-shot, requires owner GO)
+
+# Separate-owner-action workflow: it never runs on pull requests. It fires only
+# on a push to its dedicated ops branch after the owner explicitly decides to
+# publish. Nothing here rebuilds the panel: every IPK byte comes from the
+# pinned, verified CI run and is hash-checked against it.
+
+on:
+  push:
+    branches:
+      - ops/publish-kas-web-beta2-20261030
+    paths:
+      - .github/workflows/ops-publish-kas-web-beta2-20261030.yml
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_SHA: 0000000000000000000000000000000000000000 # PIN the verified beta.2 head SHA before triggering
+      VERIFIED_RUN: '0' # PIN the successful web-beta-build run id for that SHA
+      BETA_TAG: v0.1.0-beta.2
+      CHANNEL_TAG: kas-web-channel-experimental
+      BETA_VERSION: '0.1.0~beta.2-1'
+    steps:
+      - name: Resolve pinned identity and refuse placeholders
+        run: |
+          set -euo pipefail
+          case "$SOURCE_SHA" in [0-9a-f]*) test "${#SOURCE_SHA}" -eq 40 || { echo "PIN SOURCE_SHA (40 hex)" >&2; exit 1; };; *) echo "PIN SOURCE_SHA" >&2; exit 1;; esac
+          case "$VERIFIED_RUN" in 0|'') echo "PIN VERIFIED_RUN" >&2; exit 1;; esac
+          echo "CANDIDATE_TAG=kas-web-ipk-${SOURCE_SHA:0:7}" >> "$GITHUB_ENV"
+      - name: Require the verified source, a fresh release and an unchanged channel
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.head_sha')" = "$SOURCE_SHA"
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.conclusion')" = success
+          if gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" >/dev/null 2>&1; then
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA" \
+              || { echo "Tag $BETA_TAG exists at a different SHA" >&2; exit 1; }
+          fi
+          if gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" >/dev/null 2>&1; then
+            echo "Release $BETA_TAG already exists; refusing to overwrite" >&2; exit 1
+          fi
+          if gh api "repos/$GH_REPO/releases/tags/kas-web-ipk-${SOURCE_SHA:0:7}" >/dev/null 2>&1; then
+            echo "A kas-web-ipk alias must not be created from beta.2 on; refusing" >&2; exit 1
+          fi
+          gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > "$RUNNER_TEMP/old-channel.json"
+          python3 - "$RUNNER_TEMP/old-channel.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
+          assert [a['name'] for a in r['assets']]==['panel-update.json']
+          assert r['assets'][0]['state']=='uploaded'
+          print('PASS: existing experimental channel found; current asset will be backed up and verified')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Download unchanged, hash-checked beta.2 CI artifacts and back up channel index
+        run: |
+          set -euo pipefail
+          mkdir -p build/ipk build/channel-old
+          gh release download "$CHANNEL_TAG" --repo "$GH_REPO" \
+            --pattern panel-update.json --dir build/channel-old
+          test -s build/channel-old/panel-update.json
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            dir="build/artifact-$arch"; mkdir -p "$dir"
+            gh run download "$VERIFIED_RUN" --repo "$GH_REPO" \
+              --name "kas-web-beta2-$arch-$SOURCE_SHA" --dir "$dir"
+            (cd "$dir" && sha256sum -c SHA256SUMS)
+            if [ ! -s build/ipk/manifest-canonical.json ]; then cp "$dir/manifest-canonical.json" build/ipk/; fi
+            test "$(find "$dir" -maxdepth 1 -name '*.ipk' -type f | wc -l)" -eq 1
+            src="$(find "$dir" -maxdepth 1 -name '*.ipk' -type f -print -quit)"
+            name="$(basename "$src" | tr '~' '.')"
+            test ! -e "build/ipk/$name"
+            cp "$src" "build/ipk/$name"
+          done
+          test -s build/ipk/manifest-canonical.json
+          (cd build/ipk && sha256sum ./*.ipk > SHA256SUMS && sha256sum -c SHA256SUMS)
+          # The switched index points at the canonical beta release tag.
+          python3 web/control-center/packaging/update-manifest.py \
+            --channel experimental --tag "$BETA_TAG" build/ipk/*.ipk > build/panel-update.json
+          python3 - <<'PY'
+          import os,json,hashlib,pathlib
+          build=pathlib.Path('build')
+          canonical=json.loads((build/'panel-update.json').read_text())
+          fromCI=json.loads((build/'ipk/manifest-canonical.json').read_text())
+          assert canonical['tag']=='v0.1.0-beta.2'
+          assert canonical['packages']==fromCI['packages'], 'CI manifest mismatch'
+          assert {p['architecture'] for p in canonical['packages']} == {'aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'}
+          for p in canonical['packages']:
+              raw=pathlib.Path('build/ipk',p['name']).read_bytes()
+              assert p['source_sha']==os.environ['SOURCE_SHA'] and p['version']==os.environ['BETA_VERSION']
+              assert p['sha256']==hashlib.sha256(raw).hexdigest() and p['size']==len(raw)
+          old=json.load(open(os.environ['RUNNER_TEMP']+'/old-channel.json'))
+          backup=(build/'channel-old/panel-update.json').read_bytes()
+          assert hashlib.sha256(backup).hexdigest() == old['assets'][0]['digest'].split(':',1)[1]
+          print('PASS: previous channel backed up; beta.2 manifest agrees with the verified artifacts')
+          PY
+      - name: Publish the immutable canonical beta.2 prerelease (no alias from beta.2 on)
+        run: |
+          set -euo pipefail
+          gh release create "$BETA_TAG" --repo "$GH_REPO" \
+            --target "$SOURCE_SHA" --prerelease --latest=false \
+            --title 'KAS Web v0.1.0-beta.2' \
+            --notes 'First user-distributed KAS Control Center beta with user-selected update channels (experimental/stable). Manual check/apply only; no automatic rollback. The single beta.1 pilot device is upgraded manually by the owner; no kas-web-ipk alias release exists for beta.2. Source-pinned IPKs and SHA256SUMS.' \
+            build/ipk/*.ipk build/ipk/SHA256SUMS
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA"
+      - name: Verify release metadata before touching the channel
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release.json
+          python3 - <<'PY'
+          import json,os
+          idx=json.load(open('build/panel-update.json'))
+          r=json.load(open('build/beta-release.json'))
+          assert r['tag_name']==os.environ['BETA_TAG'] and r['target_commitish']==os.environ['SOURCE_SHA']
+          assert r['prerelease'] and not r['draft'] and len(r['assets'])==5
+          assets={x['name']:x for x in r['assets']}
+          assert set(assets)=={p['name'] for p in idx['packages']} | {'SHA256SUMS'}
+          for p in idx['packages']:
+              a=assets[p['name']]
+              assert a['size']==p['size'] and a['digest']=='sha256:'+p['sha256'] and a['state']=='uploaded'
+              assert a['browser_download_url']==f"https://github.com/saymer-alt/keenetic-auto-setup/releases/download/{os.environ['BETA_TAG']}/{p['name']}"
+          print('PASS: canonical release matches the channel manifest byte for byte')
+          PY
+      - name: Switch only experimental channel index (canonical beta.2), verify, restore on failure
+        run: |
+          set -euo pipefail
+          restore() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "Failed to verify channel; restoring prior index asset" >&2
+              gh release upload "$CHANNEL_TAG" build/channel-old/panel-update.json \
+                --repo "$GH_REPO" --clobber || echo "RESTORE FAILED: manual intervention required" >&2
+            fi
+          }
+          trap restore EXIT
+          gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
+          gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          r=json.load(open('build/channel-updated.json'))
+          index=pathlib.Path('build/panel-update.json').read_bytes()
+          assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
+          assert len(r['assets'])==1 and r['assets'][0]['name']=='panel-update.json'
+          assert r['assets'][0]['digest']=='sha256:'+hashlib.sha256(index).hexdigest()
+          assert r['assets'][0]['size']==len(index) and r['assets'][0]['state']=='uploaded'
+          assert json.loads(index)['tag']==os.environ['BETA_TAG']
+          print('PASS: experimental channel points beta.2+ panels at the canonical beta release')
+          PY
+          trap - EXIT
+          echo 'PASS: published canonical beta.2 and switched the experimental index'
+          echo 'NOTE: beta.1 panels can no longer read this index (canonical tag); the single pilot is upgraded manually by the owner beforehand.'

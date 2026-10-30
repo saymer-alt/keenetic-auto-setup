@@ -262,6 +262,16 @@ func panelFixedCommand(path string, args ...string) error {
 	cmd.Stderr = io.Discard
 	return cmd.Run()
 }
+
+// panelJobChannelAllowed is the worker-side channel admission rule: the job
+// channel must be known and its candidate tag must belong to that channel.
+// Cross-channel jobs are admitted in both explicit opt-in directions
+// (experimental→stable migration and stable→experimental beta opt-in); the
+// candidate IPK must still carry the job channel in its BUILD_INFO and real
+// opkg comparison still blocks every downgrade.
+func panelJobChannelAllowed(build, job string, candidate panelCandidate) bool {
+	return panelChannelKnown(job) && panelChannelKnown(build) && panelTagValid(job, candidate.Tag)
+}
 func (p *panelUpdater) runWorker() (result error) {
 	lock, e := p.workerLock()
 	if e != nil {
@@ -284,7 +294,13 @@ func (p *panelUpdater) runWorker() (result error) {
 	if e := p.safeStage(j); e != nil {
 		return e
 	}
-	if !j.Candidate.valid() || !panelTagPattern.MatchString(j.Candidate.Tag) || j.Channel != "experimental" || j.Channel != panelBuildChannel {
+	// Channel contract: the job channel must be known and its candidate tag
+	// must belong to that channel. Both explicit opt-in cross-channel moves
+	// (experimental→stable migration, stable→experimental beta opt-in) pass
+	// here; every package check below still applies and BUILD_INFO.Channel
+	// must match the candidate channel. Downgrades stay blocked by real opkg
+	// comparison regardless of channel.
+	if !j.Candidate.valid() || !panelJobChannelAllowed(panelBuildChannel, j.Channel, j.Candidate) {
 		return errors.New("PANEL_CHANNEL_UNKNOWN")
 	}
 	j.WorkerPID = os.Getpid()

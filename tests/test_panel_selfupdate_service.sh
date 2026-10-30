@@ -23,13 +23,17 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 [ -f /etc/os-release ] && grep -q '^ID=ubuntu$' /etc/os-release || fail 'Ubuntu CI VM required'
 command -v openssl >/dev/null 2>&1 || fail 'openssl unavailable'
 command -v update-ca-certificates >/dev/null 2>&1 || fail 'update-ca-certificates unavailable'
-[ "$#" -eq 4 ] || fail 'usage: test_panel_selfupdate_service.sh BINARY_OLD BINARY_NEW ENTWARE_OPKG SOURCE_SHA'
+[ "$#" -eq 4 ] || [ "$#" -eq 5 ] || fail 'usage: test_panel_selfupdate_service.sh BINARY_OLD BINARY_NEW ENTWARE_OPKG SOURCE_SHA [BINARY_STABLE]'
 OLD_BINARY=$1
 NEW_BINARY=$2
 OPKG=$3
 SOURCE_SHA=$4
+STABLE_BINARY=${5:-}
 [ -f "$OLD_BINARY" ] && [ -x "$OLD_BINARY" ] || fail 'old panel binary unavailable'
 [ -f "$NEW_BINARY" ] && [ -x "$NEW_BINARY" ] || fail 'new panel binary unavailable'
+if [ -n "$STABLE_BINARY" ]; then
+    [ -f "$STABLE_BINARY" ] && [ -x "$STABLE_BINARY" ] || fail 'stable panel binary unavailable'
+fi
 [ -f "$OPKG" ] && [ -x "$OPKG" ] || fail 'official opkg unavailable'
 printf '%s' "$SOURCE_SHA" | grep -Eq '^[a-f0-9]{40}$' || fail 'source SHA must be 40 hex characters'
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -106,7 +110,7 @@ cat "$LAB/ca.crt" > /opt/etc/ssl/certs/ca-certificates.crt
 cp /etc/hosts "$LAB/hosts.backup"
 printf '\n127.0.0.1 github.com\n127.0.0.1 api.github.com\n' >> /etc/hosts
 install -m 755 "$OPKG" /opt/bin/opkg
-python3 - "$REPO" "$LAB" "$SOURCE_SHA" "$OLD_BINARY" "$NEW_BINARY" <<'PY'
+python3 - "$REPO" "$LAB" "$SOURCE_SHA" "$OLD_BINARY" "$NEW_BINARY" "$STABLE_BINARY" <<'PY'
 import base64
 import fcntl
 import hashlib
@@ -124,7 +128,13 @@ import time
 import urllib.error
 import urllib.request
 
-repo, lab, sha, old_binary, new_binary = sys.argv[1:6]
+repo, lab, sha, old_binary, new_binary, stable_binary = sys.argv[1:7]
+# Optional stable-channel payload: a third build compiled with
+# panelBuildVersion=0.0.1-1 and panelBuildChannel=stable. When present, the
+# lab finishes with the explicit experimental→stable migration legs.
+stable_binary = stable_binary or None
+stable_tag = 'kas-web-v0.0.1'
+stable_asset = 'kas-control-center_0.0.1-1_aarch64-3.10.ipk'
 # The hosted runner image may hand this process a permissive umask; the lab
 # models the router layout, where daemon- and driver-created private files
 # are 0600/0700. Pin it so every fixture mode is deterministic.
@@ -283,12 +293,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split('?')[0]
         prefix = '/saymer-alt/keenetic-auto-setup/releases/download/'
+        tags_api = '/repos/saymer-alt/keenetic-auto-setup/releases/tags/'
         if path == prefix + 'kas-web-channel-experimental/panel-update.json':
             target = serve / 'index.json'
-        elif path == f'/repos/saymer-alt/keenetic-auto-setup/releases/tags/{tag}':
+        elif path == prefix + 'kas-web-channel-stable/panel-update.json':
+            target = serve / 'index-stable.json'
+        elif path == tags_api + tag:
             target = serve / 'release.json'
+        elif path == tags_api + stable_tag:
+            target = serve / 'release-stable.json'
         elif path == prefix + tag + '/' + asset:
             target = serve / asset
+        elif path == prefix + stable_tag + '/' + stable_asset:
+            target = serve / 'stable.ipk'
         else:
             self.send_error(404)
             return
@@ -326,6 +343,24 @@ try:
     (serve / 'index.json').write_text(manifest)
     (serve / 'index.good.json').write_text(manifest)
     index = json.loads(manifest)
+    if stable_binary:
+        run(['python3', repo + '/web/control-center/packaging/build-ipk.py', '--arch', 'aarch64-3.10',
+             '--version', '0.0.1-1', '--channel', 'stable',
+             '--binary', stable_binary, '--source-sha', sha, '--output', lab])
+        stable_manifest = run(['python3', repo + '/web/control-center/packaging/update-manifest.py',
+                               '--channel', 'stable', '--tag', stable_tag,
+                               lab / stable_asset]).stdout
+        (serve / 'index-stable.json').write_text(stable_manifest)
+        (serve / 'index-stable.good.json').write_text(stable_manifest)
+        stable_index = json.loads(stable_manifest)
+        stable_entry = stable_index['packages'][0]
+        (serve / 'release-stable.json').write_text(json.dumps({
+            'tag_name': stable_tag, 'draft': False, 'prerelease': False,
+            'assets': [{'name': stable_entry['name'], 'size': stable_entry['size'],
+                        'digest': 'sha256:' + stable_entry['sha256'],
+                        'browser_download_url': 'https://github.com/saymer-alt/keenetic-auto-setup/releases/download/' + stable_tag + '/' + stable_entry['name'],
+                        'state': 'uploaded'}]}))
+        (serve / 'stable.ipk').write_bytes((lab / stable_asset).read_bytes())
     entry = index['packages'][0]
     (serve / 'release.json').write_text(json.dumps({
         'tag_name': tag, 'draft': False, 'prerelease': True,
@@ -653,6 +688,70 @@ try:
     require(sentinel.read_bytes() == sentinel_before, 'update changed core YAML config')
     require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'port setting lost')
     ok('runtime receipt binds the new process; settings, port and YAML preserved byte-for-byte')
+
+    if stable_binary:
+        # I. Explicit user-selected channel: an experimental panel migrates to
+        # stable through the dedicated stable index. Selection alone never
+        # checks or installs; every package check still applies to the stable
+        # candidate and opkg must see it as strictly newer.
+        require(run(['/opt/bin/opkg', '-f', lab / 'opkg.conf', '--tmp-dir', lab / 'opkg-tmp',
+                     'compare-versions', '0.0.1-1', '>>', '0.0.0~selftest-2'],
+                    expected=0).returncode == 0, 'stable candidate is not strictly newer')
+        selected = api(8081, 'POST', '/api/updates/panel/channel',
+                       body={'channel': 'stable'}, confirm='set-panel-channel')
+        require(selected.get('channel') == 'stable' and selected.get('build_channel') == 'experimental',
+                f'unexpected selection result: {selected}')
+        channel_path = update_dir / 'channel'
+        require(channel_path.is_file() and channel_path.read_text() == 'stable\n',
+                'channel selection not persisted as expected')
+        require(oct(os.stat(channel_path).st_mode & 0o777) == '0o600', 'channel selection is not private 0600')
+        require(not (update_dir / 'gate').exists(), 'channel switch created an update gate')
+        require(not list(Path('/opt/tmp').glob('.kas-panel-update-*')), 'channel switch created a worker stage')
+        state = api(8081, 'GET', '/api/updates/panel/channel')
+        require(state.get('channel') == 'stable' and state.get('build_channel') == 'experimental'
+                and sorted(state.get('allowed', [])) == ['experimental', 'stable'],
+                f'unexpected channel state: {state}')
+        check = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        require(check.get('channel') == 'stable' and check.get('relation') == 'newer'
+                and check.get('available_version') == '0.0.1-1', f'unexpected stable check: {check}')
+        accepted = api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+        final = poll_operation('OK', timeout=180)
+        require(final.get('Version') == '0.0.1-1' and final.get('Gate') is False,
+                f'unexpected migration result: {final}')
+        require(json.loads((update_dir / 'job.json').read_text())['channel'] == 'stable',
+                'migration job lost its stable channel')
+        control = Path('/opt/lib/opkg/info/kas-control-center.control').read_text()
+        require('Version: 0.0.1-1' in control, 'migration did not install the stable payload')
+        build_info = dict(line.partition('=')[::2] for line in
+                          Path('/opt/share/kas-control-center/BUILD_INFO').read_text().splitlines() if '=' in line)
+        require(build_info.get('Channel') == 'stable', f'stable payload carries wrong channel: {build_info}')
+        components = api(8081, 'GET', '/api/components')
+        require(components['panel']['version'] == '0.0.1-1', 'running panel is not the stable payload')
+        require(settings.read_bytes() == settings_before, 'migration changed panel settings')
+        require(sentinel.read_bytes() == sentinel_before, 'migration changed core YAML config')
+        ok('explicit experimental-to-stable migration installs, boots and receipts the stable payload')
+
+        # J. Cross-channel opt-in back to experimental must be allowed but must
+        # not offer a downgrade, and the stable index stays tamper-checked.
+        tampered_stable = json.loads((serve / 'index-stable.good.json').read_text())
+        first = tampered_stable['packages'][0]['sha256'][0]
+        tampered_stable['packages'][0]['sha256'] = ('0' if first != '0' else '1') + tampered_stable['packages'][0]['sha256'][1:]
+        (serve / 'index-stable.json').write_text(json.dumps(
+            {'schema': 1, 'channel': 'stable', 'tag': stable_tag, 'packages': tampered_stable['packages']}, indent=2))
+        error = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
+        require(error.get('error_code') == 'PANEL_METADATA_INVALID', f'unexpected stable tamper result: {error}')
+        (serve / 'index-stable.json').write_bytes((serve / 'index-stable.good.json').read_bytes())
+        api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        back = api(8081, 'POST', '/api/updates/panel/channel',
+                   body={'channel': 'experimental'}, confirm='set-panel-channel')
+        require(back.get('channel') == 'experimental' and back.get('build_channel') == 'stable',
+                f'unexpected opt-in back result: {back}')
+        require((update_dir / 'channel').read_text() == 'experimental\n', 'backward selection not persisted')
+        stale = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        require(stale.get('channel') == 'experimental' and stale.get('relation') == 'not_newer',
+                f'experimental recheck must refuse the older beta: {stale}')
+        api(8081, 'POST', '/api/updates/panel/channel', body={'channel': 'stable'}, confirm='set-panel-channel')
+        ok('stable build re-selects experimental only as opt-in; opkg refuses the older beta candidate')
 finally:
     if holder is not None and holder.poll() is None:
         holder.terminate()

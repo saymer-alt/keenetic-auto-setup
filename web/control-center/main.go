@@ -177,6 +177,7 @@ func (a *app)handler()http.Handler{
  mux.HandleFunc("/api/updates/panel/check",a.handlePanelCheck)
  mux.HandleFunc("/api/updates/panel/apply",a.handlePanelApply)
  mux.HandleFunc("/api/updates/panel/operation",a.handlePanelOperation)
+ mux.HandleFunc("/api/updates/panel/channel",a.handlePanelChannel)
  mux.HandleFunc("/api/updates/mihomo",a.handleMihomoUpdate)
  mux.HandleFunc("/api/updates/operation",a.handleUpdateOperation)
  mux.HandleFunc("/api/updates/magitrickle/check",a.handleMTCheck)

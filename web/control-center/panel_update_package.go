@@ -27,6 +27,8 @@ const panelMaxPayload int64 = 32 << 20
 var panelPackageError = errors.New("PANEL_PACKAGE_INVALID")
 var panelAssetNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.+~-]{1,240}$`)
 var panelTagPattern = regexp.MustCompile(`^kas-web-ipk-[a-f0-9]{7,40}$`)
+var panelBetaTagPattern = regexp.MustCompile(`^(?:kas-web-)?v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$`)
+var panelStableTagPattern = regexp.MustCompile(`^kas-web-v[0-9]+\.[0-9]+\.[0-9]+$`)
 
 type panelCandidate struct {
 	Version      string `json:"version"`
@@ -49,6 +51,24 @@ type panelIndex struct {
 
 func panelArchValid(s string) bool {
 	return s == "mipsel-3.4" || s == "mips-3.4" || s == "armv7-3.2" || s == "aarch64-3.10"
+}
+func panelChannelKnown(channel string) bool {
+	return channel == "experimental" || channel == "stable"
+}
+
+// panelTagValid is the release-tag allowlist per channel index. experimental
+// serves published beta prereleases: the legacy kas-web-ipk-<sha> alias that
+// installed beta.1 panels still consume, plus the canonical v0.1.0-beta.N
+// release used without a duplicate alias once no beta.1 panel needs it.
+// stable keeps its dedicated kas-web-vX.Y.Z namespace; the two never mix.
+func panelTagValid(channel, tag string) bool {
+	switch channel {
+	case "experimental":
+		return panelTagPattern.MatchString(tag) || panelBetaTagPattern.MatchString(tag)
+	case "stable":
+		return panelStableTagPattern.MatchString(tag)
+	}
+	return false
 }
 func (c panelCandidate) valid() bool {
 	return componentVersionPattern.MatchString(c.Version) && componentSourcePattern.MatchString(c.SourceSHA) && panelArchValid(c.Architecture) && panelAssetNamePattern.MatchString(c.Name) && strings.HasPrefix(c.Name, "kas-control-center_") && strings.HasSuffix(c.Name, "_"+c.Architecture+".ipk") && c.Size > 0 && c.Size <= panelMaxIPK && c.UnpackedSize > 0 && c.UnpackedSize <= panelMaxPayload && componentDigestPattern.MatchString(c.SHA256) && componentDigestPattern.MatchString(c.BinarySHA256)
@@ -115,15 +135,7 @@ func parsePanelIndex(raw []byte, channel, arch string) (panelCandidate, error) {
 	if strictPanelJSON(raw, &index) != nil || index.Schema != 1 || index.Channel != channel || !panelArchValid(arch) || len(index.Packages) < 1 || len(index.Packages) > 4 {
 		return panelCandidate{}, panelPackageError
 	}
-	if channel == "experimental" {
-		if !panelTagPattern.MatchString(index.Tag) {
-			return panelCandidate{}, panelPackageError
-		}
-	} else if channel == "stable" {
-		if !regexp.MustCompile(`^kas-web-v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(index.Tag) {
-			return panelCandidate{}, panelPackageError
-		}
-	} else {
+	if !panelTagValid(channel, index.Tag) {
 		return panelCandidate{}, panelPackageError
 	}
 	seen := map[string]bool{}
