@@ -470,7 +470,7 @@ test('matching Mihomo version distinguishes opkg provenance and disables unneces
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{updateCheck:{state:'AVAILABLE',current_version:'1.19.33',available_version:'1.19.33',package_release:2,installed_package_version:'1.19.32-1',relation:'same_runtime'}});await new Promise(setImmediate);
  await app.el('update-check').click();
  assert.equal(app.el('update-mihomo').disabled,true);
- assert.match(app.el('updates-state').textContent,/Установлен Mihomo 1\.19\.33/);
+ assert.match(app.el('updates-state').textContent,/Версия запущенного Mihomo: 1\.19\.33/);
  assert.match(app.el('updates-state').textContent,/opkg.*1\.19\.32-1/);
  assert.match(app.el('updates-state').textContent,/не удалось подтвердить/);
  app.run("updateCheckData.relation='newer_package';draw();");assert.equal(app.el('update-mihomo').disabled,false);
