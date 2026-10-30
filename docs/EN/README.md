@@ -156,7 +156,7 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS installation remains independent.
 
-**Install after publication:** choose the correct Entware IPK via `opkg print-architecture` from the [beta.2 release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), verify its SHA256 against `SHA256SUMS`, then transfer it by SCP/SFTP. **KN-1010 uses MIPSel**, not ARM64. For a verified file in `/tmp`:
+**Install beta.2:** choose the correct Entware IPK via `opkg print-architecture` from the [beta.2 release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), verify its SHA256 against `SHA256SUMS`, then transfer it by SCP/SFTP. **KN-1010 uses MIPSel**, not ARM64. For a verified file in `/tmp`:
 
 ```sh
 opkg install /tmp/kas-control-center_0.1.0.beta.2-1_mipsel-3.4.ipk
