@@ -141,14 +141,23 @@ function validComponents(data){
  if(['current','bundle_changed'].includes(data.watchdog.state)&&!version(data.watchdog.recorded_version))return false;
  return true;
 }
+// Display-only public form of an internal Entware package version:
+// "0.1.0~beta.2-1" → "v0.1.0-beta.2" (v prefix, prerelease dash, packaging revision dropped).
+// Never used for comparison, update decisions or API payloads; unknown values pass through unchanged.
+function publicVersion(raw){
+ if(typeof raw!=='string')return raw;
+ const value=raw.trim();
+ if(/^[vV]/.test(value)||!/^[0-9]/.test(value))return value;
+ return 'v'+value.replace(/-\d+$/,'').split('~').join('-');
+}
 function drawComponents(){
  for(const [id,key] of [['versions-heading','versionsHeading'],['core-label','coreLabel'],['watchdog-label','watchdogLabel'],['versions-help','versionsHelp'],['project-link','projectLink']])set(id,t(key));
  if(!componentsData){set('panel-build','KAS Web · '+t('versionsUnavailable'));set('core-version',t('versionsUnavailable'));set('watchdog-version',t('versionsUnavailable'));return;}
  const {panel,core,watchdog}=componentsData;
- set('panel-build','KAS Web '+(panel.version==='development'?t('buildDevelopment'):panel.version)+(panel.source_sha?' · '+panel.source_sha.slice(0,7):''));
- set('core-version',core.state==='present'?t('versionIdentity',{version:core.version,sha:core.source_sha.slice(0,7)}):t(core.state==='absent'?'coreAbsent':core.state==='modified'?'coreModified':'versionsUnavailable'));
+ set('panel-build','KAS Web '+(panel.version==='development'?t('buildDevelopment'):publicVersion(panel.version))+(panel.source_sha?' · '+panel.source_sha.slice(0,7):''));
+ set('core-version',core.state==='present'?t('versionIdentity',{version:publicVersion(core.version),sha:core.source_sha.slice(0,7)}):t(core.state==='absent'?'coreAbsent':core.state==='modified'?'coreModified':'versionsUnavailable'));
  const keys={current:'watchdogCurrent',bundle_changed:'watchdogBundleChanged',stale:'watchdogStale',invalid_receipt:'watchdogInvalid'};
- set('watchdog-version',watchdog.state==='unrecorded'&&/^[a-f0-9]{64}$/.test(watchdog.installed_sha256||'')?t('watchdogDigest',{sha:watchdog.installed_sha256.slice(0,12)}):t(keys[watchdog.state]||'watchdogUnrecorded',{version:watchdog.recorded_version||''}));
+ set('watchdog-version',watchdog.state==='unrecorded'&&/^[a-f0-9]{64}$/.test(watchdog.installed_sha256||'')?t('watchdogDigest',{sha:watchdog.installed_sha256.slice(0,12)}):t(keys[watchdog.state]||'watchdogUnrecorded',{version:publicVersion(watchdog.recorded_version||'')}));
 }
 async function refreshComponents(){
  try{const response=await fetch('/api/components',{cache:'no-store',credentials:'same-origin'}),data=await response.json();componentsData=response.ok&&validComponents(data)?data:null;}
