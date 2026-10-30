@@ -26,8 +26,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      SOURCE_SHA: 0000000000000000000000000000000000000000 # PIN the verified beta.2 head SHA before triggering
-      VERIFIED_RUN: '0' # PIN the successful web-beta-build run id for that SHA
+      SOURCE_SHA: e5e8a54b41b4afa93b8fe8681fda0e38822ca0e3 # PIN the verified beta.2 head SHA before triggering
+      VERIFIED_RUN: '41099642234' # PIN the successful web-beta-build run id for that SHA
       BETA_TAG: v0.1.0-beta.2
       CHANNEL_TAG: kas-web-channel-experimental
       BETA_VERSION: '0.1.0~beta.2-1'
