@@ -1,4 +1,4 @@
-> **Status:** documentation for the planned `v0.1.0-beta.2` release; the Release download URLs work only after publication. Before publication, use only exact source-pinned CI artifacts for owner-approved pilot testing.
+> **Status:** guide for planned release `v0.1.0-beta.2`. Download URLs work only after publication; before that, the owner pilot uses exact source-pinned CI artifacts.
 
 # KAS Control Center — web panel installation and operation (beta.2)
 
@@ -16,26 +16,13 @@
 cd /tmp
 curl -fSsLO https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.2/kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
 curl -fSsLO https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.2/SHA256SUMS
-grep '  kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
-```
-
-The checksum must report OK before installation; do not use force flags. If GitHub downloads fail on the router, transfer the exact verified assets via SCP/SFTP from your PC. An existing saved port (e.g. 18081) survives upgrades.
-
-The panel starts **only after an explicit start**. It binds only the private IPv4 of `br0` on TCP port **8081** (example: `http://192.168.1.1:8081`) and refuses to start if `br0` is absent or ambiguous.
-
-**Views:** Overview (component versions, Mihomo/MagiTrickle/panel updates), Subscriptions (server list and exclude filters), Configuration (YAML upload/paste via the canonical importer), Diagnostics (RU/EN Doctor summary), Settings (port, login mode, panel password, optional home-subnet-only access).
-
-**Update channels:** in the "KAS panel update" card choose **Beta (experimental)** or **Stable**, then run the manual version check and confirm. Changing the channel never installs anything; there is no background auto-update. The Stable channel is published separately; until then the panel reports honestly that it is not available.
-
-**Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
-
-**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md) for the update system details.
-
- SHA256SUMS | sha256sum -c -
+grep '  kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk$' SHA256SUMS | sha256sum -c -
 opkg install ./kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
 sh /opt/etc/init.d/S98kas-control-center start
 sh /opt/etc/init.d/S98kas-control-center status
 ```
+
+The SHA256 check must report OK before installation; do not force-install mismatched files. If GitHub downloads fail on the router, transfer these verified files via SFTP/SCP from a trusted PC. An earlier custom port (such as 18081) is preserved on upgrade. Hardware beta.2 acceptance on KN-1010 is pending, not yet field PASS.
 
 The panel starts **only after an explicit start**. It binds only the private IPv4 of `br0` on TCP port **8081** (example: `http://192.168.1.1:8081`) and refuses to start if `br0` is absent or ambiguous.
 
