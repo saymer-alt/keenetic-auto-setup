@@ -1,0 +1,46 @@
+name: KAS Web optional lifecycle (lab only)
+
+on:
+  push:
+    branches:
+      - feat/kas-web-opt-in-lifecycle
+    paths:
+      - 'web/control-center/**'
+      - '.github/workflows/web-lifecycle.yml'
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - '.github/workflows/web-lifecycle.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Verify POSIX shell syntax
+        run: |
+          sh -n web/control-center/kas-web-manage.sh
+          dash -n web/control-center/kas-web-manage.sh
+      - name: Test standalone Web-only opt-in lifecycle
+        run: python3 -m unittest discover -v -s web/control-center/tests -p 'test_*.py'
+      - name: Test Go shutdown and HTTP adapter
+        run: |
+          cd web/control-center
+          go generate ./...
+          cmp -s scripts/mihomo-doctor.sh ../../mihomo-doctor.sh
+          cmp -s scripts/config-import.sh ../../config-import.sh
+          go test -race ./...
+          go vet ./...
+      - name: Cross compile release candidate for ARM64 (not published)
+        run: |
+          cd web/control-center
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/kas-web-arm64 .
+          test "$(stat -c %s /tmp/kas-web-arm64)" -lt 33554432

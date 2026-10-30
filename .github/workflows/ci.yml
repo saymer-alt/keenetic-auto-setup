@@ -82,6 +82,9 @@ jobs:
       - name: Rollback fault regression (dash and BusyBox ash)
         run: python3 tests/rollback-regression.py
 
+      - name: Config import expected-source gate regression (dash and BusyBox ash)
+        run: python3 tests/config-import-filter-gate-regression.py
+
       - name: Downloader partial-transfer regression (dash and BusyBox ash)
         run: python3 tests/download-regression.py
 
@@ -100,6 +103,7 @@ jobs:
         run: |
           python3 tests/ipk-selection-regression.py
           python3 tests/ipk-package-release-regression.py
+          python3 tests/doctor-package-selection-regression.py
 
       - name: Whitespace
         shell: bash
