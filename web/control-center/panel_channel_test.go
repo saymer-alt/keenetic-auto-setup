@@ -176,6 +176,12 @@ func TestPanelChannelEndpointGuards(t *testing.T) {
 	if w := post("stable", "set-panel-channel", "http://127.0.0.1:8081", `{"channel":"stable","extra":1}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "INVALID_BODY") {
 		t.Fatalf("unknown body field accepted: %d %s", w.Code, w.Body.String())
 	}
+	if w := post("stable", "set-panel-channel", "http://127.0.0.1:8081", `{"channel":"stable","channel":"experimental"}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "INVALID_BODY") {
+		t.Fatalf("duplicate channel field accepted: %d %s", w.Code, w.Body.String())
+	}
+	if w := post("stable", "set-panel-channel", "http://127.0.0.1:8081", `{"channel":"stable"}{}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "INVALID_BODY") {
+		t.Fatalf("trailing JSON accepted: %d %s", w.Code, w.Body.String())
+	}
 	r = httptest.NewRequest("GET", "http://127.0.0.1:8081/api/updates/panel/channel", nil)
 	w = httptest.NewRecorder()
 	a.handlePanelChannel(w, r)
