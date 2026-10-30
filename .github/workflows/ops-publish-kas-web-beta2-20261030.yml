@@ -69,7 +69,7 @@ jobs:
       - name: Download unchanged, hash-checked beta.2 CI artifacts and back up channel index
         run: |
           set -euo pipefail
-          mkdir -p build/ipk build/channel-old
+          mkdir -p build/ipk build/channel-old build/ci-manifests
           gh release download "$CHANNEL_TAG" --repo "$GH_REPO" \
             --pattern panel-update.json --dir build/channel-old
           test -s build/channel-old/panel-update.json
@@ -78,14 +78,14 @@ jobs:
             gh run download "$VERIFIED_RUN" --repo "$GH_REPO" \
               --name "kas-web-beta2-$arch-$SOURCE_SHA" --dir "$dir"
             (cd "$dir" && sha256sum -c SHA256SUMS)
-            if [ ! -s build/ipk/manifest-canonical.json ]; then cp "$dir/manifest-canonical.json" build/ipk/; fi
+            cp "$dir/manifest-canonical.json" "build/ci-manifests/$arch.json"
             test "$(find "$dir" -maxdepth 1 -name '*.ipk' -type f | wc -l)" -eq 1
             src="$(find "$dir" -maxdepth 1 -name '*.ipk' -type f -print -quit)"
             name="$(basename "$src" | tr '~' '.')"
             test ! -e "build/ipk/$name"
             cp "$src" "build/ipk/$name"
           done
-          test -s build/ipk/manifest-canonical.json
+          test "$(find build/ci-manifests -maxdepth 1 -name '*.json' -type f | wc -l)" -eq 4
           (cd build/ipk && sha256sum ./*.ipk > SHA256SUMS && sha256sum -c SHA256SUMS)
           # The switched index points at the canonical beta release tag.
           python3 web/control-center/packaging/update-manifest.py \
@@ -94,10 +94,22 @@ jobs:
           import os,json,hashlib,pathlib
           build=pathlib.Path('build')
           canonical=json.loads((build/'panel-update.json').read_text())
-          fromCI=json.loads((build/'ipk/manifest-canonical.json').read_text())
           assert canonical['tag']=='v0.1.0-beta.2'
-          assert canonical['packages']==fromCI['packages'], 'CI manifest mismatch'
-          assert {p['architecture'] for p in canonical['packages']} == {'aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'}
+          architectures={'aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'}
+          assert {p['architecture'] for p in canonical['packages']} == architectures
+          # Every matrix job writes a *single-architecture* CI manifest.
+          # Aggregate and verify all four, normalizing the GitHub release
+          # asset filename (~ -> .) without changing the IPK contents.
+          ci_packages={}
+          for arch in architectures:
+              from_ci=json.loads((build/'ci-manifests'/f'{arch}.json').read_text())
+              assert from_ci['schema']==1 and from_ci['channel']=='experimental'
+              assert from_ci['tag']=='v0.1.0-beta.2' and len(from_ci['packages'])==1
+              candidate=dict(from_ci['packages'][0])
+              assert candidate['architecture']==arch
+              candidate['name']=candidate['name'].replace('~','.')
+              ci_packages[arch]=candidate
+          assert {p['architecture']:p for p in canonical['packages']} == ci_packages, 'per-arch CI manifest mismatch'
           for p in canonical['packages']:
               raw=pathlib.Path('build/ipk',p['name']).read_bytes()
               assert p['source_sha']==os.environ['SOURCE_SHA'] and p['version']==os.environ['BETA_VERSION']
