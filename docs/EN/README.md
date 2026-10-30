@@ -152,34 +152,20 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **[Full script inventory and documentation](SCRIPTS.md)**
 
-## KAS Control Center — web management panel (Beta)
+## KAS Control Center — Web panel (beta.2)
 
-**KAS Control Center** is a separate **optional** web component for an already installed KAS. The script-based KAS installer above remains the primary way to install the core; the panel does not replace or reinstall it. It manages the Mihomo YAML through the canonical KAS importer, Doctor diagnostics, subscription exclude filters, and its own updates. KAS stays fully functional without it.
+**Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS installation remains independent.
 
-> ⚠️ **Beta.** No automatic rollback. Panel availability is defined by your routing and firewall: the panel listens on the home bridge only and is never published to the WAN, but if you forward ports or expose it through an unauthenticated proxy, you accept that risk. A password over plain HTTP is not encrypted — use the panel on a trusted home LAN only.
-
-**Requirements:** Keenetic/Netcraze router with Entware installed, a working KAS (Mihomo), and a home bridge `br0` with a single private IPv4 address.
-
-**Architectures:** `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4` — must match your Entware architecture (`opkg print-architecture`).
-
-**Download and install** (aarch64 example):
+**Install after publication:** choose the correct Entware IPK via `opkg print-architecture` from the [beta.2 release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), verify its SHA256 against `SHA256SUMS`, then transfer it by SCP/SFTP. **KN-1010 uses MIPSel**, not ARM64. For a verified file in `/tmp`:
 
 ```sh
-curl -fSsL -o /tmp/kas-control-center.ipk \
-  https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.2/kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
-opkg install /tmp/kas-control-center.ipk
-sh /opt/etc/init.d/S98kas-control-center start
+opkg install /tmp/kas-control-center_0.1.0.beta.2-1_mipsel-3.4.ipk
+/opt/etc/init.d/S98kas-control-center start
 ```
 
-The panel starts **only after an explicit start**. It binds only the private IPv4 of `br0` on TCP port **18081** (example: `http://192.168.1.1:18081`) and refuses to start if `br0` is absent or ambiguous.
+Default URL: `http://<br0-IPv4>:8081/`; an existing custom port survives upgrades. No password or TLS by default: restrict access to trusted management networks. Select Beta/Stable in Settings; updates are manual and the WEB stable channel is not published yet. No automatic rollback.
 
-**Views:** Overview (component versions, Mihomo/MagiTrickle/panel updates), Subscriptions (server list and exclude filters), Configuration (YAML upload/paste via the canonical importer), Diagnostics (RU/EN Doctor summary), Settings (port, login mode, panel password, optional home-subnet-only access).
-
-**Update channels:** in the "KAS panel update" card choose **Beta (experimental)** or **Stable**, then run the manual version check and confirm. Changing the channel never installs anything; there is no background auto-update. The Stable channel is published separately; until then the panel reports honestly that it is not available.
-
-**Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
-
-**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../web/control-center/PANEL_UPDATE.md) for the update system details.
+**[Full installation, security, update and recovery guide](WEB_BETA_INSTALL.md).**
 
 ## 7. Reference
 
