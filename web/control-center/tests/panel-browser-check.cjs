@@ -55,11 +55,16 @@ let browser;
  assert.equal(await page.locator('#open-generator').getAttribute('href'),'https://saymer-alt.github.io/link-generators/');
  assert.equal(await page.locator('#local-badge').getAttribute('href'),'http://kas.test/');
  for(const id of ['local-badge','open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
- await page.emulateMedia({colorScheme:'light'});await page.locator('#nav-settings').click();
+ assert.equal(await page.locator('.sidebar-footer #theme-mode').count(),1,'theme selector belongs to persistent sidebar');
+  assert.equal(await page.locator('#view-settings #theme-mode').count(),0,'theme selector is not buried in settings');
+  assert.equal(await page.locator('#theme-mode').isVisible(),true);
+  await page.locator('#en').click();assert.equal(await page.locator('#theme-light').innerText(),'Light');
+  await page.locator('#ru').click();assert.equal(await page.locator('#theme-light').innerText(),'Светлая');
+  await page.emulateMedia({colorScheme:'light'});
  await page.locator('#theme-mode').selectOption('dark');
  const background=()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor);
  assert.equal(await background(),'rgb(17, 23, 34)');
- await page.reload();await page.locator('#nav-settings').click();await page.locator('#theme-mode').waitFor();assert.equal(await page.locator('#theme-mode').inputValue(),'dark');assert.equal(await background(),'rgb(17, 23, 34)');
+ await page.reload();await page.locator('#theme-mode').waitFor();assert.equal(await page.locator('#theme-mode').inputValue(),'dark');assert.equal(await background(),'rgb(17, 23, 34)');
  await page.emulateMedia({colorScheme:'dark'});await page.locator('#theme-mode').selectOption('light');assert.equal(await background(),'rgb(243, 245, 249)');
  await page.locator('#theme-mode').selectOption('auto');assert.equal(await background(),'rgb(17, 23, 34)');
  await page.emulateMedia({colorScheme:'light'});assert.equal(await background(),'rgb(243, 245, 249)');
@@ -134,6 +139,7 @@ let browser;
  await page.locator('#nav-overview').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#nav-subscriptions').getAttribute('aria-current'),'page');
  for(const width of [360,390,768,1440]){
   await page.setViewportSize({width,height:900});
+   assert.equal(await page.locator('#theme-mode').isVisible(),true,`sidebar theme hidden at ${width}`);
   for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
    await page.locator('#nav-'+view).click();
    assert.ok(await page.locator('#local-badge').isVisible(),`router link hidden at ${width}/${view}`);
