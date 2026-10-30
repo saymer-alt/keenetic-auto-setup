@@ -51,8 +51,8 @@ test('RU and EN templates interpolate the same formatted value',()=>{
  const params={installed:publicVersion('0.1.0~beta.2-1'),runtime:publicVersion('0.1.0~beta.2-1'),available:publicVersion('0.1.0~beta.3-1'),channel:'experimental'};
  const render=(locale,key)=>api.words[locale][key].replace(/\{(\w+)\}/g,(_,k)=>String(params[k]??''));
  for(const locale of ['ru','en']){
-  assert.match(render(locale,'available'),/Установлена: v0\.1\.0-beta\.2\.|Installed: v0\.1\.0-beta\.2\./);
-  assert.match(render(locale,'available'),/Доступна: v0\.1\.0-beta\.3\.|Available: v0\.1\.0-beta\.3\./);
+  assert.match(render(locale,'available'),/Установлено: v0\.1\.0-beta\.2\.|Installed: v0\.1\.0-beta\.2\./);
+  assert.match(render(locale,'available'),/Доступно: v0\.1\.0-beta\.3\.|Available: v0\.1\.0-beta\.3\./);
   assert.doesNotMatch(render(locale,'available'),/0\.1\.0~beta/);
   assert.doesNotMatch(render(locale,'available'),/vv/);
  }
