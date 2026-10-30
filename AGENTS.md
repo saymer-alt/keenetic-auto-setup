@@ -1,5 +1,7 @@
 # AGENTS.md — keenetic-auto-setup
 
+> **Рабочая методика проверки изменений (30.10.2026):** [docs/AGENT-VERIFICATION-PLAYBOOK.md](docs/AGENT-VERIFICATION-PLAYBOOK.md). Адаптация полезных навыков Pstack: пользовательский путь, проверка последствий, идемпотентность, достоверные уровни доказательств. Не ослабляет [docs/CONSTITUTION.md](docs/CONSTITUTION.md), существующие CI и owner GO.
+
 > **Общее правило для всех проектов saymer-alt:** [Proof Before Build](https://github.com/saymer-alt/saymer-alt/blob/main/PROOF-BEFORE-BUILD.md) ([PR #9](https://github.com/saymer-alt/saymer-alt/pull/9)). Специализированное ТЭО и пример KAS: [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). Новые функции — только после доказательства проблемы, сравнения альтернатив, оценки пользы, стоимости и рисков. Обязательные safety-контракты KAS сохраняются.
 
 
