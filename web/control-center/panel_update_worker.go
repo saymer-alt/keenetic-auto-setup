@@ -270,7 +270,7 @@ func panelFixedCommand(path string, args ...string) error {
 // candidate IPK must still carry the job channel in its BUILD_INFO and real
 // opkg comparison still blocks every downgrade.
 func panelJobChannelAllowed(build, job string, candidate panelCandidate) bool {
-	return panelChannelKnown(job) && panelChannelKnown(build) && panelTagValid(job, candidate.Tag)
+	return panelChannelKnown(job) && panelChannelKnown(build) && candidate.Channel == job && panelTagValid(job, candidate.Tag)
 }
 func (p *panelUpdater) runWorker() (result error) {
 	lock, e := p.workerLock()
