@@ -25,15 +25,15 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/targets.txt" <<'EOF'
-publish/kas-web-ipk-08ae70e bf0bccf6a0cc292e0d454faefa49e11e4e7e45a9
-publish/kas-web-ipk-57ea99c c63e0e42598380b0b24848eb626be1f77248c838
-publish/kas-web-ipk-66d976e 6f8fd2075ba9dc4718dd8bf3a74567689f32f933
-publish/kas-web-ipk-77ac40e 2baeed4d880471ff6aa630d6ef04c46c0ea548da
-publish/kas-web-ipk-894a524 bf471e7b7c26de4f1b0d018c976e113a6e169e10
-publish/kas-web-ipk-b0e3c0c 71f88fa86c06de76904e65d7aeb2428b00e8d260
-publish/kas-web-ipk-c0dac74 ea669c18ee2d985bce11b8ad67270f47d931b9f6
-publish/kas-web-ipk-c3cc2ce 4e62cdc199aa462e7af34f4e7fe6b3398a33bf73
-publish/kas-web-kn1010-ui-66ab147 a35624b9c6dfee160c903093e2cf7edd6d30f006
+          publish/kas-web-ipk-08ae70e bf0bccf6a0cc292e0d454faefa49e11e4e7e45a9
+          publish/kas-web-ipk-57ea99c c63e0e42598380b0b24848eb626be1f77248c838
+          publish/kas-web-ipk-66d976e 6f8fd2075ba9dc4718dd8bf3a74567689f32f933
+          publish/kas-web-ipk-77ac40e 2baeed4d880471ff6aa630d6ef04c46c0ea548da
+          publish/kas-web-ipk-894a524 bf471e7b7c26de4f1b0d018c976e113a6e169e10
+          publish/kas-web-ipk-b0e3c0c 71f88fa86c06de76904e65d7aeb2428b00e8d260
+          publish/kas-web-ipk-c0dac74 ea669c18ee2d985bce11b8ad67270f47d931b9f6
+          publish/kas-web-ipk-c3cc2ce 4e62cdc199aa462e7af34f4e7fe6b3398a33bf73
+          publish/kas-web-kn1010-ui-66ab147 a35624b9c6dfee160c903093e2cf7edd6d30f006
           EOF
           test "$(wc -l < "$RUNNER_TEMP/targets.txt")" -eq 9
           gh api --paginate "repos/$GH_REPO/pulls?state=all&per_page=100" -q '.[] | [.head.ref,.base.ref] | .[]' \
