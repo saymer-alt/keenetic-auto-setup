@@ -32,9 +32,9 @@ test('version check renders public forms without exposing internal package versi
   await nodes['panel-update-check'].listeners.click();
   await new Promise(setImmediate);
   const text=nodes['panel-update-state'].textContent;
-  assert.match(text,/Установлена: v0\.1\.0-beta\.1\./);
-  assert.match(text,/Запущена: v0\.1\.0-beta\.1\./);
-  assert.match(text,/Доступна: v0\.1\.0-beta\.2\./);
+  assert.match(text,/Установлено: v0\.1\.0-beta\.1\./);
+  assert.match(text,/Запущено: v0\.1\.0-beta\.1\./);
+  assert.match(text,/Доступно: v0\.1\.0-beta\.2\./);
   assert.doesNotMatch(text,/0\.1\.0~beta/);
  }
  finally{Object.assign(global,original);}
@@ -52,7 +52,7 @@ test('verified success announces the public version form',async()=>{
  try{
   api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
   await new Promise(setImmediate);await new Promise(setImmediate);
-  assert.match(nodes['panel-update-state'].textContent,/Новая запущенная версия подтверждена: v0\.1\.0-beta\.2\./);
+  assert.match(nodes['panel-update-state'].textContent,/Запущена новая версия: v0\.1\.0-beta\.2\./);
   assert.doesNotMatch(nodes['panel-update-state'].textContent,/0\.1\.0~beta/);
  }
  finally{Object.assign(global,original);}
@@ -93,9 +93,9 @@ test('a successful check with a newer version never claims no check has run',asy
   await nodes['panel-update-check'].listeners.click();
   await new Promise(setImmediate);
   const text=nodes['panel-update-state'].textContent;
-  assert.match(text,/Доступна: b\./);
-  assert.match(text,/Доступна более новая версия/);
-  assert.doesNotMatch(text,/Проверка ещё не выполнялась/);
+  assert.match(text,/Доступно: b\./);
+  assert.match(text,/Доступно обновление панели/);
+  assert.doesNotMatch(text,/Обновления панели ещё не проверялись/);
   assert.equal(nodes['panel-update-apply'].disabled,false);
  }
  finally{Object.assign(global,original);}
