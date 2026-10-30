@@ -647,7 +647,7 @@ async function reconcileUpdateStart(priorID,component,error){
 }
 
 function drawAppearanceLinks(){
- for(const [id,key] of [['open-mihomo','openMihomo'],['open-mt','openMT'],['open-generator','openGenerator'],['appearance-heading','appearanceHeading'],['theme-label','themeLabel'],['theme-auto','themeAuto'],['theme-light','themeLight'],['theme-dark','themeDark'],['theme-help','themeHelp']])set(id,t(key));
+ for(const [id,key] of [['open-mihomo','openMihomo'],['open-mt','openMT'],['open-generator','openGenerator'],['theme-label','themeLabel'],['theme-auto','themeAuto'],['theme-light','themeLight'],['theme-dark','themeDark'],['theme-help','themeHelp']])set(id,t(key));
  el('theme-mode').value=window.kasTheme?.get()||'auto';
  const source=new URL(window.location.href);
  for(const [id,port,path] of [['local-badge','','/'],['open-mihomo','9090','/ui/'],['open-mt','8080','/']]){
