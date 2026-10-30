@@ -64,14 +64,52 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
 Опубликованный index должен указывать на source-pinned пакет после CI. Нельзя
 публиковать manifest для локальной dirty-сборки как проверенный release.
 
+## Каналы обновлений (#289)
+
+Канал выбирается явно в карточке «Обновление панели» (поле «Канал обновлений»).
+Выбор хранится приватно в `/opt/etc/kas-control-center-update/channel` (0600,
+одна строка `experimental` или `stable`); отсутствие файла означает канал,
+зашитый в сборку (`panelBuildChannel`). Файл настроек панели при этом не меняется:
+строгий парсер настроек установленной beta.1 не знает новых полей, а её обновление
+читает только experimental index — совместимость с уже опубликованной beta.1 сохранена.
+
+- Смена канала — отдельная авторизованная мутация (`POST /api/updates/panel/channel`,
+  Origin/Host/confirm как у остальных операций). Она сама не запускает ни проверку,
+  ни установку и сбрасывает ранее проверенного кандидата: применить кандидата,
+  найденного на другом канале, нельзя. Канал сборки — только происхождение сборки
+  (provenance), а не ограничение выбора: обе цели доступны на любой сборке.
+- experimental index принимает два формата тега релиза: исторический
+  `kas-web-ipk-<SHA>` (legacy-фоллбэк для чтения установленной beta.1) и
+  канонический публичный `v0.1.0-beta.N` (а также `kas-web-v0.1.0-beta.N`).
+  stable channel — только `kas-web-vX.Y.Z` и только релиз без prerelease.
+  Форматы не смешиваются.
+- В воркере разрешены обновления внутри своего канала и оба явных opt-in
+  перехода: experimental → stable (миграция) и stable → experimental (сознательный
+  переход на бету). Защита от downgrade — реальный `opkg compare-versions`,
+  строго новее — действует во всех случаях: stable-панель не увидит experimental-предложение,
+  пока не появится строго более новая бета.
+- Stable-кандидат проходит тот же полный контроль: размер/SHA256 IPK, структура
+  архива, package metadata, BUILD_INFO (Version/Source/Channel/ABI/Binary_SHA256),
+  ELF-заголовок, отсутствие зависимостей и замен.
+
 ## Релизный протокол
 
-- Compiled identity и BUILD_INFO содержат Channel. Первый этап установки поддерживает
-  только experimental; наличие stable parser не означает готовность stable канала.
+- Compiled identity и BUILD_INFO содержат Channel. Stable-канал публикуется
+  отдельным решением владельца; наличие stable parser не означает готовность
+  stable канала.
 - Index `panel-update.json` находится в выделенном release
   `kas-web-channel-experimental`; его обновление отдельно подтверждает владелец.
-- Index указывает на immutable prerelease `kas-web-ipk-SHA` и содержит для ABI
-  internal Version, SourceSHA, имя/размер/SHA256 IPK, размер unpacked data и digest binary.
+- experimental index указывает на immutable prerelease. Начиная с beta.2 —
+  только канонический публичный тег `v0.1.0-beta.N`: один release с одним
+  набором IPK и `SHA256SUMS`, без двойника `kas-web-ipk-<SHA>`. Единственный
+  пилотный KN-1010 с beta.1 обновляется владельцем вручную; legacy-парсер
+  `kas-web-ipk-<SHA>` остаётся в коде как фоллбэк, но publication-пайплайн
+  alias с beta.2 не создаёт.
+- stable index (`kas-web-channel-stable`) указывает на обычный релиз
+  `kas-web-vX.Y.Z` (не prerelease), IPK собраны с `--channel stable`. GitHub
+  `latest` не используется ни одним каналом.
+- Index содержит для ABI internal Version, SourceSHA, имя/размер/SHA256 IPK,
+  размер unpacked data и digest binary.
 - Candidate release API должен подтверждать uploaded asset, имя, размер, SHA256 и
   точный download URL проекта. Неизвестные/неполные данные дают отказ.
 - Существующие релизы без index не выбираются автоматически. `latest` не используется.
@@ -85,6 +123,9 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
 ```sh
 python3 web/control-center/packaging/update-manifest.py \
   --channel experimental --tag kas-web-ipk-SHA package.ipk > panel-update.json
+# канонический публичный beta-релиз (для панелей beta.2+):
+python3 web/control-center/packaging/update-manifest.py \
+  --channel experimental --tag v0.1.0-beta.N package.ipk > panel-update.json
 ```
 
 `SHA` в примере заменить действительным коротким hexadecimal SHA. Этот документ

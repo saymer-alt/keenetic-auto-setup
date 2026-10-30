@@ -45,7 +45,13 @@ def main():
     ap.add_argument('--tag', required=True)
     ap.add_argument('packages', type=Path, nargs='+')
     args = ap.parse_args()
-    pattern = r'kas-web-ipk-[a-f0-9]{7,40}' if args.channel == 'experimental' else r'kas-web-v[0-9]+\.[0-9]+\.[0-9]+'
+    # experimental: the legacy kas-web-ipk-<sha> alias consumed by installed
+    # beta.1 panels, or the canonical vX.Y.Z-beta.N prerelease used without a
+    # duplicate alias once no beta.1 panel needs it. stable: kas-web-vX.Y.Z.
+    if args.channel == 'experimental':
+        pattern = r'(?:kas-web-ipk-[a-f0-9]{7,40}|(?:kas-web-)?v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+)'
+    else:
+        pattern = r'kas-web-v[0-9]+\.[0-9]+\.[0-9]+'
     if not re.fullmatch(pattern,args.tag):
         ap.error('tag does not match channel')
     items = [package_info(file) for file in args.packages]
