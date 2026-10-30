@@ -111,7 +111,7 @@ let browser;
  assert.equal(await page.locator('#operation-banner').isVisible(),true);
  assert.equal(await page.locator('#operation-open').isVisible(),false,'operation navigation must not target the already open view');
  await page.locator('#nav-overview').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
- await page.locator('#nav-subscriptions').click();assert.match(await page.locator('#operation-message').innerText(),/успешно/);
+ await page.locator('#nav-subscriptions').click();assert.match(await page.locator('#operation-message').innerText(),/Конфигурация применена/);
  await page.locator('#operation-dismiss').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
  acceptDialog=true;await page.locator('#filter-clear').click();await page.waitForFunction(()=>document.querySelectorAll('#filter-node-list input').length===14&&document.getElementById('filter-clear').disabled);
  assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,2);
