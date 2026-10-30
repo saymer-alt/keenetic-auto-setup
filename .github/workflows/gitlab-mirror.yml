@@ -1,17 +1,23 @@
 # One-way mirror sync: GitHub (source of truth) -> GitLab.
 #
-# Pushes every branch and tag ref to the GitLab mirror. Safety rules:
+# Scope: only 'main', 'stable' and all tags are mirrored. Other branches are
+# intentionally NOT mirrored — KAS keeps pruning old experimental branches and
+# the mirror never deletes refs, so mirroring them would accumulate stale
+# branches on GitLab (see docs/gitlab-mirror.md).
+#
+# Safety rules:
 #   - never force-pushes (no "+" refspecs, no --force),
 #   - never deletes refs on GitLab (no --prune, no --mirror),
+#   - diverged history makes the push fail with explicit ref-drift diagnostics,
 #   - pushes with -o ci.skip so GitLab CI/CD never runs on mirrored refs,
-#   - uses a project-scoped write-only-purpose deploy key stored in
-#     the GH secret GITLAB_MIRROR_SSH_KEY.
+#   - uses a project-scoped deploy key stored in the GH secret
+#     GITLAB_MIRROR_SSH_KEY.
 # See docs/gitlab-mirror.md for operations (state checks, recovery, key rotation).
 name: GitLab mirror sync
 
 on:
   push:
-    branches: ['**']
+    branches: [main, stable]
     tags: ['**']
   workflow_dispatch:
 
@@ -60,19 +66,15 @@ jobs:
             echo 'gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFSMqzJeV9rUzU4kWitGjeR4PWSa29SPqJ1fVkhtj3Hw9xjLVXVYrU9QlYWrOLXBpQ6KWjbjTDTdDkoohFzgbEY='
           } > ~/.ssh/known_hosts
 
-      - name: Sync branches to GitLab (no force, no delete)
+      - name: Sync main, stable and tags to GitLab (no force, no delete)
         run: |
           set -euo pipefail
           git remote add gitlab "${GITLAB_SSH_URL}"
-          # refs/remotes/origin/HEAD is a local convenience symref; pushing it makes
-          # GitLab's pre-receive hook decline the entire push
-          git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true
-          git push gitlab 'refs/remotes/origin/*:refs/heads/*' -o ci.skip
-
-      - name: Sync tags to GitLab (no force, no delete)
-        run: |
-          set -euo pipefail
-          git push gitlab 'refs/tags/*:refs/tags/*' -o ci.skip
+          git push gitlab \
+            'refs/remotes/origin/main:refs/heads/main' \
+            'refs/remotes/origin/stable:refs/heads/stable' \
+            'refs/tags/*:refs/tags/*' \
+            -o ci.skip
 
       - name: Diagnose ref drift (only on failure)
         if: failure()

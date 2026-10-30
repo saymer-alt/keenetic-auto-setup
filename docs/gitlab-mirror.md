@@ -10,9 +10,14 @@ GitHub (источник) ──push──> GitHub Actions (gitlab-mirror.yml) �
 ```
 
 - Синхронизация односторонняя: всё меняется только на GitHub; GitLab — копия для чтения.
-- Workflow `.github/workflows/gitlab-mirror.yml` запускается автоматически на каждый
-  push ветки/тега в GitHub и вручную (`workflow_dispatch`, вкладка Actions →
-  **GitLab mirror sync** → Run workflow).
+- Workflow `.github/workflows/gitlab-mirror.yml` запускается автоматически при push
+  в `main`, `stable`, при появлении тегов и вручную (`workflow_dispatch`, вкладка
+  Actions → **GitLab mirror sync** → Run workflow).
+- **Охват синхронизации — только `main`, `stable` и все теги** (полная история).
+  Остальные ветки сознательно не зеркалятся: в KAS продолжается очистка старых
+  экспериментальных веток, а зеркало никогда не удаляет ref-ы — зеркалирование
+  рабочих веток накапливало бы на GitLab устаревшие копии. Отдельную ветку можно
+  перенести вручную (см. ниже).
 - Пуш идёт от проектного Deploy Key `github-mirror-sync` (SSH ed25519, право `can_push`
   выдано **только** этому проекту). Приватная часть ключа хранится исключительно в
   GitHub Actions secret `GITLAB_MIRROR_SSH_KEY`; в коде, логах и issues её быть не должно.
@@ -33,10 +38,14 @@ GitHub (источник) ──push──> GitHub Actions (gitlab-mirror.yml) �
 2. Полное сравнение ref-ов (SHA должны совпадать построчно):
 
    ```bash
-   git ls-remote https://github.com/saymer-alt/keenetic-auto-setup.git 'refs/heads/*' 'refs/tags/*' | sort -k2 > /tmp/gh.txt
-   git ls-remote git@gitlab.com:saymer-alt/keenetic-auto-setup.git 'refs/heads/*' 'refs/tags/*' | sort -k2 > /tmp/gl.txt
+   git ls-remote https://github.com/saymer-alt/keenetic-auto-setup.git refs/heads/main refs/heads/stable 'refs/tags/*' | sort -k2 > /tmp/gh.txt
+   git ls-remote https://gitlab.com/saymer-alt/keenetic-auto-setup.git refs/heads/main refs/heads/stable 'refs/tags/*' | sort -k2 > /tmp/gl.txt
    diff /tmp/gh.txt /tmp/gl.txt && echo MIRROR-IN-SYNC
    ```
+
+   Примечание: на GitLab также лежат снимки рабочих веток, скопированные разово
+   2026-10-30 (до сужения охвата). Они не обновляются автоматически; их можно
+   удалить вручную (Settings → Repository → Branches) либо оставить как архив.
 
 3. Доступность файлов без авторизации (пример для `main`):
 
@@ -58,8 +67,14 @@ ref-ов не хватает, какие лишние и у каких разо�
 | Push падает сетевой ошибкой | Временная недоступность gitlab.com | Повторить: Actions → GitLab mirror sync → **Run workflow** |
 
 После исправления запустить вручную: **Actions → GitLab mirror sync → Run workflow**
-(ветка `main`). Полная пересинхронизация после внешнего вмешательства выполняется тем же
-запуском — workflow всегда пушит все ref-ы, отсутствующие на GitLab.
+(ветка `main`) — workflow запушит `main`, `stable` и теги, отсутствующие или
+обновившиеся на GitLab. Если нужно дополнительно отзеркалить рабочую ветку (не
+входит в автосинхронизацию), сделайте это разово руками:
+
+```bash
+git push git@gitlab.com:saymer-alt/keenetic-auto-setup.git \
+  refs/remotes/origin/<branch>:refs/heads/<branch> -o ci.skip
+```
 
 ## Ротация и отзыв ключа
 
@@ -89,7 +104,8 @@ GitHub — синхронизация начнёт падать с явной о
 
 ## Ограничения зеркала
 
-- Копируются только **git-refs**: ветки и теги (полная история коммитов).
+- Копируются только **`main`, `stable` и теги** (полная история коммитов).
+  Рабочие ветки не зеркалятся автоматически (см. выше).
 - **Не копируются автоматически**: GitHub Releases, Issues, Pull Requests, Discussions,
   артефакты и логи CI, аналитика, wiki. Установка/обновление KAS продолжают пользоваться
   GitHub Releases; зеркало — только просмотр исходников.
