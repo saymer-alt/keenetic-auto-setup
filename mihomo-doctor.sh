@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.18 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.19 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.18"
+DOCTOR_VERSION="1.2.19"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -947,6 +947,114 @@ ver_compare() {
         _va=$_ra; _vb=$_rb
     done
 }
+
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
+
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (("x" a) == ("x" b)) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (("x" ap) == ("x" bp)) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) {
+                c=numeric(aa[i],bb[i]); if(c) return c; continue
+            }
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            if (("x" aa[i]) == ("x" bb[i])) continue
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        if (an == bn) return 0
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
+
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" or (.assets | length) == 0 then error("release metadata") else . end
+        # A known failed stable upload is ineligible, not a reason to reject a healthy ABI.
+        | def starter:
+            .state == "starter" and .size == 0 and .digest == null
+            and (.id | type) == "number" and .id > 0 and (.id | floor) == .id
+            and (.name | test("^mihomo_(nohf_)?(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)-[1-9][0-9]*_(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4|x64-3[.]2)[.]ipk$"))
+            and ((.name | startswith("mihomo_nohf_")) == false or (.name | endswith("_armv7-3.2.ipk")))
+            and (.browser_download_url | test("^(https://github[.]com)?/saymer-alt/entware-go/releases/download/latest/[A-Za-z0-9_.+-]+[.]ipk$"));
+        if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then
+                (.state == "uploaded" and (.size | type) == "number" and .size > 0 and (.size | floor) == .size)
+                or starter
+                else true end))
+            and (.assets as $assets | all($assets[];
+                if (.name | startswith("mihomo_")) and .state == "starter" then
+                    . as $pending
+                    | ([$assets[] | select(.name == $pending.name)] | length == 1)
+                      and ([$assets[] | select(.id == $pending.id)] | length == 1)
+                else true end))
+          then [.assets[] | select((.name | startswith("mihomo_")) and .state == "starter" | not)
+                | .browser_download_url] | join("\n")
+          else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
 
 if [ $# -gt 0 ]; then
     echo "Usage: sh mihomo-doctor.sh"
@@ -2939,30 +3047,23 @@ elif [ -z "$IPK_SUFFIX" ]; then
     info "Package availability check skipped (architecture unknown)"
 else
     FOUND_NAME=""
+    FOUND_URL=""
+    PACKAGE_SELECTION_RC=0
     if command -v jq >/dev/null 2>&1; then
-        FOUND_NAME=$(printf '%s\n' "$RELEASE_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-            .assets[]?
-            | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk") and (contains("nohf") | not))
-            | .name
-        ' 2>/dev/null | head -n 1)
-    fi
-    if [ -z "$FOUND_NAME" ] || [ "$FOUND_NAME" = "null" ]; then
+        FOUND_URL=$(printf '%s\n' "$RELEASE_JSON" | release_mihomo_asset) || PACKAGE_SELECTION_RC=$?
+    else
+        # Preserve the no-jq fallback, but rank every matching URL using the
+        # same exact ABI/version/release rules as the installer and updater.
         FOUND_URL=$(printf '%s\n' "$RELEASE_JSON" \
             | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' \
-            | grep -v "nohf" \
-            | head -n 1 | sed 's/.*": *"//;s/"$//')
-        [ -n "$FOUND_URL" ] && FOUND_NAME=$(basename "$FOUND_URL")
+            | sed 's/.*": *"//;s/"$//' \
+            | select_mihomo_asset) || PACKAGE_SELECTION_RC=$?
     fi
+    [ -n "$FOUND_URL" ] && FOUND_NAME=${FOUND_URL##*/}
 
-    case "$FOUND_NAME" in
-        mihomo_*_${IPK_SUFFIX}.ipk) : ;;
-        *) FOUND_NAME="" ;;
-    esac
-    case "$FOUND_NAME" in
-        *nohf*) FOUND_NAME="" ;;
-    esac
-
-    if [ -n "$FOUND_NAME" ]; then
+    if [ "$PACKAGE_SELECTION_RC" -gt 1 ]; then
+        warn "Package availability unverified: release metadata is malformed or ambiguous"
+    elif [ -n "$FOUND_NAME" ]; then
         ok "Package for $IPK_SUFFIX available in $ENTWARE_REPO:latest - $FOUND_NAME"
         AVAIL_VER=${FOUND_NAME#mihomo_}
         AVAIL_VER=${AVAIL_VER%_${IPK_SUFFIX}.ipk}
