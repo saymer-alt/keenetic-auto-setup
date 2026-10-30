@@ -132,10 +132,19 @@ test('reloading after a names failure restores node selection',async()=>{
  await app.run('loadFilterEditor()');
  await app.el('filter-clear').click();
  await app.run('refreshImport()');
- assert.match(app.el('filter-state').textContent,/недоступны/);
+ assert.match(app.el('filter-state').textContent,/Не удалось получить названия серверов/);
  assert.doesNotMatch(app.el('filter-state').textContent,/Список узлов обновлён/);
 });
 
+test('Russian access messages explain subnet and router firewall without jargon',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ await app.run('refreshAccess()');
+ assert.match(app.el('access-state').textContent,/Ограничение по подсети выключено/);
+ assert.match(app.el('access-state').textContent,/межсетевого экрана роутера/);
+ assert.doesNotMatch(app.el('access-state').textContent,/firewall|Ограничение по сегменту/);
+ assert.match(app.el('access-label').textContent,/подсети br0/);
+ assert.match(app.el('settings-mode-help').textContent,/межсетевого экрана роутера/);
+});
 test('Home-only checkbox defaults off and saves explicit user choice',async()=>{
  const app=ui(response(200,{providers:{}}));
  await new Promise(setImmediate); // let the real page's initial GET finish
