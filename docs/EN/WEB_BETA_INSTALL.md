@@ -33,4 +33,3 @@ The panel starts **only after an explicit start**. It binds only the private IPv
 **Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
 
 **Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md) for the update system details.
-
