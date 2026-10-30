@@ -44,4 +44,3 @@ sh /opt/etc/init.d/S98kas-control-center status
 **Удаление панели:** `opkg remove kas-control-center` (настройки и YAML KAS сохраняются; ядро KAS не затрагивается).
 
 **Ограничения и восстановление:** автоматического отката нет. Если обновление не завершилось — не выключайте питание; панель покажет код (например `PANEL_RECOVERY_REQUIRED`), восстановление через SSH: `sh /opt/etc/init.d/S98kas-control-center stop` при необходимости, проверить `opkg` и запустить `/opt/bin/kas-control-center -recover-panel-update`. При повреждении — переустановка проверенного IPK той же или более новой версии. Не переустанавливайте KAS целиком из-за панели.
-
