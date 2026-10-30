@@ -160,7 +160,7 @@ YAML сохраняются. Настройки ProxyN, DNS, политик и N
 
 **Необязательная** панель для уже установленного KAS: обзор и Doctor, безопасный импорт YAML, фильтры подписок и ручные обновления. Скриптовый KAS остаётся самостоятельным; WEB не устанавливает ядро.
 
-**Установка после публикации:** выберите IPK для архитектуры из `opkg print-architecture` на [странице beta.2](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), скачайте вместе с `SHA256SUMS`, проверьте хеш и перенесите на роутер через SCP/SFTP. Пример **для KN-1010 (MIPSel)**, когда файл уже находится в `/tmp`:
+**Установка beta.2:** выберите IPK для архитектуры из `opkg print-architecture` на [странице beta.2](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), скачайте вместе с `SHA256SUMS`, проверьте хеш и перенесите на роутер через SCP/SFTP. Пример **для KN-1010 (MIPSel)**, когда файл уже находится в `/tmp`:
 
 ```sh
 opkg install /tmp/kas-control-center_0.1.0.beta.2-1_mipsel-3.4.ipk
