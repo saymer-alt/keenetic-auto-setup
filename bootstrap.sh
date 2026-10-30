@@ -8,7 +8,7 @@
 # --script config-import.sh selects the standalone YAML importer instead:
 # the same private staging, transport fallbacks and pre-execution checks,
 # so a mid-stream failure of the large importer can no longer execute as a
-# partially delivered `curl | sh` (issue #255).
+# partially delivered curl-to-sh stream (issue #255).
 set -u
 
 CHECK_ONLY=0
