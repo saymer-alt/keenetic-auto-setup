@@ -1,0 +1,128 @@
+name: KAS Web v0.1.0-beta.3 candidate IPKs (no publication)
+
+on:
+  push:
+    branches:
+      - feat/kas-web-beta3-sidebar-theme-20261030 # candidate builds in the reviewed beta3 PR; never publishes
+    paths:
+      - '.github/workflows/web-beta3-build.yml'
+      - 'web/control-center/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Package, index and update version tests
+        run: |
+          set -euo pipefail
+          python3 tests/test_ipk.py -v
+          python3 tests/test_panel_manifest.py -v
+          (cd web/control-center && go generate ./... && go test -count=1 ./...)
+      - name: Real Entware opkg strict version ladder, beta.2 → beta.3 → stable
+        run: |
+          set -euo pipefail
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+          mkdir -p "$RUNNER_TEMP/offline/opt/tmp"
+          printf 'dest root /opt\n' > "$RUNNER_TEMP/offline/opkg.conf"
+          opkg="$RUNNER_TEMP/entware-opkg"
+          args=(-f "$RUNNER_TEMP/offline/opkg.conf" --offline-root "$RUNNER_TEMP/offline" --tmp-dir "$RUNNER_TEMP/offline/opt/tmp" compare-versions)
+          "$opkg" "${args[@]}" '0.1.0~beta.3-1' '>>' '0.1.0~beta.2-1'
+          "$opkg" "${args[@]}" '0.1.0-1' '>>' '0.1.0~beta.3-1'
+          if "$opkg" "${args[@]}" '0.1.0~beta.2-1' '>>' '0.1.0~beta.3-1'; then
+            echo "ERROR: beta.2 is not older than beta.3" >&2; exit 1
+          fi
+          if "$opkg" "${args[@]}" '0.1.0~beta.3-1' '>>' '0.1.0-1'; then
+            echo "ERROR: beta.3 is not older than stable" >&2; exit 1
+          fi
+
+  crossbuild:
+    needs: metadata-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+      BETA_VERSION: '0.1.0~beta.3-1'
+      PACKAGE_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Build official beta-version IPK from exact clean source (NO publish/install)
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python3 web/control-center/packaging/build-ipk.py \
+            --arch "$PACKAGE_ARCH" --version "$BETA_VERSION" --channel experimental \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/ipk"
+          cd "$RUNNER_TEMP/ipk"
+          sha256sum ./*.ipk > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          set -- ./*.ipk
+          test "$#" -eq 1
+          echo "Built $1"
+          PACKAGE_FILE="$RUNNER_TEMP/ipk/${1#./}"
+          (cd "$GITHUB_WORKSPACE/web/control-center" && KAS_TEST_PANEL_IPK="$PACKAGE_FILE" KAS_TEST_PANEL_ARCH="$PACKAGE_ARCH" go test -count=1 -run '^TestPanelActualBuiltIPKMatchesGeneratedIndex$' -v .)
+          # Canonical beta release tag for the experimental index, plus the
+          # legacy alias tag exercised only as a parser fallback (installed
+          # beta.1 panels); publication creates no alias release.
+          python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
+            --channel experimental --tag "v0.1.0-beta.3" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-canonical.json"
+          python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
+            --channel experimental --tag "kas-web-ipk-${SOURCE_SHA:0:7}" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-alias.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          canonical=json.load(open(os.environ['RUNNER_TEMP']+'/ipk/manifest-canonical.json'))
+          alias=json.load(open(os.environ['RUNNER_TEMP']+'/ipk/manifest-alias.json'))
+          for p in (canonical,alias):
+              assert p['channel']=='experimental' and len(p['packages'])==1
+              x=p['packages'][0]
+              assert x['version']=='0.1.0~beta.3-1'
+              assert x['source_sha']==os.environ['SOURCE_SHA']
+              assert x['architecture']==os.environ['PACKAGE_ARCH']
+              assert x['sha256'] and x['binary_sha256']
+          assert canonical['tag']=='v0.1.0-beta.3' and alias['tag'].startswith('kas-web-ipk-')
+          print('PASS beta version, source SHA, architecture and digest (canonical + alias index)')
+          PY
+          mkdir -p inspect
+          (cd inspect && tar xzf "$PACKAGE_FILE" ./data.tar.gz && tar xzf data.tar.gz && go version -m opt/bin/kas-control-center > BUILD_INFO && readelf -h opt/bin/kas-control-center > ELF_INFO)
+          grep -F 'CGO_ENABLED=0' inspect/BUILD_INFO
+          case "$PACKAGE_ARCH" in
+            aarch64-3.10) grep -F 'AArch64' inspect/ELF_INFO; grep -F 'ELF64' inspect/ELF_INFO;;
+            armv7-3.2) grep -F 'ARM' inspect/ELF_INFO; grep -F 'ELF32' inspect/ELF_INFO; grep -F 'GOARM=7' inspect/BUILD_INFO;;
+            mipsel-3.4) grep -F 'MIPS' inspect/ELF_INFO; grep -F 'little endian' inspect/ELF_INFO; grep -F 'GOMIPS=softfloat' inspect/BUILD_INFO;;
+            mips-3.4) grep -F 'MIPS' inspect/ELF_INFO; grep -F 'big endian' inspect/ELF_INFO; grep -F 'GOMIPS=softfloat' inspect/BUILD_INFO;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kas-web-beta3-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/ipk/*.ipk
+            ${{ runner.temp }}/ipk/SHA256SUMS
+            ${{ runner.temp }}/ipk/manifest-canonical.json
+            ${{ runner.temp }}/ipk/manifest-alias.json
+          if-no-files-found: error
+          retention-days: 21

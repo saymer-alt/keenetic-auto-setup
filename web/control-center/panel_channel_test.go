@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,26 @@ import (
 
 // A missing stable index is expected until the owner publishes the first stable
 // release. Broken beta indexes and all other download failures stay errors.
+// Once the channel release exists, a missing index is a broken channel, never
+// an endless "not published yet"; a failed probe stays a download error.
+func TestPanelStableChannelIndex404Classification(t *testing.T) {
+	for _, tc := range []struct {
+		probeStatus int
+		probeErr    error
+		want        string
+	}{
+		{http.StatusNotFound, nil, "PANEL_CHANNEL_UNPUBLISHED"},
+		{http.StatusOK, nil, "PANEL_CHANNEL_INDEX_MISSING"},
+		{http.StatusForbidden, nil, "PANEL_DOWNLOAD_FAILED"},
+		{http.StatusInternalServerError, nil, "PANEL_DOWNLOAD_FAILED"},
+		{0, errors.New("PANEL_DOWNLOAD_FAILED"), "PANEL_DOWNLOAD_FAILED"},
+	} {
+		got := classifyChannelIndexFailure(tc.probeStatus, tc.probeErr)
+		if got == nil || got.Error() != tc.want {
+			t.Fatalf("probe status %d err %v: got %v, want %s", tc.probeStatus, tc.probeErr, got, tc.want)
+		}
+	}
+}
 func TestPanelStableChannelUnpublishedClassification(t *testing.T) {
 	for _, tc := range []struct {
 		tag, name string

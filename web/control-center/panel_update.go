@@ -302,8 +302,9 @@ func panelAssetClient(root string) *http.Client {
 	return c
 }
 // An absent unpublished stable channel is not a transport failure. Only the
-// exact channel-index 404 is treated as an unpublished release. All other HTTP
-// failures remain errors; never mask broken beta releases or missing IPKs.
+// exact channel-index 404 is treated as a candidate unpublished state; the
+// channel-release probe below makes the final call. All other HTTP failures
+// remain errors; never mask broken beta releases or missing IPKs.
 func panelAssetStatusError(tag, name string, status int) error {
 	if status == http.StatusOK {
 		return nil
@@ -312,6 +313,53 @@ func panelAssetStatusError(tag, name string, status int) error {
 		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
 	}
 	return errors.New("PANEL_DOWNLOAD_FAILED")
+}
+// classifyChannelIndexFailure turns the channel-release probe result into the
+// user-facing classification for a stable-index 404. A probeStatus of 0 with a
+// probe error means transport/API failure: that stays a download error, never
+// "unpublished", so a broken GitHub connection cannot masquerade as a missing
+// release. A published channel that lost its index asset is its own failure,
+// not an unpublished release.
+func classifyChannelIndexFailure(probeStatus int, probeErr error) error {
+	if probeErr != nil {
+		return errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+	switch probeStatus {
+	case http.StatusNotFound:
+		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
+	case http.StatusOK:
+		return errors.New("PANEL_CHANNEL_INDEX_MISSING")
+	default:
+		return errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+}
+func channelReleaseStatus(ctx context.Context, root, tag string) (int, error) {
+	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/releases/tags/"+url.PathEscape(tag), nil)
+	if e != nil {
+		return 0, e
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "KAS-Control-Center")
+	resp, e := updateClientForRoot(root).Do(req)
+	if e != nil {
+		return 0, errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	return resp.StatusCode, nil
+}
+// readChannelIndex fetches the channel index. The exact stable-index 404 is
+// confirmed as "unpublished" only when the channel release is absent too; a
+// present channel release means the index asset was lost and must surface as
+// its own error instead of an endless "not published yet".
+func readChannelIndex(ctx context.Context, root, channel string) ([]byte, error) {
+	tag := "kas-web-channel-" + channel
+	raw, e := readPanelAsset(ctx, root, tag, "panel-update.json", 1<<20)
+	if e == nil || e.Error() != "PANEL_CHANNEL_UNPUBLISHED" {
+		return raw, e
+	}
+	status, probeErr := channelReleaseStatus(ctx, root, tag)
+	return nil, classifyChannelIndexFailure(status, probeErr)
 }
 func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]byte, error) {
 	req, e := http.NewRequestWithContext(ctx, "GET", panelAssetURL(tag, name), nil)
@@ -338,8 +386,7 @@ func (p *panelUpdater) candidate(ctx context.Context, channel, arch string) (pan
 		return panelCandidate{}, errors.New("PANEL_CHANNEL_UNKNOWN")
 	}
 	// Read a single explicit channel index, never scan unrelated releases.
-	channelTag := "kas-web-channel-" + channel
-	raw, e := readPanelAsset(ctx, p.root, channelTag, "panel-update.json", 1<<20)
+	raw, e := readChannelIndex(ctx, p.root, channel)
 	if e != nil {
 		return panelCandidate{}, e
 	}

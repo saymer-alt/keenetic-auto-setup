@@ -44,6 +44,27 @@ test('download failure displays understandable Russian text with code in details
   assert.equal(nodes['panel-update-apply'].disabled,true);
  }finally{Object.assign(global,original);}
 });
+test('a published channel that lost its index is a failure, not "not published yet"',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async(path,opts)=>{
+  if(path==='/api/updates/panel/check')return {ok:false,status:502,json:async()=>({error_code:'PANEL_CHANNEL_INDEX_MISSING'})};
+  if(path==='/api/updates/panel/channel')return {ok:true,json:async()=>({channel:'stable',allowed:['experimental','stable']})};
+  return {ok:true,json:async()=>({ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'})};
+ };
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await nodes['panel-update-check'].listeners.click();
+  const text=nodes['panel-update-state'].textContent;
+  assert.match(text,/канал уже опубликован, но файл индекса обновлений недоступен/);
+  assert.doesNotMatch(text,/пока не выпущена|PANEL_CHANNEL_INDEX_MISSING/);
+  assert.equal(nodes['panel-update-details'].hidden,false);
+  assert.equal(nodes['panel-update-error-code'].textContent,'PANEL_CHANNEL_INDEX_MISSING');
+ }finally{Object.assign(global,original);}
+});
 test('update phases are localized, not raw worker phase identifiers',async()=>{
  const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  const nodes={},id='a'.repeat(24);
