@@ -1,0 +1,60 @@
+name: Finish safe cleanup of six tagged WEB publish-only branch refs
+
+on:
+  push:
+    branches:
+      - ops/kas-web-release-hygiene-20261030
+    paths:
+      - .github/workflows/ops-prune-kas-web-publish-branches-remaining.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check all six exact refs, tagged reachability and all-time PR dependency
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/targets" <<'EOF'
+          publish/kas-web-ipk-77ac40e 2baeed4d880471ff6aa630d6ef04c46c0ea548da
+          publish/kas-web-ipk-894a524 bf471e7b7c26de4f1b0d018c976e113a6e169e10
+          publish/kas-web-ipk-b0e3c0c 71f88fa86c06de76904e65d7aeb2428b00e8d260
+          publish/kas-web-ipk-c0dac74 ea669c18ee2d985bce11b8ad67270f47d931b9f6
+          publish/kas-web-ipk-c3cc2ce 4e62cdc199aa462e7af34f4e7fe6b3398a33bf73
+          publish/kas-web-kn1010-ui-66ab147 a35624b9c6dfee160c903093e2cf7edd6d30f006
+          EOF
+          test "$(wc -l < "$RUNNER_TEMP/targets")" -eq 6
+          gh api --paginate "repos/$GH_REPO/pulls?state=all&per_page=100" \
+            --jq '.[] | [.head.ref, .base.ref] | .[]' > "$RUNNER_TEMP/all-pr-refs"
+          while read -r branch sha; do
+            if grep -Fxq "$branch" "$RUNNER_TEMP/all-pr-refs"; then echo "PR still depends on $branch"; exit 1; fi
+            test "$(gh api "repos/$GH_REPO/git/ref/heads/$branch" --jq '.object.sha')" = "$sha"
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/${branch#publish/}" --jq '.object.sha')" = "$sha"
+            echo "PASS 6-allowlist: $branch source retained by immutable tag"
+          done < "$RUNNER_TEMP/targets"
+      - name: Delete six publish-only refs without GitHub read-after-write cache race
+        run: |
+          set -euo pipefail
+          while read -r branch sha; do
+            test "$(gh api "repos/$GH_REPO/git/ref/heads/$branch" --jq '.object.sha')" = "$sha"
+            gh api -X DELETE "repos/$GH_REPO/git/refs/heads/$branch" >/dev/null
+            echo "Deleted $branch (tag ${branch#publish/} retained)"
+          done < "$RUNNER_TEMP/targets"
+          sleep 4
+          gh api --paginate "repos/$GH_REPO/branches?per_page=100" --jq '.[].name' > "$RUNNER_TEMP/remaining-branches"
+          while read -r branch sha; do
+            if grep -Fxq "$branch" "$RUNNER_TEMP/remaining-branches"; then
+              echo "::error::Ref still exists $branch"; exit 1
+            fi
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/${branch#publish/}" --jq '.object.sha')" = "$sha"
+          done < "$RUNNER_TEMP/targets"
+          echo 'PASS: six more publish-only branches cleaned up, releases, original tags and PRs retained'

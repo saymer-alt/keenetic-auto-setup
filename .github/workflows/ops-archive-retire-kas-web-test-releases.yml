@@ -1,0 +1,140 @@
+name: Archive and retire nine obsolete KAS WEB test prereleases, keep source tags
+
+on:
+  push:
+    branches:
+      - ops/kas-web-release-hygiene-20261030
+    paths:
+      - .github/workflows/ops-archive-retire-kas-web-test-releases.yml
+
+permissions:
+  contents: read
+
+jobs:
+  archive-retire:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ARCHIVE_TAG: kas-web-legacy-tests-archive-20261030
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/kas-web-release-hygiene-20261030
+          persist-credentials: false
+      - name: Verify protected live index, exact release allowlist and immutable source tags
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/tags" <<'EOF'
+          kas-web-ipk-c3cc2ce
+          kas-web-ipk-b0e3c0c
+          kas-web-ipk-894a524
+          kas-web-ipk-66d976e
+          kas-web-ipk-57ea99c
+          kas-web-ipk-08ae70e
+          kas-web-kn1010-ui-66ab147
+          kas-web-kn1010-sstp-58ff21d
+          kas-web-kn1010-ef63bcc
+          EOF
+          test "$(wc -l < "$RUNNER_TEMP/tags")" -eq 9
+          if gh api "repos/$GH_REPO/releases/tags/$ARCHIVE_TAG" >/dev/null 2>&1; then
+            echo "Archive release already exists, refusing destructive rerun" >&2; exit 1
+          fi
+          gh api "repos/$GH_REPO/releases/tags/kas-web-channel-experimental" > "$RUNNER_TEMP/active-release.json"
+          gh release download kas-web-channel-experimental --repo "$GH_REPO" \
+            --pattern panel-update.json --dir "$RUNNER_TEMP"
+          python3 - <<'PY'
+          import json,os,pathlib,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          current=json.loads((root/'panel-update.json').read_text())
+          assert current['channel']=='experimental' and current['tag']=='kas-web-ipk-92e301d'
+          meta=json.loads((root/'active-release.json').read_text())
+          assert meta['assets'][0]['digest']=='sha256:'+hashlib.sha256((root/'panel-update.json').read_bytes()).hexdigest()
+          print('PASS active updater remains beta.1, no candidate points to legacy releases')
+          PY
+          for tag in $(cat "$RUNNER_TEMP/tags"); do
+            gh api "repos/$GH_REPO/releases/tags/$tag" > "$RUNNER_TEMP/release-$tag.json"
+            test "$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq '.prerelease')" = true
+            gh api "repos/$GH_REPO/git/ref/tags/$tag" > /dev/null
+          done
+      - name: Archive original IPK files and verify each GitHub asset digest
+        run: |
+          set -euo pipefail
+          mkdir -p archive/legacy
+          cp docs/release-hygiene/2026-10-30-prerelease-metadata.json archive/prerelease-metadata.json
+          while read -r tag; do
+            mkdir -p "archive/legacy/$tag"
+            gh release download "$tag" --repo "$GH_REPO" --dir "archive/legacy/$tag"
+          done < "$RUNNER_TEMP/tags"
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          data=json.loads(pathlib.Path('archive/prerelease-metadata.json').read_text())
+          refs={r['tag']:r for r in data['releases']}
+          targets=pathlib.Path(os.environ['RUNNER_TEMP'],'tags').read_text().splitlines()
+          assert len(targets)==9 and len(set(targets))==9
+          for tag in targets:
+              r=refs[tag]
+              assert len(r['assets']) in (2,5)
+              for asset in r['assets']:
+                  raw=pathlib.Path('archive/legacy',tag,asset['name']).read_bytes()
+                  assert len(raw)==asset['size']
+                  assert hashlib.sha256(raw).hexdigest()==asset['digest'].split(':',1)[1],(tag,asset['name'])
+              print('ARCHIVED and verified',tag,len(r['assets']),'assets')
+          PY
+          tar -czf legacy-test-releases-20261030.tar.gz -C archive .
+          sha256sum legacy-test-releases-20261030.tar.gz archive/prerelease-metadata.json > SHA256SUMS
+          tar -tzf legacy-test-releases-20261030.tar.gz >/dev/null
+      - name: Publish permanent public archive and verify uploaded SHA256 before retiring anything
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/notes" <<'EOF'
+          Archived nine obsolete 28-29 Oct 2026 short-lived KAS WEB experimental test prereleases.
+          Original immutable source Git tags and commits remain in the repository.
+          This archive contains original downloaded binary assets and a 16-release metadata/sha256 inventory.
+          To locate an old package use archive folder legacy/<original-release-tag>/<original-asset-name>.
+          Current public v0.1.0-beta.1, working channel and test15/16/17 baseline releases are NOT retired.
+          THIS IS HISTORICAL TEST MATERIAL; not for new installations.
+          EOF
+          gh release create "$ARCHIVE_TAG" --repo "$GH_REPO" \
+            --target 92e301da2464ac9694fff3f41f4ee1cb9be90708 \
+            --prerelease --latest=false \
+            --title 'KAS WEB historical test binaries — consolidated archive (Oct 2026)' \
+            --notes-file "$RUNNER_TEMP/notes" \
+            legacy-test-releases-20261030.tar.gz archive/prerelease-metadata.json SHA256SUMS
+          gh api "repos/$GH_REPO/releases/tags/$ARCHIVE_TAG" > "$RUNNER_TEMP/archive-release.json"
+          python3 - <<'PY'
+          import json,pathlib,hashlib,os
+          rel=json.loads(pathlib.Path(os.environ['RUNNER_TEMP'],'archive-release.json').read_text())
+          assert rel['prerelease'] and not rel['draft'] and len(rel['assets'])==3
+          expected={'legacy-test-releases-20261030.tar.gz':pathlib.Path('legacy-test-releases-20261030.tar.gz'),
+                    'prerelease-metadata.json':pathlib.Path('archive/prerelease-metadata.json'),
+                    'SHA256SUMS':pathlib.Path('SHA256SUMS')}
+          for a in rel['assets']:
+              f=expected[a['name']]
+              assert a['size']==f.stat().st_size and a['digest']=='sha256:'+hashlib.sha256(f.read_bytes()).hexdigest()
+          print('PASS permanent archive available and 3 assets digests verified')
+          PY
+      - name: Retire exactly nine obsolete GitHub Release objects, preserve all original Git tags
+        run: |
+          set -euo pipefail
+          while read -r tag; do
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.ref')" = "refs/tags/$tag"
+            gh release delete "$tag" --repo "$GH_REPO" --yes
+            echo "RETIRED legacy test Release: $tag (source Git tag retained)"
+          done < "$RUNNER_TEMP/tags"
+          gh api "repos/$GH_REPO/releases?per_page=100" > "$RUNNER_TEMP/after-releases.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          rels=json.loads(pathlib.Path(os.environ['RUNNER_TEMP'],'after-releases.json').read_text())
+          present={r['tag_name'] for r in rels}
+          targets=set(pathlib.Path(os.environ['RUNNER_TEMP'],'tags').read_text().splitlines())
+          assert not (present & targets),present & targets
+          must={'v0.1.0-beta.1','kas-web-ipk-92e301d','kas-web-channel-experimental',
+                'kas-web-ipk-9c71528','kas-web-ipk-62a97a3','kas-web-legacy-tests-archive-20261030','v1.8.4'}
+          assert must<=present,must-present
+          print('PASS: nine obsolete releases retired and live WEB/core releases retained')
+          PY

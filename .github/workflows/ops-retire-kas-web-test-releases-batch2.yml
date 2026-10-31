@@ -1,0 +1,105 @@
+name: Retire batch-2 archived KAS WEB test releases (manual dispatch, owner GO only)
+
+# Deletes ONLY the two already-archived GitHub Release objects
+# (kas-web-ipk-77ac40e = test15, kas-web-ipk-c0dac74). Git tags, commits and the
+# archive release are never touched. Dispatch-only on purpose: pushing a branch
+# must never trigger deletions (lesson from the batch branch prune, run 41031195431).
+# Full evidence and restoration guide:
+# docs/release-hygiene/2026-10-30-release-retire-batch2-dry-run.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_delete:
+        description: 'Type exactly: DELETE kas-web-ipk-77ac40e kas-web-ipk-c0dac74'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  retire-batch2:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ARCHIVE_TAG: kas-web-legacy-tests-archive-20261030
+      CONFIRM: 'DELETE kas-web-ipk-77ac40e kas-web-ipk-c0dac74'
+    steps:
+      - name: Require the exact typed confirmation
+        env:
+          CONFIRM_INPUT: ${{ github.event.inputs.confirm_delete }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRM_INPUT" = "$CONFIRM" || {
+            echo 'Confirmation string mismatch; refusing' >&2; exit 1; }
+      - name: Verify live index does not point at the candidates and candidates are intact prereleases
+        run: |
+          set -euo pipefail
+          gh release download kas-web-channel-experimental --repo "$GH_REPO" \
+            --pattern panel-update.json --dir "$RUNNER_TEMP"
+          python3 - <<'PY'
+          import json,os
+          idx=json.load(open(os.environ['RUNNER_TEMP']+'/panel-update.json'))
+          assert idx['tag'] not in ('kas-web-ipk-77ac40e','kas-web-ipk-c0dac74'), \
+            'live update index points at a batch-2 candidate: STOP'
+          print('PASS live experimental index:', idx['tag'])
+          PY
+          for tag in kas-web-ipk-77ac40e kas-web-ipk-c0dac74; do
+            test "$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq '.prerelease')" = true
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.ref')" = "refs/tags/$tag"
+            gh api "repos/$GH_REPO/releases/tags/$tag" > "$RUNNER_TEMP/rel-$tag.json"
+          done
+          echo 'PASS both candidates exist as prereleases and their tags are present'
+      - name: Download batch-2 archive and verify every candidate asset byte-for-byte before deleting
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/arch"
+          gh release download "$ARCHIVE_TAG" --repo "$GH_REPO" \
+            --pattern 'legacy-test-releases-2-20261030.tar.gz' --dir "$RUNNER_TEMP/arch"
+          cd "$RUNNER_TEMP/arch"
+          printf '%s  %s\n' 7746779e31d2ab37dd917423ce4b3b86ae8a8031fb4569367ec60e48ab6f521c \
+            legacy-test-releases-2-20261030.tar.gz | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/arch/x"
+          tar -xzf "$RUNNER_TEMP/arch/legacy-test-releases-2-20261030.tar.gz" -C "$RUNNER_TEMP/arch/x"
+          python3 - <<'PY'
+          import json,hashlib,pathlib,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          for tag in ('kas-web-ipk-77ac40e','kas-web-ipk-c0dac74'):
+              rel=json.loads((root/f'rel-{tag}.json').read_text())
+              arch=pathlib.Path(root,'arch','x',tag)
+              names={a['name'] for a in rel['assets']}
+              assert names=={p.name for p in arch.iterdir()}, (tag, names)
+              for a in rel['assets']:
+                  raw=(arch/a['name']).read_bytes()
+                  assert hashlib.sha256(raw).hexdigest()==a['digest'].split(':',1)[1], (tag,a['name'])
+                  assert len(raw)==a['size'], (tag,a['name'])
+              print('PASS',tag,len(rel['assets']),'assets byte-identical to the archive')
+          PY
+      - name: Retire exactly the two release objects, keep all tags
+        run: |
+          set -euo pipefail
+          for tag in kas-web-ipk-77ac40e kas-web-ipk-c0dac74; do
+            gh release delete "$tag" --repo "$GH_REPO" --yes
+            echo "RETIRED release object: $tag (Git tag retained)"
+          done
+      - name: Post-verify releases gone, tags and archive intact
+        run: |
+          set -euo pipefail
+          for tag in kas-web-ipk-77ac40e kas-web-ipk-c0dac74; do
+            if gh api "repos/$GH_REPO/releases/tags/$tag" >/dev/null 2>&1; then
+              echo "Release $tag still exists" >&2; exit 1; fi
+            test "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.ref')" = "refs/tags/$tag"
+            echo "OK tag $tag retained"
+          done
+          n=$(gh api "repos/$GH_REPO/releases/tags/$ARCHIVE_TAG" --jq '.assets | length')
+          test "$n" -eq 5 || { echo "Archive release assets: $n (expected 5)" >&2; exit 1; }
+          gh release download kas-web-channel-experimental --repo "$GH_REPO" \
+            --pattern panel-update.json --dir "$RUNNER_TEMP/post"
+          python3 -c "import json;json.load(open('$RUNNER_TEMP/post/panel-update.json'))"
+          echo 'PASS: retired 2 release objects; tags, archive and live index intact'
