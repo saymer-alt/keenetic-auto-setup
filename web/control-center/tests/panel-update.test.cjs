@@ -1,5 +1,49 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const api=require('../web/panel-update.js');
+test('unpublished stable channel is a normal status and cannot be installed',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async(path,opts)=>({ok:true,json:async()=>{
+  if(path==='/api/updates/panel/channel')return {channel:'stable',allowed:['experimental','stable']};
+  if(path==='/api/updates/panel/check')return {state:'UNPUBLISHED',channel:'stable',relation:'not_newer',installed_version:'0.1.0~beta.2-1',runtime_version:'0.1.0~beta.2-1'};
+  return {ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);
+  await nodes['panel-update-check'].listeners.click();
+  const message=nodes['panel-update-state'].textContent;
+  assert.match(message,/Стабильная версия KAS WEB пока не выпущена/);
+  assert.match(message,/Бета-версии/);
+  assert.doesNotMatch(message,/PANEL_DOWNLOAD_FAILED|Доступно: \?/);
+  assert.equal(nodes['panel-update-apply'].disabled,true);
+  assert.equal(nodes['panel-update-details'].hidden,true);
+ }finally{Object.assign(global,original);}
+});
+test('download failure displays understandable Russian text with code in details only',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async(path,opts)=>{
+  if(path==='/api/updates/panel/check')return {ok:false,status:502,json:async()=>({error_code:'PANEL_DOWNLOAD_FAILED'})};
+  if(path==='/api/updates/panel/channel')return {ok:true,json:async()=>({channel:'experimental',allowed:['experimental','stable']})};
+  return {ok:true,json:async()=>({ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'})};
+ };
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await nodes['panel-update-check'].listeners.click();
+  assert.match(nodes['panel-update-state'].textContent,/Не удалось загрузить сведения об обновлении с GitHub/);
+  assert.doesNotMatch(nodes['panel-update-state'].textContent,/PANEL_DOWNLOAD_FAILED/);
+  assert.equal(nodes['panel-update-details'].hidden,false);
+  assert.equal(nodes['panel-update-error-code'].textContent,'PANEL_DOWNLOAD_FAILED');
+  assert.equal(nodes['panel-update-apply'].disabled,true);
+ }finally{Object.assign(global,original);}
+});
 test('panel success requires exact fresh runtime version and source',()=>{
  const op={ID:'a'.repeat(24),State:'OK',Version:'0.0.1~test16.a-1',SourceSHA:'b'.repeat(40),Gate:false};
  assert.equal(api.verifiedPanelReturn(op,{panel:{version:op.Version,source_sha:op.SourceSHA}}),true);
