@@ -11,6 +11,24 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 SCHEMES = {"http", "https", "mailto", "tel", "data"}
+# Current user-facing KAS Web guides must not depend on a fast-moving beta tag.
+# Historical ADRs, release transactions, CI fixtures and changelogs are outside
+# this guard: they need exact release IDs as evidence.
+EVERGREEN_WEB_GUIDES = (
+    "README.md",
+    "docs/EN/README.md",
+    "docs/26-kas-web-beta-install.md",
+    "docs/EN/WEB_BETA_INSTALL.md",
+    "web/control-center/PANEL_UPDATE.md",
+    "web/control-center/packaging/README.md",
+)
+PINNED_WEB_PREVIEW = re.compile(
+    r"\b(?:v\d+\.\d+\.\d+[-~])?beta[.~-]\d+\b"
+    r"|https://github\.com/saymer-alt/keenetic-auto-setup/releases/"
+    r"(?:tag|download)/v\d+\.\d+\.\d+-beta\.\d+",
+    re.IGNORECASE,
+)
+
 ARTIFACT_PATTERNS = (
     ("sandbox path", re.compile(r"sandbox:/mnt/data/", re.IGNORECASE)),
     ("file citation token", re.compile(r"(?:filecite|turn\d+file\d+)", re.IGNORECASE)),
@@ -88,6 +106,21 @@ def main() -> int:
                     )
                 )
 
+    pinned: list[tuple[str, str]] = []
+    for relative in EVERGREEN_WEB_GUIDES:
+        candidate = ROOT / relative
+        if not candidate.is_file():
+            pinned.append((relative, "missing expected evergreen guide"))
+            continue
+        match = PINNED_WEB_PREVIEW.search(candidate.read_text(encoding="utf-8"))
+        if match:
+            pinned.append((relative, f"pinned preview version/link: {match.group(0)}"))
+
+    if pinned:
+        for path, problem in pinned:
+            print(f"[FAIL] {path}: {problem}", file=sys.stderr)
+        return 1
+
     if checked == 0:
         print("[FAIL] Local Markdown link check scanned 0 links", file=sys.stderr)
         return 1
@@ -106,6 +139,7 @@ def main() -> int:
 
     print(f"[OK] Local Markdown links: {checked} checked, 0 broken")
     print("[OK] Markdown hygiene: 0 pasted chat/tool artifacts")
+    print("[OK] KAS Web guides: no pinned preview versions or retired release URLs")
     return 0
 
 
