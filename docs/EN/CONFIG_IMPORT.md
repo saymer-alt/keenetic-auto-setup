@@ -9,7 +9,9 @@
 3. On the Keenetic router run:
 
 \`\`\`bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
+
+The launcher stages `config-import.sh` privately and verifies shebang, stable project markers and `sh -n` before running it. Sources are tried in turn with bounded time: raw → IPv4/X25519 → GitHub Contents API (issue #255: a field case of `curl: (35)` on raw while IPv4/X25519 worked). The large importer is no longer executed as a partially delivered `curl | sh`. If every source fails, nothing is executed and an explicit error is printed; then download `config-import.sh` on a PC and copy it to the router over SCP/SFTP (for example `/tmp/config-import.sh`) and run `sh /tmp/config-import.sh`.
 \`\`\`
 
 4. Paste the YAML and press **Ctrl+D**.
