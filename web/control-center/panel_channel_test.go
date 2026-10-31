@@ -10,6 +10,29 @@ import (
 	"testing"
 )
 
+// A missing stable index is expected until the owner publishes the first stable
+// release. Broken beta indexes and all other download failures stay errors.
+func TestPanelStableChannelUnpublishedClassification(t *testing.T) {
+	for _, tc := range []struct {
+		tag, name string
+		status int
+		want string
+	}{
+		{"kas-web-channel-stable", "panel-update.json", http.StatusNotFound, "PANEL_CHANNEL_UNPUBLISHED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusOK, ""},
+		{"kas-web-channel-experimental", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "wrong-name.ipk", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-v0.1.0", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusForbidden, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusInternalServerError, "PANEL_DOWNLOAD_FAILED"},
+	} {
+		got := panelAssetStatusError(tc.tag, tc.name, tc.status)
+		if tc.want == "" && got != nil || tc.want != "" && (got == nil || got.Error() != tc.want) {
+			t.Fatalf("status %d for %s/%s: got %v, want %q", tc.status, tc.tag, tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestPanelTagAllowlistPerChannel(t *testing.T) {
 	valid := map[string][]string{
 		"experimental": {"kas-web-ipk-92e301d", "kas-web-ipk-92e301da2464ac9694fff3f41f4ee1cb9be90708",
