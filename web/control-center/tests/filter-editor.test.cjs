@@ -382,6 +382,25 @@ test('development and test-build panel versions stay honest',async()=>{
  assert.match(lab.el('panel-build').textContent,/KAS Web v0\.0\.1-test44\.9c715283d525 · aaaaaaa/);
 });
 
+test('sidebar stage badge follows the running build identity',async()=>{
+ const base={core:{state:'absent'},watchdog:{state:'unrecorded'}};
+ const beta=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0~beta.3-1',source_sha:'a'.repeat(40)},...base}});
+ await beta.run('refreshComponents()');
+ assert.equal(beta.el('experiment').textContent,'Бета-версия');
+ const stable=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0-1',source_sha:'a'.repeat(40)},...base}});
+ await stable.run('refreshComponents()');
+ assert.equal(stable.el('experiment').textContent,'Стабильная версия');
+ stable.run("lang='en';draw();");
+ assert.equal(stable.el('experiment').textContent,'Stable version');
+ const dev=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'development',source_sha:''},...base}});
+ await dev.run('refreshComponents()');
+ assert.equal(dev.el('experiment').textContent,'сборка для разработки');
+ // Unverifiable identity must not silently claim a stable release.
+ const broken=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'SECRET-TOKEN',source_sha:''},...base}});
+ await broken.run('refreshComponents()');
+ assert.equal(broken.el('experiment').textContent,'Бета-версия');
+});
+
 test('overview shows process evidence and explicitly sourced versions',async()=>{
  const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
  app.run(`statusData={timestamp:'test',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'stopped',version:'0.8.2-1',version_source:'package'}}};draw();`);
