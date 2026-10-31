@@ -20,6 +20,7 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Show Linux WAN/VPN interface names for `interface-name`](../../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Show which Mihomo server is selected now](../11-proxy-selection-watch.md) |
 | [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Check whether a specific site is reachable through Mihomo](ROUTE_CHECK.md) |
+| [`kas-download-check.sh`](../../kas-download-check.sh) | [Read-only diagnostics of KAS script download and GitHub reachability: DNS → TCP → TLS → HTTP → transfer → file validation, sources reported separately](DOWNLOAD_CHECK.md) |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Update the Mihomo core with validation and rollback](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Update the watchdog mechanism](UPDATES.md#watchdog-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Check Mihomo and restart it only on a confirmed failure](../04-watchdog.md) |
