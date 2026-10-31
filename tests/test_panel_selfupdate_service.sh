@@ -108,7 +108,7 @@ CA_HASH=$(openssl x509 -in /usr/local/share/ca-certificates/kas-selfupdate-lab.c
 mkdir -p /opt/etc/ssl/certs
 cat "$LAB/ca.crt" > /opt/etc/ssl/certs/ca-certificates.crt
 cp /etc/hosts "$LAB/hosts.backup"
-printf '\n127.0.0.1 github.com\n127.0.0.1 api.github.com\n' >> /etc/hosts
+printf '\n127.0.0.1 github.com\n127.0.0.1 api.github.com\n127.0.0.1 saymer-alt.github.io\n' >> /etc/hosts
 install -m 755 "$OPKG" /opt/bin/opkg
 python3 - "$REPO" "$LAB" "$SOURCE_SHA" "$OLD_BINARY" "$NEW_BINARY" "$STABLE_BINARY" <<'PY'
 import base64
@@ -294,7 +294,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split('?')[0]
         prefix = '/saymer-alt/keenetic-auto-setup/releases/download/'
         tags_api = '/repos/saymer-alt/keenetic-auto-setup/releases/tags/'
-        if path == prefix + 'kas-web-channel-experimental/panel-update.json':
+        if path == '/updates/channels.json':
+            # Registry for the Pages-based source (beta.4): both channels are
+            # marked published so the lab exercises the real update cycle.
+            body = json.dumps({'schema': 1, 'generated': 'lab',
+                'channels': {'experimental': {'published': True, 'tag': tag},
+                             'stable': {'published': True, 'tag': stable_tag}}}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == '/updates/experimental/panel-update.json':
+            target = serve / 'index.json'
+        elif path == '/updates/stable/panel-update.json':
+            target = serve / 'index-stable.json'
+        elif path == prefix + 'kas-web-channel-experimental/panel-update.json':
             target = serve / 'index.json'
         elif path == prefix + 'kas-web-channel-stable/panel-update.json':
             target = serve / 'index-stable.json'
