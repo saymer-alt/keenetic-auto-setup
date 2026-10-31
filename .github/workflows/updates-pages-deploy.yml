@@ -28,6 +28,10 @@ on:
         description: 'Full 40-char source SHA of that release'
         required: true
         type: string
+      artifact_prefix:
+        description: 'Candidate artifact name prefix, e.g. kas-web-beta3'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -85,7 +89,7 @@ jobs:
           for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
             dir="build/artifact-$arch"; mkdir -p "$dir"
             gh run download "$VERIFIED_RUN" --repo "$GH_REPO" \
-              --name "kas-web-beta3-$arch-$EXPECTED_SOURCE_SHA" --dir "$dir"
+              --name "$ARTIFACT_PREFIX-$arch-$EXPECTED_SOURCE_SHA" --dir "$dir"
             (cd "$dir" && sha256sum -c SHA256SUMS)
             cp "$dir/manifest-canonical.json" "build/ci-manifests/$arch.json"
             src="$(find "$dir" -maxdepth 1 -name '*.ipk' -type f -print -quit)"
@@ -116,6 +120,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
           VERIFIED_RUN: ${{ inputs.verified_run }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          ARTIFACT_PREFIX: ${{ inputs.artifact_prefix }}
       - name: Preserve the other channel from the live site (no cross-channel overwrites)
         run: |
           set -euo pipefail
@@ -135,6 +140,19 @@ jobs:
             || echo '{"schema":1,"channels":{}}' > build/old-channels.json
           cp build/panel-update.json "site/updates/$CHANNEL/panel-update.json"
           python3 - "$CHANNEL" "$RELEASE_TAG" <<'PY'
+          import json,sys
+          channel,tag=sys.argv[1],sys.argv[2]
+          reg=json.load(open('build/old-channels.json'))
+          assert reg.get('schema')==1
+          channels=reg.setdefault('channels',{})
+          # The published channel flips to published=true; the other channel
+          # keeps its existing entry verbatim (missing = not published).
+          channels[channel]={'published':True,'tag':tag}
+          channels.setdefault('experimental',{'published':False,'tag':''})
+          channels.setdefault('stable',{'published':False,'tag':''})
+          json.dump(reg,open('site/updates/channels.json','w'),indent=2)
+          print('registry:', json.dumps(reg['channels']))
+          PY'
           import json,os,sys
           channel,tag=sys.argv[1],sys.argv[2]
           reg=json.load(open('build/old-channels.json'))
