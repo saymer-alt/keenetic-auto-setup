@@ -20,6 +20,7 @@
 | [`mihomo-interface-check.sh`](../mihomo-interface-check.sh) | [Показать Linux-имена WAN/VPN-интерфейсов для `interface-name`](../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../mihomo-proxy-selection-watch.sh) | [Показать, какой сервер Mihomo выбран сейчас](11-proxy-selection-watch.md) |
 | [`mihomo-route-check.sh`](../mihomo-route-check.sh) | [Проверить доступность конкретного сайта через Mihomo](15-route-check.md) |
+| [`kas-exposure-check.sh`](../kas-exposure-check.sh) | [Read-only аудит локальной сетевой экспозиции: listening-сокеты, привязки, allow-lan/external-controller/secret (без вывода значения), Controller-проба](28-exposure-check.md) |
 | [`update-mihomo.sh`](../update-mihomo.sh) | [Обновить ядро Mihomo с проверкой и откатом](12-updates.md#обновление-mihomo) |
 | [`update-watchdog.sh`](../update-watchdog.sh) | [Обновить механизм watchdog](12-updates.md#обновление-watchdog) |
 | [`mihomo-watchdog.sh`](../mihomo-watchdog.sh) | [Проверять Mihomo и перезапускать его при подтверждённом сбое](04-watchdog.md) |
