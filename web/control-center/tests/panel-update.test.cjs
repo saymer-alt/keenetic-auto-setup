@@ -44,6 +44,20 @@ test('download failure displays understandable Russian text with code in details
   assert.equal(nodes['panel-update-apply'].disabled,true);
  }finally{Object.assign(global,original);}
 });
+test('update phases are localized, not raw worker phase identifiers',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={},id='a'.repeat(24);
+ global.document={getElementById:key=>nodes[key]||(nodes[key]={textContent:'',hidden:false,disabled:false,value:'',addEventListener(){}}),activeElement:null};
+ global.sessionStorage={getItem:()=>id,setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>path==='/api/updates/panel/channel'?{channel:'experimental',allowed:['experimental','stable']}:{ID:id,State:'RUNNING',Phase:'download'}});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(nodes['panel-update-state'].textContent,/Загрузка пакета/);
+  assert.doesNotMatch(nodes['panel-update-state'].textContent,/download/);
+ }finally{Object.assign(global,original);}
+});
 test('panel success requires exact fresh runtime version and source',()=>{
  const op={ID:'a'.repeat(24),State:'OK',Version:'0.0.1~test16.a-1',SourceSHA:'b'.repeat(40),Gate:false};
  assert.equal(api.verifiedPanelReturn(op,{panel:{version:op.Version,source_sha:op.SourceSHA}}),true);
