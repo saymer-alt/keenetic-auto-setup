@@ -1,8 +1,8 @@
 'use strict';
 (function(root){
  const words={
-  ru:{heading:"Обновление KAS WEB",help:"Проверяйте и устанавливайте новые версии панели вручную. Во время установки соединение ненадолго прервётся. Настройки сохраняются, автоматического отката нет.",check:"Проверить обновления панели",apply:"Обновить панель",none:"Обновления панели ещё не проверялись.",unpublished:"Стабильная версия KAS WEB пока не выпущена. Выберите канал «Бета-версии», чтобы проверить доступные обновления.",checking:"Проверяем доступные версии KAS WEB…",available:"Установлено: {installed}. Запущено: {runtime}. Доступно: {available}. Канал: {channel}.",same:"В выбранном канале более новой версии нет.",newer:"Доступно обновление панели. Нажмите «Обновить панель».",confirm:"Установить обновление KAS WEB? Соединение с панелью временно прервётся. Настройки и порт сохраняются. Автоматического отката нет. Не выключайте роутер во время установки.",running:"Обновление панели выполняется. Этап: {phase}. Ожидаем восстановления соединения…",success:"Обновление завершено. Запущена новая версия: {version}.",failed:"Обновление панели не завершено. Причина: {code}.",error:"Не удалось проверить обновления KAS WEB: {code}.",waiting:"Ожидаем подтверждения новой операции. Результат предыдущего обновления не учитывается.",unverified:"Панель доступна, но новая версия ещё не подтверждена. Установка могла продолжиться. Проверьте состояние позднее.",recovery:"Обновление панели прервалось. {code}",previous:"Предыдущее обновление завершено. Перед следующей установкой проверьте доступную версию.",cancelled:"Обновление отменено. Установка не начиналась.",channelLabel:"Канал обновлений",channelExperimental:"Бета-версии",channelStable:"Стабильные версии",channelNote:"Смена канала не запускает установку. После выбора канала нажмите «Проверить обновления панели».",channelSaved:"Выбран канал «{channel}». Проверьте наличие обновлений.",channelError:"Не удалось переключить канал: {code}. Выбран прежний канал.",technical:"Технические сведения"},
-  en:{heading:'KAS panel update',help:'Manually update the panel itself. Settings are preserved. The panel disconnects briefly during installation. There is no automatic rollback.',check:'Check panel version',apply:'Update panel',none:'No check has been run.',unpublished:'No stable KAS WEB release has been published yet. Choose “Beta versions” to check for updates.',checking:'Checking panel version…',available:'Installed: {installed}. Running: {runtime}. Available: {available}. Channel: {channel}.',same:'The selected channel offers no newer version.',newer:'A newer version is available. Use “Update panel”.',confirm:'Update the KAS panel? The connection will drop during installation. Settings and port are preserved. Do not power off the router. There is no automatic rollback.',running:'Panel update: {phase}. Waiting to reconnect…',success:'Panel updated. New running version verified: {version}.',failed:'The panel update did not complete. Reason: {code}.',error:'Unable to check the panel: {code}.',waiting:'Waiting for a new operation to be confirmed. The previous result does not count for this request.',unverified:'The panel responds, but the new version is not yet verified. Reload later; installation may have continued.',recovery:'The panel update was interrupted. {code}',previous:'A previous operation completed. Check the version before starting a new update.',cancelled:'Update cancelled before starting.',channelLabel:'Update channel',channelExperimental:'Beta versions',channelStable:'Stable versions',channelNote:'Changing the channel never starts a check or install by itself. Run “Check panel version” afterwards.',channelSaved:'Update channel selected: {channel}. Run the version check.',channelError:'Unable to change the channel: {code}. The channel stayed unchanged.',technical:'Technical details'}
+  ru:{heading:"Обновление KAS WEB",help:"Проверяйте и устанавливайте новые версии панели вручную. Во время установки соединение ненадолго прервётся. Настройки сохраняются, автоматического отката нет.",check:"Проверить обновления панели",apply:"Обновить панель",none:"Обновления панели ещё не проверялись.",unpublished:"Стабильная версия KAS WEB пока не выпущена. Выберите канал «Бета-версии», чтобы проверить доступные обновления.",checking:"Проверяем доступные версии KAS WEB…",available:"Установлено: {installed}. Запущено: {runtime}. Доступно: {available}. Канал: {channel}.",same:"В выбранном канале более новой версии нет.",newer:"Доступно обновление панели. Нажмите «Обновить панель».",confirm:"Установить обновление KAS WEB? Соединение с панелью временно прервётся. Настройки и порт сохраняются. Автоматического отката нет. Не выключайте роутер во время установки.",running:"Обновление панели выполняется. Этап: {phase}. Ожидаем восстановления соединения…",success:"Обновление завершено. Запущена новая версия: {version}.",failed:"Обновление панели не завершено. Причина: {code}.",error:"Не удалось проверить обновления KAS WEB: {code}.",waiting:"Ожидаем подтверждения новой операции. Результат предыдущего обновления не учитывается.",unverified:"Панель доступна, но новая версия ещё не подтверждена. Установка могла продолжиться. Проверьте состояние позднее.",recovery:"Обновление панели прервалось. {code}",previous:"Предыдущее обновление завершено. Перед следующей установкой проверьте доступную версию.",cancelled:"Обновление отменено. Установка не начиналась.",channelLabel:"Канал обновлений",channelExperimental:"Бета-версии",channelStable:"Стабильные версии",channelNote:"Смена канала не запускает установку. После выбора канала нажмите «Проверить обновления панели».",channelSaved:"Выбран канал «{channel}». Проверьте наличие обновлений.",channelError:"Не удалось переключить канал: {code}. Выбран прежний канал.",updated:"Панель обновлена до {version}. Интерфейс загружен заново.",technical:"Технические сведения"},
+  en:{heading:'KAS panel update',help:'Manually update the panel itself. Settings are preserved. The panel disconnects briefly during installation. There is no automatic rollback.',check:'Check panel version',apply:'Update panel',none:'No check has been run.',unpublished:'No stable KAS WEB release has been published yet. Choose “Beta versions” to check for updates.',checking:'Checking panel version…',available:'Installed: {installed}. Running: {runtime}. Available: {available}. Channel: {channel}.',same:'The selected channel offers no newer version.',newer:'A newer version is available. Use “Update panel”.',confirm:'Update the KAS panel? The connection will drop during installation. Settings and port are preserved. Do not power off the router. There is no automatic rollback.',running:'Panel update: {phase}. Waiting to reconnect…',success:'Panel updated. New running version verified: {version}.',failed:'The panel update did not complete. Reason: {code}.',error:'Unable to check the panel: {code}.',waiting:'Waiting for a new operation to be confirmed. The previous result does not count for this request.',unverified:'The panel responds, but the new version is not yet verified. Reload later; installation may have continued.',recovery:'The panel update was interrupted. {code}',previous:'A previous operation completed. Check the version before starting a new update.',cancelled:'Update cancelled before starting.',channelLabel:'Update channel',channelExperimental:'Beta versions',channelStable:'Stable versions',channelNote:'Changing the channel never starts a check or install by itself. Run “Check panel version” afterwards.',channelSaved:'Update channel selected: {channel}. Run the version check.',channelError:'Unable to change the channel: {code}. The channel stayed unchanged.',updated:'Panel updated to {version}. The interface has been reloaded.',technical:'Technical details'}
  };
  // Show actionable explanations instead of raw internal backend error codes.
  // The unchanged error code stays available in a separate details element.
@@ -142,7 +142,34 @@
    try{applyChannelState(await get('/api/updates/panel/channel'));}
    catch(_){/* status only; the panel stays on its current channel */}
   }
-  async function poll(){
+  // One-shot self-update reload guard (issue #311). The marker stores the
+ // verified identity; it is written only from the fully verified success
+ // path and consumed by the next page load, so at most one reload can ever
+ // happen. Without sessionStorage the reload is skipped entirely: no marker
+ // means no loop protection, so the user keeps the success message and can
+ // refresh manually.
+ const RELOAD_KEY='kas_updated_to';
+ function armReload(op){
+  try{sessionStorage.setItem(RELOAD_KEY,JSON.stringify({v:op.Version,s:op.SourceSHA}));}
+  catch(_){return;}
+  if(options.reload)options.reload();
+ }
+ function consumeReloadMarker(){
+  try{const raw=sessionStorage.getItem(RELOAD_KEY);if(!raw)return null;
+   sessionStorage.removeItem(RELOAD_KEY);return JSON.parse(raw);}
+  catch(_){return null;}
+ }
+ async function checkPostReload(){
+  const marker=consumeReloadMarker();
+  if(!marker)return;
+  try{
+   const components=await get('/api/components');
+   if(components&&components.panel&&components.panel.version===marker.v&&components.panel.source_sha===marker.s){
+    message={key:'updated',params:{version:publicVersion(marker.v)}};draw();
+   }
+  }catch(_){/* identity unconfirmed: stay silent, never reload again */}
+ }
+ async function poll(){
    try{
     const data=await get('/api/updates/panel/operation');
     if((expectedID&&data.ID!==expectedID)||!acceptPanelOperation(beforeID,data,submitted)){if(data.error_code==='PANEL_RECOVERY_REQUIRED'){message={key:'recovery',params:{code:data.error_code}};occupy(true);}else if(working){message={key:'waiting'};schedule();}draw();return;}
@@ -152,7 +179,7 @@
     }else if(data.State==='OK'){
      if(!tracking){message={key:'previous'};finish();draw();return;}
      const components=await get('/api/components');
-     if(verifiedPanelReturn(data,components)){message={key:'success',params:{version:publicVersion(data.Version)}};finish(true);}
+     if(verifiedPanelReturn(data,components)){message={key:'success',params:{version:publicVersion(data.Version)}};finish(true);armReload(data);}
      else{message={key:'unverified'};occupy(true);schedule();}
     }else if(data.State==='FAIL'){
      message={key:data.Gate?'recovery':'failed',params:{code:data.ErrorCode||'UNKNOWN'}};finish();
@@ -203,7 +230,7 @@
   }
   el('panel-update-check').addEventListener('click',runCheck);el('panel-update-apply').addEventListener('click',apply);el('panel-channel').addEventListener('change',changeChannel);draw();
   // Local status only; opening the panel never checks GitHub for updates.
-  if(working)options.onBusy(true);poll();loadChannel();return {draw};
+  if(working)options.onBusy(true);poll();loadChannel();checkPostReload();return {draw};
  }
  const api={words,acceptPanelOperation,verifiedPanelReturn,validChannel,mount};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.KASPanelUpdate=api;

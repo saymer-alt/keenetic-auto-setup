@@ -283,3 +283,128 @@ test('both channel directions are offered on any known build channel',async()=>{
  }
  finally{Object.assign(global,original);}
 });
+
+test('verified success schedules exactly one reload and stores the verified identity',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={},store={},id='a'.repeat(24);
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v;},removeItem:k=>{delete store[k];}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ store['kas_panel_update_id']=id;
+ global.fetch=async(path,opts)=>({ok:true,json:async()=>{
+  if(path==='/api/updates/panel/channel')return {channel:'experimental',allowed:['experimental','stable']};
+  if(path==='/api/components')return {panel:{version:'0.1.0~beta.4-1',source_sha:'c'.repeat(40)}};
+  return {ID:id,State:'OK',Version:'0.1.0~beta.4-1',SourceSHA:'c'.repeat(40),Gate:false};
+ }});
+ let reloads=0;
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){},reload:()=>{reloads++;}});
+  await new Promise(setImmediate);await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(nodes['panel-update-state'].textContent,/Запущена новая версия: v0\.1\.0-beta\.4/);
+  assert.equal(reloads,1,'exactly one reload after verified success');
+  const marker=JSON.parse(store['kas_updated_to']);
+  assert.equal(marker.v,'0.1.0~beta.4-1');
+  assert.equal(marker.s,'c'.repeat(40));
+ }finally{Object.assign(global,original);}
+});
+test('failed, unverified and historical operations never reload',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const store={};
+ const ops={
+  fail:{ID:'a'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'PANEL_OPKG_FAILED'},
+  unverified:{ID:'a'.repeat(24),State:'OK',Gate:false,Version:'x',SourceSHA:'b'.repeat(40)},
+  previous:{ID:'a'.repeat(24),State:'OK',Gate:false,Version:'v',SourceSHA:'b'.repeat(40)}
+ };
+ for(const [label,op] of Object.entries(ops)){
+  const nodes={};
+  global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(){}}),activeElement:null};
+  global.sessionStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v;},removeItem(){}};
+  global.setTimeout=()=>1;global.clearTimeout=()=>{};
+  global.fetch=async path=>({ok:true,json:async()=>{
+   if(path==='/api/updates/panel/channel')return {channel:'experimental',allowed:['experimental','stable']};
+   if(path==='/api/components')return {panel:{version:'v',source_sha:'b'.repeat(40)}};
+   return op;
+  }});
+  let reloads=0;
+  try{
+   api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){},reload:()=>{reloads++;}});
+   await new Promise(setImmediate);await new Promise(setImmediate);
+   assert.equal(reloads,0,label+': must not reload');
+   assert.equal(store['kas_updated_to'],undefined,label+': must not store marker');
+  }finally{global.fetch=undefined;}
+ }
+ Object.assign(global,original);
+});
+test('post-reload marker shows the updated notice exactly once and is consumed',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};const store={'kas_updated_to':JSON.stringify({v:'0.1.0~beta.4-1',s:'c'.repeat(40)})};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',hidden:false,disabled:false,listeners:{},addEventListener(){}}),activeElement:null};
+ global.sessionStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v;},removeItem:k=>{delete store[k];}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ let componentsCalls=0;
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/components'){componentsCalls++;return {panel:{version:'0.1.0~beta.4-1',source_sha:'c'.repeat(40)}};}
+  if(path==='/api/updates/panel/operation')return {state:'UNKNOWN',error_code:'NO_OPERATION'};
+  return {channel:'experimental',allowed:['experimental','stable']};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){},reload(){throw Error('must never reload from the post-reload path');}});
+  await new Promise(setImmediate);await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(nodes['panel-update-state'].textContent,/Панель обновлена до v0\.1\.0-beta\.4\. Интерфейс загружен заново\./);
+  assert.equal(componentsCalls,1);
+  assert.equal('kas_updated_to' in store,false,'marker consumed');
+ }finally{Object.assign(global,original);}
+});
+test('post-reload marker with mismatched identity is dropped without a second reload',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};const store={'kas_updated_to':JSON.stringify({v:'0.1.0~beta.4-1',s:'c'.repeat(40)})};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',hidden:false,disabled:false,listeners:{},addEventListener(){}}),activeElement:null};
+ global.sessionStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v;},removeItem:k=>{delete store[k];}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>{
+  if(path==='/api/components')return {panel:{version:'0.1.0~beta.2-1',source_sha:'c'.repeat(40)}};
+  if(path==='/api/updates/panel/operation')return {state:'UNKNOWN',error_code:'NO_OPERATION'};
+  return {channel:'experimental',allowed:['experimental','stable']};
+ }});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){},reload(){throw Error('must never reload twice');}});
+  await new Promise(setImmediate);await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.doesNotMatch(nodes['panel-update-state'].textContent,/Панель обновлена до/);
+  assert.equal('kas_updated_to' in store,false,'marker consumed even on mismatch');
+ }finally{Object.assign(global,original);}
+});
+test('without sessionStorage a verified success never reloads (no loop protection means no reload)',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout,window:global.window};
+ const nodes={},id='a'.repeat(24);
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');},removeItem(){}};
+ // Microtask-driven timers so the post-apply poll chain actually runs.
+ global.setTimeout=(fn,ms)=>{queueMicrotask(()=>fn());return 1;};global.clearTimeout=()=>{};
+ global.window={confirm:()=>true};
+ // Stateful backend: the previous op (id) exists; apply starts a NEW job
+ // (id2) that first runs, then completes with a verified identity.
+ const id2='b'.repeat(24);let applied=false,ranOnce=false;
+ global.fetch=async(path,opts)=>{
+  const method=(opts&&opts.method)||'GET';
+  if(path==='/api/updates/panel/channel')return {ok:true,json:async()=>({channel:'experimental',allowed:['experimental','stable']})};
+  if(path==='/api/updates/panel/check'&&method==='POST')return {ok:true,json:async()=>({state:'OK',relation:'newer',installed_version:'0.1.0~beta.3-1',runtime_version:'0.1.0~beta.3-1',available_version:'0.1.0~beta.4-1',channel:'experimental'})};
+  if(path==='/api/updates/panel/operation')return {ok:true,json:async()=>{
+   if(!applied)return {ID:id,State:'OK',Version:'0.1.0~beta.3-1',SourceSHA:'d'.repeat(40),Gate:false};
+   if(!ranOnce){ranOnce=true;return {ID:id2,State:'RUNNING',Phase:'install',Version:'0.1.0~beta.4-1',SourceSHA:'c'.repeat(40),Gate:true};}
+   return {ID:id2,State:'OK',Version:'0.1.0~beta.4-1',SourceSHA:'c'.repeat(40),Gate:false};
+  }};
+  if(path==='/api/updates/panel/apply'&&method==='POST'){applied=true;return {ok:true,json:async()=>({id:id2,state:'RUNNING'})};}
+  if(path==='/api/components')return {ok:true,json:async()=>({panel:{version:'0.1.0~beta.4-1',source_sha:'c'.repeat(40)}})};
+  return {ok:true,json:async()=>({channel:'experimental',allowed:['experimental','stable']})};
+ };
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){},reload(){throw Error('must not reload without sessionStorage');}});
+  await new Promise(setImmediate);
+  await nodes['panel-update-check'].listeners.click();
+  await new Promise(setImmediate);
+  assert.equal(nodes['panel-update-apply'].disabled,false);
+  await nodes['panel-update-apply'].listeners.click();
+  await new Promise(setImmediate);await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(nodes['panel-update-state'].textContent,/Запущена новая версия: v0\.1\.0-beta\.4/);
+ }finally{Object.assign(global,original);}
+});
