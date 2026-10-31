@@ -83,7 +83,7 @@ grep -Fq 'check_fail "bypass_wa Netfilter not ready after $_br_round read-only c
 # stderr instead of collapsing absent chain, xtables lock and read error.
 grep -Fq '_br_last_fault="chain absent (netfilter hook has not applied yet)"' "$ROOT/install.sh" || fail "installer must classify a definitive absent chain"
 grep -Fq '_br_last_fault="iptables busy (firewall rebuild or xtables lock in progress)"' "$ROOT/install.sh" || fail "installer must classify transient iptables/xtables lock contention"
-grep -Fq 'one router reboot also applies the hook' "$ROOT/install.sh" || fail "installer must give a safe next step for an unapplied hook"
+grep -Fq 'lets the hook run again' "$ROOT/install.sh" || fail "installer must give a safe next step for an unapplied hook"
 grep -Fq 'Do not run iptables commands manually' "$ROOT/install.sh" || fail "installer must warn against manual iptables commands"
 grep -Fq 'chain absent' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish an absent chain from a read error"
 grep -Fq 'iptables busy (firewall rebuild in progress)' "$ROOT/mihomo-doctor.sh" || fail "Doctor must classify xtables lock contention"
@@ -117,6 +117,18 @@ if command -v busybox >/dev/null 2>&1; then
         fail "BusyBox ash Netfilter first-install trigger fixtures failed"
 fi
 pass "fresh-install legacy bridge hook trigger (issue #310) and activation guard matrix passed"
+
+# Issue #310 review of PR #312: Doctor must read PREROUTING and the bypass
+# chain together as one bounded pair probe, classify a persistent read
+# failure instead of reporting a missing link, and not retry a definitive
+# absent answer.
+sh "$ROOT/tests/doctor-netfilter-probe-regression.sh" "$ROOT" ||
+    fail "Doctor Netfilter pair-probe regression failed (transient PREROUTING read failure must recover, persistent failure must stay FAIL and classified)"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/doctor-netfilter-probe-regression.sh" "$ROOT" ||
+        fail "BusyBox ash Doctor Netfilter pair-probe fixtures failed"
+fi
+pass "Doctor Netfilter pair-probe (PREROUTING + chain) regression passed"
 
 
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"

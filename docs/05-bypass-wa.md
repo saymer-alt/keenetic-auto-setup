@@ -234,7 +234,7 @@ jq '.[] | select(.description == "bypass_wa")'
   запускает штатное применение сразу после доставки hook: на чистой Entware
   переиспользованный совместимый Proxy-мост (canonical или legacy
   SOCKS5+UDP → 127.0.0.1:7890, явно UP) переподключается down/up, чтобы
-  KeeneticOS пересобрал firewall и вызвал `netfilter.d`. Foreignпрофили и
+  KeeneticOS пересобрал firewall и вызвал `netfilter.d`. Foreign-профили и
   намеренно выключенные интерфейсы не переключаются никогда (#310);
 - `_CUST_BYPASS_WA_` существует, но пустая → проверьте
   `opkg-kmod-netfilter` и `xt_multiport`, затем пересоберите firewall/reboot;

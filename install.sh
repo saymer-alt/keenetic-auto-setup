@@ -2551,7 +2551,7 @@ check_bypass_netfilter_runtime() {
     # does not have to read the verbose log or run diagnostic commands.
     case "$_br_last_fault" in
         "chain absent"*)
-            check_info "bypass_wa: KeeneticOS has not rebuilt the firewall since hook delivery. Safe next step: wait about 10 minutes and re-run mihomo-doctor.sh; one router reboot also applies the hook. Do not run iptables commands manually."
+            check_info "bypass_wa: KeeneticOS has not rebuilt the firewall since hook delivery. Safe next step: wait about 10 minutes and re-run mihomo-doctor.sh; rebuilding the firewall (a single router reboot also does that) lets the hook run again. Do not run iptables commands manually."
             ;;
         "iptables busy"*)
             check_info "bypass_wa: a firewall rebuild is holding iptables right now. Safe next step: re-run mihomo-doctor.sh in a few minutes."

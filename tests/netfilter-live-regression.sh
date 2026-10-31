@@ -184,8 +184,7 @@ run_fault_case() {
         { echo "[FAIL] $_fc_label: expected advice missing, got: $LAST_INFO"; exit 1; }
     echo "[OK] $_fc_label"
 }
-run_fault_case "chain absence classified from iptables stderr"     "iptables: No chain/target/match by that name."     "chain absent (netfilter hook has not applied yet)"     "KeeneticOS has not rebuilt the firewall since hook delivery. Safe next step: wait about 10 minutes and re-run mihomo-doctor.sh; one router reboot also applies the hook. Do not run iptables commands manually."
+run_fault_case "chain absence classified from iptables stderr"     "iptables: No chain/target/match by that name."     "chain absent (netfilter hook has not applied yet)"     "KeeneticOS has not rebuilt the firewall since hook delivery. Safe next step: wait about 10 minutes and re-run mihomo-doctor.sh; rebuilding the firewall (a single router reboot also does that) lets the hook run again. Do not run iptables commands manually."
 run_fault_case "xtables lock contention classified"     "iptables: Resource temporarily unavailable."     "iptables busy (firewall rebuild or xtables lock in progress)"     "a firewall rebuild is holding iptables right now. Safe next step: re-run mihomo-doctor.sh in a few minutes."
 run_fault_case "unknown iptables read error keeps the generic fault and contract wording"     "iptables: unknown error simulation"     "chain cannot be inspected"     "iptables returned an unexpected read error. Safe next step: re-run mihomo-doctor.sh and keep its output if the problem persists."
-
 echo "[OK] Netfilter live rules runtime regression passed"
