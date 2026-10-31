@@ -52,6 +52,9 @@ jobs:
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
 
+      - name: Beta.3 publish transaction dry-run (mock GitHub, real step scripts)
+        run: python3 tests/publish-transaction-dryrun.py
+
       - name: First-fetch bootstrap mocked-network and BusyBox acceptance
         run: python3 tests/bootstrap-regression.py
 

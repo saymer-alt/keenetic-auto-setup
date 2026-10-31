@@ -3,9 +3,28 @@ name: Publish KAS Web v0.1.0-beta.3 to the experimental update channel (one-shot
 # Separate-owner-action workflow: it never runs on pull requests. It fires only
 # on a push to its dedicated ops branch after the owner explicitly decides to
 # publish. Nothing here rebuilds the panel: every IPK byte comes from the
-# pinned, verified CI run and is hash-checked against it. Before touching the
-# channel it additionally proves that the live index still points at beta.2,
-# so an unexpected channel state can never be silently overwritten.
+# pinned, verified CI run and is hash-checked against it.
+#
+# Publishing transaction, in order:
+#   1. Pinned SOURCE_SHA + VERIFIED_RUN are resolved and refused on placeholders.
+#   2. The live experimental channel state and repository Latest are recorded;
+#      anything other than the beta.2 index or this run's own beta.3 index
+#      refuses the run (never clobber an unknown live index).
+#   3. CI artifacts are downloaded and hash-verified; the channel index for
+#      beta.3 is rebuilt from them.
+#   4. The beta.3 release is created as a DRAFT first and published
+#      (draft=false) only after its assets verify byte for byte. A partial
+#      upload therefore leaves an invisible draft, not a public broken release,
+#      and a later retry resumes the same draft instead of failing forever.
+#   5. The experimental channel index is switched, and the restore trap stays
+#      armed until EVERY final publication assertion has passed (index digest,
+#      asset metadata and the GitHub Latest invariant). On any failure the trap
+#      reinstates the verified beta.2 backup — but only when the live asset is
+#      still the one this run uploaded, so a parallel index change is never
+#      clobbered. An unexpected Latest change restores the channel and then
+#      fails loudly: the workflow never rewrites or deletes Latest itself.
+#   6. A repeat run after any partial failure is safe: the existing release is
+#      deep-verified against the same manifests and completed, never recreated.
 
 on:
   push:
@@ -39,9 +58,10 @@ jobs:
         run: |
           set -euo pipefail
           case "$SOURCE_SHA" in [0-9a-f]*) test "${#SOURCE_SHA}" -eq 40 || { echo "PIN SOURCE_SHA (40 hex)" >&2; exit 1; };; *) echo "PIN SOURCE_SHA" >&2; exit 1;; esac
+          case "$SOURCE_SHA" in 0000000000000000000000000000000000000000) echo "SOURCE_SHA is still the placeholder" >&2; exit 1;; esac
           case "$VERIFIED_RUN" in 0|'') echo "PIN VERIFIED_RUN" >&2; exit 1;; esac
           echo "CANDIDATE_TAG=kas-web-ipk-${SOURCE_SHA:0:7}" >> "$GITHUB_ENV"
-      - name: Require the verified source, a fresh release and the expected live channel state
+      - name: Require the verified source and record the live channel and Latest state
         run: |
           set -euo pipefail
           test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.head_sha')" = "$SOURCE_SHA"
@@ -50,25 +70,24 @@ jobs:
             test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA" \
               || { echo "Tag $BETA_TAG exists at a different SHA" >&2; exit 1; }
           fi
-          if gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" >/dev/null 2>&1; then
-            echo "Release $BETA_TAG already exists; refusing to overwrite" >&2; exit 1
-          fi
           if gh api "repos/$GH_REPO/releases/tags/kas-web-ipk-${SOURCE_SHA:0:7}" >/dev/null 2>&1; then
             echo "A kas-web-ipk alias must not be created from beta.2 on; refusing" >&2; exit 1
           fi
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > "$RUNNER_TEMP/old-channel.json"
-          python3 - "$RUNNER_TEMP/old-channel.json" <<'PY'
-          import json,sys
+          gh release download "$CHANNEL_TAG" --repo "$GH_REPO"             --pattern panel-update.json --dir "$RUNNER_TEMP/live-index"
+          python3 - "$RUNNER_TEMP/old-channel.json" "$RUNNER_TEMP/live-index/panel-update.json" <<'PY'
+          import json,os,sys
           r=json.load(open(sys.argv[1]))
+          index=json.load(open(sys.argv[2]))
           assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
           assert [a['name'] for a in r['assets']]==['panel-update.json']
           assert r['assets'][0]['state']=='uploaded'
-          idx=json.loads(__import__('urllib.request',fromlist=['x']).urlopen(r['assets'][0]['browser_download_url']).read())
-          assert idx['tag']=='v0.1.0-beta.2', 'live experimental index does not point at beta.2: '+idx['tag']
-          print('PASS: live experimental channel points at beta.2 as expected; asset will be backed up and verified')
+          assert index['tag'] in ('v0.1.0-beta.2', os.environ['BETA_TAG']),             'live experimental index points at %s; refusing to publish over an unknown state' % index['tag']
+          print('PASS: experimental channel found with a single uploaded index asset (tag %s); it will be backed up and verified' % index['tag'])
           PY
-          # Record the repository "Latest" release; it must be identical after
-          # publishing (KAS Core latest is never moved by a KAS WEB beta).
+          # The repository "Latest" release must be identical after publishing
+          # (KAS Core latest is never moved by a KAS WEB beta). Recorded here,
+          # asserted again under the restore trap after the channel switch.
           gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' > "$RUNNER_TEMP/latest-before.txt"
       - uses: actions/checkout@v4
         with:
@@ -122,51 +141,116 @@ jobs:
               raw=pathlib.Path('build/ipk',p['name']).read_bytes()
               assert p['source_sha']==os.environ['SOURCE_SHA'] and p['version']==os.environ['BETA_VERSION']
               assert p['sha256']==hashlib.sha256(raw).hexdigest() and p['size']==len(raw)
-          old=json.load(open(os.environ['RUNNER_TEMP']+'/old-channel.json'))
           backup=(build/'channel-old/panel-update.json').read_bytes()
+          old=json.load(open(os.environ['RUNNER_TEMP']+'/old-channel.json'))
           assert hashlib.sha256(backup).hexdigest() == old['assets'][0]['digest'].split(':',1)[1]
           print('PASS: previous channel backed up; beta.3 manifest agrees with the verified artifacts')
           PY
-      - name: Publish the immutable canonical beta.3 prerelease (no alias from beta.2 on)
+      - name: Publish the canonical beta.3 prerelease (draft first, resume instead of recreate)
         run: |
           set -euo pipefail
-          gh release create "$BETA_TAG" --repo "$GH_REPO" \
-            --target "$SOURCE_SHA" --prerelease --latest=false \
-            --title 'KAS Web v0.1.0-beta.3' \
-            --notes 'Interface release: quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The beta.2 → beta.3 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.' \
+          # Draft releases are invisible to the by-tag endpoint, so an existing
+          # release (published or draft) is resolved through both lookups; a
+          # retry resumes it instead of failing or recreating.
+          lookup_release() {
+            if gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > "$1" 2>/dev/null; then return 0; fi
+            gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name==\"$BETA_TAG\")" > "$1" 2>/dev/null && test -s "$1"
+          }
+          if lookup_release build/beta-release-draft.json; then
+            echo "Existing $BETA_TAG release found; verifying and resuming instead of recreating"
+            # Cheap pre-upload guard: never mutate a release that does not
+            # belong to this exact pinned source and channel.
+            python3 - build/beta-release-draft.json <<'PY'
+          import json,os,sys
+          r=json.load(open(sys.argv[1]))
+          assert r['target_commitish']==os.environ['SOURCE_SHA'], \
+            'existing release targets a different commit; refusing to touch it'
+          assert r['prerelease'] is True, 'existing release is not a prerelease; refusing'
+          PY
+          else
+            # A draft is invisible to panels and to the public; a failed asset
+            # upload can always be resumed by a later run without deleting
+            # anything and without ever exposing a broken release.
+            gh release create "$BETA_TAG" --repo "$GH_REPO" \
+              --target "$SOURCE_SHA" --draft --prerelease --latest=false \
+              --title 'KAS Web v0.1.0-beta.3' \
+              --notes 'Interface release: quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The beta.2 → beta.3 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
+            lookup_release build/beta-release-draft.json
+          fi
+          gh release upload "$BETA_TAG" --repo "$GH_REPO" --clobber \
             build/ipk/*.ipk build/ipk/SHA256SUMS
-          test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA"
-      - name: Verify release metadata before touching the channel
-        run: |
-          set -euo pipefail
-          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release.json
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release-published.json 2>/dev/null \
+            || gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name==\"$BETA_TAG\")" > build/beta-release-published.json
           python3 - <<'PY'
           import json,os
           idx=json.load(open('build/panel-update.json'))
-          r=json.load(open('build/beta-release.json'))
+          r=json.load(open('build/beta-release-published.json'))
           assert r['tag_name']==os.environ['BETA_TAG'] and r['target_commitish']==os.environ['SOURCE_SHA']
-          assert r['prerelease'] and not r['draft'] and len(r['assets'])==5
+          assert r['prerelease'] and len(r['assets'])==5
           assets={x['name']:x for x in r['assets']}
           assert set(assets)=={p['name'] for p in idx['packages']} | {'SHA256SUMS'}
           for p in idx['packages']:
               a=assets[p['name']]
               assert a['size']==p['size'] and a['digest']=='sha256:'+p['sha256'] and a['state']=='uploaded'
               assert a['browser_download_url']==f"https://github.com/saymer-alt/keenetic-auto-setup/releases/download/{os.environ['BETA_TAG']}/{p['name']}"
-          print('PASS: canonical release matches the channel manifest byte for byte')
+          sums=assets['SHA256SUMS']
+          assert sums['state']=='uploaded' and sums['size']>0
+          print('PASS: release assets match the channel manifest byte for byte')
           PY
-      - name: Switch only experimental channel index (canonical beta.3), verify, restore on failure
+          if [ "$(python3 -c 'import json;print(json.load(open("build/beta-release-published.json"))["draft"])')" = "True" ]; then
+            gh release edit "$BETA_TAG" --repo "$GH_REPO" --draft=false
+          fi
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA"
+      - name: Switch only experimental channel index (canonical beta.3), verify, restore on any failure until the final gate
         run: |
           set -euo pipefail
+          # Digests of the three states this step reasons about.
+          sha256sum build/panel-update.json | cut -d' ' -f1 > build/new-index.sha256
+          sha256sum build/channel-old/panel-update.json | cut -d' ' -f1 > build/old-index.sha256
+          live_digest() {
+            gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" --jq '.assets[0].digest' 2>/dev/null | cut -d':' -f2
+          }
           restore() {
             status=$?
-            if [ "$status" -ne 0 ]; then
-              echo "Failed to verify channel; restoring prior index asset" >&2
-              gh release upload "$CHANNEL_TAG" build/channel-old/panel-update.json \
-                --repo "$GH_REPO" --clobber || echo "RESTORE FAILED: manual intervention required" >&2
+            trap - EXIT # one rollback attempt; never re-enter the trap
+            if [ "$status" -eq 0 ]; then return; fi
+            echo "Publication verification failed (exit $status); rolling back the experimental index" >&2
+            live=$(live_digest || true)
+            if [ "$live" = "$(cat build/new-index.sha256)" ]; then
+              # The live asset is still ours: safe to reinstate the verified
+              # beta.2 backup byte for byte.
+              if gh release upload "$CHANNEL_TAG" build/channel-old/panel-update.json \
+                   --repo "$GH_REPO" --clobber; then
+                restored=$(live_digest || true)
+                if [ "$restored" = "$(cat build/old-index.sha256)" ]; then
+                  echo "RESTORED: experimental channel is back on the verified beta.2 index" >&2
+                else
+                  echo "RESTORE FAILED: upload accepted but the live digest does not match the beta.2 backup; manual intervention required" >&2
+                fi
+              else
+                echo "RESTORE FAILED: manual intervention required (beta.2 backup: build/channel-old/panel-update.json)" >&2
+              fi
+            elif [ "$live" = "$(cat build/old-index.sha256)" ]; then
+              echo "RESTORED (already): live index is the beta.2 backup; nothing to clobber" >&2
+            elif [ -z "$live" ]; then
+              echo "RESTORE FAILED: could not read the live index digest; manual intervention required (beta.2 backup: build/channel-old/panel-update.json)" >&2
+            else
+              # Someone changed the index after our upload. Reinstating beta.2
+              # would destroy that parallel change, so leave it and escalate.
+              echo "RESTORE SKIPPED: live index changed after our upload (digest $live); refusing to clobber a parallel change — manual comparison required" >&2
             fi
+            echo "NOTE: the created beta.3 release/tag is NOT removed automatically; inspect it before any manual cleanup" >&2
           }
           trap restore EXIT
-          gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
+          live=$(live_digest)
+          if [ "$live" = "$(cat build/old-index.sha256)" ]; then
+            gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
+          elif [ "$live" = "$(cat build/new-index.sha256)" ]; then
+            echo "Live experimental index already carries this exact beta.3 index (previous partial run); verifying instead of re-uploading"
+          else
+            echo "Live experimental index is neither the beta.2 backup nor this run's beta.3 index; refusing to overwrite an unknown state" >&2
+            exit 1
+          fi
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
           python3 - <<'PY'
           import json,hashlib,pathlib,os
@@ -179,9 +263,10 @@ jobs:
           assert json.loads(index)['tag']==os.environ['BETA_TAG']
           print('PASS: experimental channel points beta.2+ panels at the canonical beta.3 release')
           PY
-          trap - EXIT
-          # Repository "Latest" must be untouched by a KAS WEB beta release.
+          # All final publication assertions stay INSIDE the restore window:
+          # a failure here must still reinstate the beta.2 index.
           test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = "$(cat "$RUNNER_TEMP/latest-before.txt")" \
-            || { echo "FATAL: repository Latest release changed" >&2; exit 1; }
+            || { echo "FATAL: repository Latest release changed during publishing — the channel is being restored; investigate Latest manually (never rewrite Latest automatically)" >&2; exit 1; }
+          trap - EXIT
           echo 'PASS: published canonical beta.3 and switched the experimental index; Latest unchanged'
-          echo 'If the index switch had failed mid-way, the beta.2 index is restored by the trap above; do not declare the release fully deployed unless the final verification printed PASS.'
+          echo 'NOTE: if this workflow had failed and restored earlier, do not declare the release fully deployed unless this final PASS printed.'

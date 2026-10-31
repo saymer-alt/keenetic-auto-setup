@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/kas-web-beta3-sidebar-theme-20261030 # candidate builds in the reviewed beta3 PR; never publishes
+      - main # after merge: the release candidate must be rebuilt from the real merge commit before any publish
     paths:
       - '.github/workflows/web-beta3-build.yml'
       - 'web/control-center/**'
