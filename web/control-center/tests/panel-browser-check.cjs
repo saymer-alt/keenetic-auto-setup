@@ -54,11 +54,13 @@ let browser;
  assert.equal(await page.locator('#open-mihomo').getAttribute('href'),'http://kas.test:9090/ui/');
  assert.equal(await page.locator('#open-generator').getAttribute('href'),'https://saymer-alt.github.io/link-generators/');
  assert.equal(await page.locator('#local-badge').getAttribute('href'),'http://kas.test/');
+ assert.equal(await page.locator('#local-badge').innerText(),'Веб-конфигуратор роутера ↗');
  for(const id of ['local-badge','open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
  assert.equal(await page.locator('.sidebar-footer #theme-mode').count(),1,'theme selector belongs to persistent sidebar');
   assert.equal(await page.locator('#view-settings #theme-mode').count(),0,'theme selector is not buried in settings');
   assert.equal(await page.locator('#theme-mode').isVisible(),true);
   await page.locator('#en').click();assert.equal(await page.locator('#theme-light').innerText(),'Light');
+  assert.equal(await page.locator('#local-badge').innerText(),'Router web configurator ↗');
   await page.locator('#ru').click();assert.equal(await page.locator('#theme-light').innerText(),'Светлая');
   await page.emulateMedia({colorScheme:'light'});
  assert.equal(await page.locator('#experiment').innerText(),'Бета-версия');
