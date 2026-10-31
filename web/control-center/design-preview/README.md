@@ -5,9 +5,12 @@ implemented HTML/CSS, not a separate visual mockup. These files are documentatio
 the router binary embeds only `web/*` and the canonical scripts.
 
 - [Desktop overview](overview-desktop.png)
+- [Dark desktop overview](overview-dark-desktop.png)
 - [Desktop subscriptions](subscriptions-desktop.png)
 - [Mobile subscriptions](subscriptions-mobile.png)
 - [Dark mobile subscriptions](subscriptions-dark-mobile.png)
+- [Desktop configuration](configuration-desktop.png)
+- [Desktop diagnostics](diagnostics-desktop.png)
 - [Desktop settings](settings-desktop.png)
 - [Mobile settings](settings-mobile.png)
 

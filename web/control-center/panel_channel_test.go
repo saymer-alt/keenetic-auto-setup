@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,49 @@ import (
 	"strings"
 	"testing"
 )
+
+// A missing stable index is expected until the owner publishes the first stable
+// release. Broken beta indexes and all other download failures stay errors.
+// Once the channel release exists, a missing index is a broken channel, never
+// an endless "not published yet"; a failed probe stays a download error.
+func TestPanelStableChannelIndex404Classification(t *testing.T) {
+	for _, tc := range []struct {
+		probeStatus int
+		probeErr    error
+		want        string
+	}{
+		{http.StatusNotFound, nil, "PANEL_CHANNEL_UNPUBLISHED"},
+		{http.StatusOK, nil, "PANEL_CHANNEL_INDEX_MISSING"},
+		{http.StatusForbidden, nil, "PANEL_DOWNLOAD_FAILED"},
+		{http.StatusInternalServerError, nil, "PANEL_DOWNLOAD_FAILED"},
+		{0, errors.New("PANEL_DOWNLOAD_FAILED"), "PANEL_DOWNLOAD_FAILED"},
+	} {
+		got := classifyChannelIndexFailure(tc.probeStatus, tc.probeErr)
+		if got == nil || got.Error() != tc.want {
+			t.Fatalf("probe status %d err %v: got %v, want %s", tc.probeStatus, tc.probeErr, got, tc.want)
+		}
+	}
+}
+func TestPanelStableChannelUnpublishedClassification(t *testing.T) {
+	for _, tc := range []struct {
+		tag, name string
+		status int
+		want string
+	}{
+		{"kas-web-channel-stable", "panel-update.json", http.StatusNotFound, "PANEL_CHANNEL_UNPUBLISHED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusOK, ""},
+		{"kas-web-channel-experimental", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "wrong-name.ipk", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-v0.1.0", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusForbidden, "PANEL_DOWNLOAD_FAILED"},
+		{"kas-web-channel-stable", "panel-update.json", http.StatusInternalServerError, "PANEL_DOWNLOAD_FAILED"},
+	} {
+		got := panelAssetStatusError(tc.tag, tc.name, tc.status)
+		if tc.want == "" && got != nil || tc.want != "" && (got == nil || got.Error() != tc.want) {
+			t.Fatalf("status %d for %s/%s: got %v, want %q", tc.status, tc.tag, tc.name, got, tc.want)
+		}
+	}
+}
 
 func TestPanelTagAllowlistPerChannel(t *testing.T) {
 	valid := map[string][]string{
