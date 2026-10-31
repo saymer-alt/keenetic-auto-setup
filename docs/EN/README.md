@@ -152,20 +152,15 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **[Full script inventory and documentation](SCRIPTS.md)**
 
-## KAS Control Center — Web panel (beta.2)
+## KAS Control Center — Web panel (testing channel)
 
-**Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS installation remains independent.
+**Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS core remains independent.
 
-**Install beta.2:** choose the correct Entware IPK via `opkg print-architecture` from the [beta.2 release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2), verify its SHA256 against `SHA256SUMS`, then transfer it by SCP/SFTP. **KN-1010 uses MIPSel**, not ARM64. For a verified file in `/tmp`:
+**Current installation:** visit [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) and select the **current KAS Control Center / KAS WEB prerelease**. GitHub's **Latest** points to **KAS Core**, not the web panel. Avoid pinned beta numbers or old IPK download links: testing builds are replaced frequently. Use `opkg print-architecture` to select the matching Entware IPK, download its `SHA256SUMS`, verify the selected package and install it locally with `opkg install`.
 
-```sh
-opkg install /tmp/kas-control-center_0.1.0.beta.2-1_mipsel-3.4.ipk
-/opt/etc/init.d/S98kas-control-center start
-```
+Default URL: `http://<br0-IPv4>:8081/`; a configured custom port survives updates. By default, no password or TLS: restrict access to trusted management networks. Beta/Stable selection in Settings checks and installs updates manually; whether a Stable build is available depends on the published channel. No automatic rollback.
 
-Default URL: `http://<br0-IPv4>:8081/`; an existing custom port survives upgrades. No password or TLS by default: restrict access to trusted management networks. Select Beta/Stable in Settings; updates are manual and the WEB stable channel is not published yet. No automatic rollback.
-
-**[Full installation, security, update and recovery guide](WEB_BETA_INSTALL.md).**
+**[Full installation, integrity checks, security, update and recovery guide](WEB_BETA_INSTALL.md).**
 
 ## 7. Reference
 
