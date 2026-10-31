@@ -1,9 +1,10 @@
-name: KAS Web v0.1.0-beta.1 candidate IPKs (no publication)
+name: KAS Web v0.1.0-beta.2 candidate IPKs (no publication)
 
 on:
   push:
     branches:
-      - release/kas-web-v0.1.0-beta.1-prep
+      - release/kas-web-v0.1.0-beta.2-prep
+      - feat/kas-web-beta2-channels-20261030 # candidate builds in the reviewed beta2 PR; never publishes
     paths:
       - '.github/workflows/web-beta-build.yml'
       - 'web/control-center/**'
@@ -30,7 +31,7 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg strict comparison, beta higher than test17
+      - name: Real Entware opkg strict version ladder, beta.1 → beta.2 → stable
         run: |
           set -euo pipefail
           curl --fail --location --connect-timeout 15 --max-time 60 \
@@ -41,9 +42,13 @@ jobs:
           printf 'dest root /opt\n' > "$RUNNER_TEMP/offline/opkg.conf"
           opkg="$RUNNER_TEMP/entware-opkg"
           args=(-f "$RUNNER_TEMP/offline/opkg.conf" --offline-root "$RUNNER_TEMP/offline" --tmp-dir "$RUNNER_TEMP/offline/opt/tmp" compare-versions)
-          "$opkg" "${args[@]}" '0.1.0~beta.1-1' '>>' '0.0.1~test44.9c715283d525-1'
-          if "$opkg" "${args[@]}" '0.0.1~test44.9c715283d525-1' '>>' '0.1.0~beta.1-1'; then
-            echo "ERROR: beta is not strictly newer than test17" >&2; exit 1
+          "$opkg" "${args[@]}" '0.1.0~beta.2-1' '>>' '0.1.0~beta.1-1'
+          "$opkg" "${args[@]}" '0.1.0-1' '>>' '0.1.0~beta.2-1'
+          if "$opkg" "${args[@]}" '0.1.0~beta.1-1' '>>' '0.1.0~beta.2-1'; then
+            echo "ERROR: beta.1 is not older than beta.2" >&2; exit 1
+          fi
+          if "$opkg" "${args[@]}" '0.1.0~beta.2-1' '>>' '0.1.0-1'; then
+            echo "ERROR: beta.2 is not older than stable" >&2; exit 1
           fi
 
   crossbuild:
@@ -56,7 +61,7 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: '0.1.0~beta.1-1'
+      BETA_VERSION: '0.1.0~beta.2-1'
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -82,18 +87,25 @@ jobs:
           echo "Built $1"
           PACKAGE_FILE="$RUNNER_TEMP/ipk/${1#./}"
           (cd "$GITHUB_WORKSPACE/web/control-center" && KAS_TEST_PANEL_IPK="$PACKAGE_FILE" KAS_TEST_PANEL_ARCH="$PACKAGE_ARCH" go test -count=1 -run '^TestPanelActualBuiltIPKMatchesGeneratedIndex$' -v .)
+          # Canonical beta release tag plus the legacy alias tag consumed by
+          # installed beta.1 panels must both generate a valid experimental index.
           python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
-            --channel experimental --tag "kas-web-ipk-${SOURCE_SHA:0:7}" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-smoke.json"
+            --channel experimental --tag "v0.1.0-beta.2" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-canonical.json"
+          python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
+            --channel experimental --tag "kas-web-ipk-${SOURCE_SHA:0:7}" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-alias.json"
           python3 - <<'PY'
           import json,os,pathlib
-          p=json.load(open(os.environ['RUNNER_TEMP']+'/ipk/manifest-smoke.json'))
-          assert p['channel']=='experimental' and len(p['packages'])==1
-          x=p['packages'][0]
-          assert x['version']=='0.1.0~beta.1-1'
-          assert x['source_sha']==os.environ['SOURCE_SHA']
-          assert x['architecture']==os.environ['PACKAGE_ARCH']
-          assert x['sha256'] and x['binary_sha256']
-          print('PASS beta version, source SHA, architecture and digest')
+          canonical=json.load(open(os.environ['RUNNER_TEMP']+'/ipk/manifest-canonical.json'))
+          alias=json.load(open(os.environ['RUNNER_TEMP']+'/ipk/manifest-alias.json'))
+          for p in (canonical,alias):
+              assert p['channel']=='experimental' and len(p['packages'])==1
+              x=p['packages'][0]
+              assert x['version']=='0.1.0~beta.2-1'
+              assert x['source_sha']==os.environ['SOURCE_SHA']
+              assert x['architecture']==os.environ['PACKAGE_ARCH']
+              assert x['sha256'] and x['binary_sha256']
+          assert canonical['tag']=='v0.1.0-beta.2' and alias['tag'].startswith('kas-web-ipk-')
+          print('PASS beta version, source SHA, architecture and digest (canonical + alias index)')
           PY
           mkdir -p inspect
           (cd inspect && tar xzf "$PACKAGE_FILE" ./data.tar.gz && tar xzf data.tar.gz && go version -m opt/bin/kas-control-center > BUILD_INFO && readelf -h opt/bin/kas-control-center > ELF_INFO)
@@ -106,10 +118,11 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: kas-web-beta1-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: kas-web-beta2-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS
-            ${{ runner.temp }}/ipk/manifest-smoke.json
+            ${{ runner.temp }}/ipk/manifest-canonical.json
+            ${{ runner.temp }}/ipk/manifest-alias.json
           if-no-files-found: error
           retention-days: 21

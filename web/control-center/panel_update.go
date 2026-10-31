@@ -137,6 +137,133 @@ func (p *panelUpdater) readJob() (panelJob, error) {
 	return j, nil
 }
 func isHex(s string) bool { _, e := hex.DecodeString(s); return e == nil }
+
+// The selected update channel lives in its own private file inside the update
+// state directory, never in the panel settings JSON: an unknown settings field
+// would be rejected by the strict parser of an older panel build, while this
+// file is simply ignored by beta.1. An absent or unreadable file means the
+// compiled build channel.
+func (p *panelUpdater) selectedChannel() string {
+	b, e := inventoryFile(p.root, "etc/kas-control-center-update/channel", 32, false)
+	if e != nil {
+		return ""
+	}
+	if s := string(b); s == "experimental\n" || s == "stable\n" {
+		return s[:len(s)-1]
+	}
+	return ""
+}
+func (p *panelUpdater) effectiveChannel() string {
+	if s := p.selectedChannel(); s != "" {
+		return s
+	}
+	return panelBuildChannel
+}
+
+// panelChannelTargets lists the channels this installation may select. The
+// compiled build channel is provenance, not a restriction: both channels are
+// explicit user opt-in on any build, per the beta.2 contract. Version
+// monotonicity (strictly newer via real opkg) still blocks downgrades, so a
+// stable panel sees no experimental offer until a strictly newer beta exists.
+func panelChannelTargets(build string) []string {
+	if panelChannelKnown(build) {
+		return []string{"experimental", "stable"}
+	}
+	return nil
+}
+func (p *panelUpdater) storeChannel(channel string) error {
+	if !panelChannelKnown(channel) {
+		return errors.New("PANEL_CHANNEL_UNKNOWN")
+	}
+	if e := p.prepareDir(); e != nil {
+		return e
+	}
+	f, e := os.CreateTemp(p.dir, ".channel-")
+	if e != nil {
+		return e
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if e = f.Chmod(0600); e == nil {
+		_, e = f.WriteString(channel + "\n")
+	}
+	if e == nil {
+		e = f.Sync()
+	}
+	closeErr := f.Close()
+	if e == nil {
+		e = closeErr
+	}
+	if e == nil {
+		e = os.Rename(tmp, filepath.Join(p.dir, "channel"))
+	}
+	if e == nil {
+		e = syncPanelDir(p.dir)
+	}
+	if e == nil {
+		// A candidate checked on the previous channel must never be applied.
+		p.mu.Lock()
+		p.checked = nil
+		p.mu.Unlock()
+	}
+	return e
+}
+
+type panelChannelState struct {
+	Channel      string   `json:"channel"`
+	BuildChannel string   `json:"build_channel"`
+	Allowed      []string `json:"allowed"`
+	ErrorCode    string   `json:"error_code,omitempty"`
+}
+
+func (a *app) handlePanelChannel(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		updateJSON(w, 200, panelChannelState{Channel: a.panelUpdate.effectiveChannel(), BuildChannel: panelBuildChannel, Allowed: panelChannelTargets(panelBuildChannel)})
+		return
+	}
+	if r.Method != http.MethodPost {
+		updateJSON(w, 405, panelChannelState{ErrorCode: "METHOD_NOT_ALLOWED"})
+		return
+	}
+	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "set-panel-channel" {
+		updateJSON(w, 403, panelChannelState{ErrorCode: "REQUEST_BLOCKED"})
+		return
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		updateJSON(w, 403, panelChannelState{ErrorCode: "REQUEST_BLOCKED"})
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 128))
+	var req struct {
+		Channel string `json:"channel"`
+	}
+	if err != nil || strictPanelJSON(raw, &req) != nil || req.Channel == "" {
+		updateJSON(w, 400, panelChannelState{ErrorCode: "INVALID_BODY"})
+		return
+	}
+	allowed := false
+	for _, c := range panelChannelTargets(panelBuildChannel) {
+		if c == req.Channel {
+			allowed = true
+		}
+	}
+	if !allowed {
+		updateJSON(w, 400, panelChannelState{ErrorCode: "PANEL_CHANNEL_UNKNOWN"})
+		return
+	}
+	// Selection only: switching the channel never starts a check or install.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.panelUpdateBusy() || a.importRunning || a.running || a.shuttingDown || a.updateChecking {
+		updateJSON(w, 409, panelChannelState{ErrorCode: "BUSY"})
+		return
+	}
+	if e := a.panelUpdate.storeChannel(req.Channel); e != nil {
+		updateJSON(w, 503, panelChannelState{ErrorCode: panelErrorCode(e)})
+		return
+	}
+	updateJSON(w, 200, panelChannelState{Channel: req.Channel, BuildChannel: panelBuildChannel, Allowed: panelChannelTargets(panelBuildChannel)})
+}
 func (p *panelUpdater) stage(j panelJob) string {
 	return filepath.Join(p.root, "tmp/.kas-panel-update-"+j.ID)
 }
@@ -174,6 +301,66 @@ func panelAssetClient(root string) *http.Client {
 	}
 	return c
 }
+// An absent unpublished stable channel is not a transport failure. Only the
+// exact channel-index 404 is treated as a candidate unpublished state; the
+// channel-release probe below makes the final call. All other HTTP failures
+// remain errors; never mask broken beta releases or missing IPKs.
+func panelAssetStatusError(tag, name string, status int) error {
+	if status == http.StatusOK {
+		return nil
+	}
+	if status == http.StatusNotFound && tag == "kas-web-channel-stable" && name == "panel-update.json" {
+		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
+	}
+	return errors.New("PANEL_DOWNLOAD_FAILED")
+}
+// classifyChannelIndexFailure turns the channel-release probe result into the
+// user-facing classification for a stable-index 404. A probeStatus of 0 with a
+// probe error means transport/API failure: that stays a download error, never
+// "unpublished", so a broken GitHub connection cannot masquerade as a missing
+// release. A published channel that lost its index asset is its own failure,
+// not an unpublished release.
+func classifyChannelIndexFailure(probeStatus int, probeErr error) error {
+	if probeErr != nil {
+		return errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+	switch probeStatus {
+	case http.StatusNotFound:
+		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
+	case http.StatusOK:
+		return errors.New("PANEL_CHANNEL_INDEX_MISSING")
+	default:
+		return errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+}
+func channelReleaseStatus(ctx context.Context, root, tag string) (int, error) {
+	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/releases/tags/"+url.PathEscape(tag), nil)
+	if e != nil {
+		return 0, e
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "KAS-Control-Center")
+	resp, e := updateClientForRoot(root).Do(req)
+	if e != nil {
+		return 0, errors.New("PANEL_DOWNLOAD_FAILED")
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	return resp.StatusCode, nil
+}
+// readChannelIndex fetches the channel index. The exact stable-index 404 is
+// confirmed as "unpublished" only when the channel release is absent too; a
+// present channel release means the index asset was lost and must surface as
+// its own error instead of an endless "not published yet".
+func readChannelIndex(ctx context.Context, root, channel string) ([]byte, error) {
+	tag := "kas-web-channel-" + channel
+	raw, e := readPanelAsset(ctx, root, tag, "panel-update.json", 1<<20)
+	if e == nil || e.Error() != "PANEL_CHANNEL_UNPUBLISHED" {
+		return raw, e
+	}
+	status, probeErr := channelReleaseStatus(ctx, root, tag)
+	return nil, classifyChannelIndexFailure(status, probeErr)
+}
 func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]byte, error) {
 	req, e := http.NewRequestWithContext(ctx, "GET", panelAssetURL(tag, name), nil)
 	if e != nil {
@@ -185,8 +372,8 @@ func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]b
 		return nil, errors.New("PANEL_DOWNLOAD_FAILED")
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, errors.New("PANEL_DOWNLOAD_FAILED")
+	if e := panelAssetStatusError(tag, name, resp.StatusCode); e != nil {
+		return nil, e
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if e != nil || int64(len(b)) > max {
@@ -199,8 +386,7 @@ func (p *panelUpdater) candidate(ctx context.Context, channel, arch string) (pan
 		return panelCandidate{}, errors.New("PANEL_CHANNEL_UNKNOWN")
 	}
 	// Read a single explicit channel index, never scan unrelated releases.
-	channelTag := "kas-web-channel-" + channel
-	raw, e := readPanelAsset(ctx, p.root, channelTag, "panel-update.json", 1<<20)
+	raw, e := readChannelIndex(ctx, p.root, channel)
 	if e != nil {
 		return panelCandidate{}, e
 	}
@@ -258,7 +444,8 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.checked = nil
 	p.mu.Unlock()
-	result := panelCheckResult{State: "UNKNOWN", Channel: panelBuildChannel, Runtime: compiledPanelIdentity().Version}
+	channel := p.effectiveChannel()
+	result := panelCheckResult{State: "UNKNOWN", Channel: channel, Runtime: compiledPanelIdentity().Version}
 	version, sha, e := p.installed()
 	result.Installed = version
 	if e == nil && (version != compiledPanelIdentity().Version || sha != compiledPanelIdentity().SourceSHA) {
@@ -272,7 +459,7 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		var c panelCandidate
-		c, e = p.candidate(ctx, panelBuildChannel, arch)
+		c, e = p.candidate(ctx, channel, arch)
 		if e == nil {
 			var newer bool
 			newer, e = panelVersionNewer(ctx, filepath.Join(p.root, "bin/opkg"), version, c.Version)
@@ -293,6 +480,15 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if e != nil {
 		result.ErrorCode = panelErrorCode(e)
+		if result.ErrorCode == "PANEL_CHANNEL_UNPUBLISHED" {
+			// No stable channel index has been published yet. This is an
+			// expected state, not a failed download or an update candidate.
+			result.State = "UNPUBLISHED"
+			result.Relation = "not_newer"
+			result.ErrorCode = ""
+			updateJSON(w, 200, result)
+			return
+		}
 		updateJSON(w, 502, result)
 		return
 	}
@@ -365,7 +561,10 @@ func (a *app) handlePanelApply(w http.ResponseWriter, r *http.Request) {
 	}
 	id := make([]byte, 12)
 	_, e := rand.Read(id)
-	j := panelJob{Schema: 1, ID: hex.EncodeToString(id), State: "RUNNING", Phase: "queued", Channel: panelBuildChannel, PreviousVersion: compiledPanelIdentity().Version, Candidate: *candidate}
+	// The job channel is the channel of the checked candidate, not a fresh
+	// read of the selection: a channel switch invalidates p.checked, so this
+	// is always the channel whose index produced the candidate.
+	j := panelJob{Schema: 1, ID: hex.EncodeToString(id), State: "RUNNING", Phase: "queued", Channel: candidate.Channel, PreviousVersion: compiledPanelIdentity().Version, Candidate: *candidate}
 	if e == nil {
 		e = p.writeJob(j)
 	}

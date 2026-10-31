@@ -132,10 +132,19 @@ test('reloading after a names failure restores node selection',async()=>{
  await app.run('loadFilterEditor()');
  await app.el('filter-clear').click();
  await app.run('refreshImport()');
- assert.match(app.el('filter-state').textContent,/недоступны/);
+ assert.match(app.el('filter-state').textContent,/Не удалось получить названия серверов/);
  assert.doesNotMatch(app.el('filter-state').textContent,/Список узлов обновлён/);
 });
 
+test('Russian access messages explain subnet and router firewall without jargon',async()=>{
+ const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
+ await app.run('refreshAccess()');
+ assert.match(app.el('access-state').textContent,/Ограничение по подсети выключено/);
+ assert.match(app.el('access-state').textContent,/межсетевого экрана роутера/);
+ assert.doesNotMatch(app.el('access-state').textContent,/firewall|Ограничение по сегменту/);
+ assert.match(app.el('access-label').textContent,/подсети br0/);
+ assert.match(app.el('settings-mode-help').textContent,/межсетевого экрана роутера/);
+});
 test('Home-only checkbox defaults off and saves explicit user choice',async()=>{
  const app=ui(response(200,{providers:{}}));
  await new Promise(setImmediate); // let the real page's initial GET finish
@@ -234,7 +243,7 @@ test('historical completed imports do not resurrect the global banner after relo
    app.run("document.documentElement.dataset={view:'"+view+"'};draw();");
    assert.equal(app.el('operation-banner').hidden,true,'historical result leaked into '+view);
   }
-  assert.match(app.el('config-state').textContent,state==='OK'?/успешно/:/ошибке/);
+  assert.match(app.el('config-state').textContent,state==='OK'?/применена/:/Не удалось/);
  }
 });
 
@@ -336,16 +345,60 @@ test('component versions distinguish installed bundle from applied watchdog',asy
  const fixture={components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'bundle_changed',recorded_version:'0.0.0~proof1-1'}}};
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
  await app.run('refreshComponents()');
- assert.match(app.el('panel-build').textContent,/0\.1\.0.*aaaaaaa/);
- assert.match(app.el('core-version').textContent,/proof2-1/);
- assert.match(app.el('watchdog-version').textContent,/proof1-1/);
+ assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0.*aaaaaaa/);
+ assert.match(app.el('core-version').textContent,/v0\.0\.0-proof2/);
+ assert.match(app.el('watchdog-version').textContent,/v0\.0\.0-proof1/);
  assert.doesNotMatch(app.el('watchdog-version').textContent,/совпадает/);
  fixture.components.watchdog={state:'stale',recorded_version:'0.0.0~proof1-1'};
  await app.run('refreshComponents()');
- assert.match(app.el('watchdog-version').textContent,/отличается/);
+ assert.match(app.el('watchdog-version').textContent,/изменён/);
  fixture.components.panel.version='SECRET-TOKEN';
  await app.run('refreshComponents()');
  assert.doesNotMatch(app.el('panel-build').textContent,/SECRET|TOKEN/);
+});
+
+test('panel versions render the public v-form identically in RU and EN',async()=>{
+ const fixture={components:{panel:{version:'0.1.0~beta.2-1',source_sha:'a'.repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}}};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
+ await app.run('refreshComponents()');
+ assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0-beta\.2 · aaaaaaa/);
+ assert.match(app.el('core-version').textContent,/v0\.0\.0-proof2 · bbbbbbb/);
+ assert.match(app.el('watchdog-version').textContent,/v0\.0\.0-proof2 · соответствует/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/0\.1\.0~beta/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/vv/);
+ for(const locale of ['en','ru']){
+  app.run("lang='"+locale+"';draw();");
+  assert.match(app.el('panel-build').textContent,/KAS Web v0\.1\.0-beta\.2 · aaaaaaa/);
+ }
+});
+
+test('development and test-build panel versions stay honest',async()=>{
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}}});
+ await app.run('refreshComponents()');
+ assert.match(app.el('panel-build').textContent,/KAS Web сборка для разработки/);
+ assert.doesNotMatch(app.el('panel-build').textContent,/v[0-9]/);
+ const lab=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.0.1~test44.9c715283d525-1',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded'}}});
+ await lab.run('refreshComponents()');
+ assert.match(lab.el('panel-build').textContent,/KAS Web v0\.0\.1-test44\.9c715283d525 · aaaaaaa/);
+});
+
+test('sidebar stage badge follows the running build identity',async()=>{
+ const base={core:{state:'absent'},watchdog:{state:'unrecorded'}};
+ const beta=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0~beta.3-1',source_sha:'a'.repeat(40)},...base}});
+ await beta.run('refreshComponents()');
+ assert.equal(beta.el('experiment').textContent,'Бета-версия');
+ const stable=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0-1',source_sha:'a'.repeat(40)},...base}});
+ await stable.run('refreshComponents()');
+ assert.equal(stable.el('experiment').textContent,'Стабильная версия');
+ stable.run("lang='en';draw();");
+ assert.equal(stable.el('experiment').textContent,'Stable version');
+ const dev=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'development',source_sha:''},...base}});
+ await dev.run('refreshComponents()');
+ assert.equal(dev.el('experiment').textContent,'сборка для разработки');
+ // Unverifiable identity must not silently claim a stable release.
+ const broken=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'SECRET-TOKEN',source_sha:''},...base}});
+ await broken.run('refreshComponents()');
+ assert.equal(broken.el('experiment').textContent,'Бета-версия');
 });
 
 test('overview shows process evidence and explicitly sourced versions',async()=>{
@@ -354,18 +407,18 @@ test('overview shows process evidence and explicitly sourced versions',async()=>
  assert.match(app.el('mihomo-file').textContent,/Процесс запущен.*1\.19\.33.*API/);
  assert.match(app.el('magitrickle-file').textContent,/Процесс не найден.*0\.8\.2-1.*пакет/);
  app.run(`statusData.runtime.mihomo={state:'unknown',version:'<SECRET>',version_source:'api'};draw();`);
- assert.match(app.el('mihomo-file').textContent,/не удалось проверить/);
+ assert.match(app.el('mihomo-file').textContent,/Не удалось определить/);
  assert.doesNotMatch(app.el('mihomo-file').textContent,/SECRET/);
 });
 test('Doctor warnings are findings rather than command failure',async()=>{
  const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
  app.run(`doctorData={exit_code:1,timestamp:'test',details:'full report',summary:{verdict:'WARN',ok:4,warn:2,fail:0,info:3}};draw();`);
- assert.match(app.el('doctor-state').textContent,/Предупреждения: 2/);
+ assert.match(app.el('doctor-state').textContent,/предупреждений — 2/);
  assert.doesNotMatch(app.el('doctor-state').textContent,/Команда|не завершилась|ошибка:|код выхода/);
  app.run(`doctorData={exit_code:0,timestamp:'test',details:'incomplete report'};draw();`);
- assert.match(app.el('doctor-state').textContent,/Диагностика завершена.*не распознан/);
+ assert.match(app.el('doctor-state').textContent,/Диагностика завершена.*определить не удалось/);
  app.run(`doctorData={exit_code:2,timestamp:'test',details:'report',summary:{verdict:'FAIL',ok:4,warn:1,fail:2,info:3}};draw();`);
- assert.match(app.el('doctor-state').textContent,/Ошибки: 2/);
+ assert.match(app.el('doctor-state').textContent,/ошибок — 2/);
 });
 test('script-installed watchdog shows its actual digest without a fictitious version',async()=>{
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded',installed_sha256:'b'.repeat(64)}}});
@@ -436,9 +489,9 @@ test('matching Mihomo version distinguishes opkg provenance and disables unneces
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{updateCheck:{state:'AVAILABLE',current_version:'1.19.33',available_version:'1.19.33',package_release:2,installed_package_version:'1.19.32-1',relation:'same_runtime'}});await new Promise(setImmediate);
  await app.el('update-check').click();
  assert.equal(app.el('update-mihomo').disabled,true);
- assert.match(app.el('updates-state').textContent,/Работающий Mihomo: 1\.19\.33/);
+ assert.match(app.el('updates-state').textContent,/Версия запущенного Mihomo: 1\.19\.33/);
  assert.match(app.el('updates-state').textContent,/opkg.*1\.19\.32-1/);
- assert.match(app.el('updates-state').textContent,/не подтверждён/);
+ assert.match(app.el('updates-state').textContent,/подтвердить не удалось/);
  app.run("updateCheckData.relation='newer_package';draw();");assert.equal(app.el('update-mihomo').disabled,false);
 });
 test('MT check is manual, confirmation cancels and one named update blocks mutations',async()=>{
@@ -457,7 +510,7 @@ test('MT check is manual, confirmation cancels and one named update blocks mutat
 });
 test('MT no-upgrade result does not invent an available version or allow update',async()=>{
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{mtCheck:{state:'AVAILABLE',current_version:'0.8.2-1',relation:'no_upgrade'}});await new Promise(setImmediate);
- await app.el('mt-check').click();assert.equal(app.el('update-mt').disabled,true);assert.match(app.el('mt-state').textContent,/не предлагают/);
+ await app.el('mt-check').click();assert.equal(app.el('update-mt').disabled,true);assert.match(app.el('mt-state').textContent,/обновлений нет/);
 });
 for(const component of ['mihomo','magitrickle'])test('lost '+component+' request never presents an old successful operation as the new result',async()=>{
  const fixture={updatePostError:component==='mihomo',mtPostError:component==='magitrickle',updateOperation:{id:'old-op',component,state:'OK',outcome:'CHANGED'}};
@@ -498,7 +551,7 @@ test('router panel link opens router root without the KAS port, credentials or q
 });
 test('standalone disabled editor explains unavailability without a raw backend code',async()=>{
  const app=ui(response(200,{providers:{}}),404,'UNKNOWN',{inspectError:'EDITOR_DISABLED'});await new Promise(setImmediate);
- await app.el('filter-load').click();assert.doesNotMatch(app.el('filter-state').textContent,/EDITOR_DISABLED/);assert.match(app.el('filter-state').textContent,/режим.*запуска/);
+ await app.el('filter-load').click();assert.doesNotMatch(app.el('filter-state').textContent,/EDITOR_DISABLED/);assert.match(app.el('filter-state').textContent,/способе запуска/);
  assert.equal(app.el('filter-preview').disabled,true);
 });
 
