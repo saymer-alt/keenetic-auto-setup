@@ -61,7 +61,12 @@ grep -Fq 'mp_stopped || return 1' "$ROOT/install.sh" || fail "installer must pro
 grep -Fq 'netstat -tln' "$ROOT/install.sh" || fail "installer must verify no existing 7890 service before reactivation"
 grep -Fq 'PROXY_CREATED_THIS_RUN=1' "$ROOT/install.sh" || fail "installer must track newly-created project proxy separately from reused"
 grep -Fq 'if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then' "$ROOT/install.sh" || fail "repeated install must not toggle reused ProxyN"
-grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must refuse toggling foreign/legacy proxy"
+# Issue #310: the hook trigger accepts exactly the same verified functional
+# compatibility (canonical or legacy bridge to 127.0.0.1:7890) that the
+# bypass_wa policy exit binding accepts; foreign profiles are still refused
+# and reused interfaces on existing stack are still never bounced.
+grep -Fq 'proxy_is_compatible "$PROXY_IFACE"' "$ROOT/install.sh" || fail "hook trigger must verify the same functional bridge compatibility as the policy exit binding"
+! grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "hook trigger must not fall back to the description-based canonical-only guard"
 grep -Fq 'PROXY_RESTORE_PENDING="$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must mark interface restoration pending before DOWN"
 grep -Fq 'ndmc -c "interface ${PROXY_IFACE} up"' "$ROOT/install.sh" || fail "installer must restore project proxy UP"
 grep -Fq 'check_bypass_netfilter_runtime() {' "$ROOT/install.sh" || fail "installer must verify actual Netfilter runtime after post-hook activation"
@@ -74,6 +79,14 @@ grep -Fq '$12=="--nfmask"' "$ROOT/install.sh" || fail "installer must require fu
 grep -Fq '$14=="--ctmask"' "$ROOT/install.sh" || fail "installer must require full --ctmask on normalized connmark"
 grep -Fq '_br_last_fault="chain cannot be inspected"' "$ROOT/install.sh" || fail "installer must record an unreadable or missing chain"
 grep -Fq 'check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks:' "$ROOT/install.sh" || fail "installer must fail after bounded Netfilter readiness retries"
+# Issue #310 diagnostics: classify a nonzero iptables answer from its captured
+# stderr instead of collapsing absent chain, xtables lock and read error.
+grep -Fq '_br_last_fault="chain absent (netfilter hook has not applied yet)"' "$ROOT/install.sh" || fail "installer must classify a definitive absent chain"
+grep -Fq '_br_last_fault="iptables busy (firewall rebuild or xtables lock in progress)"' "$ROOT/install.sh" || fail "installer must classify transient iptables/xtables lock contention"
+grep -Fq 'one router reboot also applies the hook' "$ROOT/install.sh" || fail "installer must give a safe next step for an unapplied hook"
+grep -Fq 'Do not run iptables commands manually' "$ROOT/install.sh" || fail "installer must warn against manual iptables commands"
+grep -Fq 'chain absent' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish an absent chain from a read error"
+grep -Fq 'iptables busy (firewall rebuild in progress)' "$ROOT/mihomo-doctor.sh" || fail "Doctor must classify xtables lock contention"
 grep -Fq '_br_max_rounds=8' "$ROOT/install.sh" || fail "installer Netfilter readiness retries must be bounded"
 grep -Fq 'if _br_probe_once; then' "$ROOT/install.sh" || fail "installer Netfilter retries must test a complete atomic attempt"
 _fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
@@ -96,6 +109,14 @@ if command -v busybox >/dev/null 2>&1; then
         fail "BusyBox ash installer live Netfilter rule fixtures failed"
 fi
 pass "installer live Netfilter verification rejects false positives and handles serialized iptables matches"
+
+sh "$ROOT/tests/netfilter-first-install-regression.sh" "$ROOT" ||
+    fail "fresh Entware with a reused legacy-compatible Proxy0 must still apply the delivered Netfilter hook trigger (issue #310)"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/netfilter-first-install-regression.sh" "$ROOT" ||
+        fail "BusyBox ash Netfilter first-install trigger fixtures failed"
+fi
+pass "fresh-install legacy bridge hook trigger (issue #310) and activation guard matrix passed"
 
 
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"

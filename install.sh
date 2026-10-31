@@ -2006,6 +2006,17 @@ fi
 # transition may trigger native netfilter.d hook application without reboot.
 # On an existing Entware stack, never bounce reused ProxyN automatically.
 # This is deliberately placed after hook delivery and before Mihomo startup.
+#
+# Issue #310 field finding: a fresh Entware stack often reuses a
+# legacy-compatible Proxy0 left over from a previous installation. It is
+# already trusted as the bypass_wa policy exit (proxy_is_compatible in
+# ensure_bypass_policy_exit), so refusing only the interface toggle left the
+# delivered hook unapplied: nothing else invoked netfilter.d, _CUST_BYPASS_WA_
+# stayed absent and the installation failed. The trigger therefore accepts the
+# SAME verified functional compatibility the routing decision accepts
+# (canonical or legacy; foreign profiles are still refused) — still only on a
+# fresh stack or a proxy created this run, and only when the interface is
+# explicitly UP. The legacy description is never renamed.
 activate_bypass_on_fresh_proxy() {
     [ -n "$PROXY_IFACE" ] || return 0
     if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne 1 ]; then
@@ -2018,8 +2029,8 @@ activate_bypass_on_fresh_proxy() {
     fi
     proxy_state "$PROXY_IFACE"
     if [ "$PROXY_STATE" != "FOUND" ] ||
-       ! proxy_is_canonical "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
-        warn "ProxyN is not a verified canonical project interface; no interface toggle"
+       ! proxy_is_compatible "$PROXY_IFACE" "${PROXY_IFACE#Proxy}"; then
+        warn "ProxyN is not a verified compatible project bridge (foreign or unverified); no interface toggle"
         return 0
     fi
     # Do not change an intentionally disabled proxy to UP. An existing
@@ -2446,8 +2457,24 @@ check_bypass_netfilter_runtime() {
     # A real missing/incomplete chain remains a hard FAIL; no firewall writes,
     # reloads or interface toggles occur during these retries.
     _br_probe_once() {
+    _br_chain_dump=""
     if ! _br_chain_dump=$(iptables -t mangle -S "$_br_chain" 2>&1); then
-        _br_last_fault="chain cannot be inspected"
+        # The probe previously collapsed every nonzero answer into one fault
+        # (issue #310): a not-yet-created chain, a concurrent KeeneticOS
+        # firewall rebuild holding the xtables lock and a genuine read error
+        # all reported identically. Classify from the captured stderr so the
+        # final message names the real cause and a safe next step.
+        case "$_br_chain_dump" in
+            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|*"chain does not exist"*)
+                _br_last_fault="chain absent (netfilter hook has not applied yet)"
+                ;;
+            *"Resource temporarily unavailable"*|*"Resource busy"*|*"xtables.lock"*)
+                _br_last_fault="iptables busy (firewall rebuild or xtables lock in progress)"
+                ;;
+            *)
+                _br_last_fault="chain cannot be inspected"
+                ;;
+        esac
         return 1
     fi
     if ! _br_pre=$(iptables -t mangle -S PREROUTING 2>&1); then
@@ -2520,6 +2547,19 @@ check_bypass_netfilter_runtime() {
         _br_round=$((_br_round + 1))
     done
     check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks: $_br_last_fault; required policy mark=0x$_br_mark"
+    # One plain-language line with a safe next step, so a non-technical user
+    # does not have to read the verbose log or run diagnostic commands.
+    case "$_br_last_fault" in
+        "chain absent"*)
+            check_info "bypass_wa: KeeneticOS has not rebuilt the firewall since hook delivery. Safe next step: wait about 10 minutes and re-run mihomo-doctor.sh; one router reboot also applies the hook. Do not run iptables commands manually."
+            ;;
+        "iptables busy"*)
+            check_info "bypass_wa: a firewall rebuild is holding iptables right now. Safe next step: re-run mihomo-doctor.sh in a few minutes."
+            ;;
+        *)
+            check_info "bypass_wa: iptables returned an unexpected read error. Safe next step: re-run mihomo-doctor.sh and keep its output if the problem persists."
+            ;;
+    esac
 
 }
 check_bypass_netfilter_runtime
