@@ -88,6 +88,12 @@ jobs:
       - name: Config import expected-source gate regression (dash and BusyBox ash)
         run: python3 tests/config-import-filter-gate-regression.py
 
+      - name: Network Doctor staged diagnostic regression (dash and BusyBox ash)
+        run: python3 tests/network-doctor-regression.py
+
+      - name: Router sys-metrics collector regression (dash and BusyBox ash)
+        run: python3 tests/sys-metrics-regression.py
+
       - name: Downloader partial-transfer regression (dash and BusyBox ash)
         run: python3 tests/download-regression.py
 
