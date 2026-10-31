@@ -13,6 +13,18 @@
    PANEL_PACKAGE_INVALID:'Пакет обновления не прошёл проверку. Установка заблокирована.',
    PANEL_IDENTITY_MISMATCH:'Установленный пакет панели не совпадает с запущенной версией. Проверьте состояние через SSH.',
    PANEL_CHANNEL_UNPUBLISHED:'Выбранный канал обновлений ещё не опубликован.',
+   PANEL_INSUFFICIENT_SPACE:'На накопителе недостаточно места для обновления. Освободите место в Entware и повторите попытку.',
+   PANEL_SPACE_UNVERIFIED:'Не удалось проверить свободное место на накопителе. Установка не начиналась.',
+   PANEL_OPKG_FAILED:'Ошибка установки пакета через opkg. Проверьте состояние панели через SSH.',
+   PANEL_OPKG_BUSY_OR_UNKNOWN:'Менеджер пакетов opkg занят или его состояние неизвестно. Проверьте через SSH.',
+   PANEL_OPKG_UNAVAILABLE:'Менеджер пакетов opkg недоступен. Проверьте Entware.',
+   PANEL_START_FAILED:'Новая версия панели не запустилась. Проверьте состояние через SSH.',
+   PANEL_RUNTIME_UNVERIFIED:'Не удалось подтвердить запуск новой версии панели. Проверьте состояние через SSH.',
+   PANEL_NOT_PACKAGE_OWNED:'Панель установлена не как штатный пакет Entware. Обновление из браузера недоступно.',
+   PANEL_CONFIG_CHANGED:'Во время проверки изменились файлы настроек. Установка остановлена, повторите проверку.',
+   PANEL_REDIRECT_BLOCKED:'Ссылка для скачивания не прошла проверку безопасности. Загрузка остановлена.',
+   PANEL_FILE_UNSAFE:'Файлы панели не прошли проверку безопасности. Проверьте установку через SSH.',
+   PANEL_VERSION_UNVERIFIED:'Не удалось подтвердить версию установленного пакета. Обновление остановлено.',
    PANEL_CHANNEL_UNKNOWN:'Выбран неизвестный канал обновлений.',
    PANEL_RECOVERY_REQUIRED:'Обновление было прервано. Для восстановления панели требуется проверка через SSH.',
    PANEL_UPDATE_FAILED:'Не удалось завершить проверку или установку обновления. Проверьте состояние панели.',
@@ -30,6 +42,18 @@
    PANEL_PACKAGE_INVALID:'The update package failed verification. Installation is blocked.',
    PANEL_IDENTITY_MISMATCH:'The installed panel package does not match the running version. Inspect its state through SSH.',
    PANEL_CHANNEL_UNPUBLISHED:'The selected update channel has not been published yet.',
+   PANEL_INSUFFICIENT_SPACE:'Not enough storage space for the update. Free up Entware storage and try again.',
+   PANEL_SPACE_UNVERIFIED:'Could not verify free storage space. Installation was not started.',
+   PANEL_OPKG_FAILED:'opkg could not install the package. Inspect panel state through SSH.',
+   PANEL_OPKG_BUSY_OR_UNKNOWN:'The opkg package manager is busy or its state is unknown. Check through SSH.',
+   PANEL_OPKG_UNAVAILABLE:'The opkg package manager is unavailable. Check Entware.',
+   PANEL_START_FAILED:'The new panel version failed to start. Inspect its state through SSH.',
+   PANEL_RUNTIME_UNVERIFIED:'Could not verify that the new panel version is running. Check through SSH.',
+   PANEL_NOT_PACKAGE_OWNED:'The panel is not installed as a standard Entware package. Browser updates are unavailable.',
+   PANEL_CONFIG_CHANGED:'Configuration files changed during verification. Installation stopped; check again.',
+   PANEL_REDIRECT_BLOCKED:'The download link failed security verification. Download blocked.',
+   PANEL_FILE_UNSAFE:'Panel files failed a safety check. Inspect the installation through SSH.',
+   PANEL_VERSION_UNVERIFIED:'Could not verify the installed package version. Update halted.',
    PANEL_CHANNEL_UNKNOWN:'Unknown update channel.',
    PANEL_RECOVERY_REQUIRED:'The update was interrupted. Inspect and recover the panel through SSH.',
    PANEL_UPDATE_FAILED:'The update check or installation could not be completed. Verify the panel state.',
@@ -48,6 +72,13 @@
   if(known[code])return known[code];
   if(/^HTTP_/.test(code))return language==='ru'?'Сервер вернул ошибку. Повторите попытку или проверьте подключение.':'The server returned an error. Try again or check connectivity.';
   return language==='ru'?'Операцию не удалось завершить. Подробности доступны ниже.':'The operation could not be completed. See technical details below.';
+ }
+ const phaseNames={
+  ru:{queued:'Подготовка',download:'Загрузка пакета',install:'Установка пакета',starting:'Запуск новой версии',complete:'Завершение',recovered:'Восстановление'},
+  en:{queued:'Preparing',download:'Downloading package',install:'Installing package',starting:'Starting new version',complete:'Finishing',recovered:'Recovering'}
+ };
+ function humanPhase(phase,language){
+  return (phaseNames[language]||phaseNames.en)[phase]||(language==='ru'?'Выполняется операция':'Processing');
  }
  const validID=id=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id);
  const validChannel=c=>c==='experimental'||c==='stable';
@@ -84,6 +115,7 @@
    el('panel-update-error-code').textContent=details?rawCode:'';
    const params={...message.params,code:explainError(rawCode,options.getLang())};
    if(typeof params.channel==='string')params.channel=channelName(params.channel);
+   if(typeof params.phase==='string')params.phase=humanPhase(params.phase,options.getLang());
    let text=checking?t('checking'):t(message.key,params);
    if(check?.state==='OK'&&!checking)text=t('available',{installed:publicVersion(check.installed_version||'?'),runtime:publicVersion(check.runtime_version||'?'),available:publicVersion(check.available_version||'?'),channel:channelName(check.channel||'?')})+' '+text;
    el('panel-update-state').textContent=text;
