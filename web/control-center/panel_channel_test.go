@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,49 +10,6 @@ import (
 	"strings"
 	"testing"
 )
-
-// A missing stable index is expected until the owner publishes the first stable
-// release. Broken beta indexes and all other download failures stay errors.
-// Once the channel release exists, a missing index is a broken channel, never
-// an endless "not published yet"; a failed probe stays a download error.
-func TestPanelStableChannelIndex404Classification(t *testing.T) {
-	for _, tc := range []struct {
-		probeStatus int
-		probeErr    error
-		want        string
-	}{
-		{http.StatusNotFound, nil, "PANEL_CHANNEL_UNPUBLISHED"},
-		{http.StatusOK, nil, "PANEL_CHANNEL_INDEX_MISSING"},
-		{http.StatusForbidden, nil, "PANEL_DOWNLOAD_FAILED"},
-		{http.StatusInternalServerError, nil, "PANEL_DOWNLOAD_FAILED"},
-		{0, errors.New("PANEL_DOWNLOAD_FAILED"), "PANEL_DOWNLOAD_FAILED"},
-	} {
-		got := classifyChannelIndexFailure(tc.probeStatus, tc.probeErr)
-		if got == nil || got.Error() != tc.want {
-			t.Fatalf("probe status %d err %v: got %v, want %s", tc.probeStatus, tc.probeErr, got, tc.want)
-		}
-	}
-}
-func TestPanelStableChannelUnpublishedClassification(t *testing.T) {
-	for _, tc := range []struct {
-		tag, name string
-		status int
-		want string
-	}{
-		{"kas-web-channel-stable", "panel-update.json", http.StatusNotFound, "PANEL_CHANNEL_UNPUBLISHED"},
-		{"kas-web-channel-stable", "panel-update.json", http.StatusOK, ""},
-		{"kas-web-channel-experimental", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
-		{"kas-web-channel-stable", "wrong-name.ipk", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
-		{"kas-web-v0.1.0", "panel-update.json", http.StatusNotFound, "PANEL_DOWNLOAD_FAILED"},
-		{"kas-web-channel-stable", "panel-update.json", http.StatusForbidden, "PANEL_DOWNLOAD_FAILED"},
-		{"kas-web-channel-stable", "panel-update.json", http.StatusInternalServerError, "PANEL_DOWNLOAD_FAILED"},
-	} {
-		got := panelAssetStatusError(tc.tag, tc.name, tc.status)
-		if tc.want == "" && got != nil || tc.want != "" && (got == nil || got.Error() != tc.want) {
-			t.Fatalf("status %d for %s/%s: got %v, want %q", tc.status, tc.tag, tc.name, got, tc.want)
-		}
-	}
-}
 
 func TestPanelTagAllowlistPerChannel(t *testing.T) {
 	valid := map[string][]string{
@@ -323,5 +280,105 @@ func TestPanelCheckUsesSelectedChannelInResult(t *testing.T) {
 	}
 	if p.effectiveChannel() != "stable" {
 		t.Fatal("precondition: selection must drive the effective channel")
+	}
+}
+// Pages-based channel classification (docs/updates-pages-architecture.md):
+// the registry distinguishes "not published yet" from "published but broken"
+// and from "temporarily unavailable"; none of the failures may degrade into
+// a harmless "no updates".
+func TestPagesChannelStates(t *testing.T) {
+	restore := pagesUpdateBase
+	defer func() { pagesUpdateBase = restore }()
+
+	indexBody := func(tag string) []byte {
+		return []byte(`{"schema":1,"channel":"experimental","tag":"` + tag + `","packages":[]}`)
+	}
+	registry := func(experimental bool) []byte {
+		return []byte(`{"schema":1,"channels":{"experimental":{"published":` +
+			map[bool]string{true: "true", false: "false"}[experimental] +
+			`,"tag":"v0.1.0-beta.4"},"stable":{"published":false}}}`)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		registry    func() (int, []byte)
+		index       func() (int, []byte)
+		want        string
+	}{
+		{"published experimental with a valid index", func() (int, []byte) { return 200, registry(true) },
+			func() (int, []byte) { return 200, indexBody("v0.1.0-beta.4") }, ""},
+		{"registry says unpublished", func() (int, []byte) { return 200, registry(false) },
+			func() (int, []byte) { t.Fatal("index must not be fetched for an unpublished channel"); return 0, nil },
+			"PANEL_CHANNEL_UNPUBLISHED"},
+		{"published but the index file is missing", func() (int, []byte) { return 200, registry(true) },
+			func() (int, []byte) { return 404, nil }, "PANEL_CHANNEL_INDEX_MISSING"},
+		{"published but the index is broken JSON", func() (int, []byte) { return 200, registry(true) },
+			func() (int, []byte) { return 200, []byte("{oops") }, "PANEL_METADATA_INVALID"},
+		{"registry missing from the site", func() (int, []byte) { return 404, nil },
+			func() (int, []byte) { t.Fatal("index must not be fetched without a registry"); return 0, nil },
+			"PANEL_UPDATE_SOURCE_BROKEN"},
+		{"registry is not JSON", func() (int, []byte) { return 200, []byte("<html>") },
+			func() (int, []byte) { t.Fatal("index must not be fetched with a broken registry"); return 0, nil },
+			"PANEL_UPDATE_SOURCE_BROKEN"},
+		{"registry schema is alien", func() (int, []byte) { return 200, []byte(`{"schema":9,"channels":{}}`) },
+			func() (int, []byte) { t.Fatal("index must not be fetched with an alien registry"); return 0, nil },
+			"PANEL_UPDATE_SOURCE_BROKEN"},
+		{"site temporarily unavailable", func() (int, []byte) { return 503, nil },
+			func() (int, []byte) { t.Fatal("index must not be fetched when the site is down"); return 0, nil },
+			"PANEL_UPDATE_SOURCE_UNAVAILABLE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/updates/channels.json":
+					code, body := tc.registry()
+					w.WriteHeader(code)
+					_, _ = w.Write(body)
+				case "/updates/experimental/panel-update.json":
+					code, body := tc.index()
+					w.WriteHeader(code)
+					_, _ = w.Write(body)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			pagesUpdateBase = server.URL + "/updates"
+			_, err := readChannelIndex(context.Background(), t.TempDir(), "experimental")
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("expected success, got %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("got %v, want %s", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestPagesRedirectsAreRestrictedToTheExactHost(t *testing.T) {
+	restore := pagesUpdateBase
+	defer func() { pagesUpdateBase = restore }()
+
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"schema":1,"channels":{"experimental":{"published":true}}}`))
+	}))
+	defer evil.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/updates/channels.json", http.StatusFound)
+	}))
+	defer server.Close()
+	pagesUpdateBase = server.URL + "/updates"
+
+	_, err := readChannelIndex(context.Background(), t.TempDir(), "experimental")
+	if err == nil {
+		t.Fatal("redirect to a foreign host must be refused")
+	}
+	code := err.Error()
+	if code != "PANEL_UPDATE_REDIRECT_BLOCKED" && code != "PANEL_UPDATE_SOURCE_UNAVAILABLE" {
+		t.Fatalf("unexpected classification %q", code)
 	}
 }
