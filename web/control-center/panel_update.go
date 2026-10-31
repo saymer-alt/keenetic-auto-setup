@@ -301,79 +301,58 @@ func panelAssetClient(root string) *http.Client {
 	}
 	return c
 }
-// An absent unpublished stable channel is not a transport failure. Only the
-// exact channel-index 404 is treated as a candidate unpublished state; the
-// channel-release probe below makes the final call. All other HTTP failures
-// remain errors; never mask broken beta releases or missing IPKs.
-func panelAssetStatusError(tag, name string, status int) error {
-	if status == http.StatusOK {
-		return nil
+// Pages-based update index source (beta.4, docs/updates-pages-architecture.md).
+// The index pointers live on the project's GitHub Pages; package BYTES remain
+// on GitHub Releases and keep the existing strict release/asset validation.
+// The base URL is a single constant: no URLs are accepted from response
+// bodies, and only the exact Pages host is trusted for redirects.
+
+var pagesUpdateBase = "https://saymer-alt.github.io/keenetic-auto-setup/updates"
+
+const pagesUpdateHost = "saymer-alt.github.io"
+
+// pagesClient bounds and hardens index fetches: redirects are allowed only
+// within the exact Pages host over https; a response body is bounded by the
+// caller. Timeouts mirror the existing update client.
+func pagesClient(root string) *http.Client {
+	c := updateClientForRoot(root)
+	c.Timeout = 20 * time.Second
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme == "https" && req.URL.Hostname() == pagesUpdateHost && len(via) <= 2 {
+			return nil
+		}
+		return errors.New("PANEL_UPDATE_REDIRECT_BLOCKED")
 	}
-	if status == http.StatusNotFound && tag == "kas-web-channel-stable" && name == "panel-update.json" {
-		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
-	}
-	return errors.New("PANEL_DOWNLOAD_FAILED")
+	return c
 }
-// classifyChannelIndexFailure turns the channel-release probe result into the
-// user-facing classification for a stable-index 404. A probeStatus of 0 with a
-// probe error means transport/API failure: that stays a download error, never
-// "unpublished", so a broken GitHub connection cannot masquerade as a missing
-// release. A published channel that lost its index asset is its own failure,
-// not an unpublished release.
-func classifyChannelIndexFailure(probeStatus int, probeErr error) error {
-	if probeErr != nil {
-		return errors.New("PANEL_DOWNLOAD_FAILED")
-	}
-	switch probeStatus {
-	case http.StatusNotFound:
-		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
-	case http.StatusOK:
-		return errors.New("PANEL_CHANNEL_INDEX_MISSING")
-	default:
-		return errors.New("PANEL_DOWNLOAD_FAILED")
-	}
-}
-func channelReleaseStatus(ctx context.Context, root, tag string) (int, error) {
-	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/saymer-alt/keenetic-auto-setup/releases/tags/"+url.PathEscape(tag), nil)
+
+// pagesFetch GETs one JSON resource under the Pages base and classifies
+// failures honestly: transport/TLS/5xx are "temporarily unavailable", a
+// missing or unparsable resource is "source broken". 3xx that were not
+// followed surface as unavailable with the redirect reason preserved.
+func pagesFetch(ctx context.Context, root, relative string, max int64) ([]byte, error) {
+	req, e := http.NewRequestWithContext(ctx, http.MethodGet, pagesUpdateBase+"/"+relative, nil)
 	if e != nil {
-		return 0, e
+		return nil, errors.New("PANEL_UPDATE_SOURCE_BROKEN")
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "KAS-Control-Center")
-	resp, e := updateClientForRoot(root).Do(req)
+	resp, e := pagesClient(root).Do(req)
 	if e != nil {
-		return 0, errors.New("PANEL_DOWNLOAD_FAILED")
+		return nil, errors.New("PANEL_UPDATE_SOURCE_UNAVAILABLE")
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	return resp.StatusCode, nil
-}
-// readChannelIndex fetches the channel index. The exact stable-index 404 is
-// confirmed as "unpublished" only when the channel release is absent too; a
-// present channel release means the index asset was lost and must surface as
-// its own error instead of an endless "not published yet".
-func readChannelIndex(ctx context.Context, root, channel string) ([]byte, error) {
-	tag := "kas-web-channel-" + channel
-	raw, e := readPanelAsset(ctx, root, tag, "panel-update.json", 1<<20)
-	if e == nil || e.Error() != "PANEL_CHANNEL_UNPUBLISHED" {
-		return raw, e
-	}
-	status, probeErr := channelReleaseStatus(ctx, root, tag)
-	return nil, classifyChannelIndexFailure(status, probeErr)
-}
-func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]byte, error) {
-	req, e := http.NewRequestWithContext(ctx, "GET", panelAssetURL(tag, name), nil)
-	if e != nil {
-		return nil, e
-	}
-	req.Header.Set("User-Agent", "KAS-Control-Center")
-	resp, e := panelAssetClient(root).Do(req)
-	if e != nil {
-		return nil, errors.New("PANEL_DOWNLOAD_FAILED")
-	}
-	defer resp.Body.Close()
-	if e := panelAssetStatusError(tag, name, resp.StatusCode); e != nil {
-		return nil, e
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			return nil, errors.New("PANEL_UPDATE_REDIRECT_BLOCKED")
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			// A 404 means the site or the resource is missing: a broken
+			// deployment for the registry, a missing index for a channel
+			// the registry claims is published. Callers refine.
+			return nil, errPagesNotFound
+		}
+		return nil, errors.New("PANEL_UPDATE_SOURCE_UNAVAILABLE")
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if e != nil || int64(len(b)) > max {
@@ -381,6 +360,57 @@ func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]b
 	}
 	return b, nil
 }
+
+var errPagesNotFound = errors.New("PANEL_UPDATE_SOURCE_NOT_FOUND")
+
+type pagesRegistry struct {
+	Schema   int `json:"schema"`
+	Channels map[string]struct {
+		Published bool   `json:"published"`
+		Tag       string `json:"tag,omitempty"`
+	} `json:"channels"`
+}
+
+// readChannelIndex reads the channel index from the Pages source and
+// classifies every failure honestly: a broken or unavailable source is an
+// error, never a harmless "no updates".
+func readChannelIndex(ctx context.Context, root, channel string) ([]byte, error) {
+	if channel != "experimental" && channel != "stable" {
+		return nil, errors.New("PANEL_CHANNEL_UNKNOWN")
+	}
+	regRaw, e := pagesFetch(ctx, root, "channels.json", 64<<10)
+	if e != nil {
+		if errors.Is(e, errPagesNotFound) {
+			return nil, errors.New("PANEL_UPDATE_SOURCE_BROKEN")
+		}
+		return nil, e
+	}
+	var reg pagesRegistry
+	if json.Unmarshal(regRaw, &reg) != nil || reg.Schema != 1 || reg.Channels == nil {
+		return nil, errors.New("PANEL_UPDATE_SOURCE_BROKEN")
+	}
+	entry, ok := reg.Channels[channel]
+	if !ok || !entry.Published {
+		// The registry is the source of truth for "not published yet";
+		// this is the expected state for a channel without a release.
+		return nil, errors.New("PANEL_CHANNEL_UNPUBLISHED")
+	}
+	raw, e := pagesFetch(ctx, root, channel+"/panel-update.json", 1<<20)
+	if e != nil {
+		if errors.Is(e, errPagesNotFound) {
+			// Registry says published, index file missing: broken channel.
+			return nil, errors.New("PANEL_CHANNEL_INDEX_MISSING")
+		}
+		return nil, e
+	}
+	// A published channel with a non-JSON index file is a broken channel,
+	// never a harmless "no updates" (docs/updates-pages-architecture.md).
+	if !json.Valid(raw) {
+		return nil, errors.New("PANEL_METADATA_INVALID")
+	}
+	return raw, nil
+}
+
 func (p *panelUpdater) candidate(ctx context.Context, channel, arch string) (panelCandidate, error) {
 	if channel != "experimental" && channel != "stable" {
 		return panelCandidate{}, errors.New("PANEL_CHANNEL_UNKNOWN")

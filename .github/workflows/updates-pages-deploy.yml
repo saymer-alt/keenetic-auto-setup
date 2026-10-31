@@ -1,0 +1,204 @@
+name: Deploy KAS WEB update index to GitHub Pages (one-shot per channel, requires owner GO)
+
+# Publishes the update-channel INDEXES (not packages, not a program release)
+# to GitHub Pages after the corresponding release has been published and its
+# assets verified. Runs ONLY on explicit workflow_dispatch with pinned inputs.
+# Enabling Pages for the repository is a separate owner decision; this
+# workflow never activates Pages implicitly.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel to publish: experimental or stable'
+        required: true
+        type: choice
+        options:
+          - experimental
+          - stable
+      release_tag:
+        description: 'Published release tag, e.g. v0.1.0-beta.4'
+        required: true
+        type: string
+      verified_run:
+        description: 'Successful candidate-build run id for that release'
+        required: true
+        type: string
+      expected_source_sha:
+        description: 'Full 40-char source SHA of that release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize index publications; never cancel a publication in progress —
+  # a cancelled deploy would leave a half-updated site.
+  group: kas-web-pages-updates
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PAGES_BASE: https://saymer-alt.github.io/keenetic-auto-setup
+    steps:
+      - name: Validate inputs and the published release
+        run: |
+          set -euo pipefail
+          case "$EXPECTED_SOURCE_SHA" in [0-9a-f]*) test "${#EXPECTED_SOURCE_SHA}" -eq 40 || { echo "expected_source_sha must be 40 hex" >&2; exit 1; };; *) echo "expected_source_sha must be 40 hex" >&2; exit 1;; esac
+          case "$CHANNEL" in experimental|stable) :;; *) echo "unsupported channel $CHANNEL" >&2; exit 1;; esac
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.head_sha')" = "$EXPECTED_SOURCE_SHA"
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.conclusion')" = success
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')" = "$EXPECTED_SOURCE_SHA"
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          python3 - "$RUNNER_TEMP/release.json" <<'PY'
+          import json,os,sys
+          r=json.load(open(sys.argv[1]))
+          assert r['tag_name']==os.environ['RELEASE_TAG'] and not r['draft'] and r['target_commitish']==os.environ['EXPECTED_SOURCE_SHA']
+          assert r['prerelease'] == (os.environ['CHANNEL']=='experimental'), 'prerelease flag must match the channel'
+          assert len(r['assets'])==5 and all(a['state']=='uploaded' for a in r['assets'])
+          print('PASS: release', os.environ['RELEASE_TAG'], 'is published with 5 uploaded assets')
+          PY
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERIFIED_RUN: ${{ inputs.verified_run }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_source_sha }}
+          persist-credentials: false
+      - name: Download hash-checked CI artifacts and build the new index
+        run: |
+          set -euo pipefail
+          mkdir -p build/ipk build/ci-manifests
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            dir="build/artifact-$arch"; mkdir -p "$dir"
+            gh run download "$VERIFIED_RUN" --repo "$GH_REPO" \
+              --name "kas-web-beta3-$arch-$EXPECTED_SOURCE_SHA" --dir "$dir"
+            (cd "$dir" && sha256sum -c SHA256SUMS)
+            cp "$dir/manifest-canonical.json" "build/ci-manifests/$arch.json"
+            src="$(find "$dir" -maxdepth 1 -name '*.ipk' -type f -print -quit)"
+            cp "$src" "build/ipk/$(basename "$src" | tr '~' '.')"
+          done
+          (cd build/ipk && sha256sum ./*.ipk > SHA256SUMS && sha256sum -c SHA256SUMS)
+          python3 web/control-center/packaging/update-manifest.py \
+            --channel "$CHANNEL" --tag "$RELEASE_TAG" build/ipk/*.ipk > build/panel-update.json
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          canonical=json.loads(pathlib.Path('build/panel-update.json').read_text())
+          assert canonical['tag']==os.environ['RELEASE_TAG'] and canonical['channel']==os.environ['CHANNEL']
+          ci={}
+          for arch in ('aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'):
+              m=json.loads(pathlib.Path('build/ci-manifests',arch+'.json').read_text())
+              assert m['tag']==os.environ['RELEASE_TAG'] and m['channel']==os.environ['CHANNEL'] and len(m['packages'])==1
+              x=dict(m['packages'][0]); x['name']=x['name'].replace('~','.')
+              assert x['architecture']==arch and x['source_sha']==os.environ['EXPECTED_SOURCE_SHA']
+              ci[arch]=x
+          assert {p['architecture']:p for p in canonical['packages']}==ci, 'CI manifest mismatch'
+          for p in canonical['packages']:
+              raw=pathlib.Path('build/ipk',p['name']).read_bytes()
+              assert p['sha256']==hashlib.sha256(raw).hexdigest() and p['size']==len(raw)
+          print('PASS: new index agrees with verified CI manifests and IPK bytes')
+          PY
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERIFIED_RUN: ${{ inputs.verified_run }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+      - name: Preserve the other channel from the live site (no cross-channel overwrites)
+        run: |
+          set -euo pipefail
+          mkdir -p site/updates/experimental site/updates/stable
+          other=stable; [ "$CHANNEL" = stable ] && other=experimental
+          # The other channel must be carried over byte-for-byte; a missing
+          # other-channel index is allowed only for stable (not yet published)
+          # and only while the registry also reports it unpublished.
+          if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$other/panel-update.json" \
+              -o "site/updates/$other/panel-update.json"; then
+            echo "carried over $other channel from the live site"
+          else
+            [ "$other" = stable ] || { echo "live $other index unavailable and it must exist" >&2; exit 1; }
+            echo "stable index not present on the live site (not yet published)"
+          fi
+          curl -fsSL --max-time 20 "$PAGES_BASE/updates/channels.json" -o build/old-channels.json \
+            || echo '{"schema":1,"channels":{}}' > build/old-channels.json
+          cp build/panel-update.json "site/updates/$CHANNEL/panel-update.json"
+          python3 - "$CHANNEL" "$RELEASE_TAG" <<'PY'
+          import json,os,sys
+          channel,tag=sys.argv[1],sys.argv[2]
+          reg=json.load(open('build/old-channels.json'))
+          assert reg.get('schema')==1
+          reg.setdefault('channels',{})
+          reg['channels'][channel]={'published':True,'tag':tag}
+          reg.setdefault('channels',{}).setdefault('stable',reg.get('channels',{}).get('stable',{'published':False}))
+          if channel=='experimental':
+              reg['channels'].setdefault('stable',{'published':False})
+          reg['channels'].setdefault('experimental',{'published':False})
+          reg['channels'][channel]={'published':True,'tag':tag}
+          json.dump(reg,open('site/updates/channels.json','w'),indent=2)
+          print('registry:', json.dumps(reg['channels']))
+          PY
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+      - name: Verify the local site tree before deployment
+        run: |
+          set -euo pipefail
+          python3 - "$CHANNEL" <<'PY'
+          import hashlib,json,os,pathlib,sys
+          channel=sys.argv[1]
+          new=json.loads(pathlib.Path('site/updates',channel,'panel-update.json').read_text())
+          assert new['tag'] and len(new['packages'])==4
+          for p in new['packages']:
+              raw=pathlib.Path('build/ipk',p['name']).read_bytes()
+              assert p['sha256']==hashlib.sha256(raw).hexdigest()
+          reg=json.loads(pathlib.Path('site/updates/channels.json').read_text())
+          assert reg['schema']==1 and reg['channels'][channel]['published'] is True
+          print('PASS: local site tree is complete and consistent')
+          PY
+        env:
+          CHANNEL: ${{ inputs.channel }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+      - name: Verify the public endpoint (bounded retry for Pages/CDN delay)
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$CHANNEL/panel-update.json" \
+                -o build/public-index.json; then ok=1; break; fi
+            sleep 10
+          done
+          test "$ok" = "1" || { echo "public endpoint did not serve the new index in time" >&2; exit 1; }
+          python3 - <<'PY'
+          import hashlib,json,os
+          new=pathlib.Path('build/panel-update.json').read_bytes()
+          pub=pathlib.Path('build/public-index.json').read_bytes()
+          assert hashlib.sha256(pub).hexdigest()==hashlib.sha256(new).hexdigest(), \
+            'public index differs from the built index'
+          assert json.loads(pub)['tag']==os.environ['RELEASE_TAG']
+          print('PASS: public Pages endpoint serves the expected index byte for byte')
+          PY
+          other=stable; [ "$CHANNEL" = stable ] && other=experimental
+          if [ -s "site/updates/$other/panel-update.json" ]; then
+            curl -fsSL --max-time 20 "$PAGES_BASE/updates/$other/panel-update.json" -o build/other-public.json
+            cmp -s "site/updates/$other/panel-update.json" build/other-public.json
+            echo "PASS: the other channel survived the deployment unchanged"
+          fi
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
