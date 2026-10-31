@@ -294,7 +294,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split('?')[0]
         prefix = '/saymer-alt/keenetic-auto-setup/releases/download/'
         tags_api = '/repos/saymer-alt/keenetic-auto-setup/releases/tags/'
-        if path == '/updates/channels.json':
+        if path == '/keenetic-auto-setup/updates/channels.json':
             # Registry for the Pages-based source (beta.4): both channels are
             # marked published so the lab exercises the real update cycle.
             body = json.dumps({'schema': 1, 'generated': 'lab',
@@ -306,9 +306,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if path == '/updates/experimental/panel-update.json':
+        if path == '/keenetic-auto-setup/updates/experimental/panel-update.json':
             target = serve / 'index.json'
-        elif path == '/updates/stable/panel-update.json':
+        elif path == '/keenetic-auto-setup/updates/stable/panel-update.json':
             target = serve / 'index-stable.json'
         elif path == prefix + 'kas-web-channel-experimental/panel-update.json':
             target = serve / 'index.json'
