@@ -200,7 +200,9 @@ jobs:
           for p in idx['packages']:
               a=assets[p['name']]
               assert a['size']==p['size'] and a['digest']=='sha256:'+p['sha256'] and a['state']=='uploaded'
-              assert a['browser_download_url']==f"https://github.com/saymer-alt/keenetic-auto-setup/releases/download/{os.environ['BETA_TAG']}/{p['name']}"
+              # While the release is a draft GitHub serves a temporary
+              # untagged-... download path; only the asset name is stable.
+              assert a['browser_download_url'].endswith('/'+p['name'])
           sums=assets['SHA256SUMS']
           assert sums['state']=='uploaded' and sums['size']>0
           print('PASS: release assets match the channel manifest byte for byte')
@@ -209,6 +211,19 @@ jobs:
             gh release edit "$BETA_TAG" --repo "$GH_REPO" --draft=false
           fi
           test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA"
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release-final.json
+          python3 - <<'PY'
+          import json,os
+          idx=json.load(open('build/panel-update.json'))
+          r=json.load(open('build/beta-release-final.json'))
+          assert r['draft'] is False and r['prerelease'] is True and r['target_commitish']==os.environ['SOURCE_SHA']
+          assets={x['name']:x for x in r['assets']}
+          for p in idx['packages']:
+              a=assets[p['name']]
+              assert a['browser_download_url']==f"https://github.com/saymer-alt/keenetic-auto-setup/releases/download/{os.environ['BETA_TAG']}/{p['name']}", a['browser_download_url']
+          assert assets['SHA256SUMS']['browser_download_url'].endswith('/'+os.environ['BETA_TAG']+'/SHA256SUMS')
+          print('PASS: published release carries the canonical download URLs')
+          PY
       - name: Switch only experimental channel index (canonical beta.3), verify, restore on any failure until the final gate
         run: |
           set -euo pipefail
