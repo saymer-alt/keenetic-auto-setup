@@ -301,6 +301,18 @@ func panelAssetClient(root string) *http.Client {
 	}
 	return c
 }
+// An absent unpublished stable channel is not a transport failure. Only the
+// exact channel-index 404 is treated as an unpublished release. All other HTTP
+// failures remain errors; never mask broken beta releases or missing IPKs.
+func panelAssetStatusError(tag, name string, status int) error {
+	if status == http.StatusOK {
+		return nil
+	}
+	if status == http.StatusNotFound && tag == "kas-web-channel-stable" && name == "panel-update.json" {
+		return errors.New("PANEL_CHANNEL_UNPUBLISHED")
+	}
+	return errors.New("PANEL_DOWNLOAD_FAILED")
+}
 func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]byte, error) {
 	req, e := http.NewRequestWithContext(ctx, "GET", panelAssetURL(tag, name), nil)
 	if e != nil {
@@ -312,8 +324,8 @@ func readPanelAsset(ctx context.Context, root, tag, name string, max int64) ([]b
 		return nil, errors.New("PANEL_DOWNLOAD_FAILED")
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, errors.New("PANEL_DOWNLOAD_FAILED")
+	if e := panelAssetStatusError(tag, name, resp.StatusCode); e != nil {
+		return nil, e
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if e != nil || int64(len(b)) > max {
@@ -421,6 +433,15 @@ func (a *app) handlePanelCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if e != nil {
 		result.ErrorCode = panelErrorCode(e)
+		if result.ErrorCode == "PANEL_CHANNEL_UNPUBLISHED" {
+			// No stable channel index has been published yet. This is an
+			// expected state, not a failed download or an update candidate.
+			result.State = "UNPUBLISHED"
+			result.Relation = "not_newer"
+			result.ErrorCode = ""
+			updateJSON(w, 200, result)
+			return
+		}
 		updateJSON(w, 502, result)
 		return
 	}
