@@ -98,8 +98,8 @@ ip address add 192.168.254.1/24 dev br0
 ip link set br0 up
 # Lab TLS trust: the panel and worker keep standard certificate verification.
 openssl req -x509 -newkey rsa:2048 -keyout "$LAB/ca.key" -out "$LAB/ca.crt" -days 2 -nodes   -subj '/CN=KAS Selfupdate Lab CA'   -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
-openssl req -newkey rsa:2048 -keyout "$LAB/server.key" -out "$LAB/server.csr" -nodes -subj '/CN=github.com' -addext 'subjectAltName=DNS:github.com,DNS:api.github.com' >/dev/null 2>&1
-printf 'subjectAltName=DNS:github.com,DNS:api.github.com\n' > "$LAB/server.ext"
+openssl req -newkey rsa:2048 -keyout "$LAB/server.key" -out "$LAB/server.csr" -nodes -subj '/CN=github.com' -addext 'subjectAltName=DNS:github.com,DNS:api.github.com,DNS:saymer-alt.github.io' >/dev/null 2>&1
+printf 'subjectAltName=DNS:github.com,DNS:api.github.com,DNS:saymer-alt.github.io\n' > "$LAB/server.ext"
 openssl x509 -req -in "$LAB/server.csr" -CA "$LAB/ca.crt" -CAkey "$LAB/ca.key" -CAcreateserial -out "$LAB/server.crt" -days 2 -extfile "$LAB/server.ext" >/dev/null 2>&1
 cat "$LAB/ca.crt" > /usr/local/share/ca-certificates/kas-selfupdate-lab.crt
 update-ca-certificates >/dev/null 2>&1
