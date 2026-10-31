@@ -1,37 +1,71 @@
-> **Status:** [WEB beta.2 is published as a GitHub Pre-release](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.2). It uses the canonical experimental channel and offers Beta/Stable selection. Hardware acceptance remains device-specific.
+# KAS Control Center — testing-channel web panel installation
 
-# KAS Control Center — web panel installation and operation (beta.2)
+**KAS Control Center** is an optional browser interface for an already installed [Keenetic Auto Setup](../../README.md). It does not install or replace the KAS core, Mihomo or MagiTrickle. It provides status, Doctor reports, canonical YAML import, subscription exclusions and user-confirmed update controls.
 
-**KAS Control Center** is a separate **optional** web component for an already installed KAS. The [script-based KAS installer](../../README.md) remains the primary way to install the core; the panel does not replace or reinstall it. It manages the Mihomo YAML through the canonical KAS importer, Doctor diagnostics, subscription exclude filters, and its own updates. KAS stays fully functional without it.
+**Version policy:** testing builds change frequently. This page deliberately does not pin a beta number, an old release URL or an architecture-specific IPK filename. Use the **currently published KAS Web prerelease** for a new installation; historical builds are not an ongoing distribution channel.
 
-> ⚠️ **Beta.** No automatic rollback. Panel availability is defined by your routing and firewall: the panel listens on the management bridge IPv4 address only and is never published to the WAN, but if you forward ports or expose it through an unauthenticated proxy, you accept that risk. A password over plain HTTP is not encrypted — use the panel on a trusted management network only.
+## Requirements and access
 
-**Requirements:** Keenetic/Netcraze router with Entware installed, a working KAS (Mihomo), and a management bridge `br0` (not necessarily a home network) with a single private IPv4 address.
+- Keenetic/Netcraze with Entware, SSH and a working KAS. The default web listener needs an unambiguous private IPv4 on the management \`br0\` interface; this is not necessarily a home network.
+- Determine the **actual Entware ABI** with \`opkg print-architecture\`. Published builds may include \`aarch64-3.10\`, \`armv7-3.2\`, \`mipsel-3.4\` and \`mips-3.4\`. Do not guess from the router model.
+- The default listener is TCP **8081** on the \`br0\` IPv4 address. An earlier custom port may be preserved on upgrade.
+- **No authentication or TLS by default.** Binding to \`br0\` does not block every routed subnet. Restrict access to trusted management networks, do not expose the UI on WAN or an unauthenticated proxy, and remember that HTTP Basic authentication does not encrypt credentials.
+- No automatic IPK rollback. Back up settings and YAML before changing them; do not force package operations or interrupt an installation.
 
-**Architectures:** `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4`, `mips-3.4` (**KN-1010 uses MIPSel, not ARM64**) — must match your Entware architecture (`opkg print-architecture`).
+## Find and install the current package
 
-**Compatibility:** older `beta.1`/test17 builds cannot use their existing WEB update button to cross to beta.2 because the canonical channel-index tag format changed. Upgrade those builds manually using a verified IPK and the safe ownership-aware procedure. From beta.2 onward, the WEB updater supports future betas and an eventual published Stable release via explicit user confirmation. Stable is not published yet.
+1. Go to the project's [**GitHub Releases**](https://github.com/saymer-alt/keenetic-auto-setup/releases) page and locate the **current KAS Control Center / KAS WEB prerelease**. Do **not** use GitHub's **Latest** button: it refers to **KAS Core**, not the web UI.
+2. Run \`opkg print-architecture\` on the router and download **exactly one matching IPK** together with \`SHA256SUMS\` **from the same published Web release**.
+3. Transfer the files to their own directory, for example \`/tmp/kas-web-install\`, via SCP/SFTP or a trusted HTTPS download. Do not rename the IPK or mix files from different releases.
+4. Verify the checksum before calling \`opkg\`. Published checksum entries may have a \`./\` prefix, so match either filename spelling.
 
-**Download and install** (aarch64 example):
+Example that does **not** pin a version or ABI; the directory must contain precisely one selected IPK and its \`SHA256SUMS\`:
 
-```sh
-cd /tmp
-curl -fSsLO https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.2/kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
-curl -fSsLO https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.2/SHA256SUMS
-grep '  kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk$' SHA256SUMS | sha256sum -c -
-opkg install ./kas-control-center_0.1.0.beta.2-1_aarch64-3.10.ipk
+\`\`\`sh
+cd /tmp/kas-web-install || exit 1
+set -- kas-control-center_*.ipk
+[ "$#" -eq 1 ] && [ -f "$1" ] || { echo "Expected exactly one IPK"; exit 1; }
+IPK=$1
+awk -v name="$IPK" '
+  $2 == name || $2 == "./" name { print; found++ }
+  END { if (found != 1) exit 1 }
+' SHA256SUMS > selected.sha256 &&
+sha256sum -c selected.sha256 &&
+opkg install "./$IPK"
+\`\`\`
+
+Only proceed after \`sha256sum\` reports **OK** and package architecture matches Entware. Do not use \`opkg --force-*\`. The checksum establishes consistency with the published release but is not a substitute for trusting the source.
+
+Start and inspect the panel:
+
+\`\`\`sh
 sh /opt/etc/init.d/S98kas-control-center start
 sh /opt/etc/init.d/S98kas-control-center status
-```
+opkg status kas-control-center
+\`\`\`
 
-The SHA256 check must report OK before installation; do not force-install mismatched files. If GitHub downloads fail on the router, transfer these verified files via SFTP/SCP from a trusted PC. An earlier custom port (such as 18081) is preserved on upgrade. Hardware beta.2 acceptance on KN-1010 is pending, not yet field PASS.
+Open \`http://<br0-IPv4>:8081/\` or the configured custom port. Installation does not start the service automatically. If GitHub access fails on the router, fetch the verified files on a trusted PC and transfer them using SCP/SFTP.
 
-The panel starts **only after an explicit start**. It binds only the private IPv4 of `br0` on TCP port **8081** (example: `http://192.168.1.1:8081`) and refuses to start if `br0` is absent or ambiguous.
+## Operation and updates
 
-**Views:** Overview (component versions, Mihomo/MagiTrickle/panel updates), Subscriptions (server list and exclude filters), Configuration (YAML upload/paste via the canonical importer), Diagnostics (RU/EN Doctor summary), Settings (port, login mode, panel password, optional home-subnet-only access).
+- **Overview:** component status and manual update checks.
+- **Subscriptions:** server list and reversible exclude filters through the canonical KAS importer.
+- **Configuration:** paste or upload a complete YAML; back up settings before changes.
+- **Diagnostics:** run Doctor and review actual warnings and failures.
+- **Settings:** language, appearance, listening port and access controls; preview layouts can change.
 
-**Update channels:** in the "KAS panel update" card choose **Beta (experimental)** or **Stable**, then run the manual version check and confirm. Changing the channel never installs anything; there is no background auto-update. The Stable channel is published separately; until then the panel reports honestly that it is not available.
+The panel offers **Beta** and **Stable** update-channel selection. Whether a Stable build exists depends on actual publication; changing channels does not automatically install anything. Check manually and explicitly confirm installation. After an update, verify installed and running package versions, settings, filters, Doctor and real client connectivity.
 
-**Uninstall:** `opkg remove kas-control-center` (KAS settings and YAML are preserved; the core is untouched).
+An already-open browser page on some testing builds may still display the old version until a forced refresh. This is a known frontend issue, not proof that installation failed: verify the running service separately.
 
-**Limitations and recovery:** no automatic rollback. If an update does not complete, do not power off; check the error code in the panel and run `/opt/bin/kas-control-center -recover-panel-update` over SSH if needed, or reinstall a verified IPK. See [web/control-center/LAN.md](../../web/control-center/LAN.md) for advanced access options and [web/control-center/PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md) for the update system details.
+## Removal and recovery
+
+\`\`\`sh
+opkg remove kas-control-center
+\`\`\`
+
+This removes the optional web package, not KAS Core, Mihomo or MagiTrickle. Settings and YAML may remain. Undo applied \`exclude-filter\` in the UI **before removal** if you need those changes reverted.
+
+There is no automatic rollback. After a failed self-update, do not start competing \`opkg\` operations; inspect \`opkg status kas-control-center\` and the service state via SSH. For \`PANEL_RECOVERY_REQUIRED\`, follow the documented \`/opt/bin/kas-control-center -recover-panel-update\` recovery process only after the active transaction is no longer running. If a reinstall is required, use a verified package from a **currently available release**, not an assumed historical asset.
+
+Advanced network security: [LAN.md](../../web/control-center/LAN.md). Self-update protocol and recovery: [PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md).
