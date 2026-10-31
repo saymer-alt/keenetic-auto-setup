@@ -671,4 +671,5 @@ function drawAppearanceLinks(){
 }
 el('theme-mode').addEventListener('change',()=>{window.kasTheme?.set(el('theme-mode').value);draw();});
 
-if(window.KASPanelUpdate)panelUpdateUI=window.KASPanelUpdate.mount({getLang:()=>lang,isBusy:()=>busy||submitting||updateSubmitting||mtChecking||updateOperation?.state==='RUNNING'||importData?.state==='RUNNING',onBusy:value=>{panelBusy=value;draw();}});
+if(window.KASPanelUpdate)panelUpdateUI=window.KASPanelUpdate.mount({getLang:()=>lang,isBusy:()=>busy||submitting||updateSubmitting||mtChecking||updateOperation?.state==='RUNNING'||importData?.state==='RUNNING',onBusy:value=>{panelBusy=value;draw();},// One reload after a fully verified self-update success (issue #311).
+reload:()=>{setTimeout(()=>window.location.reload(),1500);}});
