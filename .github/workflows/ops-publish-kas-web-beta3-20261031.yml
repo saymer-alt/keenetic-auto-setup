@@ -175,7 +175,15 @@ jobs:
               --target "$SOURCE_SHA" --draft --prerelease --latest=false \
               --title 'KAS Web v0.1.0-beta.3' \
               --notes 'Interface release: quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The beta.2 → beta.3 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
-            lookup_release build/beta-release-draft.json
+            # A fresh draft can lag behind the releases listing (eventual
+            # consistency): retry the READ-ONLY lookup instead of letting
+            # set -e kill the step right after a successful create.
+            lookup_ok=0
+            for attempt in 1 2 3 4; do
+              if lookup_release build/beta-release-draft.json; then lookup_ok=1; break; fi
+              sleep 3
+            done
+            test "$lookup_ok" = "1" || { echo "Created draft release is not visible via the API; refusing to continue blindly" >&2; exit 1; }
           fi
           gh release upload "$BETA_TAG" --repo "$GH_REPO" --clobber \
             build/ipk/*.ipk build/ipk/SHA256SUMS
