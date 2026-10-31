@@ -152,6 +152,16 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **[Full script inventory and documentation](SCRIPTS.md)**
 
+## KAS Control Center — Web panel (testing channel)
+
+**Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS core remains independent.
+
+**Current installation:** visit [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) and select the **current KAS Control Center / KAS WEB prerelease**. GitHub's **Latest** points to **KAS Core**, not the web panel. Avoid pinned beta numbers or old IPK download links: testing builds are replaced frequently. Use `opkg print-architecture` to select the matching Entware IPK, download its `SHA256SUMS`, verify the selected package and install it locally with `opkg install`.
+
+Default URL: `http://<br0-IPv4>:8081/`; a configured custom port survives updates. By default, no password or TLS: restrict access to trusted management networks. Beta/Stable selection in Settings checks and installs updates manually; whether a Stable build is available depends on the published channel. No automatic rollback.
+
+**[Full installation, integrity checks, security, update and recovery guide](WEB_BETA_INSTALL.md).**
+
 ## 7. Reference
 
 - [Full HOWTO](../HOWTO.md)
