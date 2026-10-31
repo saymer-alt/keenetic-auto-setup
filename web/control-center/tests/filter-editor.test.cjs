@@ -491,7 +491,7 @@ test('matching Mihomo version distinguishes opkg provenance and disables unneces
  assert.equal(app.el('update-mihomo').disabled,true);
  assert.match(app.el('updates-state').textContent,/Версия запущенного Mihomo: 1\.19\.33/);
  assert.match(app.el('updates-state').textContent,/opkg.*1\.19\.32-1/);
- assert.match(app.el('updates-state').textContent,/не удалось подтвердить/);
+ assert.match(app.el('updates-state').textContent,/подтвердить не удалось/);
  app.run("updateCheckData.relation='newer_package';draw();");assert.equal(app.el('update-mihomo').disabled,false);
 });
 test('MT check is manual, confirmation cancels and one named update blocks mutations',async()=>{

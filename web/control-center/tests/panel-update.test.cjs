@@ -74,6 +74,52 @@ test('lost apply response never accepts previous success as a new job',()=>{
 test('panel updater labels cover the same keys in RU and EN',()=>{
  assert.deepEqual(Object.keys(api.words.ru).sort(),Object.keys(api.words.en).sort());
 });
+test('a definite apply refusal is reported immediately, not polled to unverified',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout,window:global.window};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};global.window={confirm:()=>true};
+ let applyPosts=0;
+ global.fetch=async(path,opts)=>{
+  if(path==='/api/updates/panel/channel')return {ok:true,json:async()=>({channel:'experimental',allowed:['experimental','stable']})};
+  if(path==='/api/updates/panel/operation')return {ok:true,json:async()=>({state:'UNKNOWN',error_code:'NO_OPERATION'})};
+  if(path==='/api/updates/panel/check')return {ok:true,json:async()=>({state:'OK',relation:'newer',installed_version:'0.1.0~beta.2-1',runtime_version:'0.1.0~beta.2-1',available_version:'0.1.0~beta.3-1',channel:'experimental'})};
+  if(path==='/api/updates/panel/apply'){applyPosts++;return {ok:false,status:409,json:async()=>({error_code:'BUSY'})};}
+  return {ok:true,json:async()=>({ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'})};
+ };
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);
+  await nodes['panel-update-check'].listeners.click();
+  assert.equal(nodes['panel-update-apply'].disabled,false);
+  await nodes['panel-update-apply'].listeners.click();
+  const text=nodes['panel-update-state'].textContent;
+  assert.match(text,/Обновление панели не завершено\. Причина: Сейчас выполняется другая операция\./);
+  assert.doesNotMatch(text,/BUSY/);
+  assert.equal(nodes['panel-update-details'].hidden,false);
+  assert.equal(nodes['panel-update-error-code'].textContent,'BUSY');
+  assert.equal(nodes['panel-update-apply'].disabled,true,'a consumed check must not allow a new install');
+  assert.equal(applyPosts,1);
+ }
+ finally{Object.assign(global,original);}
+});
+test('interrupted update with the recovery gate names the SSH path without echoing itself',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ const nodes={};
+ global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',hidden:false,disabled:false,listeners:{},addEventListener(){}}),activeElement:null};
+ global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+ global.setTimeout=()=>1;global.clearTimeout=()=>{};
+ global.fetch=async path=>({ok:true,json:async()=>path==='/api/updates/panel/channel'?{channel:'experimental',allowed:['experimental','stable']}:{ID:'e'.repeat(24),State:'FAIL',Gate:true,ErrorCode:'PANEL_RECOVERY_REQUIRED'}});
+ try{
+  api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+  await new Promise(setImmediate);await new Promise(setImmediate);
+  const text=nodes['panel-update-state'].textContent;
+  assert.match(text,/Обновление панели прервалось\. Продолжить установку из браузера невозможно\./);
+  assert.equal((text.match(/прервал/g)||[]).length,1,'recovery text must not repeat "прервалось/прервано"');
+ }
+ finally{Object.assign(global,original);}
+});
 test('version check renders public forms without exposing internal package versions',async()=>{
  const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  const nodes={};
