@@ -13,6 +13,28 @@
 - UDP-транспорт за пределами косвенной работы резолвера — `UNSUPPORTED` (честно, без фиктивного PASS).
 - DNS-проба выполняется только при наличии утилиты `timeout` (лимит 6 с); без неё стадия честно `NOT TESTED` — неограниченное ожидание на слабом роутере исключено.
 
+## Быстрый запуск на новом роутере из `stable`
+
+Нужны SSH-доступ к Keenetic/Netcraze, работающий Entware (`/opt`, `opkg`), Интернет и `curl`. Если `curl` отсутствует, сначала установите **только эту утилиту**: `opkg update && opkg install curl`. KAS Web не нужен; отсутствие Mihomo/MagiTrickle/ProxyN не мешает запуску, но соответствующие этапы будут отмечены как непроверенные или неподдерживаемые.
+
+Скачайте проверенную версию из `stable` во временный `/tmp`, проверьте синтаксис и запустите диагностику указанного домена (замените `example.com` своим адресом):
+
+```sh
+curl -fSsL --retry 2 --max-time 60 -o /tmp/kas-network-doctor.sh \
+  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-network-doctor.sh &&
+sh -n /tmp/kas-network-doctor.sh &&
+sh /tmp/kas-network-doctor.sh --target example.com
+```
+
+Для сохранения результатов после скачивания:
+
+```sh
+sh /tmp/kas-network-doctor.sh --target example.com \
+  --report /tmp/kas-network-report.txt --json /tmp/kas-network-report.json
+```
+
+Цепочка `&&` **не запускает скрипт**, если скачивание или синтаксическая проверка завершились ошибкой. Запуск Network Doctor намеренно выполняет внешние сетевые запросы с ограничениями времени и объёма; это **не установка KAS**, не изменение маршрутов и не фоновая служба. Файлы в `/tmp` временные, после перезагрузки могут исчезнуть. При недоступности GitHub можно перенести скрипт на роутер через SCP и запустить `sh /tmp/kas-network-doctor.sh --target example.com`.
+
 ## Запуск
 
 ```sh

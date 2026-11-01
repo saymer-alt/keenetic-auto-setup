@@ -18,6 +18,27 @@
 - A missing or ambiguous sensor is `UNKNOWN`/`N/A` - never a fake value, never a FAIL.
 - No secrets or hardware identifiers are emitted.
 
+## Quick start on a new router from `stable`
+
+You need SSH access to Keenetic/Netcraze and a way to download the file (for example, `curl`). KAS, Mihomo, and the Web panel are **not required** to read standard `/proc` and `/sys` files. On a new router with Entware, if `curl` is missing, run `opkg update && opkg install curl` (only the download utility is installed).
+
+Download the script into `/tmp`, validate its syntax, and print a router snapshot:
+
+```sh
+curl -fSsL --retry 2 --max-time 60 -o /tmp/kas-sys-metrics.sh \
+  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-sys-metrics.sh &&
+sh -n /tmp/kas-sys-metrics.sh &&
+sh /tmp/kas-sys-metrics.sh
+```
+
+To save JSON after downloading:
+
+```sh
+sh /tmp/kas-sys-metrics.sh --json /tmp/kas-metrics.json
+```
+
+The `&&` chain prevents execution if the download or syntax check fails. The collector installs nothing, makes no network requests itself, and changes no settings. `/tmp` is temporary; missing temperature sensors are honestly reported as `UNKNOWN`. If GitHub is unreachable, copy the script into `/tmp` with SCP and run `sh /tmp/kas-sys-metrics.sh`.
+
 ## Running
 
 ```sh
