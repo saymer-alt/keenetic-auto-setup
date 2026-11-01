@@ -5,7 +5,7 @@ that same redacted report. Language changes redraw the overview without another
 probe. The original report and its copy button are unchanged; neither report nor
 parsed facts are persisted in browser storage.
 
-The bounded parser currently supports Doctor 1.2.18 and 1.2.19. It requires the
+The bounded parser currently supports Doctor 1.2.18, 1.2.19 and 1.2.20. It requires the
 anchored complete footer, matching API summary counts and exit status, and one
 recognized version line. Truncation, conflicting verdicts or unknown versions show
 an unavailable notice; missing or duplicated facts show “Could not determine”.
