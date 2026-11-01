@@ -1,4 +1,4 @@
-name: KAS Web v0.1.0-beta.3 candidate IPKs (no publication)
+name: KAS Web candidate IPKs (no publication)
 
 on:
   push:
@@ -9,6 +9,25 @@ on:
       - '.github/workflows/web-beta3-build.yml'
       - 'web/control-center/**'
   workflow_dispatch:
+    # Candidate builds for a NEW release (e.g. beta.4) are dispatched on the
+    # merge commit with explicit version/tag inputs; the push triggers above
+    # keep building beta.3-named candidates for the historical branches.
+    inputs:
+      version:
+        description: 'Internal IPK version, e.g. 0.1.0~beta.4-1'
+        required: false
+        type: string
+        default: '0.1.0~beta.3-1'
+      tag:
+        description: 'Canonical release tag, e.g. v0.1.0-beta.4'
+        required: false
+        type: string
+        default: 'v0.1.0-beta.3'
+      artifact_prefix:
+        description: 'Uploaded artifact name prefix, e.g. kas-web-beta4'
+        required: false
+        type: string
+        default: 'kas-web-beta3'
 
 permissions:
   contents: read
@@ -61,7 +80,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: '0.1.0~beta.3-1'
+      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
+      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.3' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +111,7 @@ jobs:
           # legacy alias tag exercised only as a parser fallback (installed
           # beta.1 panels); publication creates no alias release.
           python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
-            --channel experimental --tag "v0.1.0-beta.3" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-canonical.json"
+            --channel experimental --tag "$RELEASE_TAG" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-canonical.json"
           python3 "$GITHUB_WORKSPACE/web/control-center/packaging/update-manifest.py" \
             --channel experimental --tag "kas-web-ipk-${SOURCE_SHA:0:7}" "$PACKAGE_FILE" > "$RUNNER_TEMP/ipk/manifest-alias.json"
           python3 - <<'PY'
@@ -101,11 +121,11 @@ jobs:
           for p in (canonical,alias):
               assert p['channel']=='experimental' and len(p['packages'])==1
               x=p['packages'][0]
-              assert x['version']=='0.1.0~beta.3-1'
+              assert x['version']==os.environ['BETA_VERSION']
               assert x['source_sha']==os.environ['SOURCE_SHA']
               assert x['architecture']==os.environ['PACKAGE_ARCH']
               assert x['sha256'] and x['binary_sha256']
-          assert canonical['tag']=='v0.1.0-beta.3' and alias['tag'].startswith('kas-web-ipk-')
+          assert canonical['tag']==os.environ['RELEASE_TAG'] and alias['tag'].startswith('kas-web-ipk-')
           print('PASS beta version, source SHA, architecture and digest (canonical + alias index)')
           PY
           mkdir -p inspect
@@ -119,7 +139,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: kas-web-beta3-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix || 'kas-web-beta3' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS

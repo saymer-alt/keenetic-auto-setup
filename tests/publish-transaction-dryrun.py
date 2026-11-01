@@ -32,11 +32,14 @@ WORKFLOW = REPO / '.github/workflows/ops-publish-kas-web-beta3-20261031.yml'
 SOURCE_SHA = 'b' * 40
 RUN_ID = '424242'
 BETA_TAG = 'v0.1.0-beta.3'
+PREVIOUS_TAG = 'v0.1.0-beta.2'
+ARTIFACT_PREFIX = 'kas-web-beta3'
 CHANNEL_TAG = 'kas-web-channel-experimental'
 BETA_VERSION = '0.1.0~beta.3-1'
 ARCHES = ['aarch64-3.10', 'armv7-3.2', 'mipsel-3.4', 'mips-3.4']
+# Live experimental index fixture: whatever the PREVIOUS release is.
 BETA2_INDEX = json.dumps({'schema': 1, 'channel': 'experimental',
-                          'tag': 'v0.1.0-beta.2', 'packages': []}).encode()
+                          'tag': PREVIOUS_TAG, 'packages': []}).encode()
 CORE_LATEST = 'v1.8.5'
 HIJACKED_LATEST = 'v0.0.0-hijacked'
 
@@ -84,11 +87,14 @@ def write_artifact_fixture(root, arch):
     return directory
 
 
-def asset_obj(name, data, tag):
+def asset_obj(name, data, tag, untagged=None):
+    # GitHub serves draft assets under a temporary untagged-<id> directory
+    # until the release is published; the canonical tag path appears only
+    # after --draft=false (incident 2 of the beta.3 publication).
     return {'name': name, 'size': len(data), 'state': 'uploaded',
             'digest': 'sha256:' + hashlib.sha256(data).hexdigest(),
             'browser_download_url': 'https://github.com/saymer-alt/keenetic-auto-setup/releases/download/'
-                + tag + '/' + name,
+                + (untagged or tag) + '/' + name,
             'bytes_b64': base64.b64encode(data).decode()}
 
 
@@ -152,11 +158,11 @@ def public_release(release):
                                  for asset in release['assets'].values()])
 
 
-def asset_obj(name, data, tag):
+def asset_obj(name, data, tag, untagged=None):
     return {'name': name, 'size': len(data), 'state': 'uploaded',
             'digest': 'sha256:' + hashlib.sha256(data).hexdigest(),
             'browser_download_url': 'https://github.com/saymer-alt/keenetic-auto-setup/releases/download/'
-                + tag + '/' + name,
+                + (untagged or tag) + '/' + name,
             'bytes_b64': base64.b64encode(data).decode()}
 
 
@@ -192,6 +198,10 @@ def api(path, jq=None):
         obj = public_release(r) if r and not r['draft'] else None
     elif re.match(r'repos/[^/]+/[^/]+/releases\?per_page=100$', path):
         obj = [public_release(r) for r in state['releases'].values()]
+        if state.get('hide_draft_until', 0) > 0:
+            state['hide_draft_until'] -= 1
+            save(state)
+            obj = [r for r in obj if not r['draft']]
     elif re.match(r'repos/[^/]+/[^/]+/releases/latest$', path):
         obj = {'tag_name': state['latest']}
     if obj is None:
@@ -239,6 +249,9 @@ def main(argv):
             'tag_name': tag, 'target_commitish': args[args.index('--target') + 1],
             'draft': '--draft' in args, 'prerelease': '--prerelease' in args,
             'assets': {}, 'notes': args[args.index('--notes') + 1]}
+        delay = matching_spec('draft_visibility_delay')
+        if delay and state['releases'][tag]['draft']:
+            state['hide_draft_until'] = delay.get('nth', 1)
         save(state)
         return
     if args[:2] == ['release', 'upload']:
@@ -261,7 +274,9 @@ def main(argv):
                 sys.exit(1)
             with open(filename, 'rb') as handle:
                 data = handle.read()
-            release['assets'][os.path.basename(filename)] = asset_obj(os.path.basename(filename), data, tag)
+            untagged = 'untagged-' + tag if release['draft'] else None
+            release['assets'][os.path.basename(filename)] = asset_obj(
+                os.path.basename(filename), data, tag, untagged)
         if tag == CHANNEL_TAG:
             if should_fail('tamper_channel_asset'):
                 release['assets']['panel-update.json'] = asset_obj(
@@ -273,8 +288,13 @@ def main(argv):
     if args[:2] == ['release', 'edit']:
         tag = args[2]
         if '--draft=false' in args:
-            state['releases'][tag]['draft'] = False
-            state['tags'].setdefault(tag, state['releases'][tag]['target_commitish'])
+            release = state['releases'][tag]
+            release['draft'] = False
+            state['tags'].setdefault(tag, release['target_commitish'])
+            # Publishing finalizes the tag: asset URLs switch from the
+            # temporary untagged-<id> directory to the canonical tag path.
+            for name, asset in list(release['assets'].items()):
+                release['assets'][name] = asset_obj(name, base64.b64decode(asset['bytes_b64']), tag)
         save(state)
         return
     if args[:2] == ['release', 'download']:
@@ -316,10 +336,14 @@ class Sandbox:
         self.gh_path.chmod(0o755)
 
     def reset_state(self, releases=None):
+        # A shared sandbox accumulates fixture files across scenarios; a
+        # different release version would leave stale IPKs next to the fresh
+        # ones and break the single-ipk-per-artifact invariant.
+        shutil.rmtree(self.fixtures, ignore_errors=True)
         artifacts = {}
         for arch in ARCHES:
             directory = write_artifact_fixture(self.fixtures / 'artifacts', arch)
-            artifacts['kas-web-beta3-%s-%s' % (arch, SOURCE_SHA)] = {
+            artifacts[ARTIFACT_PREFIX + '-%s-%s' % (arch, SOURCE_SHA)] = {
                 p.name: base64.b64encode(p.read_bytes()).decode()
                 for p in sorted(directory.iterdir())}
         state = {
@@ -344,7 +368,7 @@ class Sandbox:
             'PATH': str(self.bin) + os.pathsep + environ.get('PATH', ''),
             'GH_TOKEN': 'dryrun', 'GH_REPO': 'saymer-alt/keenetic-auto-setup',
             'SOURCE_SHA': source_sha, 'VERIFIED_RUN': verified_run,
-            'BETA_TAG': BETA_TAG, 'PREVIOUS_TAG': 'v0.1.0-beta.2',
+            'BETA_TAG': BETA_TAG, 'PREVIOUS_TAG': PREVIOUS_TAG, 'ARTIFACT_PREFIX': ARTIFACT_PREFIX,
             'CHANNEL_TAG': CHANNEL_TAG, 'BETA_VERSION': BETA_VERSION,
             'RUNNER_TEMP': str(self.tmp), 'GITHUB_ENV': str(self.github_env),
             'MOCK_STATE': str(self.state_path), 'MOCK_CALLS': str(self.calls_path),
@@ -472,8 +496,11 @@ def scenario_happy_path(sandbox, steps, failures):
                  release_draft=False, latest=CORE_LATEST, tag_sha=SOURCE_SHA)
     assets = sandbox.state()['releases'][BETA_TAG]['assets']
     # GitHub normalizes '~' to '.' in release asset names.
-    check(sorted(assets) == sorted(['SHA256SUMS'] + [
-        'kas-control-center_0.1.0.beta.3-1_%s.ipk' % a for a in ARCHES]), 'asset set')
+    # GitHub normalizes '~' to '.' in release asset names.
+    expected_names = sorted(['SHA256SUMS'] + [
+        'kas-control-center_%s_%s.ipk' % (BETA_VERSION.replace('~', '.'), a)
+        for a in ARCHES])
+    check(sorted(assets) == expected_names, 'asset set: %r' % sorted(assets))
     for entry in json.loads(new_index)['packages']:
         name = entry['name']
         check(hashlib.sha256(asset_bytes(sandbox, BETA_TAG, name)).hexdigest()
@@ -509,7 +536,7 @@ def scenario_unverified_run(sandbox, steps, failures):
 def scenario_corrupt_artifact(sandbox, steps, failures):
     sandbox.reset_state()
     state = sandbox.state()
-    name = 'kas-web-beta3-mips-3.4-%s' % SOURCE_SHA
+    name = '%s-mips-3.4-%s' % (ARTIFACT_PREFIX, SOURCE_SHA)
     ipk = [key for key in state['artifacts'][name] if key.endswith('.ipk')][0]
     raw = bytearray(base64.b64decode(state['artifacts'][name][ipk]))
     raw[len(raw) // 2] ^= 0xFF
@@ -525,7 +552,7 @@ def scenario_corrupt_artifact(sandbox, steps, failures):
 def scenario_manifest_mismatch(sandbox, steps, failures):
     sandbox.reset_state()
     state = sandbox.state()
-    name = 'kas-web-beta3-aarch64-3.10-%s' % SOURCE_SHA
+    name = '%s-aarch64-3.10-%s' % (ARTIFACT_PREFIX, SOURCE_SHA)
     manifest = json.loads(base64.b64decode(state['artifacts'][name]['manifest-canonical.json']))
     manifest['packages'][0]['sha256'] = 'f' * 64
     state['artifacts'][name]['manifest-canonical.json'] = base64.b64encode(
@@ -655,7 +682,49 @@ def scenario_idempotent_rerun_after_success(sandbox, steps, failures):
                  release_draft=False, latest=CORE_LATEST, tag_sha=SOURCE_SHA)
 
 
+def scenario_draft_listing_delay_retried(sandbox, steps, failures):
+    # Incident 1 (beta.3 publication, run 41229787313): the fresh draft was
+    # missing from the releases listing right after create and set -e killed
+    # the step. The bounded read-only retry must overcome a delayed listing.
+    sandbox.reset_state()
+    code, output = last_result(run_workflow(
+        sandbox, steps, fail={'phase': 'draft_visibility_delay', 'nth': 3}))
+    check = Checker(failures, 'draft listing delay')
+    check(code == 0, 'bounded retry must overcome the listing delay: %s' % output[-600:])
+    if code == 0:
+        assert_final(sandbox, check, channel=index_bytes_from_workspace(sandbox),
+                     release_present=True, release_draft=False,
+                     latest=CORE_LATEST, tag_sha=SOURCE_SHA)
+
+
+def scenario_beta4_release_version_agnostic(sandbox, steps, failures):
+    """The publish transaction must work for the NEXT release unchanged:
+    same steps, different tag/version pins (beta.4). The candidate-build
+    workflow carries matching dispatch inputs (version/tag), so a beta.4
+    publication is a pure pin change, not a code change."""
+    global BETA_TAG, BETA_VERSION
+    keep = (BETA_TAG, BETA_VERSION)
+    try:
+        BETA_TAG, BETA_VERSION = 'v0.1.0-beta.4', '0.1.0~beta.4-1'
+        sandbox.reset_state()
+        code, output = last_result(run_workflow(sandbox, steps))
+        check = Checker(failures, 'beta.4 pins (version-agnostic transaction)')
+        check(code == 0, 'beta.4-tagged publication must pass end to end: %s' % output[-700:])
+        if code == 0:
+            state = sandbox.state()
+            beta = state['releases'][BETA_TAG]
+            check(beta['target_commitish'] == SOURCE_SHA, 'beta.4 target commit')
+            index = index_bytes_from_workspace(sandbox)
+            check(json.loads(index)['tag'] == BETA_TAG, 'index tag')
+            assert_final(sandbox, check, channel=index, release_present=True,
+                         release_draft=False, latest=CORE_LATEST, tag_sha=SOURCE_SHA)
+    finally:
+        BETA_TAG, BETA_VERSION = keep
+
+
 SCENARIOS = [
+    ('beta.4 pins: version-agnostic transaction', scenario_beta4_release_version_agnostic),
+    ('draft listing delay retried read-only', scenario_draft_listing_delay_retried),
     ('happy path', scenario_happy_path),
     ('placeholders refused', scenario_placeholders),
     ('unverified CI run refused', scenario_unverified_run),
@@ -676,7 +745,27 @@ SCENARIOS = [
 BASH = find_bash()
 
 
-def main():
+def main(argv=None):
+    global WORKFLOW, BETA_TAG, BETA_VERSION, PREVIOUS_TAG, ARTIFACT_PREFIX
+    args = list(sys.argv[1:] if argv is None else argv)
+    while args:
+        arg = args.pop(0)
+        if arg == '--workflow':
+            WORKFLOW = pathlib.Path(args.pop(0))
+        elif arg == '--beta-tag':
+            BETA_TAG = args.pop(0)
+        elif arg == '--beta-version':
+            BETA_VERSION = args.pop(0)
+        elif arg == '--previous-tag':
+            PREVIOUS_TAG = args.pop(0)
+            globals()['BETA2_INDEX'] = json.dumps(
+                {'schema': 1, 'channel': 'experimental',
+                 'tag': PREVIOUS_TAG, 'packages': []}).encode()
+        elif arg == '--artifact-prefix':
+            ARTIFACT_PREFIX = args.pop(0)
+        elif arg in ('-h', '--help'):
+            print(__doc__)
+            return 0
     if not WORKFLOW.exists():
         print('workflow missing: %s' % WORKFLOW)
         return 2
