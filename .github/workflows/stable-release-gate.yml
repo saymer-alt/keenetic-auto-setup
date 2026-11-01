@@ -1,10 +1,14 @@
 name: Stable release gate (native QEMU)
 
 # Manual, addressable release gate for stable candidates: runs the pinned
-# Router Emulator E2E (baseline lifecycle and/or the minimal uninstall
-# packages scenario) against an exact candidate commit. Deliberately not
-# wired into push/pull_request — QEMU lab runs are expensive and are meant
-# for release acceptance, not per-commit churn. Adds no production code.
+# Router Emulator E2E against an exact candidate commit. Adds no production
+# code. Deliberately not wired into push/pull_request — QEMU lab runs are
+# expensive and are meant for release acceptance, not per-commit churn.
+#
+# SEQUENTIAL DISPATCH REQUIRED: the called emulator workflow runs with
+# 'group: ported-lab-<ref>; cancel-in-progress: true', so simultaneous gate
+# dispatches CANCEL each other. Run the three scenarios one at a time and
+# keep every run ID.
 
 on:
   workflow_dispatch:
@@ -22,17 +26,20 @@ on:
           - uninstall-packages
           - kas-baseline
           - kas-legacy-bridge
-      emulator_ref:
-        description: 'Router Emulator commit (defaults to pinned lab ref)'
-        required: false
-        type: string
+
+permissions:
+  contents: read
 
 jobs:
   native-gate:
+    permissions:
+      contents: read
     uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@95518d8b307b6748d4f6780dc73aa7859eeee7a3
     with:
       kas_ref: ${{ inputs.kas_ref }}
       stage: ${{ inputs.scenario == 'uninstall-packages' && 'uninstall-packages' || 'kas' }}
       profile: ${{ inputs.scenario == 'kas-legacy-bridge' && 'legacy-bridge' || 'baseline' }}
-      emulator_ref: ${{ inputs.emulator_ref || '95518d8b307b6748d4f6780dc73aa7859eeee7a3' }}
-    secrets: inherit
+      # Positive release scenario only: the emulator default (false) is the
+      # deliberately failing negative A/B control (issue #50/#319 review).
+      legacy_ip_global: ${{ inputs.scenario == 'kas-legacy-bridge' }}
+      emulator_ref: 95518d8b307b6748d4f6780dc73aa7859eeee7a3
