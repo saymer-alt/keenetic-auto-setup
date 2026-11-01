@@ -20,6 +20,7 @@
 | [`mihomo-interface-check.sh`](../mihomo-interface-check.sh) | [Показать Linux-имена WAN/VPN-интерфейсов для `interface-name`](../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../mihomo-proxy-selection-watch.sh) | [Показать, какой сервер Mihomo выбран сейчас](11-proxy-selection-watch.md) |
 | [`mihomo-route-check.sh`](../mihomo-route-check.sh) | [Проверить доступность конкретного сайта через Mihomo](15-route-check.md) |
+| [`kas-download-check.sh`](../kas-download-check.sh) | [Read-only диагностика загрузки скриптов KAS и доступности GitHub: DNS → TCP → TLS → HTTP → передача → проверка файла, источники по отдельности](27-download-check.md) |
 | [`kas-network-doctor.sh`](../kas-network-doctor.sh) | [Каскадная диагностика одной цели: DNS → TCP → TLS → HTTP, egress, путь Mihomo и ProxyN (явный запуск)](29-network-doctor.md) |
 | [`kas-sys-metrics.sh`](../kas-sys-metrics.sh) | [Read-only метрики роутера: температура SoC, load average, uptime, память (#309)](30-sys-metrics.md) |
 | [`update-mihomo.sh`](../update-mihomo.sh) | [Обновить ядро Mihomo с проверкой и откатом](12-updates.md#обновление-mihomo) |
