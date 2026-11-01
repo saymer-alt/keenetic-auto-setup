@@ -298,6 +298,12 @@ func TestPagesChannelStates(t *testing.T) {
 			map[bool]string{true: "true", false: "false"}[experimental] +
 			`,"tag":"v0.1.0-beta.4"},"stable":{"published":false}}}`)
 	}
+	registryWithTag := func(tag string) []byte {
+		return []byte(`{"schema":1,"channels":{"experimental":{"published":true,"tag":"` + tag + `"}}}`)
+	}
+	indexWithTag := func(tag string) []byte {
+		return []byte(`{"schema":1,"channel":"experimental","tag":"` + tag + `","packages":[]}`)
+	}
 
 	for _, tc := range []struct {
 		name        string
@@ -326,6 +332,10 @@ func TestPagesChannelStates(t *testing.T) {
 		{"site temporarily unavailable", func() (int, []byte) { return 503, nil },
 			func() (int, []byte) { t.Fatal("index must not be fetched when the site is down"); return 0, nil },
 			"PANEL_UPDATE_SOURCE_UNAVAILABLE"},
+		{"registry tag differs from the index tag", func() (int, []byte) { return 200, registryWithTag("v0.1.0-beta.5") },
+			func() (int, []byte) { return 200, indexWithTag("v0.1.0-beta.4") }, "PANEL_METADATA_INVALID"},
+		{"registry names an empty tag", func() (int, []byte) { return 200, registryWithTag("") },
+			func() (int, []byte) { return 200, indexWithTag("v0.1.0-beta.4") }, "PANEL_METADATA_INVALID"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

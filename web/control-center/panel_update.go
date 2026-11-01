@@ -301,6 +301,7 @@ func panelAssetClient(root string) *http.Client {
 	}
 	return c
 }
+
 // Pages-based update index source (beta.4, docs/updates-pages-architecture.md).
 // The index pointers live on the project's GitHub Pages; package BYTES remain
 // on GitHub Releases and keep the existing strict release/asset validation.
@@ -318,7 +319,10 @@ func pagesClient(root string) *http.Client {
 	c := updateClientForRoot(root)
 	c.Timeout = 20 * time.Second
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if req.URL.Scheme == "https" && req.URL.Hostname() == pagesUpdateHost && len(via) <= 2 {
+		// Exact-origin policy: https on the default port of the exact
+		// Pages host, no userinfo, bounded hops. Anything else is refused.
+		if req.URL.Scheme == "https" && req.URL.Hostname() == pagesUpdateHost &&
+			req.URL.Port() == "" && req.URL.User == nil && len(via) <= 2 {
 			return nil
 		}
 		return errors.New("PANEL_UPDATE_REDIRECT_BLOCKED")
@@ -406,6 +410,14 @@ func readChannelIndex(ctx context.Context, root, channel string) ([]byte, error)
 	// A published channel with a non-JSON index file is a broken channel,
 	// never a harmless "no updates" (docs/updates-pages-architecture.md).
 	if !json.Valid(raw) {
+		return nil, errors.New("PANEL_METADATA_INVALID")
+	}
+	// A stale or mismatched registry/index pair must fail explicitly: the
+	// registry names the release the index is supposed to describe.
+	var declared struct {
+		Tag string `json:"tag"`
+	}
+	if json.Unmarshal(raw, &declared) != nil || declared.Tag != entry.Tag || entry.Tag == "" {
 		return nil, errors.New("PANEL_METADATA_INVALID")
 	}
 	return raw, nil

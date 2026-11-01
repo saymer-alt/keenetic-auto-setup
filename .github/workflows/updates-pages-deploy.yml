@@ -5,6 +5,21 @@ name: Deploy KAS WEB update index to GitHub Pages (one-shot per channel, require
 # assets verified. Runs ONLY on explicit workflow_dispatch with pinned inputs.
 # Enabling Pages for the repository is a separate owner decision; this
 # workflow never activates Pages implicitly.
+#
+# Publication rules (docs/updates-pages-architecture.md):
+#   - The live registry (channels.json) is authoritative. A normal run
+#     (bootstrap=false) FAILS CLOSED when the live registry or a published
+#     channel's index cannot be read (DNS/TLS/5xx/404): it never replaces an
+#     existing registry with a fresh empty one.
+#   - bootstrap=true is the ONLY mode allowed to initialize an absent site.
+#     It must be a separately approved first deployment (e.g. seeding with
+#     the already released beta.3 before beta.4 exists).
+#   - The other channel's index is carried over byte-for-byte iff the
+#     registry declares it published; its declared state, not URL
+#     reachability, drives the decision.
+#   - After deployment the PUBLIC endpoint is re-fetched until both the
+#     registry and the channel index match the built bytes (digest + tag).
+#     A stale HTTP 200 from the CDN is retried, never accepted.
 
 on:
   workflow_dispatch:
@@ -32,6 +47,11 @@ on:
         description: 'Candidate artifact name prefix, e.g. kas-web-beta3'
         required: true
         type: string
+      bootstrap:
+        description: 'First deployment on an empty site (owner-approved only)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -121,101 +141,141 @@ jobs:
           VERIFIED_RUN: ${{ inputs.verified_run }}
           EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
           ARTIFACT_PREFIX: ${{ inputs.artifact_prefix }}
-      - name: Preserve the other channel from the live site (no cross-channel overwrites)
+      - name: Read the live registry and preserve the other channel (fail closed)
         run: |
           set -euo pipefail
           mkdir -p site/updates/experimental site/updates/stable
           other=stable; [ "$CHANNEL" = stable ] && other=experimental
-          # The other channel must be carried over byte-for-byte; a missing
-          # other-channel index is allowed only for stable (not yet published)
-          # and only while the registry also reports it unpublished.
-          if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$other/panel-update.json" \
-              -o "site/updates/$other/panel-update.json"; then
-            echo "carried over $other channel from the live site"
+          export OTHER="$other"
+          fetch() { # fetch <url> <outfile>: 0 on HTTP 200, 4 on HTTP 404, 1 on other errors
+            local code
+            code=$(curl -sSL --max-time 20 -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || return 1
+            if [ "$code" = "200" ]; then return 0; fi
+            if [ "$code" = "404" ]; then return 4; fi
+            return 1
+          }
+          # 1. The live registry is authoritative. Without bootstrap a broken
+          #    or missing registry fails the run: a fresh empty registry here
+          #    would erase already published channels from the public site.
+          if fetch "$PAGES_BASE/updates/channels.json" build/old-channels.json; then
+            echo "live registry fetched"
           else
-            [ "$other" = stable ] || { echo "live $other index unavailable and it must exist" >&2; exit 1; }
-            echo "stable index not present on the live site (not yet published)"
+            rc=$?
+            if [ "$BOOTSTRAP" = "true" ] && [ "$rc" = "4" ]; then
+              echo "bootstrap: no live registry yet; initializing a fresh one"
+              printf '{"schema":1,"channels":{"experimental":{"published":false,"tag":""},"stable":{"published":false,"tag":""}}}\n' > build/old-channels.json
+            else
+              if [ "$rc" = "4" ]; then
+                echo "live registry is missing; refusing to overwrite an unknown site state (use the approved bootstrap procedure only)" >&2
+              else
+                echo "live registry is unreachable (DNS/TLS or HTTP error); refusing to publish over an unreadable state" >&2
+              fi
+              exit 1
+            fi
           fi
-          curl -fsSL --max-time 20 "$PAGES_BASE/updates/channels.json" -o build/old-channels.json \
-            || echo '{"schema":1,"channels":{}}' > build/old-channels.json
+          python3 - <<'PY'
+          import json
+          reg=json.load(open('build/old-channels.json'))
+          assert reg.get('schema')==1 and isinstance(reg.get('channels'),dict), 'live registry is not a valid schema-1 registry'
+          print('PASS: live registry parses')
+          PY
+          # 2. The other channel follows its REGISTRY state, not URL reachability.
+          other_state=$(python3 -c 'import json,os;reg=json.load(open("build/old-channels.json"));e=reg["channels"].get(os.environ["OTHER"],{"published":False});print("published" if e.get("published") else "unpublished")')
+          if [ "$other_state" = "published" ]; then
+            if fetch "$PAGES_BASE/updates/$other/panel-update.json" "site/updates/$other/panel-update.json"; then
+              python3 - "$other" <<'PY'
+          import json,sys
+          p=json.load(open('site/updates/'+sys.argv[1]+'/panel-update.json'))
+          assert p.get('schema')==1 and p.get('channel')==sys.argv[1] and len(p.get('packages',[]))==4, 'live other-channel index does not parse'
+          PY
+              echo "carried over published $other channel from the live site"
+            else
+              echo "registry declares $other published but its index is unreadable; refusing to deploy over a broken pair" >&2
+              exit 1
+            fi
+          else
+            if fetch "$PAGES_BASE/updates/$other/panel-update.json" /dev/null; then
+              echo "registry declares $other unpublished but a live index exists; refusing to publish an inconsistent pair" >&2
+              exit 1
+            fi
+            echo "$other channel is unpublished per the registry; no index carried over"
+          fi
+          # 3. Apply this run: the published channel flips to true with the
+          #    exact release tag; everything else stays verbatim.
           cp build/panel-update.json "site/updates/$CHANNEL/panel-update.json"
           python3 - "$CHANNEL" "$RELEASE_TAG" <<'PY'
           import json,sys
           channel,tag=sys.argv[1],sys.argv[2]
           reg=json.load(open('build/old-channels.json'))
-          assert reg.get('schema')==1
-          channels=reg.setdefault('channels',{})
-          # The published channel flips to published=true; the other channel
-          # keeps its existing entry verbatim (missing = not published).
+          channels=reg['channels']
           channels[channel]={'published':True,'tag':tag}
-          channels.setdefault('experimental',{'published':False,'tag':''})
-          channels.setdefault('stable',{'published':False,'tag':''})
           json.dump(reg,open('site/updates/channels.json','w'),indent=2)
-          print('registry:', json.dumps(reg['channels']))
-          PY'
-          import json,os,sys
-          channel,tag=sys.argv[1],sys.argv[2]
-          reg=json.load(open('build/old-channels.json'))
-          assert reg.get('schema')==1
-          reg.setdefault('channels',{})
-          reg['channels'][channel]={'published':True,'tag':tag}
-          reg.setdefault('channels',{}).setdefault('stable',reg.get('channels',{}).get('stable',{'published':False}))
-          if channel=='experimental':
-              reg['channels'].setdefault('stable',{'published':False})
-          reg['channels'].setdefault('experimental',{'published':False})
-          reg['channels'][channel]={'published':True,'tag':tag}
-          json.dump(reg,open('site/updates/channels.json','w'),indent=2)
-          print('registry:', json.dumps(reg['channels']))
+          print('registry after this run:', json.dumps(channels))
           PY
         env:
           CHANNEL: ${{ inputs.channel }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          BOOTSTRAP: ${{ inputs.bootstrap }}
       - name: Verify the local site tree before deployment
         run: |
           set -euo pipefail
-          python3 - "$CHANNEL" <<'PY'
-          import hashlib,json,os,pathlib,sys
-          channel=sys.argv[1]
+          python3 - "$CHANNEL" "$RELEASE_TAG" <<'PY'
+          import hashlib,json,pathlib,sys
+          channel,tag=sys.argv[1],sys.argv[2]
           new=json.loads(pathlib.Path('site/updates',channel,'panel-update.json').read_text())
-          assert new['tag'] and len(new['packages'])==4
+          assert new['tag']==tag and new['channel']==channel and len(new['packages'])==4
           for p in new['packages']:
               raw=pathlib.Path('build/ipk',p['name']).read_bytes()
               assert p['sha256']==hashlib.sha256(raw).hexdigest()
           reg=json.loads(pathlib.Path('site/updates/channels.json').read_text())
-          assert reg['schema']==1 and reg['channels'][channel]['published'] is True
+          assert reg['schema']==1
+          assert reg['channels'][channel]=={'published':True,'tag':tag}
           print('PASS: local site tree is complete and consistent')
           PY
         env:
           CHANNEL: ${{ inputs.channel }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - uses: actions/deploy-pages@v4
-      - name: Verify the public endpoint (bounded retry for Pages/CDN delay)
+      - name: Verify the public endpoint (bounded retry on bytes, not on HTTP 200)
         run: |
           set -euo pipefail
-          ok=0
-          for attempt in 1 2 3 4 5 6; do
-            if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$CHANNEL/panel-update.json" \
-                -o build/public-index.json; then ok=1; break; fi
-            sleep 10
+          # A CDN can serve stale bytes with HTTP 200 for minutes. Retry until
+          # BOTH the channel index and the registry match the built bytes
+          # (digest and tag), or the budget expires; never accept on first 200.
+          expect_index_sha=$(sha256sum build/panel-update.json | cut -d' ' -f1)
+          expect_registry_sha=$(sha256sum site/updates/channels.json | cut -d' ' -f1)
+          index_ok=0; registry_ok=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$CHANNEL/panel-update.json" -o build/public-index.json 2>/dev/null; then
+              if [ "$(sha256sum build/public-index.json | cut -d' ' -f1)" = "$expect_index_sha" ]; then
+                if python3 -c 'import json,os,sys;p=json.load(open("build/public-index.json"));sys.exit(0 if p.get("tag")==os.environ["RELEASE_TAG"] and p.get("schema")==1 else 1)'; then
+                  index_ok=1
+                fi
+              fi
+            fi
+            if curl -fsSL --max-time 20 "$PAGES_BASE/updates/channels.json" -o build/public-registry.json 2>/dev/null; then
+              if [ "$(sha256sum build/public-registry.json | cut -d' ' -f1)" = "$expect_registry_sha" ]; then
+                registry_ok=1
+              fi
+            fi
+            if [ "$index_ok" = "1" ] && [ "$registry_ok" = "1" ]; then break; fi
+            echo "attempt $attempt: public content is not final yet (stale CDN or propagation); retrying"
+            sleep 1
           done
-          test "$ok" = "1" || { echo "public endpoint did not serve the new index in time" >&2; exit 1; }
-          python3 - <<'PY'
-          import hashlib,json,os
-          new=pathlib.Path('build/panel-update.json').read_bytes()
-          pub=pathlib.Path('build/public-index.json').read_bytes()
-          assert hashlib.sha256(pub).hexdigest()==hashlib.sha256(new).hexdigest(), \
-            'public index differs from the built index'
-          assert json.loads(pub)['tag']==os.environ['RELEASE_TAG']
-          print('PASS: public Pages endpoint serves the expected index byte for byte')
-          PY
+          test "$index_ok" = "1" || { echo "public channel index never matched the built bytes (sha256 $expect_index_sha, tag $RELEASE_TAG)" >&2; exit 1; }
+          test "$registry_ok" = "1" || { echo "public registry never matched the built bytes (sha256 $expect_registry_sha)" >&2; exit 1; }
+          echo "PASS: public Pages endpoint serves the expected index and registry (digest + tag verified)"
+          # The other published channel must still serve the exact bytes we
+          # carried over (its public state is part of the publication claim).
           other=stable; [ "$CHANNEL" = stable ] && other=experimental
           if [ -s "site/updates/$other/panel-update.json" ]; then
             curl -fsSL --max-time 20 "$PAGES_BASE/updates/$other/panel-update.json" -o build/other-public.json
             cmp -s "site/updates/$other/panel-update.json" build/other-public.json
-            echo "PASS: the other channel survived the deployment unchanged"
+            echo "PASS: the other published channel survived the deployment unchanged"
           fi
         env:
           CHANNEL: ${{ inputs.channel }}

@@ -55,6 +55,9 @@ jobs:
       - name: Beta.3 publish transaction dry-run (mock GitHub, real step scripts)
         run: python3 tests/publish-transaction-dryrun.py
 
+      - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
+        run: python3 tests/pages-deploy-dryrun.py
+
       - name: First-fetch bootstrap mocked-network and BusyBox acceptance
         run: python3 tests/bootstrap-regression.py
 
