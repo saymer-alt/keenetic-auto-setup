@@ -333,6 +333,10 @@ class Sandbox:
         self.gh_path.chmod(0o755)
 
     def reset_state(self, releases=None):
+        # A shared sandbox accumulates fixture files across scenarios; a
+        # different release version would leave stale IPKs next to the fresh
+        # ones and break the single-ipk-per-artifact invariant.
+        shutil.rmtree(self.fixtures, ignore_errors=True)
         artifacts = {}
         for arch in ARCHES:
             directory = write_artifact_fixture(self.fixtures / 'artifacts', arch)
@@ -687,7 +691,33 @@ def scenario_draft_listing_delay_retried(sandbox, steps, failures):
                      latest=CORE_LATEST, tag_sha=SOURCE_SHA)
 
 
+def scenario_beta4_release_version_agnostic(sandbox, steps, failures):
+    """The publish transaction must work for the NEXT release unchanged:
+    same steps, different tag/version pins (beta.4). The candidate-build
+    workflow carries matching dispatch inputs (version/tag), so a beta.4
+    publication is a pure pin change, not a code change."""
+    global BETA_TAG, BETA_VERSION
+    keep = (BETA_TAG, BETA_VERSION)
+    try:
+        BETA_TAG, BETA_VERSION = 'v0.1.0-beta.4', '0.1.0~beta.4-1'
+        sandbox.reset_state()
+        code, output = last_result(run_workflow(sandbox, steps))
+        check = Checker(failures, 'beta.4 pins (version-agnostic transaction)')
+        check(code == 0, 'beta.4-tagged publication must pass end to end: %s' % output[-700:])
+        if code == 0:
+            state = sandbox.state()
+            beta = state['releases'][BETA_TAG]
+            check(beta['target_commitish'] == SOURCE_SHA, 'beta.4 target commit')
+            index = index_bytes_from_workspace(sandbox)
+            check(json.loads(index)['tag'] == BETA_TAG, 'index tag')
+            assert_final(sandbox, check, channel=index, release_present=True,
+                         release_draft=False, latest=CORE_LATEST, tag_sha=SOURCE_SHA)
+    finally:
+        BETA_TAG, BETA_VERSION = keep
+
+
 SCENARIOS = [
+    ('beta.4 pins: version-agnostic transaction', scenario_beta4_release_version_agnostic),
     ('draft listing delay retried read-only', scenario_draft_listing_delay_retried),
     ('happy path', scenario_happy_path),
     ('placeholders refused', scenario_placeholders),

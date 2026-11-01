@@ -121,7 +121,7 @@ jobs:
           import os,json,hashlib,pathlib
           build=pathlib.Path('build')
           canonical=json.loads((build/'panel-update.json').read_text())
-          assert canonical['tag']=='v0.1.0-beta.3'
+          assert canonical['tag']==os.environ['BETA_TAG']
           architectures={'aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'}
           assert {p['architecture'] for p in canonical['packages']} == architectures
           # Every matrix job writes a *single-architecture* CI manifest.
@@ -131,7 +131,7 @@ jobs:
           for arch in architectures:
               from_ci=json.loads((build/'ci-manifests'/f'{arch}.json').read_text())
               assert from_ci['schema']==1 and from_ci['channel']=='experimental'
-              assert from_ci['tag']=='v0.1.0-beta.3' and len(from_ci['packages'])==1
+              assert from_ci['tag']==os.environ['BETA_TAG'] and len(from_ci['packages'])==1
               candidate=dict(from_ci['packages'][0])
               assert candidate['architecture']==arch
               candidate['name']=candidate['name'].replace('~','.')

@@ -9,6 +9,20 @@ on:
       - '.github/workflows/web-beta3-build.yml'
       - 'web/control-center/**'
   workflow_dispatch:
+    # Candidate builds for a NEW release (e.g. beta.4) are dispatched on the
+    # merge commit with explicit version/tag inputs; the push triggers above
+    # keep building beta.3-named candidates for the historical branches.
+    inputs:
+      version:
+        description: 'Internal IPK version, e.g. 0.1.0~beta.4-1'
+        required: false
+        type: string
+        default: '0.1.0~beta.3-1'
+      tag:
+        description: 'Canonical release tag, e.g. v0.1.0-beta.4'
+        required: false
+        type: string
+        default: 'v0.1.0-beta.3'
 
 permissions:
   contents: read
@@ -61,7 +75,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: '0.1.0~beta.3-1'
+      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
+      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.3' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +120,7 @@ jobs:
               assert x['source_sha']==os.environ['SOURCE_SHA']
               assert x['architecture']==os.environ['PACKAGE_ARCH']
               assert x['sha256'] and x['binary_sha256']
-          assert canonical['tag']=='v0.1.0-beta.3' and alias['tag'].startswith('kas-web-ipk-')
+          assert canonical['tag']==os.environ['RELEASE_TAG'] and alias['tag'].startswith('kas-web-ipk-')
           print('PASS beta version, source SHA, architecture and digest (canonical + alias index)')
           PY
           mkdir -p inspect
