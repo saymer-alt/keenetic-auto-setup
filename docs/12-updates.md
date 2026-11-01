@@ -76,6 +76,10 @@ project binary-state (или его исходное отсутствие), бе
 остаться работающим: успех rollback не объявляется. `/tmp` backups исчезают при
 reboot; следующий updater не удаляет чужие recovery backups.
 
+## OPKG-база и project-managed бинарник (issue #320)
+
+\`update-mihomo.sh\` заменяет **только** бинарник и сознательно не пишет в OPKG-базу. Если фид также предоставляет пакет \`mihomo\`, база остаётся со старой версией, и последующий штатный \`opkg upgrade\` может заменить более новый project-managed ELF более старым фидовым (механизм воспроизведён offline закреплённым официальным opkg; тест \`tests/test_opkg_downgrade_repro.py\`). После обновления updater сравнивает метаданные OPKG с установленной версией и печатает \`[WARN]\` при расхождении — проверьте \`opkg list-installed | grep mihomo\` перед массовыми \`opkg upgrade\`. Updater ничего не держит (no hold/flag) и не меняет репозитории; решение — за оператором.
+
 ## Обновление MagiTrickle
 
 MagiTrickle обновляется штатным Entware/opkg-путём из уже подключённого пакета

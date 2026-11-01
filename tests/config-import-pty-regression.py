@@ -17,6 +17,13 @@ Pinned contracts (introduced with the fix):
   - skipping leaves config.yaml byte-identical and never touches the service;
   - pasted shell commands are still rejected without execution.
 
+Issue #320 recovery contracts (R1–R5, end-to-end section): a missing/empty
+current config on an installed KAS no longer blocks the import with the
+misleading "Run setup.sh first" hint — a recovery import proceeds and never
+overwrites an existing good config.yaml.bak with unusable current content;
+an invalid nonempty current config keeps a good backup too; a valid current
+config still becomes the new backup exactly as before.
+
 The reader is extracted from the production script (same approach as
 tests/doctor-ubi-regression.sh): the PTY reproduces the real tty behavior,
 but no router is contacted and nothing outside the temporary fixture tree
@@ -435,12 +442,165 @@ def test_e2e_full_script():
                 pass
 
 
+def test_e2e_recovery_cases():
+    """Issue #320 stage B: recovery import over an empty/missing/invalid
+    current config, and protection of a good .bak from invalid content.
+
+    Contracts under test:
+      - an installed KAS (init script + binary present) with a missing or
+        empty config.yaml allows a recovery import; the misleading
+        "Run setup.sh first" error is gone;
+      - a nonempty but invalid current config never overwrites an existing
+        good config.yaml.bak (the backup keeps the last known-good YAML);
+      - recovery mode leaves an existing backup untouched;
+      - a candidate containing `secret: null` (empty Controller secret — an
+        accepted KAS deployment contract) imports without a YAML error;
+      - a valid current config still produces the previous-config backup
+        (unchanged historical behavior).
+    """
+    ok, why = e2e_possible()
+    if not ok:
+        print("[SKIP] end-to-end recovery cases (%s)" % why)
+        return
+
+    created = []
+
+    def ensure_dir(path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+            created.append(path)
+
+    for path in ("/opt", "/opt/sbin", "/opt/etc", "/opt/etc/init.d",
+                 "/opt/etc/mihomo"):
+        ensure_dir(path)
+
+    fake_bin = "/opt/sbin/mihomo"
+    fake_init = "/opt/etc/init.d/S99mihomo"
+    config_path = "/opt/etc/mihomo/config.yaml"
+    backup_path = "/opt/etc/mihomo/config.yaml.bak"
+    created.extend([fake_bin, fake_init])
+
+    # Content-aware validator: rejects any -t target containing the marker,
+    # so the tests can distinguish a valid config from a corrupt one.
+    with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\n"
+                 "f=\"\"\nprev=\"\"\n"
+                 "for a in \"$@\"; do\n"
+                 "  [ \"$prev\" = \"-f\" ] && f=\"$a\"\n"
+                 "  prev=\"$a\"\n"
+                 "done\n"
+                 "[ -n \"$f\" ] || f=\"/opt/etc/mihomo/config.yaml\"\n"
+                 "if [ -f \"$f\" ] && grep -q MAKE_MIHOMO_FAIL \"$f\" 2>/dev/null; then\n"
+                 "  echo \"synthetic mihomo: config rejected\" >&2\n"
+                 "  exit 1\n"
+                 "fi\n"
+                 "exit 0\n")
+    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\nexit 0\n")
+    os.chmod(fake_bin, 0o755)
+    os.chmod(fake_init, 0o755)
+
+    GOOD_OLD = "mixed-port: 7890\nmode: rule\nsecret: real-old\n"
+    CANDIDATE = b"mixed-port: 7890\nmode: rule\nsecret: null\nrecovery: yes\n"
+
+    def reset(config_bytes, bak_bytes):
+        for path in (config_path, backup_path):
+            if os.path.exists(path):
+                os.remove(path)
+        if config_bytes is not None:
+            with open(config_path, "wb") as fh:
+                fh.write(config_bytes)
+        if bak_bytes is not None:
+            with open(backup_path, "wb") as fh:
+                fh.write(bak_bytes)
+
+    def paste_candidate(shell_argv):
+        return run_pty(
+            shell_argv, SCRIPT,
+            [("send", b"\n"), ("wait_pat", PROMPT), ("sleep", 0.5),
+             ("send", CANDIDATE), ("sleep", 0.5), ("send", b"\x04"),
+             ("sleep", 3.0)],
+            icrnl=True)
+
+    for argv in sh_shells():
+        shell_name = " ".join(argv)
+        try:
+            # R1 — empty current config: recovery import proceeds, no
+            # misleading "Run setup.sh first", candidate installed
+            # (secret: null is NOT a YAML error — accepted KAS contract).
+            reset(b"", None)
+            rc, out, _master = paste_candidate(argv)
+            after = open(config_path, "rb").read() if os.path.exists(config_path) else b""
+            check("R1 empty config recovery import (%s)" % shell_name,
+                  rc == 0 and after == CANDIDATE
+                  and b"Run setup.sh first" not in out
+                  and b"recovery" in out.lower(),
+                  "rc=%r tail=%r" % (rc, out[-160:]))
+
+            # R2 — empty current config + existing good backup: the backup
+            # must survive the recovery import byte-identically.
+            reset(b"", GOOD_OLD.encode())
+            rc, out, _master = paste_candidate(argv)
+            after = open(config_path, "rb").read() if os.path.exists(config_path) else b""
+            bak = open(backup_path, "rb").read() if os.path.exists(backup_path) else b""
+            check("R2 empty config recovery preserves good .bak (%s)" % shell_name,
+                  rc == 0 and after == CANDIDATE and bak == GOOD_OLD.encode(),
+                  "rc=%r bak=%r" % (rc, bak[:60]))
+
+            # R3 — nonempty invalid current config + good backup: the invalid
+            # content must NOT replace the good backup (issue #320 hazard).
+            reset(b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\n", GOOD_OLD.encode())
+            rc, out, _master = paste_candidate(argv)
+            after = open(config_path, "rb").read() if os.path.exists(config_path) else b""
+            bak = open(backup_path, "rb").read() if os.path.exists(backup_path) else b""
+            check("R3 invalid current keeps good .bak (%s)" % shell_name,
+                  rc == 0 and after == CANDIDATE and bak == GOOD_OLD.encode()
+                  and b"preserved" in out,
+                  "rc=%r bak=%r" % (rc, bak[:60]))
+
+            # R4 — missing current config entirely: recovery import works.
+            reset(None, None)
+            rc, out, _master = paste_candidate(argv)
+            after = open(config_path, "rb").read() if os.path.exists(config_path) else b""
+            check("R4 missing config recovery import (%s)" % shell_name,
+                  rc == 0 and after == CANDIDATE,
+                  "rc=%r tail=%r" % (rc, out[-160:]))
+
+            # R5 — valid current config: historical behavior — previous
+            # config becomes the new backup (regression guard).
+            reset(b"mixed-port: 7890\nmode: rule\nold: yes\n", None)
+            rc, out, _master = paste_candidate(argv)
+            after = open(config_path, "rb").read() if os.path.exists(config_path) else b""
+            bak = open(backup_path, "rb").read() if os.path.exists(backup_path) else b""
+            check("R5 valid current still backed up (%s)" % shell_name,
+                  rc == 0 and after == CANDIDATE
+                  and bak == b"mixed-port: 7890\nmode: rule\nold: yes\n",
+                  "rc=%r bak=%r" % (rc, bak[:60]))
+        finally:
+            for path in (config_path, backup_path):
+                if os.path.exists(path):
+                    os.remove(path)
+
+    for path in reversed(created):
+        try:
+            os.remove(path)
+        except OSError:
+            shutil.rmtree(path, ignore_errors=True)
+    for path in ("/opt/etc/mihomo", "/opt/etc/init.d", "/opt/etc",
+                 "/opt/sbin", "/opt"):
+        try:
+            os.rmdir(path)
+        except OSError:
+            pass
+
+
 def main():
     if not os.path.exists(SCRIPT):
         print("[FAIL] config-import.sh not found under %s" % ROOT)
         return 1
     test_reader_scenarios()
     test_e2e_full_script()
+    test_e2e_recovery_cases()
     if failures:
         print("[FAIL] config-import PTY reader regression: %d failure(s)"
               % len(failures))

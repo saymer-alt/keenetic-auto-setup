@@ -25,7 +25,7 @@ Interactive input is read from \`/dev/tty\`, so this still works when the import
 - a running Mihomo is stopped and confirmed down so validation never launches a second Mihomo beside the daemon;
 - \`/tmp/mihomo.maintenance\` pauses the watchdog during planned downtime;
 - the candidate is tested by real \`mihomo -t\`;
-- the current config is saved as \`/opt/etc/mihomo/config.yaml.bak\`;
+- the current *valid* config is saved as \`/opt/etc/mihomo/config.yaml.bak\` (see "Recovery" below);
 - the candidate is committed by one same-filesystem rename;
 - if the service was running before import it is started again and both process state and port 7890 are checked;
 - failed validation/start/port verification restores the previous config and previous service state.
@@ -51,6 +51,14 @@ After success the immediately previous configuration remains at:
 \`\`\`
 
 A later successful import replaces that backup with the then-current config.
+
+## Recovery (issue #320)
+
+If the current \`config.yaml\` is missing, empty, or fails \`mihomo -t\`, the import is not blocked: KAS is provably installed (the init script was found), so the importer performs a **recovery import** of the new valid YAML and prints a \`[WARN] recovery\` line. Protection rules:
+
+- an existing good \`config.yaml.bak\` is **never overwritten** by a missing or empty current config or by invalid nonempty content: such current content never reaches the backup;
+- a failed import rolls back to the last known-good config from \`.bak\`; without a \`.bak\` the importer reports the missing rollback point honestly instead of pretending;
+- the misleading \`Run setup.sh first\` hint is gone in this situation: it belonged to a genuinely not-installed KAS (missing directory or init script only).
 
 ## Non-goals
 

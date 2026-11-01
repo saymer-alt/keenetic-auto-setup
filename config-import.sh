@@ -308,6 +308,10 @@ mp_pids() {
 # candidate -> contract check -> controlled one-Mihomo stop -> mihomo -t ->
 # previous-config backup -> atomic rename -> start/process/port verification.
 # Any post-commit failure restores the previous config and service state.
+#
+# Recovery (issue #320): when the current config.yaml is missing, empty or
+# invalid, the import still proceeds — a good existing config.yaml.bak is
+# preserved untouched and is preferred for rollback over unusable content.
 
 set -e
 
@@ -524,7 +528,20 @@ echo "=== Mihomo Config Import ==="
 
 [ -x "$INIT_SCRIPT" ] || error "Mihomo init script not found: $INIT_SCRIPT"
 [ -d "$CONFIG_DIR" ] || error "Mihomo config directory not found: $CONFIG_DIR. Run setup.sh first."
-[ -s "$CONFIG_PATH" ] || error "Current config.yaml is missing or empty. Run setup.sh first."
+# Issue #320: an empty or missing current config used to hard-block the
+# importer with a misleading "Run setup.sh first" hint even on an installed
+# system. KAS is provably installed here (init script above), so a recovery
+# import of a new valid YAML is allowed instead. The backup step below never
+# overwrites an existing good config.yaml.bak with unusable current content.
+CURRENT_CONFIG_USABLE=1
+if [ ! -s "$CONFIG_PATH" ]; then
+    CURRENT_CONFIG_USABLE=0
+    if [ -s "$BACKUP_PATH" ]; then
+        warn "Current config.yaml is missing or empty; recovery import will proceed. The existing backup at $BACKUP_PATH is preserved."
+    else
+        warn "Current config.yaml is missing or empty; recovery import will proceed without a previous-config backup."
+    fi
+fi
 
 MIHOMO_BIN=$(resolve_mihomo) || error "Mihomo binary not found in /opt/sbin or /opt/bin."
 
@@ -648,24 +665,34 @@ if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t >"$TEST_LOG" 2>&1; the
 fi
 log "Mihomo config test passed."
 
-log "Saving previous config as $BACKUP_PATH ..."
-cp -f "$CONFIG_PATH" "$BACKUP_STAGE" || {
-    restore_old_service || true
-    error "Could not create config backup; candidate was not installed."
-}
+# Issue #320: the previous config is re-backed-up only when it is usable.
+# Recovery mode (missing/empty current config) and an invalid nonempty
+# current config leave an existing good $BACKUP_PATH untouched, so a later
+# rollback restores the last known-good YAML instead of unusable content.
+if [ "$CURRENT_CONFIG_USABLE" -eq 0 ]; then
+    log "Recovery mode: the unusable previous config is not re-backed-up; $BACKUP_PATH (if any) stays untouched."
+elif [ -s "$BACKUP_PATH" ] && ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$CONFIG_PATH" -t >/dev/null 2>&1; then
+    log "Current config.yaml is not a valid Mihomo config; $BACKUP_PATH is preserved instead of being overwritten with invalid content."
+else
+    log "Saving previous config as $BACKUP_PATH ..."
+    cp -f "$CONFIG_PATH" "$BACKUP_STAGE" || {
+        restore_old_service || true
+        error "Could not create config backup; candidate was not installed."
+    }
 
-_old_size=$(wc -c < "$CONFIG_PATH" 2>/dev/null || true)
-_bak_size=$(wc -c < "$BACKUP_STAGE" 2>/dev/null || true)
-[ -n "$_old_size" ] && [ "$_old_size" = "$_bak_size" ] || {
-    restore_old_service || true
-    error "Config backup verification failed; candidate was not installed."
-}
+    _old_size=$(wc -c < "$CONFIG_PATH" 2>/dev/null || true)
+    _bak_size=$(wc -c < "$BACKUP_STAGE" 2>/dev/null || true)
+    [ -n "$_old_size" ] && [ "$_old_size" = "$_bak_size" ] || {
+        restore_old_service || true
+        error "Config backup verification failed; candidate was not installed."
+    }
 
-chmod 600 "$BACKUP_STAGE" 2>/dev/null || true
-mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
-    restore_old_service || true
-    error "Could not commit config backup; candidate was not installed."
-}
+    chmod 600 "$BACKUP_STAGE" 2>/dev/null || true
+    mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
+        restore_old_service || true
+        error "Could not commit config backup; candidate was not installed."
+    }
+fi
 
 mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 # Opt-in gate B: last read-only comparison before the atomic replacement.
