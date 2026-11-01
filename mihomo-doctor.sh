@@ -2561,22 +2561,66 @@ else
     ok "bypass_wa hook present and executable"
 fi
 
+# BEGIN DOCTOR BYPASS NETFILTER PROBE v1
 if ! command -v iptables >/dev/null 2>&1; then
     BYPASS_NETFILTER_RUNTIME=failed
     fail "bypass_wa Netfilter verification unavailable: iptables not found$_bypass_component_hint"
 else
     _bypass_ports="1400,3478,3482"
-    _bypass_pre=$(iptables -t mangle -S PREROUTING 2>/dev/null)
-    _bypass_pre_rc=$?
-    _bypass_chain=$(iptables -t mangle -S _CUST_BYPASS_WA_ 2>/dev/null)
-    _bypass_chain_rc=$?
+    # Read-only pair probe (PR #312 review): PREROUTING and the chain are
+    # read together as one bounded attempt, so a transient failure of one
+    # read cannot fail the whole section after the other read recovered.
+    # For the chain, "No chain/target/match" is a definitive answer and is
+    # not retried; a busy xtables lock or an unknown read error may clear
+    # within seconds, hence a small bounded read-only retry for both reads.
+    # The chain is never created or modified here.
+    _bypass_attempt=1
+    _bypass_max_attempts=3
+    while :; do
+        _bypass_chain=$(iptables -t mangle -S _CUST_BYPASS_WA_ 2>&1)
+        _bypass_chain_rc=$?
+        _bypass_pre=$(iptables -t mangle -S PREROUTING 2>&1)
+        _bypass_pre_rc=$?
+        if [ "$_bypass_chain_rc" -eq 0 ] && [ "$_bypass_pre_rc" -eq 0 ]; then
+            break
+        fi
+        case "$_bypass_chain" in
+            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|*"chain does not exist"*)
+                break
+                ;;
+        esac
+        [ "$_bypass_attempt" -lt "$_bypass_max_attempts" ] || break
+        sleep 2
+        _bypass_attempt=$((_bypass_attempt + 1))
+    done
 
     if [ "$_bypass_chain_rc" -ne 0 ]; then
         BYPASS_NETFILTER_RUNTIME=failed
-        fail "bypass_wa Netfilter chain missing: _CUST_BYPASS_WA_$_bypass_component_hint"
+        case "$_bypass_chain" in
+            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|"chain does not exist"*)
+                fail "bypass_wa Netfilter chain absent: _CUST_BYPASS_WA_ (hook has not applied yet; if KAS was just installed, wait about 10 minutes and re-run Doctor, or rebuild the firewall once; a single reboot also rebuilds it)$_bypass_component_hint"
+                ;;
+            *"Resource temporarily unavailable"*|*"Resource busy"*|*"xtables.lock"*)
+                fail "bypass_wa Netfilter chain unreadable: iptables busy (firewall rebuild in progress); re-run Doctor in a few minutes$_bypass_component_hint"
+                ;;
+            *)
+                fail "bypass_wa Netfilter chain cannot be inspected: $_bypass_chain$_bypass_component_hint"
+                ;;
+        esac
     else
         _bypass_missing=""
-        if [ "$_bypass_pre_rc" -ne 0 ] || ! printf '%s\n' "$_bypass_pre" | grep -Fq -- "-j _CUST_BYPASS_WA_"; then
+        if [ "$_bypass_pre_rc" -ne 0 ]; then
+            # The pair probe ended with PREROUTING still unreadable: report
+            # the read failure itself, not a missing link.
+            case "$_bypass_pre" in
+                *"Resource temporarily unavailable"*|*"Resource busy"*|*"xtables.lock"*)
+                    _bypass_missing="$_bypass_missing PREROUTING unreadable (iptables busy; firewall rebuild in progress)"
+                    ;;
+                *)
+                    _bypass_missing="$_bypass_missing PREROUTING unreadable (read error)"
+                    ;;
+            esac
+        elif ! printf '%s\n' "$_bypass_pre" | grep -Fq -- "-j _CUST_BYPASS_WA_"; then
             _bypass_missing="$_bypass_missing PREROUTING-link"
         fi
         if ! printf '%s\n' "$_bypass_chain" | grep -F -- "-p udp -m multiport --dports $_bypass_ports -j MARK " >/dev/null 2>&1; then
@@ -2598,6 +2642,7 @@ else
         fi
     fi
 fi
+# END DOCTOR BYPASS NETFILTER PROBE v1
 
 case "$DOC_NETFILTER_COMPONENT:$BYPASS_NETFILTER_RUNTIME" in
     missing:ok)
