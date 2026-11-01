@@ -1,6 +1,6 @@
-# Метрики роутера: read-only сбор состояния (кандидат для Web beta.4)
+# Метрики роутера: read-only сбор состояния (самостоятельный диагностический инструмент)
 
-`kas-sys-metrics.sh` — необязательный одноразовый read-only сборщик штатных показателей ядра Linux/KeeneticOS (issue [#309](https://github.com/saymer-alt/keenetic-auto-setup/issues/309)): температура SoC/CPU из sysfs, load average, uptime и сводка памяти/swap из /proc. Решение владельца от 31.10.2026: **необязательная полезная функция на будущее** — сначала collector с честными UNKNOWN, затем простые карточки в KAS Web beta.4; это не мониторинг и не блокер beta.4.
+`kas-sys-metrics.sh` — необязательный одноразовый read-only сборщик штатных показателей ядра Linux/KeeneticOS (issue [#309](https://github.com/saymer-alt/keenetic-auto-setup/issues/309)): температура SoC/CPU из sysfs, load average, uptime и сводка памяти/swap из /proc. Решение владельца от 31.10.2026: **необязательная полезная функция на будущее** — сначала collector с честными UNKNOWN, затем отдельная необязательная интеграция с KAS Web; это не мониторинг и не блокер очередной бета-версии. Интеграция отложена до Web Beta 5 (решение от 01.11.2026).
 
 ## Что собирается
 
@@ -29,7 +29,7 @@ sh kas-sys-metrics.sh --json /opt/tmp/metrics.json
 
 ## JSON-контракт `router-metrics/v1`
 
-`--json FILE` пишет версию схемы, имя/версию инструмента, UTC-время, exit-код и блоки `temperature` (статус, °C, зона, type, source, note «no thresholds asserted»), `load` (статус, 1/5/15 мин, note «load average, not CPU percentage»), `uptime` (статус, секунды, note), `memory` и `swap`. Все статусы — `PASS / UNKNOWN / N/A / INFO`; формат готов для будущих карточек Web beta.4.
+`--json FILE` пишет версию схемы, имя/версию инструмента, UTC-время, exit-код и блоки `temperature` (статус, °C, зона, type, source, note «no thresholds asserted»), `load` (статус, 1/5/15 мин, note «load average, not CPU percentage»), `uptime` (статус, секунды, note), `memory` и `swap`. Все статусы — `PASS / UNKNOWN / N/A / INFO`; формат готов для будущих карточек KAS Web.
 
 ## Тестирование и границы
 
