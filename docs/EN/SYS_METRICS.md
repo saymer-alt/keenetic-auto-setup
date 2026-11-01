@@ -1,6 +1,6 @@
-# Router metrics: read-only state collector (Web beta.4 candidate)
+# Router metrics: read-only state collector (standalone optional collector)
 
-`kas-sys-metrics.sh` is an optional one-shot read-only collector of standard Linux/KeeneticOS kernel readings (issue [#309](https://github.com/saymer-alt/keenetic-auto-setup/issues/309)): SoC/CPU temperature from sysfs, load average, uptime and a memory/swap summary from /proc. Owner decision (2026-10-31): an **optional convenience feature for the future** - first the collector with honest UNKNOWN handling, then simple cards in KAS Web beta.4. This is not monitoring and not a beta.4 blocker.
+`kas-sys-metrics.sh` is an optional one-shot read-only collector of standard Linux/KeeneticOS kernel readings (issue [#309](https://github.com/saymer-alt/keenetic-auto-setup/issues/309)): SoC/CPU temperature from sysfs, load average, uptime and a memory/swap summary from /proc. Owner decision (2026-10-31): an **optional convenience feature for the future** - first the collector with honest UNKNOWN handling, then optional KAS Web integration. This is not monitoring and does not block current Web betas. Integration was deferred to Web Beta 5 by the 2026-11-01 owner decision.
 
 ## What is collected
 
@@ -29,7 +29,7 @@ Exit codes: `0` at least one metric observed; `1` nothing observed (all UNKNOWN)
 
 ## The router-metrics/v1 JSON contract
 
-`--json FILE` writes the schema version, tool name/version, UTC time, exit code and the `temperature` (status, celsius, zone, type, source, "no thresholds asserted" note), `load` (status, 1/5/15 min, "load average, not CPU percentage" note), `uptime` (status, seconds, note), `memory` and `swap` blocks. All statuses are `PASS / UNKNOWN / N/A / INFO`; the format is ready for future Web beta.4 cards.
+`--json FILE` writes the schema version, tool name/version, UTC time, exit code and the `temperature` (status, celsius, zone, type, source, "no thresholds asserted" note), `load` (status, 1/5/15 min, "load average, not CPU percentage" note), `uptime` (status, seconds, note), `memory` and `swap` blocks. All statuses are `PASS / UNKNOWN / N/A / INFO`; the format is ready for future KAS Web cards.
 
 ## Testing and evidence boundaries
 
