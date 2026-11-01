@@ -105,6 +105,7 @@ bodies = {
     "redirect": (0, "302|http://target.example/|http://192.0.2.99/"),
     "portal": (0, "302|http://target.example/|http://192.168.88.1/login.html"),
     "redirect_secret": (0, "302|http://target.example/|https://user:secret@example.com/callback?token=TOPSECRET"),
+    "redirect_path_secret": (0, "302|http://target.example/|https://192.0.2.99/dl/TOPSECRET/x"),
     "exit6": (6, ""),
     "exit7": (7, ""),
     "exit28": (28, ""),
@@ -374,7 +375,8 @@ def main():
          {"expect_in": ("HTTP 403", "the server declined the request"),
           "cli_args": target_args}),
         ("captive_portal_redirect", {"target": "portal"}, 0,
-         {"expect_in": ("192.168.88.1/login.html", "captive portal"),
+         {"expect_in": ("http://192.168.88.1/[path withheld]", "captive portal"),
+          "expect_not_in": ("login.html",),
           "cli_args": target_args}),
         ("egress_differs", {}, 0,
          {"expect_in": ("egress.direct: direct traffic currently exits from 203.0.113.10",
@@ -459,7 +461,7 @@ def main():
           "expect_not_in": ("after redirect handling",),
           "cli_args": target_args}),
         ("captive_portal_via_redirect_target", {"target": "portal"}, 0,
-         {"expect_in": ("http://192.168.88.1/login.html", "captive portal"),
+         {"expect_in": ("http://192.168.88.1/[path withheld]", "captive portal"),
           "cli_args": target_args}),
         ("proxies_response_capped", {}, 0,
          {"expect_in": ("mihomo.controller.selection",), "cli_args": target_args}),
@@ -491,6 +493,25 @@ def main():
          {"expect_in": ("Port:    9090",),
           "cli_args": ["--target", "http://example.com:8080/", "--port", "9090"]}),
         # IPv6 literals are an explicit usage error, never a silent other target
+        # query-only URL (no slash after the host) keeps its query
+        ("query_only_url_keeps_query", {}, 0,
+         {"expect_in": ("Host:    example.com",),
+          "cli_args": ["--target", "https://example.com?token=abc"]}),
+        # a secret in the URL PATH is redacted in every shareable sink
+        ("path_secret_redacted", {}, 0,
+         {"expect_in": ("Host:    example.com", "[path withheld]"),
+          "expect_not_in": ("TOPSECRET", "/api/TOPSECRET"),
+          "cli_args": ["--target", "https://example.com/api/TOPSECRET?token=x"]}),
+        # redirect Location with a secret in the path is redacted too
+        ("redirect_path_secret_redacted", {"target": "redirect_path_secret"}, 0,
+         {"expect_in": ("192.0.2.99", "[path withheld]"),
+          "expect_not_in": ("TOPSECRET", "/dl/TOPSECRET"),
+          "cli_args": target_args}),
+        # usage errors never echo the raw user input
+        ("usage_error_hides_secret", {}, 2,
+         {"expect_in": ("Unsupported characters in target",),
+          "expect_not_in": ("TOPSECRET",),
+          "cli_args": ["--target", "https://exa mple.com/?token=TOPSECRET"]}),
         # bracketed IPv6 literals are rejected as an explicit usage error
         # (character allowlist), never silently resolved to another target
         ("ipv6_literal_usage_error", {}, 2,
@@ -576,6 +597,7 @@ def main():
                 (["--target", "https://example.com:8443/path"], "https://example.com:8443/path"),
                 (["--target", "example.com", "--port", "8443"], "https://example.com:8443/"),
                 (["--target", "http://example.com:8080/", "--port", "9090"], "http://example.com:9090/"),
+                (["--target", "https://example.com?token=abc"], "https://example.com/?token=abc"),
             ):
                 (lab / "curl_calls.json").unlink(missing_ok=True)
                 r = run_tool(shell, cli, env)

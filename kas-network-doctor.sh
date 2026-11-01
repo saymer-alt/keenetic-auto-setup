@@ -168,7 +168,7 @@ case "$TARGET_INPUT" in
     '') fail_out "--target is required"; exit 2 ;;
 esac
 if printf '%s' "$TARGET_INPUT" | LC_ALL=C grep -q "[^A-Za-z0-9._~:/?#@!&()*+,;=%-]"; then
-    fail_out "Unsupported characters in target: $TARGET_INPUT"
+    fail_out "Unsupported characters in target: $(sanitize_url "$TARGET_INPUT")"
     exit 2
 fi
 
@@ -217,15 +217,28 @@ json_escape() {
 }
 
 sanitize_url() {
-    # URL form safe for shareable reports: credentials, query and fragment
-    # are withheld; scheme, host, port and path stay readable.
+    # URL form safe for shareable reports: credentials, the query and the
+    # whole non-root path are withheld; scheme://host[:port]/ stays
+    # readable. The probe itself always uses the full URL.
     _su=$1
     _sq=""
     case "$_su" in
-        *\?*) _sq=1 ;;
+        *"?"*) _sq=1 ;;
     esac
     _su=$(printf '%s' "$_su" | sed 's#//[^/@]*@#//[credentials withheld]@#')
     _su=$(printf '%s' "$_su" | sed 's/[?#].*$//')
+    case "$_su" in
+        *://*)
+            _scheme=${_su%%://*}
+            _rest=${_su#*://}
+            _authority=${_rest%%/*}
+            _tail=${_rest#"$_authority"}
+            case "$_tail" in
+                ''|/) _su="${_scheme}://${_authority}/" ;;
+                *)     _su="${_scheme}://${_authority}/[path withheld]" ;;
+            esac
+            ;;
+    esac
     [ -n "$_sq" ] && _su="${_su}?[query withheld]"
     printf '%s' "$_su"
 }
@@ -432,15 +445,15 @@ case "$TARGET_INPUT" in
         # authority (userinfo stripped) and the actual path/query are
         # preserved: the tool must probe the resource the user named
         _authority=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#[/?#].*$##')
-        TARGET_PATH=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^/]*##')
+        TARGET_PATH=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^/?]*##')
         _authority=$(printf '%s' "$_authority" | sed 's#^[^/@]*@##')
         case "$_authority" in
-            '['*) fail_out "IPv6 literal targets are not supported: $TARGET_INPUT"; rm -f "$ERR_FILE"; exit 2 ;;
+            '['*) fail_out "IPv6 literal targets are not supported: $(sanitize_url "$TARGET_INPUT")"; rm -f "$ERR_FILE"; exit 2 ;;
             *:*)
                 TARGET_HOST=${_authority%%:*}
                 TARGET_PORT=${_authority#*:}
-                case "$TARGET_PORT" in ''|*[!0-9]*|0*) fail_out "Unsupported port in target URL: $_authority"; rm -f "$ERR_FILE"; exit 2 ;; esac
-                [ "$TARGET_PORT" -le 65535 ] || { fail_out "Unsupported port in target URL: $_authority"; rm -f "$ERR_FILE"; exit 2; }
+                case "$TARGET_PORT" in ''|*[!0-9]*|0*) fail_out "Unsupported port in target URL: $(sanitize_url "$_authority")"; rm -f "$ERR_FILE"; exit 2 ;; esac
+                [ "$TARGET_PORT" -le 65535 ] || { fail_out "Unsupported port in target URL: $(sanitize_url "$_authority")"; rm -f "$ERR_FILE"; exit 2; }
                 ;;
             *) TARGET_HOST=$_authority ;;
         esac

@@ -26,7 +26,7 @@ MIHOMO_PROXY_GROUP='GLOBAL' MIHOMO_API_SECRET='...' sh kas-network-doctor.sh --t
 sh kas-network-doctor.sh --target example.com --no-egress    # skip the egress observation
 ```
 
-Target and port rules: the URL path and query are preserved and probed as given (`--target https://example.com/missing` really probes `/missing`); port priority is explicit `--port` > the port inside the URL > the scheme default (443/80); the query is never printed (same for userinfo); IPv6 literals and non-numeric ports are an explicit usage error, never a silent probe of another address.
+Target and port rules: the URL path and query are preserved and probed as given (`--target https://example.com/missing` really probes `/missing`; a query-only URL like `https://example.com?token=abc` is probed with its query); port priority is explicit `--port` > the port inside the URL > the scheme default (443/80); IPv6 literals and non-numeric ports are an explicit usage error, never a silent probe of another address, and usage errors never echo the raw input. Report policy: **the path and the query are never printed** - in stdout, the text report and the JSON any non-root path appears as `[path withheld]`, the query as `[query withheld]`, userinfo as `[credentials withheld]`; the network probe always uses the full URL.
 
 Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` chain confirmed (DNS+TCP+TLS answered, HTTP answered with any status); `1` confirmed stage failure; `2` usage error; `3` inconclusive (nothing FAILed, but the chain never completed).
 
