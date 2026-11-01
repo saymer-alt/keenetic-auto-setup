@@ -1,0 +1,38 @@
+name: Stable release gate (native QEMU)
+
+# Manual, addressable release gate for stable candidates: runs the pinned
+# Router Emulator E2E (baseline lifecycle and/or the minimal uninstall
+# packages scenario) against an exact candidate commit. Deliberately not
+# wired into push/pull_request — QEMU lab runs are expensive and are meant
+# for release acceptance, not per-commit churn. Adds no production code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      kas_ref:
+        description: 'Full 40-hex candidate commit under test'
+        required: true
+        type: string
+      scenario:
+        description: 'Gate scenario'
+        required: false
+        default: uninstall-packages
+        type: choice
+        options:
+          - uninstall-packages
+          - kas-baseline
+          - kas-legacy-bridge
+      emulator_ref:
+        description: 'Router Emulator commit (defaults to pinned lab ref)'
+        required: false
+        type: string
+
+jobs:
+  native-gate:
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@95518d8b307b6748d4f6780dc73aa7859eeee7a3
+    with:
+      kas_ref: ${{ inputs.kas_ref }}
+      stage: ${{ inputs.scenario == 'uninstall-packages' && 'uninstall-packages' || 'kas' }}
+      profile: ${{ inputs.scenario == 'kas-legacy-bridge' && 'legacy-bridge' || 'baseline' }}
+      emulator_ref: ${{ inputs.emulator_ref || '95518d8b307b6748d4f6780dc73aa7859eeee7a3' }}
+    secrets: inherit
