@@ -103,17 +103,35 @@ class PagesState:
     def __init__(self):
         self.store = {}
         self.lock = threading.Lock()
-        self.script = []  # per-read behaviors: dicts {path, times, action}
+        # Per-path scripted behaviors: {path, times, action}. The action MUST
+        # return a concrete (status_code, bytes) pair — the point is to model
+        # real HTTP answers (stale 200s, 503s), not broken connections.
+        self.script = []
+        self.reads = {}  # path -> {status_code: count}
 
     def serve(self, path):
         with self.lock:
+            scripted = any(item['path'] == path and item['times'] > 0
+                           for item in self.script)
             for item in self.script:
                 if item['path'] == path and item['times'] > 0:
                     item['times'] -= 1
-                    return item['action']()  # (status, bytes) or None=>store
+                    code, body = item['action']()
+                    self.reads.setdefault(path, {}).setdefault(code, 0)
+                    self.reads[path][code] += 1
+                    if item['times'] == 0 and getattr(self, 'post_read', None):
+                        self.post_read()  # script exhausted: restore real bytes
+                    return code, body
+            if scripted and getattr(self, 'post_read', None):
+                self.post_read()
             if path not in self.store:
+                self.reads.setdefault(path, {}).setdefault(404, 0)
+                self.reads[path][404] += 1
                 return 404, b'not found'
-            return self.store[path]
+            code, body = self.store[path]
+            self.reads.setdefault(path, {}).setdefault(code, 0)
+            self.reads[path][code] += 1
+            return code, body
 
     def publish_site(self, site_dir):
         with self.lock:
@@ -346,39 +364,132 @@ def scenario_missing_registry_fails_closed(sandbox, blocks, failures):
 
 
 def scenario_registry_unreachable_fails_closed(sandbox, blocks, failures):
-    sandbox.pages.store['/updates/channels.json'] = 503, b'busy'
+    """HTTP 503 on the exact registry path: the workflow must classify it as
+    unreachable (not as a missing registry) and refuse to continue."""
+    sandbox.pages.store['/keenetic-auto-setup/updates/channels.json'] = 503, b'busy'
     code, output = run_workflow(sandbox, blocks)
-    check = Checker(failures, 'unreachable registry fails closed')
+    check = Checker(failures, 'unreachable registry (503) fails closed')
     check(not code, 'workflow must fail on an unreadable registry')
-    check(sandbox.pages.store.get('/updates/experimental/panel-update.json') is None,
-          'nothing may be published on a failed gate')
+    check('live registry is unreachable' in output,
+          'must classify 503 as unreachable, got: %s' % output[-400:])
+    check(sandbox.pages.store.get(
+        '/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
+        'nothing may be published on a failed gate')
+
+
+def scenario_bootstrap_unreachable_registry_still_fails(sandbox, blocks, failures):
+    """bootstrap=true relaxes ONLY a confirmed-empty site (404); a transient
+    server error stays a hard failure even in bootstrap mode."""
+    sandbox.pages.store['/keenetic-auto-setup/updates/channels.json'] = 503, b'busy'
+    code, output = run_workflow(sandbox, blocks)
+    check = Checker(failures, 'bootstrap with 503 registry still fails')
+    check(not code, 'bootstrap must not proceed over a 503 registry')
+    check('live registry is unreachable' in output, 'must report unreachability')
+
+
+def scenario_bootstrap_existing_registry_aborts(sandbox, blocks, failures):
+    """bootstrap=true asserts an empty site; an existing live registry makes
+    the assertion false, so the run aborts and must be re-dispatched with
+    bootstrap=false."""
+    sandbox._seed_published_stable()
+    code, output = run_workflow(sandbox, blocks)
+    check = Checker(failures, 'bootstrap with existing registry aborts')
+    check(not code, 'workflow must abort: bootstrap asserts an empty site')
+    check('rerun with bootstrap=false' in output, 'explicit remediation message required')
+    check(sandbox.pages.store.get(
+        '/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
+        'nothing may be published on a failed gate')
+
+
+def scenario_unpublished_other_channel_503_fails_closed(sandbox, blocks, failures):
+    """Registry says the other channel is unpublished, but its absence cannot
+    be confirmed because the index path answers 503: the run must fail closed
+    instead of treating the error as a confirmed 404. The run publishes
+    experimental; the other (stable) channel is declared unpublished with a
+    503 on its index path."""
+    sandbox.pages.store['/keenetic-auto-setup/updates/channels.json'] = 200, json.dumps({
+        'schema': 1, 'channels': {
+            'experimental': {'published': True, 'tag': 'v0.1.0-beta.3'},
+            'stable': {'published': False, 'tag': ''}}}).encode()
+    sandbox.pages.store['/keenetic-auto-setup/updates/stable/panel-update.json'] = 503, b'busy'
+    code, output = run_workflow(sandbox, blocks)
+    check = Checker(failures, 'unpublished other channel 503 fails closed')
+    check(not code, 'workflow must fail closed when absence is not confirmed by 404')
+    check('absence could not be confirmed' in output,
+          'explicit unverified-state message required, got: %s' % output[-400:])
+    check(sandbox.pages.store.get(
+        '/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
+        'nothing may be published on a failed gate')
 
 
 def scenario_stale_cdn_retried(sandbox, blocks, failures):
-    """After deploy the CDN serves the previous index with HTTP 200 for two
-    reads; the final gate must retry on CONTENT and only then accept."""
+    """After deploy the CDN serves the previous index as real HTTP 200 for
+    exactly two reads; the final gate must retry on CONTENT and accept only
+    fresh bytes."""
     sandbox._seed_published_stable()
-    real_publish = sandbox.pages.publish_site
     index_key = '/keenetic-auto-setup/updates/experimental/panel-update.json'
+    stale_bytes = json.dumps({'schema': 1, 'channel': 'experimental',
+                              'tag': 'v0.1.0-beta.3', 'packages': []}).encode()
+    real_publish = sandbox.pages.publish_site
 
     def publish_with_cdn_delay(site_dir):
         real_publish(site_dir)
         fresh = sandbox.pages.store[index_key]
-        stale_bytes = json.dumps({'schema': 1, 'channel': 'experimental',
-                                  'tag': 'v0.1.0-beta.3', 'packages': []}).encode()
-        sandbox.pages.store[index_key] = 200, stale_bytes
 
-        def unhide():
+        def stale_twice():
+            return 200, stale_bytes
+
+        def restore_fresh():
             sandbox.pages.store[index_key] = fresh
 
-        sandbox.pages.script = [{'path': index_key, 'times': 2, 'action': unhide}]
+        sandbox.pages.script = [
+            {'path': index_key, 'times': 2, 'action': stale_twice},
+            {'path': index_key, 'times': 0, 'action': restore_fresh}]
 
     sandbox.pages.publish_site = publish_with_cdn_delay
     code, output = run_workflow(sandbox, blocks)
     check = Checker(failures, 'stale CDN retried on bytes')
     check(code, 'bounded retry must defeat stale HTTP-200 bytes: %s' % output[-700:])
-    if code:
-        check('not final yet' in output, 'stale attempts must be logged as retries')
+    check('not final yet' in output, 'stale attempts must be logged as retries')
+    check(output.count('not final yet') == 2,
+          'exactly two stale-200 retries expected, got %d' % output.count('not final yet'))
+    # Two scripted stale reads must be real HTTP 200s, then fresh 200s.
+    reads = sandbox.pages.reads.get(index_key, {})
+    check(reads.get(200, 0) >= 3, 'stale and fresh bytes served as HTTP 200, saw %r' % reads)
+
+
+def scenario_corrupt_metadata_fails_before_deploy(sandbox, blocks, failures):
+    sandbox.reset_state()
+    state = sandbox.state()
+    name = '%s-aarch64-3.10-%s' % (PREFIX, SOURCE_SHA)
+    manifest = json.loads(base64.b64decode(state['artifacts'][name]['manifest-canonical.json']))
+    manifest['packages'][0]['sha256'] = 'f' * 64
+    state['artifacts'][name]['manifest-canonical.json'] = base64.b64encode(
+        json.dumps(manifest).encode()).decode()
+    sandbox.state_path.write_text(json.dumps(state), encoding='utf-8')
+    code, output = run_workflow(sandbox, blocks)
+    check = Checker(failures, 'corrupt metadata fails pre-deploy')
+    check(not code, 'workflow must fail on candidate/manifest mismatch')
+    check(sandbox.pages.store.get(
+        '/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
+        'a failed build gate must never deploy')
+
+
+def scenario_failed_final_gate(sandbox, blocks, failures):
+    sandbox._seed_published_stable()
+    real_publish = sandbox.pages.publish_site
+
+    def publish_then_freeze_stale(site_dir):
+        real_publish(site_dir)
+        sandbox.pages.store['/keenetic-auto-setup/updates/experimental/panel-update.json'] = (
+            200, json.dumps({'schema': 1, 'channel': 'experimental',
+                             'tag': 'v0.1.0-beta.3', 'packages': []}).encode())
+
+    sandbox.pages.publish_site = publish_then_freeze_stale
+    code, output = run_workflow(sandbox, blocks)
+    check = Checker(failures, 'failed final gate')
+    check(not code, 'workflow must fail when public bytes never match')
+    check('never matched the built bytes' in output, 'explicit final-gate message required')
 
 
 def scenario_corrupt_metadata_fails_before_deploy(sandbox, blocks, failures):
@@ -429,7 +540,10 @@ SCENARIOS = [
     ('bootstrap on an empty site', lambda: Sandbox(bootstrap=True), 'bootstrap_fresh'),
     ('beta roll-forward preserves published stable', lambda: Sandbox(), 'roll_forward'),
     ('missing registry without bootstrap fails closed', lambda: Sandbox(), 'missing_registry'),
-    ('unreachable registry fails closed', lambda: Sandbox(), 'unreachable_registry'),
+    ('unreachable registry (503) fails closed', lambda: Sandbox(), 'unreachable_registry'),
+    ('bootstrap with 503 registry still fails', lambda: Sandbox(bootstrap=True), 'bootstrap_unreachable'),
+    ('bootstrap with existing registry aborts', lambda: Sandbox(bootstrap=True), 'bootstrap_existing'),
+    ('unpublished other channel 503 fails closed', lambda: Sandbox(), 'unpublished_other_503'),
     ('stale CDN HTTP-200 bytes retried', lambda: Sandbox(), 'stale_cdn'),
     ('corrupt candidate metadata fails pre-deploy', lambda: Sandbox(), 'corrupt_metadata'),
     ('failed final gate aborts loudly', lambda: Sandbox(), 'final_gate'),
@@ -441,6 +555,9 @@ DISPATCH = {
     'roll_forward': scenario_roll_forward_preserves_stable,
     'missing_registry': scenario_missing_registry_fails_closed,
     'unreachable_registry': scenario_registry_unreachable_fails_closed,
+    'bootstrap_unreachable': scenario_bootstrap_unreachable_registry_still_fails,
+    'bootstrap_existing': scenario_bootstrap_existing_registry_aborts,
+    'unpublished_other_503': scenario_unpublished_other_channel_503_fails_closed,
     'stale_cdn': scenario_stale_cdn_retried,
     'corrupt_metadata': scenario_corrupt_metadata_fails_before_deploy,
     'final_gate': scenario_failed_final_gate,

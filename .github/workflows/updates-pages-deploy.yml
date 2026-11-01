@@ -149,7 +149,7 @@ jobs:
           export OTHER="$other"
           fetch() { # fetch <url> <outfile>: 0 on HTTP 200, 4 on HTTP 404, 1 on other errors
             local code
-            code=$(curl -sSL --max-time 20 -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || return 1
+            code=$(curl -sSL --max-time 20 -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || { echo "FETCH: curl exited nonzero" >&2; return 1; }
             if [ "$code" = "200" ]; then return 0; fi
             if [ "$code" = "404" ]; then return 4; fi
             return 1
@@ -158,6 +158,10 @@ jobs:
           #    or missing registry fails the run: a fresh empty registry here
           #    would erase already published channels from the public site.
           if fetch "$PAGES_BASE/updates/channels.json" build/old-channels.json; then
+            if [ "$BOOTSTRAP" = "true" ]; then
+              echo "bootstrap=true asserts an empty site, but a live registry exists; rerun with bootstrap=false" >&2
+              exit 1
+            fi
             echo "live registry fetched"
           else
             rc=$?
@@ -194,11 +198,17 @@ jobs:
               exit 1
             fi
           else
-            if fetch "$PAGES_BASE/updates/$other/panel-update.json" /dev/null; then
+            rc=0
+            fetch "$PAGES_BASE/updates/$other/panel-update.json" /dev/null || rc=$?
+            if [ "$rc" = "0" ]; then
               echo "registry declares $other unpublished but a live index exists; refusing to publish an inconsistent pair" >&2
               exit 1
+            elif [ "$rc" = "4" ]; then
+              echo "$other channel is unpublished per the registry and confirmed absent (404); no index carried over"
+            else
+              echo "registry declares $other unpublished but its absence could not be confirmed (network/TLS/HTTP error); refusing to continue on an unverified state" >&2
+              exit 1
             fi
-            echo "$other channel is unpublished per the registry; no index carried over"
           fi
           # 3. Apply this run: the published channel flips to true with the
           #    exact release tag; everything else stays verbatim.
@@ -246,10 +256,17 @@ jobs:
           # A CDN can serve stale bytes with HTTP 200 for minutes. Retry until
           # BOTH the channel index and the registry match the built bytes
           # (digest and tag), or the budget expires; never accept on first 200.
+          # Budget: 30 attempts x 10s ≈ 5+ minutes of propagation window.
+          # NOTE: a failure here happens AFTER deploy-pages has run — this is
+          # NOT an automatic rollback. The site keeps serving whatever the CDN
+          # settles on; the operator must inspect the public endpoint
+          # read-only and, if it settled on stale bytes, re-dispatch this
+          # workflow for the same release (idempotent) or roll the index back
+          # by re-dispatching the previous release's pin.
           expect_index_sha=$(sha256sum build/panel-update.json | cut -d' ' -f1)
           expect_registry_sha=$(sha256sum site/updates/channels.json | cut -d' ' -f1)
           index_ok=0; registry_ok=0
-          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          for attempt in $(seq 1 30); do
             if curl -fsSL --max-time 20 "$PAGES_BASE/updates/$CHANNEL/panel-update.json" -o build/public-index.json 2>/dev/null; then
               if [ "$(sha256sum build/public-index.json | cut -d' ' -f1)" = "$expect_index_sha" ]; then
                 if python3 -c 'import json,os,sys;p=json.load(open("build/public-index.json"));sys.exit(0 if p.get("tag")==os.environ["RELEASE_TAG"] and p.get("schema")==1 else 1)'; then
@@ -263,8 +280,8 @@ jobs:
               fi
             fi
             if [ "$index_ok" = "1" ] && [ "$registry_ok" = "1" ]; then break; fi
-            echo "attempt $attempt: public content is not final yet (stale CDN or propagation); retrying"
-            sleep 1
+            echo "attempt $attempt/30: public content is not final yet (stale CDN or propagation); retrying"
+            sleep 10
           done
           test "$index_ok" = "1" || { echo "public channel index never matched the built bytes (sha256 $expect_index_sha, tag $RELEASE_TAG)" >&2; exit 1; }
           test "$registry_ok" = "1" || { echo "public registry never matched the built bytes (sha256 $expect_registry_sha)" >&2; exit 1; }
