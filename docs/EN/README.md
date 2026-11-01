@@ -43,8 +43,10 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 **5. Safely import YAML instead (recommended)**
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
+
+Downloads `config-import.sh` into a private file with raw → IPv4/X25519 → GitHub Contents API fallbacks and verifies shebang, project markers and `sh -n` before running it (issue #255).
 
 **6. Inspect the setup — Doctor**
 

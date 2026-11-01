@@ -67,6 +67,8 @@ sh "$f"
 
 Если начальный запрос raw GitHub не работает, короткая команда покажет ошибку `curl`. Для первого этапа используйте расширенный вариант выше: он пробует raw → IPv4/X25519 → GitHub Contents API с проверкой загруженного файла перед выполнением. Короткая команда сознательно допускает `curl | sh`, а `bootstrap.sh` по-прежнему проверяет `setup.sh` перед его выполнением.
 
+Для автономного импорта `config.yaml` та же защита доступна командой `bootstrap.sh --script config-import.sh` (см. [13-config-import.md](13-config-import.md)): загрузчик пробует те же источники и проверяет `config-import.sh` до запуска, поэтому `curl: (35)` на raw больше не исполняет частично доставленный импортёр.
+
 Этот вариант не отключает проверку сертификата и не использует `--insecure`: меняется только TLS key-exchange group. Обычный TLS остаётся первым вариантом. После запуска `setup.sh` project-managed downloader сам использует bounded normal curl, затем один `X25519` compatibility retry, затем wget и GitHub Contents API.
 
 Практический кейс 2026-09-28 на NC-1812: Entware `curl 8.15.0 + OpenSSL 3.5.5` отправлял default TLS ClientHello около 1578 байт и не получал ServerHello; с `--curves X25519` ClientHello уменьшился примерно до 512 байт и тот же `raw.githubusercontent.com` ответил штатно. Это evidence конкретного TLS/path compatibility случая, а не утверждение, что OpenSSL 3.5 сломан на всех сетях.
