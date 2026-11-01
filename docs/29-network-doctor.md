@@ -11,6 +11,7 @@
 - Секрет `MIHOMO_API_SECRET` **никогда не выводится**; выбранное имя прокси-сервера скрывается («selected leaf (name withheld)»); сырые строки running-config не печатаются (только сводка сопоставления). Аргументы curl в журнале санитизируются (Authorization → `[authorization header]`); URL в отчёте и JSON обезличены: userinfo → `[credentials withheld]`, query/fragment → `[query withheld]`. Прямые пробы идут с `--noproxy '*'`, поэтому `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` из окружения не искажают утверждения о direct-пути (socks-пробы используют явный `--socks5-hostname`). DNS-пробы ограничены 6 с через `timeout`, если он доступен (иначе ограничение помечается в отчёте). Ответ Controller `/proxies` ограничен `--max-filesize`.
 - Причина не объявляется установленной: вердикт называет **только подтверждённую ступень отказа**, остальные объяснения помечены как гипотезы (H:) и «следующие шаги» (N:). Успех пробы с роутера не доказывает путь конкретного LAN-клиента — `client.vantage` всегда `NOT TESTED`.
 - UDP-транспорт за пределами косвенной работы резолвера — `UNSUPPORTED` (честно, без фиктивного PASS).
+- DNS-проба выполняется только при наличии утилиты `timeout` (лимит 6 с); без неё стадия честно `NOT TESTED` — неограниченное ожидание на слабом роутере исключено.
 
 ## Запуск
 
@@ -24,6 +25,8 @@ sh kas-network-doctor.sh --target example.com --report /opt/tmp/net-report.txt -
 MIHOMO_PROXY_GROUP='GLOBAL' MIHOMO_API_SECRET='…' sh kas-network-doctor.sh --target example.com
 sh kas-network-doctor.sh --target example.com --no-egress   # без наблюдения egress
 ```
+
+Правила цели и порта: путь и query из URL-цели сохраняются и проверяются фактически (`--target https://example.com/missing` проверяет именно `/missing`); приоритет порта — явный `--port` > порт внутри URL > схема (443/80); query никогда не выводится в отчёт (как и userinfo); IPv6-литералы и нечисловые порты — явная ошибка использования, а не молчаливая проверка другого адреса.
 
 Статусы: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Коды возврата: `0` — цепочка подтверждена (DNS+TCP+TLS ответили, HTTP ответил любым статусом); `1` — подтверждён отказ ступени; `2` — ошибка использования; `3` — неопределённый итог (ничего не FAIL, но и цепочка не завершена: нет утилит, таймауты, исчерпан бюджет).
 

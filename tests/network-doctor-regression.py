@@ -104,6 +104,7 @@ bodies = {
     "http403": (0, "403|http://target.example/"),
     "redirect": (0, "302|http://target.example/|http://192.0.2.99/"),
     "portal": (0, "302|http://target.example/|http://192.168.88.1/login.html"),
+    "redirect_secret": (0, "302|http://target.example/|https://user:secret@example.com/callback?token=TOPSECRET"),
     "exit6": (6, ""),
     "exit7": (7, ""),
     "exit28": (28, ""),
@@ -470,6 +471,31 @@ def main():
          {"expect_in": ("ProxyN", "127.0.0.1:7890"),
           "expect_not_in": ("PROVIDER-TOPSECRET",),
           "cli_args": target_args}),
+
+
+        # ---- round 3: review blockers ----
+        # the probed URL must keep the user's path
+        ("target_path_preserved", {}, 0,
+         {"expect_in": ("Host:    example.com",),
+          "cli_args": ["--target", "https://example.com/missing"]}),
+        # an explicit port inside the target URL is honored
+        ("target_url_port_honored", {}, 0,
+         {"expect_in": ("Port:    8443",),
+          "cli_args": ["--target", "https://example.com:8443/path"]}),
+        # explicit --port overrides the domain-target default
+        ("target_cli_port_honored", {}, 0,
+         {"expect_in": ("Port:    8443",),
+          "cli_args": ["--target", "example.com", "--port", "8443"]}),
+        # explicit --port overrides the port inside the URL (documented rule)
+        ("target_cli_port_overrides_url", {}, 0,
+         {"expect_in": ("Port:    9090",),
+          "cli_args": ["--target", "http://example.com:8080/", "--port", "9090"]}),
+        # IPv6 literals are an explicit usage error, never a silent other target
+        # bracketed IPv6 literals are rejected as an explicit usage error
+        # (character allowlist), never silently resolved to another target
+        ("ipv6_literal_usage_error", {}, 2,
+         {"expect_in": ("Unsupported characters in target",),
+          "cli_args": ["--target", "https://[2001:db8::1]/"]}),
     ]
 
     for shell in shells:
@@ -539,6 +565,67 @@ def main():
             assert prox, "no /proxies call logged"
             assert any("--max-filesize" in a for a in prox[0]), ("proxies not capped", prox[0])
             print("PASS", " ".join(shell), "proxies_call_size_capped")
+
+        # curl must hit the EXACT user-named URL: path, URL port, CLI port
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-url-") as tmp:
+            lab = Path(tmp)
+            fakebin = make_lab(lab, {})
+            env = base_env(lab, fakebin)
+            for cli, want_url in (
+                (["--target", "https://example.com/missing"], "https://example.com/missing"),
+                (["--target", "https://example.com:8443/path"], "https://example.com:8443/path"),
+                (["--target", "example.com", "--port", "8443"], "https://example.com:8443/"),
+                (["--target", "http://example.com:8080/", "--port", "9090"], "http://example.com:9090/"),
+            ):
+                (lab / "curl_calls.json").unlink(missing_ok=True)
+                r = run_tool(shell, cli, env)
+                calls = json.loads((lab / "curl_calls.json").read_text())
+                targets = [a for c in calls for a in c if "://" in a and not c[0].startswith("-") or "://" in a]
+                targets = [a for c in calls for a in c if "://" in a and "://" in a]
+                hit = [a for a in (x for c in calls for x in c) if "://" in a and a == want_url]
+                telnet_or_http = [a for c in calls for a in c if a == want_url]
+                assert telnet_or_http, ("exact target URL not probed", cli, want_url,
+                                        [x for c in calls for x in c if "://" in a])
+            print("PASS", " ".join(shell), "curl_hits_exact_target_url")
+
+        # 302 with a secret Location: no marker in stdout, --report or --json
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-sec302-") as tmp:
+            lab = Path(tmp)
+            jf, rf = lab / "r.json", lab / "r.txt"
+            fakebin = make_lab(lab, {"target": "redirect_secret"})
+            env = base_env(lab, fakebin)
+            r = run_tool(shell, target_args + ["--json", str(jf), "--report", str(rf)], env)
+            blob = r.stdout + r.stderr + jf.read_text() + rf.read_text()
+            for marker in ("TOPSECRET", "token=", "user:secret", "user:"):
+                assert marker not in blob, ("redirect secret leaked", marker, blob[:1500])
+            assert "302" in blob, ("status lost", blob[:800])
+            assert "example.com" in blob, ("safe host lost", blob[:800])
+            data = json.loads(jf.read_text())
+            ids = [c["id"] for c in data["checks"]]
+            assert len(ids) == len(set(ids)), "duplicate ids"
+            print("PASS", " ".join(shell), "redirect_secret_never_leaked")
+
+        # hanging nslookup without any timeout wrapper: quick NOT TESTED, no hang
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-dnsnt-") as tmp:
+            lab = Path(tmp)
+            fakebin = lab / "bin"
+            fakebin.mkdir(parents=True)
+            hang = "#!/usr/bin/env python3" + chr(10) + "import time" + chr(10) + "time.sleep(120)" + chr(10)
+            pn = fakebin / "nslookup"
+            pn.write_text(hang)
+            pn.chmod(0o755)
+            (lab / "plan.json").write_text(json.dumps({}))
+            env = base_env(lab, fakebin)
+            env["PATH"] = str(fakebin)  # no timeout utility in this PATH
+            try:
+                r = run_tool(shell, target_args, env)
+                out = r.stdout + r.stderr
+                assert "NOT TESTED" in out, ("expected NOT TESTED", out[-800:])
+                assert "no timeout wrapper" in out, ("expected explicit guard note", out[-800:])
+                assert "no timeout wrapper available; the DNS probe was not run" in out, out[-800:]
+                print("PASS", " ".join(shell), "dns_without_timeout_guarded")
+            except subprocess.TimeoutExpired:
+                raise AssertionError("dns probe hung without a timeout wrapper")
 
         # DNS probe time limit via a timeout wrapper (when available)
         if shutil.which("timeout"):

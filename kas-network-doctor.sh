@@ -50,6 +50,8 @@ TARGET_INPUT=""
 TARGET_SCHEME="https"
 TARGET_HOST=""
 TARGET_PORT=""
+TARGET_PORT_CLI=""
+TARGET_PATH="/"
 PROBE_URL=""
 DNS_SERVER=""
 DO_EGRESS=1
@@ -110,7 +112,9 @@ Usage:
 Options:
   --target <arg>    target to diagnose (required). Examples: example.com,
                     192.0.2.10, https://example.com/path
-  --port <n>        TCP port override (default: 443 for https, 80 for http)
+  --port <n>        TCP port override. Priority: --port > the port inside
+                    the target URL > the scheme default (443/80). The URL
+                    path/query is probed as given; the query is never printed
   --dns-server <h>  additionally resolve the target against this DNS server
   --no-egress       skip the small egress-address observation (api.ipify.org)
   --json <file>     also write the network-diagnostics/v1 JSON report
@@ -142,7 +146,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { fail_out "--port requires a value"; exit 2; }
             case "$2" in ''|*[!0-9]*|0*) fail_out "--port expects 1..65535: $2"; exit 2 ;; esac
             [ "$2" -le 65535 ] || { fail_out "--port expects 1..65535: $2"; exit 2; }
-            TARGET_PORT=$2; shift ;;
+            TARGET_PORT_CLI=$2; shift ;;
         --dns-server)
             [ "$#" -ge 2 ] || { fail_out "--dns-server requires a value"; exit 2; }
             case "$2" in ''|*[!A-Za-z0-9._:-]*) fail_out "Unsupported --dns-server: $2"; exit 2 ;; esac
@@ -301,8 +305,20 @@ probe_http() {
         -w "%{http_code}|%{url_effective}|%{redirect_url}" "$@" "$_url" 2>"$ERR_FILE" </dev/null)
     R_RC=$?
     _err=$(cat "$ERR_FILE" 2>/dev/null || true)
-    [ -n "$_err" ] && rep "stderr:   $_err"
-    rep "result:   exit=$R_RC info=$R_INFO"
+    [ -n "$_err" ] && rep "stderr:   $(printf '%s' "$_err" | sed 's#//[^/@]*@#//[credentials withheld]@#')"
+    case "$R_INFO" in
+        *\|*)
+            _rc_code=${R_INFO%%|*}
+            _rc_rest=${R_INFO#*|}
+            _rc_url=${_rc_rest%%|*}
+            case "$_rc_rest" in
+                *\|*) _rc_rurl=${_rc_rest#*|} ;;
+                *) _rc_rurl="" ;;
+            esac
+            rep "result:   exit=$R_RC http_code=$_rc_code url=$(sanitize_url "$_rc_url")${_rc_rurl:+ redirect=$(sanitize_url "$_rc_rurl")}"
+            ;;
+        *) rep "result:   exit=$R_RC" ;;
+    esac
     return 0
 }
 
@@ -337,7 +353,7 @@ fetch_small() {
     R_BODY=$(head -c 128 "$BODY_FILE" 2>/dev/null || true)
     rm -f "$BODY_FILE" 2>/dev/null
     _err=$(cat "$ERR_FILE" 2>/dev/null || true)
-    [ -n "$_err" ] && rep "stderr:   $_err"
+    [ -n "$_err" ] && rep "stderr:   $(printf '%s' "$_err" | sed 's#//[^/@]*@#//[credentials withheld]@#')"
     rep "result:   exit=$R_RC body=${R_BODY:+present}"
     return 0
 }
@@ -413,10 +429,20 @@ case "$TARGET_INPUT" in
             https://*) TARGET_SCHEME="https" ;;
             *)         TARGET_SCHEME="http" ;;
         esac
-        TARGET_HOST=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^/@]*@##; s#/.*$##; s/:.*$//')
-        case "$TARGET_INPUT" in
-            https://*) TARGET_PORT=443 ;;
-            http://*)  TARGET_PORT=80 ;;
+        # authority (userinfo stripped) and the actual path/query are
+        # preserved: the tool must probe the resource the user named
+        _authority=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#[/?#].*$##')
+        TARGET_PATH=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^/]*##')
+        _authority=$(printf '%s' "$_authority" | sed 's#^[^/@]*@##')
+        case "$_authority" in
+            '['*) fail_out "IPv6 literal targets are not supported: $TARGET_INPUT"; rm -f "$ERR_FILE"; exit 2 ;;
+            *:*)
+                TARGET_HOST=${_authority%%:*}
+                TARGET_PORT=${_authority#*:}
+                case "$TARGET_PORT" in ''|*[!0-9]*|0*) fail_out "Unsupported port in target URL: $_authority"; rm -f "$ERR_FILE"; exit 2 ;; esac
+                [ "$TARGET_PORT" -le 65535 ] || { fail_out "Unsupported port in target URL: $_authority"; rm -f "$ERR_FILE"; exit 2; }
+                ;;
+            *) TARGET_HOST=$_authority ;;
         esac
         ;;
     *)
@@ -425,22 +451,31 @@ case "$TARGET_INPUT" in
             *)         TARGET_SCHEME="http" ;;
         esac
         TARGET_HOST=$TARGET_INPUT
-        case "$TARGET_SCHEME" in https) TARGET_PORT=443 ;; *) TARGET_PORT=80 ;; esac
+        TARGET_PATH="/"
         ;;
 esac
+# port priority: explicit --port > port inside the URL > scheme default
+[ -n "$TARGET_PORT_CLI" ] && TARGET_PORT=$TARGET_PORT_CLI
+if [ -z "$TARGET_PORT" ]; then
+    case "$TARGET_SCHEME" in https) TARGET_PORT=443 ;; *) TARGET_PORT=80 ;; esac
+fi
 case "$TARGET_HOST" in
     ''|*[!A-Za-z0-9._-]) fail_out "Unsupported host after normalization: '$TARGET_HOST'"; rm -f "$ERR_FILE"; exit 2 ;;
 esac
+case "$TARGET_PATH" in
+    /*) : ;;
+    ''|*) TARGET_PATH="/$TARGET_PATH" ;;
+esac
 case "$TARGET_SCHEME:$TARGET_PORT" in
-    https:443) PROBE_URL="https://$TARGET_HOST/" ;;
-    https:*)   PROBE_URL="https://$TARGET_HOST:$TARGET_PORT/" ;;
-    http:80)   PROBE_URL="http://$TARGET_HOST/" ;;
-    http:*)    PROBE_URL="http://$TARGET_HOST:$TARGET_PORT/" ;;
+    https:443) PROBE_URL="https://$TARGET_HOST$TARGET_PATH" ;;
+    https:*)   PROBE_URL="https://$TARGET_HOST:$TARGET_PORT$TARGET_PATH" ;;
+    http:80)   PROBE_URL="http://$TARGET_HOST$TARGET_PATH" ;;
+    http:*)    PROBE_URL="http://$TARGET_HOST:$TARGET_PORT$TARGET_PATH" ;;
 esac
 rep "Input:   $(sanitize_url "$TARGET_INPUT")"
 rep "Host:    $TARGET_HOST"
 rep "Port:    $TARGET_PORT"
-rep "Probe:   $PROBE_URL"
+rep "Probe:   $(sanitize_url "$PROBE_URL")"
 rep "Vantage: this router only; a LAN client path is never proven by this tool."
 
 # ---------------------------------------------------------------
@@ -470,6 +505,11 @@ lookup_host() {
     # lookup_host <host> [server] -> L_STATUS / L_DETAIL / L_ADDRESSES
     L_STATUS="UNSUPPORTED"; L_DETAIL="no resolver utility"; L_ADDRESSES=""
     [ -n "$NSLOOKUP" ] || return 0
+    if [ -z "$DNS_TO" ]; then
+        # never run an unbounded resolver probe on a slow router
+        L_STATUS="NOT TESTED"; L_DETAIL="no timeout wrapper available; the DNS probe was not run to avoid an unbounded wait"
+        return 0
+    fi
     budget_left || { L_STATUS="NOT TESTED"; L_DETAIL="request budget exhausted"; return 0; }
     REQUESTS_USED=$((REQUESTS_USED+1))
     if [ -n "${2:-}" ]; then

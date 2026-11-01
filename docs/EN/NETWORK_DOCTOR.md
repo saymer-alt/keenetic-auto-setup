@@ -11,6 +11,7 @@ The regular `mihomo-doctor.sh` stays local and offline-safe: it still performs n
 - The `MIHOMO_API_SECRET` is **never printed**; the selected proxy-server name is withheld; raw running-config lines are withheld (a filtered evidence summary is printed instead). curl arguments in the request log are sanitized (Authorization -> `[authorization header]`); URLs in the report and JSON are redacted: userinfo -> `[credentials withheld]`, query/fragment -> `[query withheld]`. Direct probes run with `--noproxy '*'`, so `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` from the environment cannot distort the direct-path claims (socks probes use the explicit `--socks5-hostname`). DNS probes are limited to 6 s via `timeout` when available (otherwise the missing limit is stated). The Controller `/proxies` response is capped with `--max-filesize`.
 - No cause is declared confirmed: the verdict names only the confirmed failing stage; everything else is labeled H: (hypothesis) and N: (next step). A router-side success does not prove a LAN client path - `client.vantage` stays `NOT TESTED`.
 - UDP transport beyond the implicit resolver exercise is `UNSUPPORTED` (honest, no fabricated PASS).
+- A DNS probe runs only when a `timeout` utility exists (6 s limit); without it the stage is honestly `NOT TESTED` - an unbounded wait on a slow router is impossible.
 
 ## Running
 
@@ -24,6 +25,8 @@ sh kas-network-doctor.sh --target example.com --report /opt/tmp/net-report.txt -
 MIHOMO_PROXY_GROUP='GLOBAL' MIHOMO_API_SECRET='...' sh kas-network-doctor.sh --target example.com
 sh kas-network-doctor.sh --target example.com --no-egress    # skip the egress observation
 ```
+
+Target and port rules: the URL path and query are preserved and probed as given (`--target https://example.com/missing` really probes `/missing`); port priority is explicit `--port` > the port inside the URL > the scheme default (443/80); the query is never printed (same for userinfo); IPv6 literals and non-numeric ports are an explicit usage error, never a silent probe of another address.
 
 Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` chain confirmed (DNS+TCP+TLS answered, HTTP answered with any status); `1` confirmed stage failure; `2` usage error; `3` inconclusive (nothing FAILed, but the chain never completed).
 
