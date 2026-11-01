@@ -56,7 +56,7 @@ sh kas-network-doctor.sh --target example.com --no-egress   # без наблю�
 - Verto печатаются отдельно от гипотез: секция «Hypotheses» начинается с явного «NOT confirmed causes». Типовые гипотезы: NXDOMAIN (ошибка имени/перехват), curl 35 (известный полевой случай docs/03 — путь X25519/IPv6; DPI — лишь одна из гипотез), curl 60/19 (время устройства или `ca-bundle`), разрыв в TLS (DPI/MTU/сервер — без диагноза), captive-portal редирект (итоговый URL на приватный адрес), 4xx/5xx (сторона сервиса).
 - Согласованность ступеней печатается строкой «consistency: …» (например, DNS ответил, TCP отказал → далее отказ закономерен).
 
-## JSON-контракт для KAS Web beta.4
+## JSON-контракт для будущей интеграции с KAS Web
 
 `--json FILE` пишет `network-diagnostics/v1` на чистом POSIX sh (jq не требуется и для записи, и для чтения): схема, версия инструмента, UTC-время, exit-код, вердикт (summary/first_failed_stage/hypotheses/next_steps), цель, vantage (`router`), бюджет (таймауты, лимиты, счётчики), egress-наблюдения, счётчики статусов и массив `checks` со стабильными `id`/`status`/`detail`/`observed`. Все статусы — из фиксированного словаря. Формат предназначен для будущей панели; парсер Doctor 1.2.18/1.2.19 (doctor-report.js) не затронут.
 
