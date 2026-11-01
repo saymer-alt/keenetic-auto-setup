@@ -35,6 +35,7 @@ plan = json.loads((lab / "plan.json").read_text())
 args = sys.argv[1:]
 if "--version" in args:
     print("mockcurl 8.0.0")
+    print("Protocols: " + plan.get("curl_protocols", "http https telnet"))
     sys.exit(0)
 if "--help" in args:
     text = "Usage: curl [options]\n"
@@ -47,8 +48,8 @@ url = next(a for a in args if "://" in a)
 outfile = args[args.index("-o") + 1] if "-o" in args else os.devnull
 
 if url.startswith("telnet://"):
-    # A healthy TCP connect is reported by the tool as a curl timeout while
-    # waiting for telnet data; a refused/unreachable peer exits 7.
+    # A telnet timeout is inconclusive: it does not prove the TCP connection.
+    # A refused or unreachable peer returns 7.
     if plan.get("tcp", "pass") == "fail":
         print("mockcurl: (7) simulated TCP refusal", file=sys.stderr)
         sys.exit(7)
@@ -132,6 +133,11 @@ def make_lab(lab, plan):
     for name, body in MOCKS:
         p = fakebin / name
         p.write_text(body)
+        p.chmod(0o755)
+    if plan.get("timeout_broken"):
+        # Simulate a router without a usable timeout applet even if CI host has one.
+        p = fakebin / "timeout"
+        p.write_text("#!/bin/sh\\nexit 127\\n".replace("\\n", "\n"))
         p.chmod(0o755)
     (lab / "plan.json").write_text(json.dumps(plan))
     return fakebin
@@ -240,6 +246,17 @@ def main():
             ("all_sources_good", {"curl_help_curves": True}, 0,
              {"expect_in_out": ("RAW normal TLS", "GitHub Contents API"),
               "want_calls": 7}),
+            ("no_telnet_protocol", {"curl_help_curves": True,
+                                     "curl_protocols": "http https"}, 0,
+             {"expect_in_out": ("TCP-only probe NOT TESTED", "RAW normal TLS"),
+              "expect_not_in_out": ("telnet://",), "want_calls": 5}),
+            ("no_timeout_wrapper", {"curl_help_curves": True,
+                                     "timeout_broken": True}, 0,
+             {"expect_in_out": ("DNS stage NOT TESTED", "unbounded nslookup"),
+              "want_calls": 7}),
+            ("telnet_timeout_not_tcp_pass", {"curl_help_curves": True}, 0,
+             {"expect_in_out": ("TCP connect inconclusive",),
+              "expect_not_in_out": ("TCP connected (telnet probe",)}),
             ("raw35_compat_good", {"curl_help_curves": True,"raw": "exit35", "raw_compat": "pass",
                                    "wget": "fail", "api": "exit35"}, 0,
              {"expect_in_out": ("exit 35 — TLS handshake",
