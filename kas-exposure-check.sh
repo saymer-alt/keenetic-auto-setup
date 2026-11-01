@@ -138,7 +138,13 @@ LISTEN_SEEN=0
 
 report_listener() {
     # $1=family $2=hexaddr $3=hexport
-    local _fam=$1 _hx=$2 _port=$3 _cls _what
+    local _fam=$1 _hx=$2 _port _cls _what
+    # /proc/net/tcp* encodes the listening port as hex (e.g. 1ED2 = 7890).
+    # Convert before both presentation and well-known-port matching.
+    _port=$(printf '%d' "0x$3" 2>/dev/null) || {
+        unknown_out "$_fam listener with unreadable hex port (ignored)"
+        return 0
+    }
     case "$_fam" in
         ipv4)
             case "$_hx" in
