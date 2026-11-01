@@ -65,6 +65,31 @@ test('a published channel that lost its index is a failure, not "not published y
   assert.equal(nodes['panel-update-error-code'].textContent,'PANEL_CHANNEL_INDEX_MISSING');
  }finally{Object.assign(global,original);}
 });
+test('a temporarily unavailable or broken update source is an error, never "no updates"',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ for(const [code,fragment] of [
+  ['PANEL_UPDATE_SOURCE_UNAVAILABLE','Источник обновлений временно недоступен'],
+  ['PANEL_UPDATE_SOURCE_BROKEN','Источник обновлений повреждён']]){
+  const nodes={};
+  global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}),activeElement:null};
+  global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+  global.setTimeout=()=>1;global.clearTimeout=()=>{};
+  global.fetch=async(path,opts)=>{
+   if(path==='/api/updates/panel/check'&&opts&&opts.method==='POST')return {ok:false,status:502,json:async()=>({error_code:code})};
+   if(path==='/api/updates/panel/channel')return {ok:true,json:async()=>({channel:'stable',allowed:['experimental','stable']})};
+   return {ok:true,json:async()=>({ID:'f'.repeat(24),State:'FAIL',Gate:false,ErrorCode:'NONE'})};
+  };
+  try{
+   api.mount({getLang:()=>'ru',isBusy:()=>false,onBusy(){}});
+   await new Promise(setImmediate);await nodes['panel-update-check'].listeners.click();
+   const text=nodes['panel-update-state'].textContent;
+   assert.match(text,new RegExp(fragment));
+   assert.doesNotMatch(text,new RegExp(code));
+   assert.equal(nodes['panel-update-details'].hidden,false);
+   assert.equal(nodes['panel-update-error-code'].textContent,code);
+  }finally{Object.assign(global,original);}
+ }
+});
 test('update phases are localized, not raw worker phase identifiers',async()=>{
  const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  const nodes={},id='a'.repeat(24);
