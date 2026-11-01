@@ -128,9 +128,11 @@ def main():
     exercise("loopback_only_clean", 0,
              tcp4=tcp_row("0100007F", "1ED2") + tcp_row("0100007F", "2382"),
              config=BASE_CONFIG, plan={"controller_http": "401"},
-             expect_in_out=("loopback 127.0.0.1", "Controller secret: SET",
-                            "authentication enforced", "No unauthenticated"),
-             expect_not_in_out=(SECRET, "SUPERSECRET"))
+             expect_in_out=("loopback 127.0.0.1", "port 7890", "port 9090",
+                            "Mihomo mixed/proxy port", "Mihomo Controller",
+                            "Controller secret: SET", "authentication enforced",
+                            "No unauthenticated"),
+             expect_not_in_out=(SECRET, "SUPERSECRET", "port 1ED2", "port 2382"))
 
     # wildcard IPv4 listener -> risky
     exercise("wildcard_v4_risky", 1,
