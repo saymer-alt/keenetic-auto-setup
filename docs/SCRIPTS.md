@@ -10,7 +10,7 @@
 | --- | --- |
 | [`uninstall-packages.sh`](../uninstall-packages.sh) | [Штатно остановить Mihomo/MagiTrickle и удалить оба пакета через OPKG без форматирования `/opt`; YAML сохраняются, ProxyN/политики/DNS/Netfilter KeeneticOS не очищаются](../README.md#7-удаление) |
 | [`uninstall.sh`](../uninstall.sh) | [Только чтение `--check`/`--plan`: проверка журнала, пакетов и зависимостей; `--remove`/`--purge` заблокированы](23-uninstall.md) |
-| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](14-setup.md#зачем-нужен-bootstrapsh) |
+| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |
 | [`config-import.sh`](../config-import.sh) | [Импорт и безопасная замена `config.yaml`](13-config-import.md) |
@@ -20,6 +20,7 @@
 | [`mihomo-interface-check.sh`](../mihomo-interface-check.sh) | [Показать Linux-имена WAN/VPN-интерфейсов для `interface-name`](../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../mihomo-proxy-selection-watch.sh) | [Показать, какой сервер Mihomo выбран сейчас](11-proxy-selection-watch.md) |
 | [`mihomo-route-check.sh`](../mihomo-route-check.sh) | [Проверить доступность конкретного сайта через Mihomo](15-route-check.md) |
+| [`kas-download-check.sh`](../kas-download-check.sh) | [Read-only диагностика загрузки скриптов KAS и доступности GitHub: DNS → TCP → TLS → HTTP → передача → проверка файла, источники по отдельности](27-download-check.md) |
 | [`kas-exposure-check.sh`](../kas-exposure-check.sh) | [Read-only аудит локальной сетевой экспозиции: listening-сокеты, привязки, allow-lan/external-controller/secret (без вывода значения), Controller-проба](28-exposure-check.md) |
 | [`kas-network-doctor.sh`](../kas-network-doctor.sh) | [Каскадная диагностика одной цели: DNS → TCP → TLS → HTTP, egress, путь Mihomo и ProxyN (явный запуск)](29-network-doctor.md) |
 | [`kas-sys-metrics.sh`](../kas-sys-metrics.sh) | [Read-only метрики роутера: температура SoC, load average, uptime, память (#309)](30-sys-metrics.md) |
