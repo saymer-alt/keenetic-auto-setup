@@ -29,6 +29,7 @@ import json, os, sys
 from pathlib import Path
 plan = json.loads((Path(os.environ["LAB"]) / "plan.json").read_text())
 args = sys.argv[1:]
+assert "--noproxy" in args and args[args.index("--noproxy") + 1] == "*", args
 url = next(a for a in args if a.startswith("http"))
 code = plan.get("controller_http", "200")
 if plan.get("controller_down"):
