@@ -56,7 +56,7 @@ Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` ch
 - Facts are printed separately from hypotheses: the "Hypotheses" section starts with an explicit "NOT confirmed causes" label. Typical hypotheses: NXDOMAIN (name error/interception), curl 35 (known docs/03 field case - X25519/IPv6 path; DPI is one hypothesis among several), 60/19 (device clock or `ca-bundle`), mid-TLS cut (DPI/MTU/server, undiagnosed), captive-portal redirect (final URL on a private address), 4xx/5xx (service side).
 - Stage consistency is printed as a "consistency: ..." line (e.g., DNS answered, TCP refused -> later failures are expected).
 
-## JSON contract for KAS Web beta.4
+## JSON contract for future KAS Web integration
 
 `--json FILE` writes `network-diagnostics/v1` in plain POSIX sh (jq is not required for writing or reading): schema, tool version, UTC time, exit code, verdict (summary/first_failed_stage/hypotheses/next_steps), target, vantage (`router`), budget (timeouts, limits, counters), egress observations, status counts and a `checks` array with stable `id`/`status`/`detail`/`observed` fields. All statuses come from the fixed vocabulary. The Doctor 1.2.18/1.2.19 parser (doctor-report.js) is untouched.
 
