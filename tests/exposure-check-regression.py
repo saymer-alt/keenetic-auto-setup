@@ -4,7 +4,19 @@
 The tool's /proc, config and Controller URL are redirected to a temporary
 laboratory via its documented environment overrides. No sockets are opened,
 no KeeneticOS is emulated, and no secret value is ever expected in the output
-(the fixtures deliberately embed a secret that must NOT appear verbatim).
+(the fixtures deliberately embed secrets that must NOT appear verbatim).
+
+Semantics under test (issue #159 owner contract, 2026-11-01):
+- An open, passwordless Mihomo Controller is an accepted KAS deployment
+  contract. The audit reports FACTS (socket binds, local unauthenticated
+  access) and never treats them as violations.
+- YAML null secret forms (`secret:`, `secret: null`, `secret: ~`,
+  `secret: ""`) mean DISABLED authentication; a *quoted* string "null" is a
+  real password and means ENABLED.
+- The only FAIL/exit 1 is a contradiction between the declared authentication
+  state and the live unauthenticated probe.
+- Wildcard/non-loopback binds are facts with explicit "external reachability
+  NOT verified" caveats, not counted as vulnerabilities.
 """
 import json
 import os
@@ -69,10 +81,15 @@ external-controller: 127.0.0.1:9090
 secret: '{SECRET}'
 """
 
-OPEN_CONFIG = """mixed-port: 7890
+# Accepted KAS deployment contract: open controller, no usable secret.
+CONTRACT_CONFIG = """mixed-port: 7890
 allow-lan: true
 external-controller: 0.0.0.0:9090
 """
+
+
+def config_with_secret(secret_line):
+    return "mixed-port: 7890\nexternal-controller: 127.0.0.1:9090\n" + secret_line + "\n"
 
 
 def exercise(title, want_exit, tcp4=None, tcp6=None, config=None,
@@ -125,78 +142,175 @@ def main():
         print("FAIL no POSIX shell found")
         return 1
 
-    # synthetic loopback-only service: clean audit
-    exercise("loopback_only_clean", 0,
+    # --- declared ENABLED + probe rejects: consistent, exit 0 -----------------
+    exercise("loopback_enabled_401_consistent", 0,
              tcp4=tcp_row("0100007F", "1ED2") + tcp_row("0100007F", "2382"),
              config=BASE_CONFIG, plan={"controller_http": "401"},
              expect_in_out=("loopback 127.0.0.1", "port 7890", "port 9090",
                             "Mihomo mixed/proxy port", "Mihomo Controller",
-                            "Controller secret: SET", "authentication enforced",
-                            "No unauthenticated"),
+                            "Controller authentication: ENABLED",
+                            "Local unauthenticated API access: REJECTED",
+                            "authentication enforced, consistent with declared ENABLED",
+                            "Audit complete"),
              expect_not_in_out=(SECRET, "SUPERSECRET", "port 1ED2", "port 2382"))
 
-    # wildcard IPv4 listener -> risky
-    exercise("wildcard_v4_risky", 1,
-             tcp4=tcp_row("00000000", "1ED2"),
-             config=BASE_CONFIG,
-             expect_in_out=("wildcard 0.0.0.0", "[FAIL]"))
-
-    # wildcard IPv6 listener -> risky
-    exercise("wildcard_v6_risky", 1,
-             tcp6=tcp_row("00000000000000000000000000000000", "1ED2"),
-             config=BASE_CONFIG,
-             expect_in_out=("wildcard ::",))
-
-    # IPv6 loopback only + open controller config -> risky via config
-    exercise("open_controller_config", 1,
-             tcp6=tcp_row("00000000000000000000000001000000", "2382"),
-             config=OPEN_CONFIG,
-             expect_in_out=("allow-lan is enabled", "non-loopback address"))
-
-    # allow-lan itself must contribute to exit status even when socket binding is loopback
-    exercise("allow_lan_raises_risk", 1,
+    # --- YAML null secret forms mean DISABLED; 200 is consistent, exit 0 ------
+    exercise("secret_yaml_null_is_disabled", 0,
              tcp4=tcp_row("0100007F", "1ED2"),
-             config="mixed-port: 7890\nallow-lan: true\nexternal-controller: 127.0.0.1:9090\nsecret: 'set'\n",
-             plan={"controller_http": "401"},
-             expect_in_out=("allow-lan is enabled", "risky binding(s)/finding(s)"))
+             config=config_with_secret("secret: null"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",
+                            "Local unauthenticated API access: CONFIRMED",
+                            "consistent with declared DISABLED",
+                            "accepted KAS deployment contract",
+                            "NOT verified"),
+             expect_not_in_out=(SECRET, "[FAIL]", "port 1ED2"))
 
-    # unauthenticated controller (HTTP 200) -> risky
-    exercise("unauthenticated_controller", 1,
+    exercise("secret_bare_colon_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret:"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("secret_tilde_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: ~"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("secret_empty_dquotes_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret('secret: ""'), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("secret_empty_squotes_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: ''"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("secret_absent_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config="mixed-port: 7890\nexternal-controller: 127.0.0.1:9090\n",
+             plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",
+                            "no top-level secret line",
+                            "accepted KAS deployment contract"),
+             expect_not_in_out=("[FAIL]",))
+
+    # --- quoted "null" is a real password: ENABLED ----------------------------
+    exercise("secret_squoted_null_is_enabled_contradiction", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: 'null'"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: ENABLED",
+                            "not being enforced"),
+             expect_not_in_out=("accepted KAS deployment contract",))
+
+    exercise("secret_dquoted_null_is_enabled_contradiction", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret('secret: "null"'), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: ENABLED",
+                            "not being enforced"),
+             expect_not_in_out=("[FAIL] Controller secret",))
+
+    # --- comments and quoting corner cases ------------------------------------
+    exercise("secret_quoted_hash_is_enabled", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: 'pa#ss'"), plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: ENABLED", "not being enforced"),
+             expect_not_in_out=("pa#ss",))
+
+    exercise("secret_unquoted_with_comment_is_enabled", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: realvalue # set manually"),
+             plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: ENABLED", "not being enforced"),
+             expect_not_in_out=("realvalue",))
+
+    exercise("secret_null_with_comment_is_disabled", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: null # legacy placeholder"),
+             plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("secret_unbalanced_quote_is_unknown", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret('secret: "oops'), plan={"controller_http": "200"},
+             expect_in_out=("Controller secret: UNKNOWN",
+                            "Controller authentication: UNKNOWN"),
+             expect_not_in_out=("[FAIL]", "oops"))
+
+    # --- open contract deployment: wildcard binds are facts, exit 0 -----------
+    exercise("wildcard_v4_is_fact_not_vulnerability", 0,
+             tcp4=tcp_row("00000000", "1ED2"),
+             config=CONTRACT_CONFIG, plan={"controller_http": "200"},
+             expect_in_out=("wildcard 0.0.0.0", "port 7890", "NOT verified",
+                            "Controller authentication: DISABLED",
+                            "Local unauthenticated API access: CONFIRMED"),
+             expect_not_in_out=("[FAIL]", "risky binding"))
+
+    exercise("wildcard_v6_is_fact_not_vulnerability", 0,
+             tcp6=tcp_row("00000000000000000000000000000000", "1ED2"),
+             config=CONTRACT_CONFIG, plan={"controller_http": "200"},
+             expect_in_out=("wildcard ::", "port 7890", "NOT verified"),
+             expect_not_in_out=("[FAIL]", "risky binding"))
+
+    exercise("allow_lan_is_intended_info", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: null").replace(
+                 "mixed-port: 7890\n", "mixed-port: 7890\nallow-lan: true\n"),
+             plan={"controller_http": "200"},
+             expect_in_out=("allow-lan: true", "Controller authentication: DISABLED"),
+             expect_not_in_out=("[FAIL]",))
+
+    exercise("nonloopback_controller_is_info", 0,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=config_with_secret("secret: null").replace(
+                 "external-controller: 127.0.0.1:9090",
+                 "external-controller: 0.0.0.0:9090"),
+             plan={"controller_http": "200"},
+             expect_in_out=("Controller authentication: DISABLED",),
+             expect_not_in_out=("[FAIL]",))
+
+    # --- contradictions are the only FAIL/exit 1 ------------------------------
+    exercise("declared_enabled_but_200_contradiction", 1,
              tcp4=tcp_row("0100007F", "1ED2"),
              config=BASE_CONFIG, plan={"controller_http": "200"},
-             expect_in_out=("WITHOUT authentication",))
+             expect_in_out=("Controller authentication: ENABLED",
+                            "Local unauthenticated API access: CONFIRMED",
+                            "not being enforced"),
+             expect_not_in_out=(SECRET, "accepted KAS deployment contract"))
 
-    # controller down -> UNKNOWN, not a clean PASS claim about auth
-    exercise("controller_down_unknown", 0,
+    exercise("declared_disabled_but_401_contradiction", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config=CONTRACT_CONFIG, plan={"controller_http": "401"},
+             expect_in_out=("Contradiction", "DISABLED", "different config"))
+
+    # --- unknown / unavailable probe keeps facts, exit 0 ----------------------
+    exercise("controller_down_declared_state_kept", 0,
              tcp4=tcp_row("0100007F", "1ED2"),
              config=BASE_CONFIG, plan={"controller_down": True},
-             expect_in_out=("could not connect",))
+             expect_in_out=("Controller authentication: ENABLED",
+                            "Local unauthenticated API access: UNKNOWN",
+                            "could not connect"))
 
-    # empty secret '' -> treated as empty
-    exercise("empty_secret", 1,
+    exercise("controller_5xx_is_unknown", 0,
              tcp4=tcp_row("0100007F", "1ED2"),
-             config="external-controller: 127.0.0.1:9090\nsecret: ''\n",
-             plan={"controller_http": "401"},
-             expect_in_out=("present but empty",))
+             config=config_with_secret("secret: null"), plan={"controller_http": "500"},
+             expect_in_out=("Local unauthenticated API access: UNKNOWN",),
+             expect_not_in_out=("[FAIL]",))
 
-    # no secret line at all -> risky
-    exercise("no_secret", 1,
-             tcp4=tcp_row("0100007F", "1ED2"),
-             config="external-controller: 127.0.0.1:9090\n",
-             expect_in_out=("not found in config",))
+    # --- inconclusive / non-socket paths keep prior exit codes ----------------
+    exercise("no_proc_evidence_inconclusive_exit3", 3,
+             expect_in_out=("inconclusive",),
+             cli_env={"KAS_EXPOSURE_CONTROLLER_URL": ""})
 
-    # specific non-loopback bind -> UNKNOWN, not silently clean
     exercise("specific_bind_unknown", 0,
              tcp4=tcp_row("0100A8C0", "1ED2"),
              config=BASE_CONFIG, plan={"controller_http": "401"},
              expect_in_out=("specific 192.168.0.1", "[UNKNOWN]"))
 
-    # missing /proc tables + missing config -> inconclusive exit 3
-    exercise("no_evidence_inconclusive", 3,
-             expect_in_out=("inconclusive",),
-             cli_env={"KAS_EXPOSURE_CONTROLLER_URL": ""})
-
-    # ndmc ProxyN evidence appears filtered, without secrets
     exercise("ndmc_proxyn_filtered", 0,
              tcp4=tcp_row("0100007F", "1ED2"),
              config=BASE_CONFIG, plan={"controller_http": "401", "ndmc_proxy": True},
