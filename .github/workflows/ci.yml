@@ -55,6 +55,9 @@ jobs:
       - name: Beta.3 publish transaction dry-run (mock GitHub, real step scripts)
         run: python3 tests/publish-transaction-dryrun.py
 
+      - name: Beta.4 publish transaction dry-run (same suite, beta.4 publisher file and pins)
+        run: python3 tests/publish-transaction-dryrun.py --workflow .github/workflows/ops-publish-kas-web-beta4.yml --beta-tag v0.1.0-beta.4 --beta-version 0.1.0~beta.4-1 --previous-tag v0.1.0-beta.3 --artifact-prefix kas-web-beta4
+
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py
 

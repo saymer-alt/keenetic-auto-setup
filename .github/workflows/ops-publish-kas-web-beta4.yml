@@ -8,18 +8,19 @@ name: Publish KAS Web v0.1.0-beta.4 to the experimental update channel (one-shot
 # Publishing transaction, in order:
 #   1. Pinned SOURCE_SHA + VERIFIED_RUN are resolved and refused on placeholders.
 #   2. The live experimental channel state and repository Latest are recorded;
-#      anything other than the beta.2 index or this run's own beta.3 index
+#      anything other than the PREVIOUS_TAG index (v0.1.0-beta.3) or this
+#      run's own beta.4 index
 #      refuses the run (never clobber an unknown live index).
 #   3. CI artifacts are downloaded and hash-verified; the channel index for
-#      beta.3 is rebuilt from them.
-#   4. The beta.3 release is created as a DRAFT first and published
+#      beta.4 is rebuilt from them.
+#   4. The beta.4 release is created as a DRAFT first and published
 #      (draft=false) only after its assets verify byte for byte. A partial
 #      upload therefore leaves an invisible draft, not a public broken release,
 #      and a later retry resumes the same draft instead of failing forever.
 #   5. The experimental channel index is switched, and the restore trap stays
 #      armed until EVERY final publication assertion has passed (index digest,
 #      asset metadata and the GitHub Latest invariant). On any failure the trap
-#      reinstates the verified beta.2 backup — but only when the live asset is
+#      reinstates the verified PREVIOUS_TAG backup — but only when the live asset is
 #      still the one this run uploaded, so a parallel index change is never
 #      clobbered. An unexpected Latest change restores the channel and then
 #      fails loudly: the workflow never rewrites or deletes Latest itself.
@@ -72,7 +73,7 @@ jobs:
               || { echo "Tag $BETA_TAG exists at a different SHA" >&2; exit 1; }
           fi
           if gh api "repos/$GH_REPO/releases/tags/kas-web-ipk-${SOURCE_SHA:0:7}" >/dev/null 2>&1; then
-            echo "A kas-web-ipk alias must not be created from beta.2 on; refusing" >&2; exit 1
+            echo "A kas-web-ipk alias must not be created; refusing" >&2; exit 1
           fi
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > "$RUNNER_TEMP/old-channel.json"
           gh release download "$CHANNEL_TAG" --repo "$GH_REPO"             --pattern panel-update.json --dir "$RUNNER_TEMP/live-index"
@@ -94,7 +95,7 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - name: Download unchanged, hash-checked beta.3 CI artifacts and back up channel index
+      - name: Download unchanged, hash-checked pinned CI artifacts and back up channel index
         run: |
           set -euo pipefail
           mkdir -p build/ipk build/channel-old build/ci-manifests
@@ -145,9 +146,9 @@ jobs:
           backup=(build/'channel-old/panel-update.json').read_bytes()
           old=json.load(open(os.environ['RUNNER_TEMP']+'/old-channel.json'))
           assert hashlib.sha256(backup).hexdigest() == old['assets'][0]['digest'].split(':',1)[1]
-          print('PASS: previous channel backed up; beta.3 manifest agrees with the verified artifacts')
+          print('PASS: previous channel backed up; new manifest agrees with the verified artifacts')
           PY
-      - name: Publish the canonical beta.3 prerelease (draft first, resume instead of recreate)
+      - name: Publish the canonical prerelease (draft first, resume instead of recreate)
         run: |
           set -euo pipefail
           # Draft releases are invisible to the by-tag endpoint, so an existing
@@ -175,7 +176,7 @@ jobs:
             gh release create "$BETA_TAG" --repo "$GH_REPO" \
               --target "$SOURCE_SHA" --draft --prerelease --latest=false \
               --title 'KAS Web v0.1.0-beta.4' \
-              --notes 'Beta.4 release: Pages-based update indexes (this panel reads saymer-alt.github.io), quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The beta.2 → beta.3 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
+              --notes 'Beta.4 release: Pages-based update indexes (this panel reads saymer-alt.github.io), quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The PREVIOUS_TAG → beta.4 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
             # Incident 1 (beta.3 publication, run 41229787313): a fresh draft
             # lagged behind the releases listing (eventual consistency) and
             # set -e aborted the step right after the successful create.

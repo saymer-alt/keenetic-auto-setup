@@ -32,11 +32,14 @@ WORKFLOW = REPO / '.github/workflows/ops-publish-kas-web-beta3-20261031.yml'
 SOURCE_SHA = 'b' * 40
 RUN_ID = '424242'
 BETA_TAG = 'v0.1.0-beta.3'
+PREVIOUS_TAG = 'v0.1.0-beta.2'
+ARTIFACT_PREFIX = 'kas-web-beta3'
 CHANNEL_TAG = 'kas-web-channel-experimental'
 BETA_VERSION = '0.1.0~beta.3-1'
 ARCHES = ['aarch64-3.10', 'armv7-3.2', 'mipsel-3.4', 'mips-3.4']
+# Live experimental index fixture: whatever the PREVIOUS release is.
 BETA2_INDEX = json.dumps({'schema': 1, 'channel': 'experimental',
-                          'tag': 'v0.1.0-beta.2', 'packages': []}).encode()
+                          'tag': PREVIOUS_TAG, 'packages': []}).encode()
 CORE_LATEST = 'v1.8.5'
 HIJACKED_LATEST = 'v0.0.0-hijacked'
 
@@ -340,7 +343,7 @@ class Sandbox:
         artifacts = {}
         for arch in ARCHES:
             directory = write_artifact_fixture(self.fixtures / 'artifacts', arch)
-            artifacts['kas-web-beta3-%s-%s' % (arch, SOURCE_SHA)] = {
+            artifacts[ARTIFACT_PREFIX + '-%s-%s' % (arch, SOURCE_SHA)] = {
                 p.name: base64.b64encode(p.read_bytes()).decode()
                 for p in sorted(directory.iterdir())}
         state = {
@@ -365,7 +368,7 @@ class Sandbox:
             'PATH': str(self.bin) + os.pathsep + environ.get('PATH', ''),
             'GH_TOKEN': 'dryrun', 'GH_REPO': 'saymer-alt/keenetic-auto-setup',
             'SOURCE_SHA': source_sha, 'VERIFIED_RUN': verified_run,
-            'BETA_TAG': BETA_TAG, 'PREVIOUS_TAG': 'v0.1.0-beta.2',
+            'BETA_TAG': BETA_TAG, 'PREVIOUS_TAG': PREVIOUS_TAG, 'ARTIFACT_PREFIX': ARTIFACT_PREFIX,
             'CHANNEL_TAG': CHANNEL_TAG, 'BETA_VERSION': BETA_VERSION,
             'RUNNER_TEMP': str(self.tmp), 'GITHUB_ENV': str(self.github_env),
             'MOCK_STATE': str(self.state_path), 'MOCK_CALLS': str(self.calls_path),
@@ -493,8 +496,11 @@ def scenario_happy_path(sandbox, steps, failures):
                  release_draft=False, latest=CORE_LATEST, tag_sha=SOURCE_SHA)
     assets = sandbox.state()['releases'][BETA_TAG]['assets']
     # GitHub normalizes '~' to '.' in release asset names.
-    check(sorted(assets) == sorted(['SHA256SUMS'] + [
-        'kas-control-center_0.1.0.beta.3-1_%s.ipk' % a for a in ARCHES]), 'asset set')
+    # GitHub normalizes '~' to '.' in release asset names.
+    expected_names = sorted(['SHA256SUMS'] + [
+        'kas-control-center_%s_%s.ipk' % (BETA_VERSION.replace('~', '.'), a)
+        for a in ARCHES])
+    check(sorted(assets) == expected_names, 'asset set: %r' % sorted(assets))
     for entry in json.loads(new_index)['packages']:
         name = entry['name']
         check(hashlib.sha256(asset_bytes(sandbox, BETA_TAG, name)).hexdigest()
@@ -530,7 +536,7 @@ def scenario_unverified_run(sandbox, steps, failures):
 def scenario_corrupt_artifact(sandbox, steps, failures):
     sandbox.reset_state()
     state = sandbox.state()
-    name = 'kas-web-beta3-mips-3.4-%s' % SOURCE_SHA
+    name = '%s-mips-3.4-%s' % (ARTIFACT_PREFIX, SOURCE_SHA)
     ipk = [key for key in state['artifacts'][name] if key.endswith('.ipk')][0]
     raw = bytearray(base64.b64decode(state['artifacts'][name][ipk]))
     raw[len(raw) // 2] ^= 0xFF
@@ -546,7 +552,7 @@ def scenario_corrupt_artifact(sandbox, steps, failures):
 def scenario_manifest_mismatch(sandbox, steps, failures):
     sandbox.reset_state()
     state = sandbox.state()
-    name = 'kas-web-beta3-aarch64-3.10-%s' % SOURCE_SHA
+    name = '%s-aarch64-3.10-%s' % (ARTIFACT_PREFIX, SOURCE_SHA)
     manifest = json.loads(base64.b64decode(state['artifacts'][name]['manifest-canonical.json']))
     manifest['packages'][0]['sha256'] = 'f' * 64
     state['artifacts'][name]['manifest-canonical.json'] = base64.b64encode(
@@ -739,7 +745,27 @@ SCENARIOS = [
 BASH = find_bash()
 
 
-def main():
+def main(argv=None):
+    global WORKFLOW, BETA_TAG, BETA_VERSION, PREVIOUS_TAG, ARTIFACT_PREFIX
+    args = list(sys.argv[1:] if argv is None else argv)
+    while args:
+        arg = args.pop(0)
+        if arg == '--workflow':
+            WORKFLOW = pathlib.Path(args.pop(0))
+        elif arg == '--beta-tag':
+            BETA_TAG = args.pop(0)
+        elif arg == '--beta-version':
+            BETA_VERSION = args.pop(0)
+        elif arg == '--previous-tag':
+            PREVIOUS_TAG = args.pop(0)
+            globals()['BETA2_INDEX'] = json.dumps(
+                {'schema': 1, 'channel': 'experimental',
+                 'tag': PREVIOUS_TAG, 'packages': []}).encode()
+        elif arg == '--artifact-prefix':
+            ARTIFACT_PREFIX = args.pop(0)
+        elif arg in ('-h', '--help'):
+            print(__doc__)
+            return 0
     if not WORKFLOW.exists():
         print('workflow missing: %s' % WORKFLOW)
         return 2

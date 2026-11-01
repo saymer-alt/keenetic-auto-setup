@@ -8,6 +8,11 @@ the project's own packaging/build-ipk.py in its supported --binary test mode,
 and checks the uploaded artifact name — proving that a beta.4 dispatch
 produces and verifies beta.4 artifacts, not just variable substitution in a
 mock. Negative side: a beta.3-built package under beta.4 pins must FAIL.
+
+Scope note: build-ipk --binary packages a FAKE ELF; this is a
+packaging/manifest/name regression, not proof of a production executable.
+Real beta.4 binaries are produced by the crossbuild job on the pinned merge
+SHA (readelf/ABI checks live there).
 """
 import ast
 import hashlib
@@ -159,6 +164,8 @@ def main():
             check(manifest['packages'][0]['source_sha'] == SOURCE_SHA, 'manifest source SHA')
         print('%-58s %s' % ('beta.4 dispatch builds and verifies beta.4 artifacts',
                             'PASS' if len(failures) == before else 'FAIL'))
+        print('   note: --binary fixtures are packaging regressions; real'
+              ' binaries come from the crossbuild job on the pinned SHA')
 
         print('== negative: beta.3 package under beta.4 pins must fail ==')
         before = len(failures)
