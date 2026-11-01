@@ -46,6 +46,9 @@ jobs:
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
 
+      - name: Stable release gate workflow contract
+        run: python3 tests/stable-release-gate-regression.py
+
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
