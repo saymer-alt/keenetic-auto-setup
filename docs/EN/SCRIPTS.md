@@ -10,7 +10,7 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 | --- | --- |
 | [`uninstall-packages.sh`](../../uninstall-packages.sh) | [Stop Mihomo/MagiTrickle via native Entware init.d, then remove their packages through OPKG; YAML preserved, KeeneticOS routing/DNS/Netfilter retained](../23-uninstall.md) |
 | [`uninstall.sh`](../../uninstall.sh) | [Read-only `--check`/`--plan` preflight; `--remove`/`--purge` are blocked](../23-uninstall.md) |
-| [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` with GitHub fallbacks before starting the wizard](SETUP.md#why-bootstrapsh-exists) |
+| [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` (or `--script config-import.sh` — the standalone importer, #255) with GitHub fallbacks before starting the selected target](SETUP.md#why-bootstrapsh-exists) |
 | [`setup.sh`](../../setup.sh) | [Setup wizard: detects `ram`/`disk`, delegates to `install.sh`, offers configuration import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
