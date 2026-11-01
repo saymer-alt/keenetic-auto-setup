@@ -189,8 +189,11 @@ jobs:
             if fetch "$PAGES_BASE/updates/$other/panel-update.json" "site/updates/$other/panel-update.json"; then
               python3 - "$other" <<'PY'
           import json,sys
+          reg=json.load(open('build/old-channels.json'))
           p=json.load(open('site/updates/'+sys.argv[1]+'/panel-update.json'))
           assert p.get('schema')==1 and p.get('channel')==sys.argv[1] and len(p.get('packages',[]))==4, 'live other-channel index does not parse'
+          assert p.get('tag')==reg['channels'][sys.argv[1]].get('tag','') and reg['channels'][sys.argv[1]].get('tag',''), \
+            'live %s index tag %r disagrees with the registry tag %r' % (sys.argv[1], p.get('tag'), reg['channels'][sys.argv[1]].get('tag',''))
           PY
               echo "carried over published $other channel from the live site"
             else

@@ -359,7 +359,7 @@ def scenario_missing_registry_fails_closed(sandbox, blocks, failures):
     check(not code, 'workflow must fail without bootstrap when the registry is missing')
     check('refusing to overwrite an unknown site state' in output,
           'explicit fail-closed message required')
-    check(sandbox.pages.store.get('/updates/experimental/panel-update.json') is None,
+    check(sandbox.pages.store.get('/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
           'nothing may be published on a failed gate')
 
 
@@ -458,38 +458,23 @@ def scenario_stale_cdn_retried(sandbox, blocks, failures):
     check(reads.get(200, 0) >= 3, 'stale and fresh bytes served as HTTP 200, saw %r' % reads)
 
 
-def scenario_corrupt_metadata_fails_before_deploy(sandbox, blocks, failures):
-    sandbox.reset_state()
-    state = sandbox.state()
-    name = '%s-aarch64-3.10-%s' % (PREFIX, SOURCE_SHA)
-    manifest = json.loads(base64.b64decode(state['artifacts'][name]['manifest-canonical.json']))
-    manifest['packages'][0]['sha256'] = 'f' * 64
-    state['artifacts'][name]['manifest-canonical.json'] = base64.b64encode(
-        json.dumps(manifest).encode()).decode()
-    sandbox.state_path.write_text(json.dumps(state), encoding='utf-8')
-    code, output = run_workflow(sandbox, blocks)
-    check = Checker(failures, 'corrupt metadata fails pre-deploy')
-    check(not code, 'workflow must fail on candidate/manifest mismatch')
-    check(sandbox.pages.store.get(
-        '/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
-        'a failed build gate must never deploy')
-
-
-def scenario_failed_final_gate(sandbox, blocks, failures):
+def scenario_other_channel_tag_mismatch_fails_closed(sandbox, blocks, failures):
+    """Registry declares the other channel published with tag T, but the live
+    index carries a different tag: an inconsistent pair must not be copied
+    into the next site — the run aborts before deployment."""
     sandbox._seed_published_stable()
-    real_publish = sandbox.pages.publish_site
-
-    def publish_then_freeze_stale(site_dir):
-        real_publish(site_dir)
-        sandbox.pages.store['/keenetic-auto-setup/updates/experimental/panel-update.json'] = (
-            200, json.dumps({'schema': 1, 'channel': 'experimental',
-                             'tag': 'v0.1.0-beta.3', 'packages': []}).encode())
-
-    sandbox.pages.publish_site = publish_then_freeze_stale
+    state = sandbox.pages.store['/keenetic-auto-setup/updates/channels.json']
+    reg = json.loads(state[1])
+    reg['channels']['stable']['tag'] = 'kas-web-v0.0.2'  # registry says 0.0.2
+    sandbox.pages.store['/keenetic-auto-setup/updates/channels.json'] = 200, json.dumps(reg).encode()
+    # live stable index still carries 0.0.1 (served from the seed)
     code, output = run_workflow(sandbox, blocks)
-    check = Checker(failures, 'failed final gate')
-    check(not code, 'workflow must fail when public bytes never match')
-    check('never matched the built bytes' in output, 'explicit final-gate message required')
+    check = Checker(failures, 'other-channel tag mismatch fails closed')
+    check(not code, 'workflow must abort on registry/index tag disagreement')
+    check('disagrees with the registry tag' in output,
+          'explicit mismatch message required, got: %s' % output[-400:])
+    check(sandbox.pages.store.get('/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
+          'nothing may be published on a failed gate')
 
 
 def scenario_corrupt_metadata_fails_before_deploy(sandbox, blocks, failures):
@@ -504,7 +489,7 @@ def scenario_corrupt_metadata_fails_before_deploy(sandbox, blocks, failures):
     code, output = run_workflow(sandbox, blocks)
     check = Checker(failures, 'corrupt metadata fails pre-deploy')
     check(not code, 'workflow must fail on candidate/manifest mismatch')
-    check(sandbox.pages.store.get('/updates/experimental/panel-update.json') is None,
+    check(sandbox.pages.store.get('/keenetic-auto-setup/updates/experimental/panel-update.json') is None,
           'a failed build gate must never deploy')
 
 
@@ -544,6 +529,7 @@ SCENARIOS = [
     ('bootstrap with 503 registry still fails', lambda: Sandbox(bootstrap=True), 'bootstrap_unreachable'),
     ('bootstrap with existing registry aborts', lambda: Sandbox(bootstrap=True), 'bootstrap_existing'),
     ('unpublished other channel 503 fails closed', lambda: Sandbox(), 'unpublished_other_503'),
+    ('other-channel tag mismatch fails closed', lambda: Sandbox(), 'other_tag_mismatch'),
     ('stale CDN HTTP-200 bytes retried', lambda: Sandbox(), 'stale_cdn'),
     ('corrupt candidate metadata fails pre-deploy', lambda: Sandbox(), 'corrupt_metadata'),
     ('failed final gate aborts loudly', lambda: Sandbox(), 'final_gate'),
@@ -558,6 +544,7 @@ DISPATCH = {
     'bootstrap_unreachable': scenario_bootstrap_unreachable_registry_still_fails,
     'bootstrap_existing': scenario_bootstrap_existing_registry_aborts,
     'unpublished_other_503': scenario_unpublished_other_channel_503_fails_closed,
+    'other_tag_mismatch': scenario_other_channel_tag_mismatch_fails_closed,
     'stale_cdn': scenario_stale_cdn_retried,
     'corrupt_metadata': scenario_corrupt_metadata_fails_before_deploy,
     'final_gate': scenario_failed_final_gate,
