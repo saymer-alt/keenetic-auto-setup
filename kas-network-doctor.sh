@@ -944,7 +944,7 @@ else
     if [ -n "$MIHOMO_SECRET" ]; then
         probe_http "mihomo.controller" "$CONTROLLER_URL/version" -H "Authorization: Bearer $MIHOMO_SECRET" --noproxy '*'
     else
-        probe_http "mihomo.controller" "$CONTROLLER_URL/version" --noproxy '*' 
+        probe_http "mihomo.controller" "$CONTROLLER_URL/version" --noproxy '*'
     fi
     case "$R_RC" in
         0)
