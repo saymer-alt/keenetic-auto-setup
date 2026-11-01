@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **#310 backport в stable (полевой сбой 31.10.2026: чистая Entware + переиспользованный legacy-compatible Proxy0):** триггер активации (`activate_bypass_on_fresh_proxy`) принимает ту же проверенную функциональную совместимость моста (SOCKS5 + UDP → 127.0.0.1:7890), которую привязка политики уже принимает для маршрутизации: на чистой Entware hook применяется штатным down/up автоматически; foreign-профили, намеренно выключенные интерфейсы и повторные установки на существующем стеке не переключаются, описания не переименовываются. Read-only самопроверка классифицирует причины недоступности цепочки (отсутствует / занят xtables-lock / ошибка чтения) с прежним ограниченным числом повторных чтений и печатает понятный безопасный следующий шаг; Doctor получает согласованное парное чтение PREROUTING + цепочки (транзиентный сбой одного чтения больше не выдаёт ложный «missing PREROUTING-link»), три read-only повтора только для занятого/ошибочного чтения, устойчиво отсутствующая цепочка остаётся FAIL. Регрессии: `tests/netfilter-first-install-regression.sh`, `tests/doctor-netfilter-probe-regression.sh`, расширенные `tests/netfilter-live-regression.sh` и `tests/contracts.sh`. Источник: main PR #312 (`923e189`, `c66dc19`, merge `3d3c668`), нативное подтверждение: router-emulator #50 / PR #51 (`95518d8`).
+
 ## [1.8.5] - 2026-10-22
 
 ### Ownership journal для будущего безопасного удаления (KAS #179, PR #193)
