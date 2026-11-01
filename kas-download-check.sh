@@ -152,10 +152,17 @@ rep "Read-only: nothing on this router is changed; downloads are never executed.
 section "Tools and capabilities"
 CURL=""
 CURL_HAS_CURVES=0
+CURL_HAS_TELNET=0
 if command -v curl >/dev/null 2>&1; then
     CURL=$(command -v curl)
     rep "curl:     $CURL"
-    rep "version:  $($CURL --version 2>/dev/null | head -n 1)"
+    _curl_version=$("$CURL" --version 2>/dev/null || true)
+    rep "version:  $(printf '%s\n' "$_curl_version" | head -n 1)"
+    if printf '%s\n' "$_curl_version" | grep -E '^Protocols:' | grep -Eq '[[:space:]]telnet([[:space:]]|$)'; then
+        CURL_HAS_TELNET=1
+    else
+        rep "capability: telnet protocol NOT available (TCP-only probe skipped; TLS/HTTP evidence still available)"
+    fi
     if $CURL --help all 2>/dev/null | grep -q -- '--curves'; then
         CURL_HAS_CURVES=1
         rep "capability: --curves supported"
@@ -305,10 +312,14 @@ probe_wget() {
 
 section "DNS resolution"
 DNS_RESULT="UNKNOWN"
-if [ -n "$NSLOOKUP" ]; then
+DNS_TO=""
+if command -v timeout >/dev/null 2>&1 && timeout 1 sh -c ':' >/dev/null 2>&1; then
+    DNS_TO=$(command -v timeout)
+fi
+if [ -n "$NSLOOKUP" ] && [ -n "$DNS_TO" ]; then
     DNS_OK_COUNT=0
     for h in "$RAW_HOST" "$API_HOST"; do
-        if "$NSLOOKUP" "$h" >/dev/null 2>&1 </dev/null; then
+        if "$DNS_TO" 6 "$NSLOOKUP" "$h" >/dev/null 2>&1 </dev/null; then
             rep "$h: resolved"
             DNS_OK_COUNT=$((DNS_OK_COUNT+1))
         else
@@ -326,12 +337,16 @@ if [ -n "$NSLOOKUP" ]; then
         DNS_RESULT="UNKNOWN"
     fi
 else
-    nt_out "nslookup unavailable; DNS stage left UNKNOWN (curl results below still show the effective outcome)"
-    rep "DNS: NOT TESTED (no resolver utility)"
+    if [ -z "$NSLOOKUP" ]; then
+        nt_out "nslookup unavailable; DNS stage NOT TESTED (curl results below still show actual transfer outcomes)"
+    else
+        nt_out "no usable timeout wrapper; DNS stage NOT TESTED to avoid unbounded nslookup on this router"
+    fi
+    rep "DNS: NOT TESTED (bounded resolver probe not available)"
 fi
 
 section "TCP connect (443)"
-if [ -n "$CURL" ]; then
+if [ -n "$CURL" ] && [ "$CURL_HAS_TELNET" -eq 1 ]; then
     for h in "$RAW_HOST" "$API_HOST"; do
         _tcp_out=$("$CURL" -sS -o /dev/null --connect-timeout "$CONNECT_TIMEOUT" --max-time 5 "telnet://$h:443" 2>&1 </dev/null)
         _tcp_rc=$?
@@ -339,13 +354,18 @@ if [ -n "$CURL" ]; then
         [ -n "$_tcp_out" ] && _tcp_note=" [$(printf '%s' "$_tcp_out" | head -c 120)]"
         rep "telnet://$h:443 -> exit=$_tcp_rc ($(classify_curl_rc "$_tcp_rc"))$_tcp_note"
         case "$_tcp_rc" in
-            28) pass_out "$h:443 TCP connection established (probe then timed out by design)" ;;
+            0|56) pass_out "$h:443 TCP connected (telnet probe completed or remote peer closed)" ;;
+            28) unknown_out "$h:443 TCP connect inconclusive: timeout does not prove a connection" ;;
             7)  fail_out "$h:443 TCP connection failed" ;;
             *)  unknown_out "$h:443 TCP stage inconclusive (curl exit $_tcp_rc)" ;;
         esac
     done
 else
-    nt_out "TCP stage skipped: curl is missing"
+    if [ -z "$CURL" ]; then
+        nt_out "TCP stage skipped: curl is missing"
+    else
+        nt_out "TCP-only probe NOT TESTED: curl lacks telnet protocol; HTTPS source probes below can confirm TCP reachability"
+    fi
 fi
 
 section "Source-by-source probe (TLS/HTTP/content)"
