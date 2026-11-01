@@ -13,6 +13,28 @@ The regular `mihomo-doctor.sh` stays local and offline-safe: it still performs n
 - UDP transport beyond the implicit resolver exercise is `UNSUPPORTED` (honest, no fabricated PASS).
 - A DNS probe runs only when a `timeout` utility exists (6 s limit); without it the stage is honestly `NOT TESTED` - an unbounded wait on a slow router is impossible.
 
+## Quick start on a new router from `stable`
+
+You need SSH access to Keenetic/Netcraze, working Entware (`/opt`, `opkg`), Internet access, and `curl`. If `curl` is missing, install **only this utility** first: `opkg update && opkg install curl`. KAS Web is not required; absent Mihomo/MagiTrickle/ProxyN components are reported as untested or unsupported rather than preventing the tool from starting.
+
+Download the reviewed `stable` script into temporary `/tmp`, check shell syntax, then probe a target (replace `example.com` with your domain):
+
+```sh
+curl -fSsL --retry 2 --max-time 60 -o /tmp/kas-network-doctor.sh \
+  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-network-doctor.sh &&
+sh -n /tmp/kas-network-doctor.sh &&
+sh /tmp/kas-network-doctor.sh --target example.com
+```
+
+To save both report formats after downloading:
+
+```sh
+sh /tmp/kas-network-doctor.sh --target example.com \
+  --report /tmp/kas-network-report.txt --json /tmp/kas-network-report.json
+```
+
+The `&&` chain **will not execute the script** if downloading or syntax checking fails. Network Doctor intentionally makes bounded external network requests when invoked; this is **not a KAS installation**, a configuration change, or a background service. `/tmp` files are temporary and may disappear after a reboot. If GitHub is unreachable, transfer the script to `/tmp` using SCP and run `sh /tmp/kas-network-doctor.sh --target example.com`.
+
 ## Running
 
 ```sh
