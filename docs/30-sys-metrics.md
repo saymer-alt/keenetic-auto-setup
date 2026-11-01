@@ -6,7 +6,7 @@
 
 | Показатель | Источник | Правило |
 | --- | --- | --- |
-| Температура SoC/CPU | `/sys/class/thermal/thermal_zone*/{type,temp}`, затем `/sys/class/hwmon/hwmon*/{name,temp*_input}` | зона выбирается по `type`/`name` (cpu/soc/thermal); значение в миллиградусах; пустое/не-число/отрицательное/вне диапазона −40…+150 °C → **UNKNOWN, без «подгонки»**; выбор и источник печатаются |
+| Температура SoC/CPU | `/sys/class/thermal/thermal_zone*/{type,temp}`, затем `/sys/class/hwmon/hwmon*/{name,temp*_input}` | зона выбирается строго по `type`/`name`, содержащим cpu/soc (без учёта регистра); общий `*thermal*` не считается CPU-датчиком; пустое/не-число/отрицательное/вне диапазона −40…+150 °C → **UNKNOWN, без «подгонки»**; выбор и источник печатаются |
 | Load average 1/5/15 | `/proc/loadavg` | это **load average, не процент CPU**; проценты не вычисляются |
 | Uptime | `/proc/uptime` | время работы Linux с загрузки; это не uptime WAN/ISP/Mihomo/watchdog |
 | RAM / swap | `/proc/meminfo` (MemTotal, MemAvailable, SwapTotal, SwapFree) | сводка; полный анализ RAM/storage остаётся в основном Doctor — вердикты здесь не дублируются |

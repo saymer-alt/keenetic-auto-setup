@@ -8,7 +8,7 @@ The regular `mihomo-doctor.sh` stays local and offline-safe: it still performs n
 
 - Changes nothing: DNS, routes, firewall, interfaces, ProxyN, policies, Mihomo, MagiTrickle and configuration are untouched; certificate verification is never disabled.
 - Request budget: **<= 12 small requests** per run (DNS queries count), each bounded by `--connect-timeout 6` / 15 s timeout / `--max-filesize 256 KiB`. The counter is printed in the report and JSON.
-- The `MIHOMO_API_SECRET` is **never printed**; the selected proxy-server name is withheld ("selected leaf (name withheld)") so reports are safe to attach. curl arguments in the request log are sanitized: the Authorization header appears as `[authorization header]`.
+- The `MIHOMO_API_SECRET` is **never printed**; the selected proxy-server name is withheld; raw running-config lines are withheld (a filtered evidence summary is printed instead). curl arguments in the request log are sanitized (Authorization -> `[authorization header]`); URLs in the report and JSON are redacted: userinfo -> `[credentials withheld]`, query/fragment -> `[query withheld]`. Direct probes run with `--noproxy '*'`, so `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` from the environment cannot distort the direct-path claims (socks probes use the explicit `--socks5-hostname`). DNS probes are limited to 6 s via `timeout` when available (otherwise the missing limit is stated). The Controller `/proxies` response is capped with `--max-filesize`.
 - No cause is declared confirmed: the verdict names only the confirmed failing stage; everything else is labeled H: (hypothesis) and N: (next step). A router-side success does not prove a LAN client path - `client.vantage` stays `NOT TESTED`.
 - UDP transport beyond the implicit resolver exercise is `UNSUPPORTED` (honest, no fabricated PASS).
 
@@ -34,9 +34,9 @@ Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` ch
 | `tools.curl` | curl availability (without it most stages are `UNSUPPORTED`, verdict inconclusive) |
 | `dns.router` | system-resolver lookup with explicit NXDOMAIN / SERVFAIL / REFUSED / timeout classification; `NOT TESTED` for IP targets |
 | `dns.custom` | the same name via `--dns-server`; disagreement with `dns.router` is printed as a fact |
-| `tcp.connect` | TCP to host:port via the curl telnet trick; `curl 7` refused/unreachable; `curl 56` on telnet means the connection was established (peer closed the probe) |
+| `tcp.connect` | TCP to host:port via the curl telnet trick; `curl 7` refused/unreachable; `curl 56` on telnet means the connection was established (peer closed the probe). When the TLS/HTTP stage proves the server exchange, TCP is recorded as proven and the disagreeing telnet observation is flagged explicitly |
 | `tls.handshake` | TLS handshake with verification enabled: `curl 35` (handshake), `60/19` (certificate: clock/CA), `43` (malformed), `56` (mid-handshake reset -> UNKNOWN) |
-| `http.response` | HTTP status after bounded redirect handling, final URL; 4xx/5xx = "transport healthy, application answered" (a fact, not a network failure) |
+| `http.response` | HTTP status and the redirect target (`%{redirect_url}`); **redirects are not followed** - one bounded request; 3xx comes with the redirect target and a captive-portal hypothesis; 4xx/5xx = "transport healthy, application answered" (a fact, not a network failure) |
 | `egress.direct` | observed direct egress address (api.ipify.org, one tiny request); disable with `--no-egress` |
 | `mihomo.socks-port` | whether the local port 7890 is listening (netstat/ss) |
 | `mihomo.controller` | Controller reachability (GET /version; 401/403 = secret not accepted) |

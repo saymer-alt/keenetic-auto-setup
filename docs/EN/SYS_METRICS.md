@@ -6,7 +6,7 @@
 
 | Reading | Source | Rule |
 | --- | --- | --- |
-| SoC/CPU temperature | `/sys/class/thermal/thermal_zone*/{type,temp}`, then `/sys/class/hwmon/hwmon*/{name,temp*_input}` | the zone is selected by `type`/`name` (cpu/soc/thermal); millidegree values; empty/non-numeric/negative/out-of-range (-40..+150 C) -> **UNKNOWN, never clamped or faked**; the choice and source are printed |
+| SoC/CPU temperature | `/sys/class/thermal/thermal_zone*/{type,temp}`, then `/sys/class/hwmon/hwmon*/{name,temp*_input}` | the zone is selected strictly by a case-insensitive cpu/soc mention in `type`/`name`; a generic `thermal` zone is not treated as a CPU sensor; empty/non-numeric/negative/out-of-range (-40..+150 C) -> **UNKNOWN, never clamped or faked**; the choice and source are printed |
 | Load average 1/5/15 | `/proc/loadavg` | this is **load average, not CPU percentage**; no percentage is derived |
 | Uptime | `/proc/uptime` | Linux time since boot; not WAN/ISP/Mihomo/watchdog uptime |
 | RAM / swap | `/proc/meminfo` (MemTotal, MemAvailable, SwapTotal, SwapFree) | summary only; the full RAM/storage health analysis stays in the main Doctor - no duplicated verdicts |

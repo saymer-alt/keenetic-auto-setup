@@ -70,6 +70,7 @@ MAX_REQUESTS=12
 REQUESTS_USED=0
 
 EGRESS_URL="https://api.ipify.org"
+DNS_QUERY_TIMEOUT=6
 
 # Terminal status colors are presentation only (docs/18). Semantic prefixes
 # remain the source of truth; NO_COLOR/TERM=dumb and non-TTY keep it plain.
@@ -211,6 +212,32 @@ json_escape() {
     }'
 }
 
+sanitize_url() {
+    # URL form safe for shareable reports: credentials, query and fragment
+    # are withheld; scheme, host, port and path stay readable.
+    _su=$1
+    _sq=""
+    case "$_su" in
+        *\?*) _sq=1 ;;
+    esac
+    _su=$(printf '%s' "$_su" | sed 's#//[^/@]*@#//[credentials withheld]@#')
+    _su=$(printf '%s' "$_su" | sed 's/[?#].*$//')
+    [ -n "$_sq" ] && _su="${_su}?[query withheld]"
+    printf '%s' "$_su"
+}
+
+split_rinfo() {
+    # probe_http write-out "code|url|redirect_url" -> R_CODE/R_URL/R_RURL
+    R_CODE=${R_INFO%%|*}
+    _rest=${R_INFO#*|}
+    R_URL=${_rest%%|*}
+    R_RURL=${_rest#*|}
+    [ "$R_RURL" = "$_rest" ] && R_RURL=""
+    R_URL=$(printf '%s' "$R_URL" | head -c 300)
+    R_RURL=$(printf '%s' "$R_RURL" | head -c 300)
+    return 0
+}
+
 record() {
     # record <id> <status> <detail> [observed]
     _id=$1; _st=$2; _det=$3; _obs=${4:-}
@@ -271,7 +298,7 @@ probe_http() {
     rep "request:  curl --connect-timeout $CONNECT_TIMEOUT --max-time $REQ_TIMEOUT --max-filesize $MAX_BYTES$_show <url>  ($REQUESTS_USED/$MAX_REQUESTS)"
     R_INFO=$("$CURL" -sS -o /dev/null --connect-timeout "$CONNECT_TIMEOUT" \
         --max-time "$REQ_TIMEOUT" --max-filesize "$MAX_BYTES" \
-        -w "%{http_code}|%{url_effective}" "$@" "$_url" 2>"$ERR_FILE" </dev/null)
+        -w "%{http_code}|%{url_effective}|%{redirect_url}" "$@" "$_url" 2>"$ERR_FILE" </dev/null)
     R_RC=$?
     _err=$(cat "$ERR_FILE" 2>/dev/null || true)
     [ -n "$_err" ] && rep "stderr:   $_err"
@@ -300,10 +327,15 @@ fetch_small() {
     done
     rep "--- $_label"
     rep "request:  curl --connect-timeout $CONNECT_TIMEOUT --max-time $REQ_TIMEOUT --max-filesize 64$_show <url>  ($REQUESTS_USED/$MAX_REQUESTS)"
-    R_BODY=$("$CURL" -sS --connect-timeout "$CONNECT_TIMEOUT" \
+    # the body goes to a file so the REAL curl exit code survives the
+    # head(1) trim; $? of a pipeline would be head's, not curl's
+    BODY_FILE=$ERR_FILE.body
+    "$CURL" -sS --connect-timeout "$CONNECT_TIMEOUT" \
         --max-time "$REQ_TIMEOUT" --max-filesize 64 \
-        "$@" "$_url" 2>"$ERR_FILE" </dev/null | head -c 128)
+        -o "$BODY_FILE" "$@" "$_url" 2>"$ERR_FILE" </dev/null
     R_RC=$?
+    R_BODY=$(head -c 128 "$BODY_FILE" 2>/dev/null || true)
+    rm -f "$BODY_FILE" 2>/dev/null
     _err=$(cat "$ERR_FILE" 2>/dev/null || true)
     [ -n "$_err" ] && rep "stderr:   $_err"
     rep "result:   exit=$R_RC body=${R_BODY:+present}"
@@ -355,6 +387,13 @@ elif command -v ss >/dev/null 2>&1; then
     PORT_TOOL=$(command -v ss)
 fi
 [ -n "$PORT_TOOL" ] && rep "netstat/ss: $PORT_TOOL" || rep "netstat/ss: not found (listen check falls back to probe results)"
+DNS_TO=""
+if command -v timeout >/dev/null 2>&1; then
+    DNS_TO=$(command -v timeout)
+    rep "dns timeout: probes limited to ${DNS_QUERY_TIMEOUT}s via $DNS_TO"
+else
+    rep "dns timeout: no timeout wrapper found; a dead resolver can stall the DNS probe"
+fi
 PGREP=""
 if command -v pgrep >/dev/null 2>&1; then
     PGREP=$(command -v pgrep)
@@ -374,7 +413,7 @@ case "$TARGET_INPUT" in
             https://*) TARGET_SCHEME="https" ;;
             *)         TARGET_SCHEME="http" ;;
         esac
-        TARGET_HOST=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#/.*$##; s/:.*$//')
+        TARGET_HOST=$(printf '%s' "$TARGET_INPUT" | sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##; s#^[^/@]*@##; s#/.*$##; s/:.*$//')
         case "$TARGET_INPUT" in
             https://*) TARGET_PORT=443 ;;
             http://*)  TARGET_PORT=80 ;;
@@ -398,7 +437,7 @@ case "$TARGET_SCHEME:$TARGET_PORT" in
     http:80)   PROBE_URL="http://$TARGET_HOST/" ;;
     http:*)    PROBE_URL="http://$TARGET_HOST:$TARGET_PORT/" ;;
 esac
-rep "Input:   $TARGET_INPUT"
+rep "Input:   $(sanitize_url "$TARGET_INPUT")"
 rep "Host:    $TARGET_HOST"
 rep "Port:    $TARGET_PORT"
 rep "Probe:   $PROBE_URL"
@@ -420,7 +459,7 @@ classify_resolver_error() {
             C_STATUS="FAIL"; C_DETAIL="SERVFAIL: the resolver reports an upstream or server-side failure" ;;
         *REFUSED*)
             C_STATUS="FAIL"; C_DETAIL="REFUSED: the resolver refused the query" ;;
-        *"timed out"*|*"no servers could be reached"*|*"connection refused"*)
+        *"timed out"*|*"no servers could be reached"*|*"connection refused"*|*"Temporary failure in name resolution"*)
             C_STATUS="FAIL"; C_DETAIL="timeout: no DNS answer within the attempt window" ;;
         *)
             C_STATUS="UNKNOWN"; C_DETAIL="resolver returned an unrecognized error" ;;
@@ -435,20 +474,35 @@ lookup_host() {
     REQUESTS_USED=$((REQUESTS_USED+1))
     if [ -n "${2:-}" ]; then
         rep "--- dns lookup via $2"
-        _out=$("$NSLOOKUP" "$1" "$2" 2>&1 </dev/null)
+        if [ -n "$DNS_TO" ]; then
+            _out=$("$DNS_TO" "$DNS_QUERY_TIMEOUT" "$NSLOOKUP" "$1" "$2" 2>&1 </dev/null)
+        else
+            _out=$("$NSLOOKUP" "$1" "$2" 2>&1 </dev/null)
+        fi
     else
         rep "--- dns lookup via system resolver"
-        _out=$("$NSLOOKUP" "$1" 2>&1 </dev/null)
+        if [ -n "$DNS_TO" ]; then
+            _out=$("$DNS_TO" "$DNS_QUERY_TIMEOUT" "$NSLOOKUP" "$1" 2>&1 </dev/null)
+        else
+            _out=$("$NSLOOKUP" "$1" 2>&1 </dev/null)
+        fi
     fi
     L_RC=$?
     rep "request:  nslookup $1${2:+ $2}  ($REQUESTS_USED/$MAX_REQUESTS)"
     rep "answer:   $(printf '%s' "$_out" | tr '\n' ' ' | head -c 300)"
-    if [ "$L_RC" -eq 0 ] && ! printf '%s' "$_out" | grep -qi 'NXDOMAIN\|SERVFAIL\|REFUSED'; then
-        L_ADDRESSES=$(printf '%s\n' "$_out" | awk '/^[[:space:]]*Address/{print $NF}' | head -n 3 | tr '\n' ' ' | sed 's/ $//')
+    if [ "$L_RC" -eq 124 ]; then
+        L_STATUS="FAIL"; L_DETAIL="timeout: no DNS answer within ${DNS_QUERY_TIMEOUT}s (probe terminated by the timeout wrapper)"
+    elif [ "$L_RC" -eq 0 ] && ! printf '%s' "$_out" | grep -qi 'NXDOMAIN\|SERVFAIL\|REFUSED'; then
+        # answer addresses only: exclude the resolver-server address and
+        # busybox-style addr#port server lines
+        _srv=$(printf '%s\n' "$_out" | awk 'tolower($1)=="server:"{print $2; exit}')
+        L_ADDRESSES=$(printf '%s\n' "$_out" | awk '/^[[:space:]]*Address/{print $NF}' \
+            | grep -v '#' | awk -v s="$_srv" 'length($0) > 0 && $0 != s' \
+            | head -n 3 | tr '\n' ' ' | sed 's/ $//')
         if [ -n "$L_ADDRESSES" ]; then
             L_STATUS="PASS"; L_DETAIL="resolved"
         else
-            L_STATUS="UNKNOWN"; L_DETAIL="exit 0 but no Address line recognized in resolver output"
+            L_STATUS="UNKNOWN"; L_DETAIL="exit 0 but no answer Address line recognized (only the resolver server address was seen)"
         fi
     else
         classify_resolver_error "$_out"
@@ -463,7 +517,6 @@ case "$TARGET_HOST" in
         if [ -z "$NSLOOKUP" ]; then
             DNS_STATUS="UNSUPPORTED"; DNS_DETAIL="nslookup is not installed"
             unsup_out "dns.router: $DNS_DETAIL; curl results below still show the effective outcome"
-            record "dns.router" "UNSUPPORTED" "$DNS_DETAIL"
         else
             lookup_host "$TARGET_HOST"
             DNS_STATUS=$L_STATUS; DNS_DETAIL=$L_DETAIL; DNS_OBSERVED=$L_ADDRESSES
@@ -472,7 +525,6 @@ case "$TARGET_HOST" in
                 FAIL) fail_out "dns.router: $DNS_DETAIL" ;;
                 *)    unknown_out "dns.router: $DNS_DETAIL" ;;
             esac
-            record "dns.router" "$DNS_STATUS" "$DNS_DETAIL" "${DNS_OBSERVED:+addresses: $DNS_OBSERVED}"
         fi
         if [ -n "$DNS_SERVER" ]; then
             if [ -z "$NSLOOKUP" ]; then
@@ -496,7 +548,6 @@ case "$TARGET_HOST" in
     *)
         DNS_STATUS="NOT TESTED"; DNS_DETAIL="target is an IP address literal; no name resolution involved"
         nt_out "dns.router: $DNS_DETAIL"
-        record "dns.router" "NOT TESTED" "$DNS_DETAIL"
         ;;
 esac
 
@@ -510,13 +561,11 @@ TCP_STATUS="NOT TESTED"; TCP_DETAIL="not run"
 if [ -z "$CURL" ]; then
     TCP_STATUS="UNSUPPORTED"; TCP_DETAIL="curl is not installed"
     unsup_out "tcp.connect: $TCP_DETAIL"
-    record "tcp.connect" "UNSUPPORTED" "$TCP_DETAIL"
 elif ! budget_left; then
     TCP_STATUS="NOT TESTED"; TCP_DETAIL="request budget exhausted"
     nt_out "tcp.connect: $TCP_DETAIL"
-    record "tcp.connect" "NOT TESTED" "$TCP_DETAIL"
 else
-    probe_http "tcp.connect" "telnet://$TARGET_HOST:$TARGET_PORT"
+    probe_http "tcp.connect" "telnet://$TARGET_HOST:$TARGET_PORT" --noproxy '*'
     TCP_RC=$R_RC
     case "$TCP_RC" in
         0|56)
@@ -527,7 +576,6 @@ else
                 TCP_DETAIL="TCP connection established; probe ended after stdin EOF"
             fi
             pass_out "tcp.connect: $TARGET_HOST:$TARGET_PORT is reachable"
-            TCP_RECORDED=1
             ;;
         28)
             TCP_STATUS="UNKNOWN"
@@ -538,22 +586,17 @@ else
             TCP_STATUS="FAIL"
             TCP_DETAIL="connection refused or host/network unreachable for $TARGET_HOST:$TARGET_PORT (curl 7)"
             fail_out "tcp.connect: $TCP_DETAIL"
-            TCP_RECORDED=1
             ;;
         6)
             TCP_STATUS="FAIL"
             TCP_DETAIL="curl-side resolver failure (curl 6); compare with the dns.router stage"
             fail_out "tcp.connect: $TCP_DETAIL"
-            TCP_RECORDED=1
             ;;
         *)
             TCP_STATUS="UNKNOWN"; TCP_DETAIL="curl exit $TCP_RC; stage inconclusive"
             unknown_out "tcp.connect: $TCP_DETAIL"
             ;;
     esac
-    if [ "${TCP_RECORDED:-0}" = "1" ]; then
-        record "tcp.connect" "$TCP_STATUS" "$TCP_DETAIL" "curl exit: $TCP_RC"
-    fi
 fi
 
 
@@ -569,27 +612,40 @@ HTTP_STATUS="NOT TESTED"; HTTP_DETAIL="not run"
 
 classify_https_result() {
     # caller ran probe_http on the https URL; sets TLS_*/HTTP_*/HYP_*
+    # and TLS_REACH (the HTTPS exchange proved DNS resolution and TCP)
+    case "$R_RC" in
+        0|35|60|19|43|56|63)
+            # every one of these exits means the name resolved on the
+            # curl path and the TCP connection carried TLS data
+            TLS_REACH=1
+            ;;
+    esac
     case "$R_RC" in
         0)
             TLS_STATUS="PASS"; TLS_DETAIL="TLS handshake and certificate verification succeeded"
             pass_out "tls.handshake: certificate verification OK"
             record "tls.handshake" "PASS" "$TLS_DETAIL"
-            R_CODE=${R_INFO%%|*}
-            R_FINAL=$(printf '%s' "${R_INFO#*|}" | head -c 300)
+            split_rinfo
+            R_SURL=$(sanitize_url "$R_URL")
             case "$R_CODE" in
                 2*|3*|4*|5*)
                     HTTP_STATUS="PASS"
                     case "$R_CODE" in
                         2*) HTTP_DETAIL="HTTP $R_CODE received; transport and application answered" ;;
-                        3*) HTTP_DETAIL="HTTP $R_CODE received after redirect handling; final URL: $R_FINAL" ;;
+                        3*)
+                            _rr=""
+                            [ -n "$R_RURL" ] && _rr="; redirect target: $(sanitize_url "$R_RURL")"
+                            HTTP_DETAIL="HTTP $R_CODE received; the server answers with a redirect; this tool does not follow redirects$_rr" ;;
                         4*) HTTP_DETAIL="HTTP $R_CODE received - transport and TLS are healthy; the server declined the request (application-level fact)" ;;
                         5*) HTTP_DETAIL="HTTP $R_CODE received - transport and TLS are healthy; the service reports a server-side error (application-level fact)" ;;
                     esac
                     pass_out "http.response: HTTP $R_CODE"
-                        info_out "fact: $HTTP_DETAIL"
-                    record "http.response" "PASS" "$HTTP_DETAIL" "http_code: $R_CODE; final_url: $R_FINAL"
+                    info_out "fact: $HTTP_DETAIL"
+                    _obs="http_code: $R_CODE; final_url: $R_SURL"
+                    [ -n "$R_RURL" ] && _obs="$_obs; redirect_target: $(sanitize_url "$R_RURL")"
+                    record "http.response" "PASS" "$HTTP_DETAIL" "$_obs"
                     case "$R_CODE" in
-                        3*) [ "$R_FINAL" != "$PROBE_URL" ] && REDIRECT_FINAL=$R_FINAL ;;
+                        3*) [ -n "$R_RURL" ] && REDIRECT_LOCATION=$(sanitize_url "$R_RURL") ;;
                         4*|5*) HYP_APP=1 ;;
                     esac
                     ;;
@@ -652,7 +708,7 @@ classify_https_result() {
             record "http.response" "NOT TESTED" "$HTTP_DETAIL"
             ;;
         63)
-            R_CODE=${R_INFO%%|*}
+            split_rinfo
             case "$R_CODE" in
                 2*|3*|4*|5*)
                     TLS_STATUS="PASS"; TLS_DETAIL="TLS handshake and certificate verification succeeded; the response was cut at the diagnostic size limit"
@@ -663,6 +719,7 @@ classify_https_result() {
                     pass_out "http.response: HTTP $R_CODE"
                     info_out "fact: $HTTP_DETAIL"
                     record "http.response" "PASS" "$HTTP_DETAIL" "http_code: $R_CODE; size_limit: $MAX_BYTES"
+                    case "$R_CODE" in 4*|5*) HYP_APP=1 ;; esac
                     ;;
                 *)
                     TLS_STATUS="UNKNOWN"; TLS_DETAIL="maximum response size reached before an HTTP status arrived (curl 63)"
@@ -708,25 +765,31 @@ elif [ "$TARGET_SCHEME" = "http" ]; then
         HTTP_STATUS="NOT TESTED"; HTTP_DETAIL="request budget exhausted"
         record "http.response" "NOT TESTED" "$HTTP_DETAIL"
     else
-        probe_http "http.response" "$PROBE_URL"
+        probe_http "http.response" "$PROBE_URL" --noproxy '*'
         case "$R_RC" in
-            0)
-                R_CODE=${R_INFO%%|*}
-                R_FINAL=$(printf '%s' "${R_INFO#*|}" | head -c 300)
+            0|63)
+                case "$R_RC" in 0|63) HTTP_REACH=1 ;; esac
+                split_rinfo
+                R_SURL=$(sanitize_url "$R_URL")
                 case "$R_CODE" in
                     2*|3*|4*|5*)
                         HTTP_STATUS="PASS"
                         case "$R_CODE" in
                             2*) HTTP_DETAIL="HTTP $R_CODE received; transport and application answered" ;;
-                            3*) HTTP_DETAIL="HTTP $R_CODE received after redirect handling; final URL: $R_FINAL" ;;
+                            3*)
+                                _rr=""
+                                [ -n "$R_RURL" ] && _rr="; redirect target: $(sanitize_url "$R_RURL")"
+                                HTTP_DETAIL="HTTP $R_CODE received; the server answers with a redirect; this tool does not follow redirects$_rr" ;;
                             4*) HTTP_DETAIL="HTTP $R_CODE received - transport is healthy; the server declined the request (application-level fact)" ;;
                             5*) HTTP_DETAIL="HTTP $R_CODE received - transport is healthy; the service reports a server-side error (application-level fact)" ;;
                         esac
                         pass_out "http.response: HTTP $R_CODE"
                         info_out "fact: $HTTP_DETAIL"
-                        record "http.response" "PASS" "$HTTP_DETAIL" "http_code: $R_CODE; final_url: $R_FINAL"
+                        _obs="http_code: $R_CODE; final_url: $R_SURL"
+                        [ -n "$R_RURL" ] && _obs="$_obs; redirect_target: $(sanitize_url "$R_RURL")"
+                        record "http.response" "PASS" "$HTTP_DETAIL" "$_obs"
                         case "$R_CODE" in
-                            3*) [ "$R_FINAL" != "$PROBE_URL" ] && REDIRECT_FINAL=$R_FINAL ;;
+                            3*) [ -n "$R_RURL" ] && REDIRECT_LOCATION=$(sanitize_url "$R_RURL") ;;
                             4*|5*) HYP_APP=1 ;;
                         esac
                         ;;
@@ -735,6 +798,25 @@ elif [ "$TARGET_SCHEME" = "http" ]; then
                         HTTP_DETAIL="curl succeeded but no usable HTTP status was returned (info=$R_CODE)"
                         unknown_out "http.response: $HTTP_DETAIL"
                         record "http.response" "UNKNOWN" "$HTTP_DETAIL" "info: $R_CODE"
+                        ;;
+                esac
+                ;;
+            63)
+                split_rinfo
+                case "$R_CODE" in
+                    2*|3*|4*|5*)
+                        HTTP_REACH=1
+                        HTTP_STATUS="PASS"
+                        HTTP_DETAIL="HTTP $R_CODE received before the diagnostic size limit cut the transfer; transport is healthy, body inspection is out of scope"
+                        pass_out "http.response: HTTP $R_CODE"
+                        info_out "fact: $HTTP_DETAIL"
+                        record "http.response" "PASS" "$HTTP_DETAIL" "http_code: $R_CODE; size_limit: $MAX_BYTES"
+                        case "$R_CODE" in 4*|5*) HYP_APP=1 ;; esac
+                        ;;
+                    *)
+                        HTTP_STATUS="UNKNOWN"
+                        HTTP_DETAIL="maximum response size reached before an HTTP status arrived (curl 63)"
+                        record "http.response" "UNKNOWN" "$HTTP_DETAIL" "curl exit: 63"
                         ;;
                 esac
                 ;;
@@ -766,19 +848,36 @@ elif ! budget_left; then
     record "tls.handshake" "NOT TESTED" "$TLS_DETAIL"
     record "http.response" "NOT TESTED" "$HTTP_DETAIL"
 else
-    probe_http "tls+https request" "$PROBE_URL"
+    probe_http "tls+https request" "$PROBE_URL" --noproxy '*'
     classify_https_result
-    case "$TLS_STATUS" in
-        PASS)
-            if [ "$TCP_STATUS" != "PASS" ]; then
-                TCP_STATUS="PASS"
-                TCP_DETAIL="proven by the TLS stage (the server answered above TCP); the telnet probe itself was inconclusive"
-                record "tcp.connect" "PASS" "$TCP_DETAIL"
-                TCP_RECORDED=1
-            fi
-            ;;
-    esac
 fi
+
+# ---------------------------------------------------------------
+# Chain record finalization: exactly one record per chain check;
+# contradictions are resolved against the strongest evidence.
+# ---------------------------------------------------------------
+CHAIN_REACH=0
+[ "${TLS_REACH:-0}" = "1" ] && CHAIN_REACH=1
+[ "${HTTP_REACH:-0}" = "1" ] && CHAIN_REACH=1
+CHAIN_DNS_NEUTRAL=0
+if [ "$CHAIN_REACH" = "1" ] && [ "$TCP_STATUS" != "PASS" ]; then
+    TCP_STATUS="PASS"
+    TCP_DETAIL="proven by the TLS/HTTPS stage (the server answered above TCP)"
+    case "${TCP_RC:-}" in
+        ''|0|56) : ;;
+        *) TCP_DETAIL="$TCP_DETAIL; the telnet probe disagreed (curl exit $TCP_RC) - telnet-specific or transient" ;;
+    esac
+    rep "note: tcp.connect recorded as PASS - $TCP_DETAIL"
+fi
+if [ "$CHAIN_REACH" != "1" ] && [ "$TCP_STATUS" = "UNKNOWN" ]; then
+    TCP_DETAIL="$TCP_DETAIL; the TLS stage did not prove TCP either"
+fi
+if [ "$DNS_STATUS" = "FAIL" ] && [ "$CHAIN_REACH" = "1" ]; then
+    CHAIN_DNS_NEUTRAL=1
+    rep "fact: the target was reached despite the system resolver failure; the HTTPS/HTTP path resolved the name via a different resolver path"
+fi
+record "dns.router" "$DNS_STATUS" "$DNS_DETAIL" "${DNS_OBSERVED:+addresses: $DNS_OBSERVED}"
+record "tcp.connect" "$TCP_STATUS" "$TCP_DETAIL" "curl exit: ${TCP_RC:-n/a}"
 
 # ---------------------------------------------------------------
 # Egress observation (small, optional, factual; two tiny requests
@@ -797,7 +896,7 @@ elif ! budget_left; then
     nt_out "egress.direct: request budget exhausted"
     record "egress.direct" "NOT TESTED" "request budget exhausted"
 else
-    fetch_small "egress.direct" "$EGRESS_URL"
+    fetch_small "egress.direct" "$EGRESS_URL" --noproxy '*'
     if [ "$R_RC" -eq 0 ]; then
         EGRESS_DIRECT=$(printf '%s' "$R_BODY" | tr -d '[:space:]' | head -c 64)
     fi
@@ -843,9 +942,9 @@ elif ! budget_left; then
     record "mihomo.controller" "NOT TESTED" "request budget exhausted"
 else
     if [ -n "$MIHOMO_SECRET" ]; then
-        probe_http "mihomo.controller" "$CONTROLLER_URL/version" -H "Authorization: Bearer $MIHOMO_SECRET"
+        probe_http "mihomo.controller" "$CONTROLLER_URL/version" -H "Authorization: Bearer $MIHOMO_SECRET" --noproxy '*'
     else
-        probe_http "mihomo.controller" "$CONTROLLER_URL/version"
+        probe_http "mihomo.controller" "$CONTROLLER_URL/version" --noproxy '*' 
     fi
     case "$R_RC" in
         0)
@@ -875,9 +974,11 @@ if [ -n "$CURL" ] && [ -n "$JQ" ] && budget_left; then
     if [ -n "$MIHOMO_SECRET" ]; then
         R_INFO=$("$CURL" -sS --connect-timeout "$CONNECT_TIMEOUT" --max-time "$REQ_TIMEOUT" \
             -H "Authorization: Bearer $MIHOMO_SECRET" \
+            --noproxy '*' --max-filesize "$MAX_BYTES" \
             -w '\n%{http_code}' "$CONTROLLER_URL/proxies" 2>/dev/null </dev/null)
     else
         R_INFO=$("$CURL" -sS --connect-timeout "$CONNECT_TIMEOUT" --max-time "$REQ_TIMEOUT" \
+            --noproxy '*' --max-filesize "$MAX_BYTES" \
             -w '\n%{http_code}' "$CONTROLLER_URL/proxies" 2>/dev/null </dev/null)
     fi
     REQUESTS_USED=$((REQUESTS_USED+1))
@@ -1020,7 +1121,8 @@ else
     else
         PROXY_LINES=$(printf '%s\n' "$RUN_CFG" | grep -E 'interface Proxy[0-9]+|proxy upstream|proxy protocol|description mihomo t2s' | head -n 20)
         if [ -n "$PROXY_LINES" ]; then
-            rep "$PROXY_LINES"
+            N_PROXY_IF=$(printf '%s\n' "$PROXY_LINES" | grep -c 'interface Proxy[0-9]' || true)
+            rep "evidence summary (raw running-config lines are withheld from the report): ${N_PROXY_IF:-0} Proxy interface line(s) matched the project filters"
             if printf '%s\n' "$RUN_CFG" | grep -q '127\.0\.0\.1.*7890'; then
                 pass_out "keenetic.proxyn: running-config contains a ProxyN upstream to 127.0.0.1:7890 (read-only fact)"
                 record "keenetic.proxyn" "PASS" "running-config contains a ProxyN upstream to 127.0.0.1:7890"
@@ -1053,7 +1155,8 @@ chain_state() {
     for _pair in "dns:$DNS_STATUS" "tcp:$TCP_STATUS" "tls:$TLS_STATUS" "http:$HTTP_STATUS"; do
         _sid=${_pair%%:*}; _sst=${_pair#*:}
         case "$_sid" in
-            dns) case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
+            dns) [ "${CHAIN_DNS_NEUTRAL:-0}" = "1" ] && continue
+                case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
             tls) [ "$TARGET_SCHEME" = "https" ] || continue ;;
         esac
         if [ "$_sst" = "FAIL" ]; then printf 'failure'; return 0; fi
@@ -1061,7 +1164,8 @@ chain_state() {
     for _pair in "dns:$DNS_STATUS" "tcp:$TCP_STATUS" "tls:$TLS_STATUS" "http:$HTTP_STATUS"; do
         _sid=${_pair%%:*}; _sst=${_pair#*:}
         case "$_sid" in
-            dns) case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
+            dns) [ "${CHAIN_DNS_NEUTRAL:-0}" = "1" ] && continue
+                case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
             tls) [ "$TARGET_SCHEME" = "https" ] || continue ;;
         esac
         case "$_sst" in PASS) : ;; *) printf 'incomplete'; return 0 ;; esac
@@ -1073,9 +1177,6 @@ section "Verdict"
 HYP_ALL=""
 NEXT_ALL=""
 FIRST_FAIL=""
-if [ "$TCP_STATUS" = "UNKNOWN" ] && [ "${TCP_RECORDED:-0}" != "1" ]; then
-    record "tcp.connect" "UNKNOWN" "the telnet probe was inconclusive and the TLS stage did not prove TCP either" "curl exit: 28"
-fi
 
 CHAIN_STATE=$(chain_state)
 case "$CHAIN_STATE" in
@@ -1083,7 +1184,8 @@ case "$CHAIN_STATE" in
         for _pair in "dns:$DNS_STATUS" "tcp:$TCP_STATUS" "tls:$TLS_STATUS" "http:$HTTP_STATUS"; do
             _sid=${_pair%%:*}; _sst=${_pair#*:}
             case "$_sid" in
-                dns) case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
+                dns) [ "${CHAIN_DNS_NEUTRAL:-0}" = "1" ] && continue
+                case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
                 tls) [ "$TARGET_SCHEME" = "https" ] || continue ;;
             esac
             if [ "$_sst" = "FAIL" ]; then FIRST_FAIL=$_sid; break; fi
@@ -1158,10 +1260,16 @@ case "$FIRST_FAIL" in
     tls.handshake) rep "consistency: DNS and TCP answered; the failure localizes to the TLS exchange (curl exit recorded above)" ;;
 esac
 
-if [ "${REDIRECT_FINAL:-}" != "" ]; then
-    HYP_ALL="${HYP_ALL}the HTTP path ended on a different URL ($REDIRECT_FINAL): a captive portal or interception-style redirect is a candidate explanation (fact: final URL observed)
+if [ "${REDIRECT_LOCATION:-}" != "" ]; then
+    HYP_ALL="${HYP_ALL}the HTTP path was redirected to $REDIRECT_LOCATION: a captive portal, an interception-style redirect or a normal site redirect is possible (fact: the redirect target was observed; this tool does not follow redirects)
 "
     NEXT_ALL="${NEXT_ALL}re-check after authenticating to the captive portal, or compare from another network
+"
+fi
+if [ "${CHAIN_DNS_NEUTRAL:-0}" = "1" ]; then
+    HYP_ALL="${HYP_ALL}the system resolver failed while the target was still reached: local DNS interception (dnsmasq/MagiTrickle), a different upstream or a stale negative cache are candidate explanations
+"
+    NEXT_ALL="${NEXT_ALL}compare resolver answers (KeeneticOS DNS settings, --dns-server probes) before treating the resolver failure as user-visible
 "
 fi
 if [ "${HYP_RESET:-0}" = "1" ]; then
@@ -1244,10 +1352,10 @@ if [ -n "$JSON_FILE" ]; then
         printf '    "next_steps": %s\n' "$NEXT_JSON"
         printf '  },\n'
         printf '  "target": {\n'
-        printf '    "input": "%s",\n' "$(json_escape "$TARGET_INPUT")"
+        printf '    "input": "%s",\n' "$(json_escape "$(sanitize_url "$TARGET_INPUT")")"
         printf '    "host": "%s",\n' "$(json_escape "$TARGET_HOST")"
         printf '    "port": %s,\n' "$TARGET_PORT"
-        printf '    "url": "%s",\n' "$(json_escape "$PROBE_URL")"
+        printf '    "url": "%s",\n' "$(json_escape "$(sanitize_url "$PROBE_URL")")"
         printf '    "scheme": "%s"\n' "$TARGET_SCHEME"
         printf '  },\n'
         printf '  "vantage": "router",\n'

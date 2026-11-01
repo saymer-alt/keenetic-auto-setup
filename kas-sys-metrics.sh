@@ -126,8 +126,12 @@ if [ -d "$SYS_ROOT/class/thermal" ]; then
         printf 'zone %s: type=%s temp=%s\n' \
             "${_tz##*/}" "${_type:-unknown}" "${_temp:-unreadable}"
         if [ -z "$TEMP_ZONE" ] && [ -n "$_temp" ]; then
-            case "$_type" in
-                *cpu*|*soc*|*SoC*|*CPU*|*thermal*|*soc_thermal*)
+            # strict CPU/SoC identification: the type must mention cpu/soc
+            # (case-insensitive). A generic "thermal" zone is NOT accepted:
+            # board/enclosure sensors must not be reported as CPU temperature.
+            _tl=$(printf '%s' "$_type" | tr 'A-Z' 'a-z')
+            case "$_tl" in
+                *cpu*|*soc*)
                     TEMP_ZONE=${_tz##*/}
                     TEMP_ZONE_TYPE=${_type:-unknown}
                     TEMP_MILLIC=$_temp
@@ -155,8 +159,9 @@ if [ -z "$TEMP_ZONE" ] && [ -d "$SYS_ROOT/class/hwmon" ]; then
             printf 'hwmon %s: name=%s input=%s temp=%s\n' \
                 "${_hw##*/}" "${_name:-unknown}" "${_in##*/}" "${_temp:-unreadable}"
             if [ -z "$TEMP_ZONE" ] && [ -n "$_temp" ]; then
-                case "$_name" in
-                    *cpu*|*soc*|*CPU*|*SoC*|*coretemp*|*cpu_thermal*)
+                _hl=$(printf '%s' "$_name" | tr 'A-Z' 'a-z')
+                case "$_hl" in
+                    *cpu*|*soc*|*coretemp*)
                         TEMP_ZONE=${_hw##*/}
                         TEMP_ZONE_TYPE=${_name:-unknown}
                         TEMP_MILLIC=$_temp

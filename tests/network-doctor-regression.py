@@ -54,7 +54,11 @@ if "api.ipify.org" in url:
         sys.exit(28)
     via_socks = "--socks5-hostname" in args
     addr = plan.get("egress_socks", "198.51.100.9") if via_socks else plan.get("egress_direct", "203.0.113.10")
-    print(addr)
+    outfile = args[args.index("-o") + 1] if "-o" in args else None
+    if outfile:
+        Path(outfile).write_text(addr + "\n")
+    else:
+        print(addr)
     sys.exit(0)
 
 if "127.0.0.1:9090" in url:
@@ -98,8 +102,8 @@ bodies = {
     "http200": (0, "200|http://target.example/"),
     "http500": (0, "500|http://target.example/"),
     "http403": (0, "403|http://target.example/"),
-    "redirect": (0, "302|http://192.0.2.99/"),
-    "portal": (0, "302|http://192.168.88.1/login.html"),
+    "redirect": (0, "302|http://target.example/|http://192.0.2.99/"),
+    "portal": (0, "302|http://target.example/|http://192.168.88.1/login.html"),
     "exit6": (6, ""),
     "exit7": (7, ""),
     "exit28": (28, ""),
@@ -127,6 +131,9 @@ args = sys.argv[1:]
 server = args[1] if len(args) > 1 else "system"
 key = "dns_" + ("custom" if len(args) > 1 else "system")
 action = plan.get(key, plan.get("dns", "pass"))
+if action == "hang":
+    import time
+    time.sleep(45)
 if action == "pass":
     print("Server:\t192.0.2.53")
     print("Address:\t192.0.2.53#53")
@@ -146,6 +153,9 @@ if action == "refused":
     sys.exit(1)
 if action == "timeout":
     print(";; connection timed out; no servers could be reached", file=sys.stderr)
+    sys.exit(1)
+if action == "tempfail":
+    print("nslookup: can't resolve 'target.example': Temporary failure in name resolution", file=sys.stderr)
     sys.exit(1)
 raise RuntimeError("unknown dns action: " + action)
 """
@@ -180,7 +190,7 @@ if plan.get("ndmc", "bridge") == "bridge":
     print("interface Proxy0")
     print("\tproxy protocol socks5")
     print("\tproxy upstream 127.0.0.1:7890")
-    print("\tdescription mihomo t2s0")
+    print("\tdescription mihomo t2s0 PROVIDER-TOPSECRET")
 elif plan.get("ndmc") == "none":
     print("interface Bridge0")
     print("\trole home")
@@ -286,6 +296,7 @@ def json_case(shell, title, plan, cli_args):
             assert chk["status"] in allowed, (title, chk)
             assert isinstance(chk["id"], str) and chk["id"], title
             ids_seen.append(chk["id"])
+        assert len(ids_seen) == len(set(ids_seen)), (title, "duplicate check ids", ids_seen)
         counts = data["counts"]
         total = sum(counts.values())
         assert total == len(data["checks"]), (title, counts, len(data["checks"]))
@@ -327,6 +338,8 @@ def main():
          {"expect_in": ("REFUSED", "'dns.router'"), "cli_args": target_args}),
         ("dns_timeout", {"dns": "timeout", "target": "exit6"}, 1,
          {"expect_in": ("timeout", "'dns.router'"), "cli_args": target_args}),
+        ("dns_busybox_tempfail", {"dns": "tempfail", "target": "exit6"}, 1,
+         {"expect_in": ("no DNS answer", "'dns.router'"), "cli_args": target_args}),
         ("tcp_refused", {"tcp": "refused", "target": "exit7"}, 1,
          {"expect_in": ("connection refused or host/network unreachable", "'tcp.connect'",
                         "NOT TESTED", "hotspot"),
@@ -395,7 +408,8 @@ def main():
                         "target chain confirmed"),
           "cli_args": target_args}),
         ("proxyn_bridge_evidence", {"ndmc": "bridge"}, 0,
-         {"expect_in": ("ProxyN upstream to 127.0.0.1:7890", "description mihomo t2s0"),
+         {"expect_in": ("ProxyN upstream to 127.0.0.1:7890",
+                        "raw running-config lines are withheld"),
           "cli_args": target_args}),
         ("proxyn_no_bridge", {"ndmc": "none"}, 0,
          {"expect_in": ("no ProxyN evidence",), "cli_args": target_args}),
@@ -407,8 +421,10 @@ def main():
          {"expect_in": ("dns.custom: via 192.0.2.53: REFUSED",
                         "the two resolvers disagree", "target chain confirmed"),
           "cli_args": target_args + ["--dns-server", "192.0.2.53"]}),
-        ("dns_server_rescues", {"dns": "timeout", "dns_custom": "pass"}, 1,
-         {"expect_in": ("192.0.2.53 resolves the name while the system resolver failed",),
+        ("dns_server_rescues", {"dns": "timeout", "dns_custom": "pass"}, 0,
+         {"expect_in": ("192.0.2.53 resolves the name while the system resolver failed",
+                        "despite the system resolver failure",
+                        "VERDICT: target chain confirmed"),
           "cli_args": target_args + ["--dns-server", "192.0.2.53"]}),
         ("brief_mode", {}, 0,
          {"expect_in": ("[PASS] dns.router",), "cli_args": target_args + ["--brief"]}),
@@ -420,6 +436,40 @@ def main():
         ("usage_bad_dns", {}, 2,
          {"expect_in": ("Unsupported --dns-server",),
           "cli_args": ["--target", "h", "--dns-server", "bad host"]}),
+
+        # ---- review fixes: RED cases ----
+        ("dns_answer_excludes_server", {}, 0,
+         {"expect_in": ("resolved -> 93.184.216.34",),
+          "expect_not_in": ("resolved -> 192.0.2.53",),
+          "cli_args": target_args}),
+        ("tcp_telnet_fail_https_ok", {"tcp": "refused", "target": "pass"}, 0,
+         {"expect_in": ("proven by the TLS/HTTPS stage", "telnet probe disagreed",
+                        "VERDICT: target chain confirmed"),
+          "cli_args": target_args}),
+        ("dns_fail_https_ok_resolvers_disagree", {"dns": "nxdomain", "target": "pass"}, 0,
+         {"expect_in": ("NXDOMAIN", "despite the system resolver failure",
+                        "VERDICT: target chain confirmed"),
+          "cli_args": target_args}),
+        ("egress_fail_keeps_exit_code", {"egress": "fail"}, 0,
+         {"expect_in": ("curl exit 28",),
+          "cli_args": target_args}),
+        ("redirect_not_followed", {"target": "redirect"}, 0,
+         {"expect_in": ("does not follow redirects", "redirect target: http://192.0.2.99/"),
+          "expect_not_in": ("after redirect handling",),
+          "cli_args": target_args}),
+        ("captive_portal_via_redirect_target", {"target": "portal"}, 0,
+         {"expect_in": ("http://192.168.88.1/login.html", "captive portal"),
+          "cli_args": target_args}),
+        ("proxies_response_capped", {}, 0,
+         {"expect_in": ("mihomo.controller.selection",), "cli_args": target_args}),
+        ("url_secrets_sanitized", {}, 0,
+         {"expect_in": ("Host:    example.com",),
+          "expect_not_in": ("secret", "token=abc"),
+          "cli_args": ["--target", "https://user:secret@example.com/path?token=abc"]}),
+        ("ndmc_lines_withheld", {"ndmc": "bridge"}, 0,
+         {"expect_in": ("ProxyN", "127.0.0.1:7890"),
+          "expect_not_in": ("PROVIDER-TOPSECRET",),
+          "cli_args": target_args}),
     ]
 
     for shell in shells:
@@ -458,6 +508,50 @@ def main():
             assert "TOPSECRET-WORD" not in blob, ("secret_leak", blob[:2000])
             assert r.returncode == 0, ("secret_run", r.returncode)
             print("PASS", " ".join(shell), "secret_never_printed")
+
+        # proxy env: direct probes must carry --noproxy; socks probes must not
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-proxy-") as tmp:
+            lab = Path(tmp)
+            fakebin = make_lab(lab, {})
+            env = base_env(lab, fakebin)
+            env["HTTPS_PROXY"] = "http://192.0.2.1:9"
+            env["ALL_PROXY"] = "socks5://192.0.2.1:9"
+            env["HTTP_PROXY"] = "http://192.0.2.1:9"
+            r = run_tool(shell, target_args, env)
+            calls = json.loads((lab / "curl_calls.json").read_text())
+            real = [c for c in calls if "--version" not in c]
+            assert real, "no curl calls logged"
+            for c in real:
+                if "--socks5-hostname" in c:
+                    assert "--noproxy" not in c, ("noproxy on socks call", c)
+                else:
+                    assert "--noproxy" in c and "*" in c, ("missing --noproxy on direct call", c)
+            print("PASS", " ".join(shell), "proxy_env_direct_noproxy")
+
+        # controller /proxies response must be size-capped
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-cap-") as tmp:
+            lab = Path(tmp)
+            fakebin = make_lab(lab, {})
+            env = base_env(lab, fakebin)
+            run_tool(shell, target_args, env)
+            calls = json.loads((lab / "curl_calls.json").read_text())
+            prox = [c for c in calls if any("/proxies" in a for a in c)]
+            assert prox, "no /proxies call logged"
+            assert any("--max-filesize" in a for a in prox[0]), ("proxies not capped", prox[0])
+            print("PASS", " ".join(shell), "proxies_call_size_capped")
+
+        # DNS probe time limit via a timeout wrapper (when available)
+        if shutil.which("timeout"):
+            with tempfile.TemporaryDirectory(prefix="kas-netdoc-dnst-") as tmp:
+                lab = Path(tmp)
+                fakebin = make_lab(lab, {"dns": "hang"})
+                env = base_env(lab, fakebin)
+                r = run_tool(shell, target_args, env)
+                out = r.stdout + r.stderr
+                assert "no DNS answer within" in out, ("dns hang not limited", out[-600:])
+                print("PASS", " ".join(shell), "dns_probe_time_limited")
+        else:
+            print("SKIP", " ".join(shell), "dns_probe_time_limited (no timeout binary)")
 
         # JSON contract on the happy path and on a failure path
         data, ids, text = json_case(shell, "json_happy", {}, target_args)

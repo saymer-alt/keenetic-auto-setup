@@ -138,6 +138,17 @@ def main():
         s = lab / "sys"
         add_hwmon(s, "hwmon0", "cpu_thermal", {"temp1_input": 52000})
 
+    def wide_thermal_sys(lab):
+        s = lab / "sys"
+        # a board/enclosure zone whose type contains "thermal" but NOT cpu/soc:
+        # this must NOT be reported as the CPU/SoC temperature
+        add_zone(s, "thermal_zone0", "board_thermal", 55000)
+
+    def ambiguous_sys(lab):
+        s = lab / "sys"
+        add_zone(s, "thermal_zone0", "acpitz", 61000)
+        add_zone(s, "thermal_zone1", "battery", 31000)
+
     def multi_sys(lab):
         s = lab / "sys"
         add_zone(s, "thermal_zone0", "acpitz", 61000)
@@ -174,6 +185,16 @@ def main():
         ("hwmon_source_pass", 0,
          {"expect_in": ("temperature.cpu-soc: 52.0 C", "hwmon0", "sysfs:hwmon"),
           "build_sys": hwmon_sys}),
+        ("wide_thermal_not_cpu", 0,
+         {"expect_in": ("no identifiable CPU/SoC temperature sensor", "UNKNOWN",
+                        "type=board_thermal"),
+          "expect_not_in": ("55.0 C", "temperature.cpu-soc: 55"),
+          "build_sys": wide_thermal_sys}),
+        ("ambiguous_zones_no_cpu_unknown", 0,
+         {"expect_in": ("no identifiable CPU/SoC temperature sensor", "UNKNOWN",
+                        "type=acpitz", "type=battery"),
+          "expect_not_in": ("61.0 C",),
+          "build_sys": ambiguous_sys}),
         ("multi_zones_first_cpu", 0,
          {"expect_in": ("47500", "cpu_thermal", "zone thermal_zone0"),
           "expect_not_in": ("61.0 C",),
