@@ -262,7 +262,7 @@ if [ -z "$_PROBE_URL" ] && [ -n "$_EC_ADDR" ]; then
     esac
 fi
 if [ "$HAVE_CURL" -eq 1 ] && [ -n "$_PROBE_URL" ]; then
-    _code=$(curl -sS -o /dev/null --connect-timeout "$CURL_TIMEOUT" --max-time "$CURL_TIMEOUT" -w '%{http_code}' "$_PROBE_URL" 2>/dev/null </dev/null)
+    _code=$(curl -sS --noproxy '*' -o /dev/null --connect-timeout "$CURL_TIMEOUT" --max-time "$CURL_TIMEOUT" -w '%{http_code}' "$_PROBE_URL" 2>/dev/null </dev/null)
     _rc=$?
     case "$_rc" in
         0)
