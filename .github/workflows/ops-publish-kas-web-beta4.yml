@@ -176,7 +176,7 @@ jobs:
             gh release create "$BETA_TAG" --repo "$GH_REPO" \
               --target "$SOURCE_SHA" --draft --prerelease --latest=false \
               --title 'KAS Web v0.1.0-beta.4' \
-              --notes 'Beta.4 release: Pages-based update indexes (this panel reads saymer-alt.github.io), quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. The PREVIOUS_TAG → beta.4 update path through the web panel is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
+              --notes 'Beta.4 release: Pages-based update indexes (this panel reads saymer-alt.github.io), quick theme switch (system/light/dark) beside RU/EN in the persistent sidebar, honest build-stage badge, official "Router web configurator" terminology, full RU/EN editorial pass, human-readable panel-update errors with technical details kept separately, correct "stable not published yet" state, and localized install phases. Updating from v0.1.0-beta.3 through the web-panel update button is the intended upgrade route; manual check/apply only, settings preserved, no automatic rollback. Source-pinned IPKs and SHA256SUMS.'
             # Incident 1 (beta.3 publication, run 41229787313): a fresh draft
             # lagged behind the releases listing (eventual consistency) and
             # set -e aborted the step right after the successful create.
@@ -230,7 +230,7 @@ jobs:
           assert assets['SHA256SUMS']['browser_download_url'].endswith('/'+os.environ['BETA_TAG']+'/SHA256SUMS')
           print('PASS: published release carries the canonical download URLs')
           PY
-      - name: Switch only experimental channel index (canonical beta.3), verify, restore on any failure until the final gate
+      - name: Switch only experimental channel index (canonical BETA_TAG), verify, restore on any failure until the final gate
         run: |
           set -euo pipefail
           # Digests of the three states this step reasons about.
@@ -268,16 +268,16 @@ jobs:
               # would destroy that parallel change, so leave it and escalate.
               echo "RESTORE SKIPPED: live index changed after our upload (digest $live); refusing to clobber a parallel change — manual comparison required" >&2
             fi
-            echo "NOTE: the created beta.3 release/tag is NOT removed automatically; inspect it before any manual cleanup" >&2
+            echo "NOTE: the created release/tag is NOT removed automatically; inspect it before any manual cleanup" >&2
           }
           trap restore EXIT
           live=$(live_digest)
           if [ "$live" = "$(cat build/old-index.sha256)" ]; then
             gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
           elif [ "$live" = "$(cat build/new-index.sha256)" ]; then
-            echo "Live experimental index already carries this exact beta.3 index (previous partial run); verifying instead of re-uploading"
+            echo "Live experimental index already carries this exact beta.4 index (previous partial run); verifying instead of re-uploading"
           else
-            echo "Live experimental index is neither the beta.2 backup nor this run's beta.3 index; refusing to overwrite an unknown state" >&2
+            echo "Live experimental index is neither the previous backup nor this run's beta.4 index; refusing to overwrite an unknown state" >&2
             exit 1
           fi
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
@@ -290,12 +290,12 @@ jobs:
           assert r['assets'][0]['digest']=='sha256:'+hashlib.sha256(index).hexdigest()
           assert r['assets'][0]['size']==len(index) and r['assets'][0]['state']=='uploaded'
           assert json.loads(index)['tag']==os.environ['BETA_TAG']
-          print('PASS: experimental channel points beta.2+ panels at the canonical beta.3 release')
+          print('PASS: experimental channel points existing panels at the canonical beta.4 release')
           PY
           # All final publication assertions stay INSIDE the restore window:
           # a failure here must still reinstate the beta.2 index.
           test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = "$(cat "$RUNNER_TEMP/latest-before.txt")" \
             || { echo "FATAL: repository Latest release changed during publishing — the channel is being restored; investigate Latest manually (never rewrite Latest automatically)" >&2; exit 1; }
           trap - EXIT
-          echo 'PASS: published canonical beta.3 and switched the experimental index; Latest unchanged'
+          echo 'PASS: published canonical beta.4 and switched the experimental index; Latest unchanged'
           echo 'NOTE: if this workflow had failed and restored earlier, do not declare the release fully deployed unless this final PASS printed.'
