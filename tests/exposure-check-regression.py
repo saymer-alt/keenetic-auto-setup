@@ -153,6 +153,13 @@ def main():
              config=OPEN_CONFIG,
              expect_in_out=("allow-lan is enabled", "non-loopback address"))
 
+    # allow-lan itself must contribute to exit status even when socket binding is loopback
+    exercise("allow_lan_raises_risk", 1,
+             tcp4=tcp_row("0100007F", "1ED2"),
+             config="mixed-port: 7890\nallow-lan: true\nexternal-controller: 127.0.0.1:9090\nsecret: 'set'\n",
+             plan={"controller_http": "401"},
+             expect_in_out=("allow-lan is enabled", "risky binding(s)/finding(s)"))
+
     # unauthenticated controller (HTTP 200) -> risky
     exercise("unauthenticated_controller", 1,
              tcp4=tcp_row("0100007F", "1ED2"),
