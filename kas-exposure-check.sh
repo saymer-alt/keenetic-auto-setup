@@ -216,7 +216,7 @@ if [ "$HAVE_CONFIG" -eq 1 ]; then
     if [ -n "$_al" ]; then
         info_out "config: $_al"
         case "$_al" in
-            *true*) fail_out "allow-lan is enabled: Mihomo ports are intended to serve LAN clients, not only loopback" ;;
+            *true*) fail_out "allow-lan is enabled: Mihomo ports are intended to serve LAN clients, not only loopback"; RISKY=$((RISKY+1)) ;;
         esac
     else
         info_out "config: allow-lan not set (Mihomo defaults to loopback binding)"
