@@ -5,21 +5,31 @@ const fs=require('node:fs');const path=require('node:path');const assert=require
 const root=path.resolve(__dirname,'../../..');
 const previews=process.env.KAS_PREVIEW_DIR||path.join(root,'web/control-center/design-preview');fs.mkdirSync(previews,{recursive:true});
 let browser;
+
 (async()=>{
  browser=await chromium.launch({headless:true,executablePath:process.env.KAS_TEST_CHROMIUM||undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'ru-RU'});
+// Full-page captures are documentation: reset scroll and focus first, or a
+// sticky sidebar and the skip-link render at the current scroll offset.
+const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();});await page.screenshot({path:path.join(previews,name),fullPage:true});};
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let panelOperation=null,panelTarget=false,panelLoseResponse=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
+ let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
   const req=route.request(),url=new URL(req.url());
   if(!url.pathname.startsWith('/api/')){
    const file=path.join(root,'web/control-center/web',url.pathname==='/'?'index.html':url.pathname.slice(1));
-   return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
+   const headers={'Cache-Control':'no-store'}; // mirrors the server policy from main.go
+   if(url.pathname==='/app.js'&&(panelTarget||panelServedNewBundle)){
+     return route.fulfill({status:200,contentType:'application/javascript',headers,
+       body:require('node:fs').readFileSync(file,'utf8')+'\nwindow.KAS_PANEL_BUNDLE="v0.1.1";'});
+   }
+   return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html',headers});
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
   if(url.pathname==='/api/updates/panel/check')data={state:'OK',channel:'experimental',installed_version:'0.1.0',runtime_version:'0.1.0',available_version:'0.1.1',relation:'newer'};
+  if(url.pathname==='/api/updates/panel/channel')data={channel:'experimental',build_channel:'experimental',allowed:['experimental','stable']};
   if(url.pathname==='/api/updates/panel/operation')data=panelOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
   if(url.pathname==='/api/updates/panel/apply'){panelOperation={ID:'c'.repeat(24),State:'RUNNING',Phase:'install',Version:'0.1.1',SourceSHA:'d'.repeat(40),Gate:true};if(panelLoseResponse)return route.abort();data={id:panelOperation.ID,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/check')data={state:'AVAILABLE',current_version:'1.19.33',available_version:'1.20.0',package_release:2,relation:'newer'};
@@ -27,7 +37,7 @@ let browser;
   if(url.pathname==='/api/updates/magitrickle/check')data={state:'AVAILABLE',current_version:'0.8.2-1',available_version:'0.8.2-2',relation:'newer'};
   if(url.pathname==='/api/updates/magitrickle'){updateOperation={id:'mt-fixture',component:'magitrickle',state:'OK',outcome:'CHANGED'};data={...updateOperation,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/operation')data=updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
-  if(url.pathname==='/api/components')data={panel:{version:panelTarget?'0.1.1':'0.1.0',source_sha:(panelTarget?'d':'a').repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
+  if(url.pathname==='/api/components')data={panel:{version:panelTarget?'0.1.1':'0.1.0~beta.3-1',source_sha:(panelTarget?'d':'a').repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
   if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
   if(url.pathname==='/api/doctor')data={timestamp:'2026-10-29T07:00:00Z',exit_code:0,details:fs.readFileSync(path.join(root,'web/control-center/tests/fixtures/doctor-kn1010.txt'),'utf8'),summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}};
   if(url.pathname==='/api/access')data={home_only:false};
@@ -48,18 +58,28 @@ let browser;
  });
  await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
  await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
- assert.match(await page.locator('#core-version').innerText(),/v0\.0\.0-proof2/);assert.match(await page.locator('#watchdog-version').innerText(),/v0\.0\.0-proof2.*совпадает/);
+ assert.match(await page.locator('#core-version').innerText(),/v0\.0\.0-proof2/);assert.match(await page.locator('#watchdog-version').innerText(),/v0\.0\.0-proof2.*соответствует/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
  assert.equal(await page.locator('#open-mt').getAttribute('href'),'http://kas.test:8080/');
  assert.equal(await page.locator('#open-mihomo').getAttribute('href'),'http://kas.test:9090/ui/');
  assert.equal(await page.locator('#open-generator').getAttribute('href'),'https://saymer-alt.github.io/link-generators/');
  assert.equal(await page.locator('#local-badge').getAttribute('href'),'http://kas.test/');
+ assert.equal(await page.locator('#local-badge').innerText(),'Веб-конфигуратор роутера ↗');
  for(const id of ['local-badge','open-mt','open-mihomo','open-generator']){assert.equal(await page.locator('#'+id).getAttribute('target'),'_blank');assert.equal(await page.locator('#'+id).getAttribute('rel'),'noopener noreferrer');}
- await page.emulateMedia({colorScheme:'light'});await page.locator('#nav-settings').click();
- await page.locator('#theme-mode').selectOption('dark');
+ assert.equal(await page.locator('.sidebar-footer #theme-mode').count(),1,'theme selector belongs to persistent sidebar');
+  assert.equal(await page.locator('#view-settings #theme-mode').count(),0,'theme selector is not buried in settings');
+  assert.equal(await page.locator('#theme-mode').isVisible(),true);
+  await page.locator('#en').click();assert.equal(await page.locator('#theme-light').innerText(),'Light');
+  assert.equal(await page.locator('#local-badge').innerText(),'Router web configurator ↗');
+  await page.locator('#ru').click();assert.equal(await page.locator('#theme-light').innerText(),'Светлая');
+  await page.emulateMedia({colorScheme:'light'});
+ assert.equal(await page.locator('#experiment').innerText(),'Бета-версия');
+  assert.equal(await page.locator('#footer-note').count(),0,'remove redundant footer tagline');
+  await page.locator('#theme-mode').selectOption('dark');
  const background=()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor);
  assert.equal(await background(),'rgb(17, 23, 34)');
- await page.reload();await page.locator('#nav-settings').click();await page.locator('#theme-mode').waitFor();assert.equal(await page.locator('#theme-mode').inputValue(),'dark');assert.equal(await background(),'rgb(17, 23, 34)');
+ await page.reload();await page.locator('#theme-mode').waitFor();assert.equal(await page.locator('#theme-mode').inputValue(),'dark');assert.equal(await background(),'rgb(17, 23, 34)');
+ await shot('overview-dark-desktop.png');
  await page.emulateMedia({colorScheme:'dark'});await page.locator('#theme-mode').selectOption('light');assert.equal(await background(),'rgb(243, 245, 249)');
  await page.locator('#theme-mode').selectOption('auto');assert.equal(await background(),'rgb(17, 23, 34)');
  await page.emulateMedia({colorScheme:'light'});assert.equal(await background(),'rgb(243, 245, 249)');
@@ -77,16 +97,16 @@ let browser;
  assert.match(await page.locator('#mt-state').innerText(),/0\.8\.2-1.*0\.8\.2-2/);
  acceptDialog=false;await page.locator('#update-mt').click();assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle').length,0);
  acceptDialog=true;await page.locator('#update-mt').click();assert.equal(await page.locator('#run').isDisabled(),true);
- await page.waitForFunction(()=>document.getElementById('mt-state').textContent.includes('процесс запущен'));
+ await page.waitForFunction(()=>document.getElementById('mt-state').textContent.includes('служба запущена'));
  assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle').length,1);
- await page.screenshot({path:path.join(previews,'overview-desktop.png'),fullPage:true});
- await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('Ошибок и предупреждений не обнаружено'));
+ await shot('overview-desktop.png');
+ await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('ошибок и предупреждений нет'));
  assert.doesNotMatch(await page.locator('#doctor-state').innerText(),/код выхода|не завершилась/);
  assert.match(await page.locator('#doctor-summary').innerText(),/Внешний накопитель[\s\S]*14115 из 14190 МБ/);
  const doctorCalls=requests.filter(r=>r.path==='/api/doctor').length;
  await page.locator('#en').click();assert.match(await page.locator('#doctor-summary').innerText(),/External storage[\s\S]*14115 of 14190 MB/);
  assert.equal(requests.filter(r=>r.path==='/api/doctor').length,doctorCalls);await page.locator('#ru').click();
- await page.screenshot({path:path.join(previews,'diagnostics-desktop.png'),fullPage:true});
+ await shot('diagnostics-desktop.png');
  await page.locator('#nav-subscriptions').click();await page.locator('#filter-load').click();await page.locator('#filter-node-list label').first().waitFor();
  assert.equal(await page.locator('.view:visible').count(),1);
  await page.locator('#filter-search').fill('Estonia');assert.equal(await page.locator('#filter-node-list label:visible').count(),5);
@@ -96,7 +116,7 @@ let browser;
  await page.locator('#nav-subscriptions').click();assert.equal(await page.locator('#filter-node-list input:checked').count(),1);
  await page.locator('#en').click();assert.equal(await page.locator('#page-title').innerText(),'Subscriptions');assert.match(await page.locator('#filter-summary').innerText(),/Selected: 1/);
  await page.locator('#ru').click();await page.locator('#filter-search').fill('');
- await page.screenshot({path:path.join(previews,'subscriptions-desktop.png'),fullPage:true});
+ await shot('subscriptions-desktop.png');
  acceptDialog=false;await page.locator('#filter-preview').click();await page.waitForFunction(()=>document.getElementById('filter-state').textContent.includes('отменено'));assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,0);
  acceptDialog=true;await page.locator('#filter-preview').click();await page.waitForFunction(()=>document.getElementById('filter-clear').disabled===false);
  assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,1);
@@ -104,15 +124,16 @@ let browser;
  assert.equal(await page.locator('#operation-banner').isVisible(),true);
  assert.equal(await page.locator('#operation-open').isVisible(),false,'operation navigation must not target the already open view');
  await page.locator('#nav-overview').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
- await page.locator('#nav-subscriptions').click();assert.match(await page.locator('#operation-message').innerText(),/успешно/);
+ await page.locator('#nav-subscriptions').click();assert.match(await page.locator('#operation-message').innerText(),/Конфигурация применена/);
  await page.locator('#operation-dismiss').click();assert.equal(await page.locator('#operation-banner').isVisible(),false);
  acceptDialog=true;await page.locator('#filter-clear').click();await page.waitForFunction(()=>document.querySelectorAll('#filter-node-list input').length===14&&document.getElementById('filter-clear').disabled);
  assert.equal(requests.filter(r=>r.path==='/api/filter/apply').length,2);
  const applied=requests.filter(r=>r.path==='/api/filter/apply');assert.deepEqual(applied[0].body.names,['Estonia Hy2 2083']);assert.equal(applied[1].body.clear,true);
  await page.locator('#nav-configuration').click();assert.equal(await page.locator('#yaml-paste').inputValue(),'mixed-port: 7890\n# keep me');
+ await shot('configuration-desktop.png');
  await page.locator('#nav-settings').click();await page.waitForFunction(()=>!document.getElementById('settings-save').disabled);
  assert.equal(await page.locator('#settings-port').inputValue(),'18081');
- await page.screenshot({path:path.join(previews,'settings-desktop.png'),fullPage:true});
+ await shot('settings-desktop.png');
  assert.equal(await page.locator('#settings-password').isVisible(),false);
  await page.locator('#settings-mode').selectOption('panel');assert.equal(await page.locator('#settings-repeat').isVisible(),true);
  await page.locator('#settings-password').fill('long-panel-password');await page.locator('#settings-repeat').fill('long-panel-password');
@@ -126,7 +147,7 @@ let browser;
  assert.equal(await page.locator('#settings-current').inputValue(),'');
  const portBody=requests.filter(r=>r.path==='/api/settings'&&r.body).at(-1).body;assert.deepEqual(portBody,{port:8081,auth_mode:'panel',current_password:'long-panel-password'});
  await page.locator('#settings-mode').selectOption('entware');assert.equal(await page.locator('#settings-repeat').isVisible(),false);assert.match(await page.locator('#settings-login').innerText(),/root/);
- await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(previews,'settings-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
+ await page.setViewportSize({width:390,height:844});await shot('settings-mobile.png');await page.setViewportSize({width:1440,height:1000});
  await page.locator('#settings-mode').selectOption('none');assert.equal(await page.locator('#settings-password').isVisible(),false);
  settingsReadFail=true;await page.locator('#settings-reload').click();await page.waitForFunction(()=>document.getElementById('settings-state').textContent.includes('SETTINGS_READ_FAILED'));assert.equal(await page.locator('#settings-save').isDisabled(),true);
  assert.deepEqual(await page.evaluate(()=>Object.keys(localStorage).filter(key=>!['kas_lang','kas_theme'].includes(key))),[]);
@@ -134,6 +155,7 @@ let browser;
  await page.locator('#nav-overview').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#nav-subscriptions').getAttribute('aria-current'),'page');
  for(const width of [360,390,768,1440]){
   await page.setViewportSize({width,height:900});
+   assert.equal(await page.locator('#theme-mode').isVisible(),true,`sidebar theme hidden at ${width}`);
   for(const view of ['overview','subscriptions','configuration','diagnostics','settings']){
    await page.locator('#nav-'+view).click();
    assert.ok(await page.locator('#local-badge').isVisible(),`router link hidden at ${width}/${view}`);
@@ -145,18 +167,30 @@ let browser;
  await page.locator('#panel-update-check').click();await page.waitForFunction(()=>!document.getElementById('panel-update-apply').disabled);
  acceptDialog=false;await page.locator('#panel-update-apply').click();assert.equal(requests.filter(r=>r.path==='/api/updates/panel/apply').length,0);
  acceptDialog=true;panelLoseResponse=true;await page.locator('#panel-update-apply').click();
- await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('install'));
+ await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Установка пакета'));
  assert.equal(await page.locator('#update-mihomo').isDisabled(),true);
- await page.reload();await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('install'));
+ await page.reload();await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Установка пакета'));
  panelOperation={...panelOperation,State:'OK',Phase:'complete',Gate:false};
  await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('ещё не подтверждена'));
- panelTarget=true;await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Новая запущенная версия подтверждена'));
- await page.locator('#en').click();assert.match(await page.locator('#panel-update-state').innerText(),/New running version verified/);await page.locator('#ru').click();
+ // Issue #311: after a fully verified success the panel reloads itself once.
+ let loads=0;page.on('load',()=>loads++);
+ const previousLoads=loads;
+ panelTarget=true;panelServedNewBundle=true;
+ await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Запущена новая версия'));
+ await page.waitForFunction(()=>window.KAS_PANEL_BUNDLE==='v0.1.1',null,{timeout:15000});
+ assert.equal(await page.evaluate(()=>sessionStorage.getItem('kas_updated_to')),null,'reload marker consumed');
+ assert.ok(loads-previousLoads>=1,'interface reloaded automatically');
+ // Wait out the notice window and prove exactly one reload, no loop.
+ await page.waitForTimeout(3000);
+ assert.equal(loads-previousLoads,1,'exactly one automatic reload');
+ assert.match(await page.locator('#panel-build').innerText(),/v0\.1\.1/,'version B visible without Ctrl+F5');
+ assert.match(await page.locator('#panel-update-state').innerText(),/Панель обновлена до v0\.1\.1\. Интерфейс загружен заново\./);
+ await page.locator('#en').click();assert.match(await page.locator('#panel-update-state').innerText(),/Panel updated to v0\.1\.1/);await page.locator('#ru').click();
  await page.setViewportSize({width:390,height:844});await page.locator('#nav-subscriptions').click();
- await page.screenshot({path:path.join(previews,'subscriptions-mobile.png'),fullPage:true});
- await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(previews,'subscriptions-dark-mobile.png'),fullPage:true});
+ await shot('subscriptions-mobile.png');
+ await page.emulateMedia({colorScheme:'dark'});await shot('subscriptions-dark-mobile.png');
  await page.reload();await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
  assert.equal(await page.locator('#operation-banner').isVisible(),false,'historical result reappeared on reload');
- assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; no JS errors.');
+ assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; self-update auto-reload with fresh bundle, single reload, no Ctrl+F5; no JS errors.');
  await browser.close();
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{await browser?.close();});

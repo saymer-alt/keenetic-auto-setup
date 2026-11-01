@@ -52,3 +52,30 @@ func TestDoctorExit(t *testing.T){
  out,exit,err:=doctorCommand(context.Background(),[]byte("printf failure; exit 7"))
  if err==nil||exit!=7||out!="failure"{t.Fatal(out,exit,err)}
 }
+
+func TestStaticAssetsAreNeverStoredByBrowsers(t *testing.T) {
+	// Issue #311: after a self-update the browser must not serve stale
+	// panel assets. The embedded UI is served with an explicit no-store
+	// directive; API JSON already had one.
+	a := newApp("127.0.0.1:8081", nil)
+	r := httptest.NewRequest("GET", "http://127.0.0.1:8081/", nil)
+	r.Host = "127.0.0.1:8081"
+	w := httptest.NewRecorder()
+	a.handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("static index: %d", w.Code)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("index Cache-Control = %q, want no-store", got)
+	}
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest("GET", "http://127.0.0.1:8081/app.js", nil)
+	r2.Host = "127.0.0.1:8081"
+	a.handler().ServeHTTP(w2, r2)
+	if w2.Code != 200 {
+		t.Fatalf("app.js: %d", w2.Code)
+	}
+	if got := w2.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("app.js Cache-Control = %q, want no-store", got)
+	}
+}

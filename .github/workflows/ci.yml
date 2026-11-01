@@ -46,11 +46,23 @@ jobs:
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
 
+      - name: Stable release gate workflow contract
+        run: python3 tests/stable-release-gate-regression.py
+
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
+
+      - name: Beta.3 publish transaction dry-run (mock GitHub, real step scripts)
+        run: python3 tests/publish-transaction-dryrun.py
+
+      - name: Beta.4 publish transaction dry-run (same suite, beta.4 publisher file and pins)
+        run: python3 tests/publish-transaction-dryrun.py --workflow .github/workflows/ops-publish-kas-web-beta4.yml --beta-tag v0.1.0-beta.4 --beta-version 0.1.0~beta.4-1 --previous-tag v0.1.0-beta.3 --artifact-prefix kas-web-beta4
+
+      - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
+        run: python3 tests/candidate-build-dryrun.py
 
       - name: First-fetch bootstrap mocked-network and BusyBox acceptance
         run: python3 tests/bootstrap-regression.py
@@ -85,8 +97,15 @@ jobs:
       - name: Config import expected-source gate regression (dash and BusyBox ash)
         run: python3 tests/config-import-filter-gate-regression.py
 
+      - name: Network Doctor staged diagnostic regression (dash and BusyBox ash)
+        run: python3 tests/network-doctor-regression.py
+
+      - name: Router sys-metrics collector regression (dash and BusyBox ash)
+        run: python3 tests/sys-metrics-regression.py
+
       - name: Downloader partial-transfer regression (dash and BusyBox ash)
         run: python3 tests/download-regression.py
+
       - name: Exposure audit regression (dash and BusyBox ash)
         run: python3 tests/exposure-check-regression.py
 
