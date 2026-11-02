@@ -212,31 +212,64 @@ verify_expected_source() {
 # clearly marked NON-rollback artifact. Mechanism reuses the project's
 # existing primitives only: stage beside the config (umask 077, chmod 600),
 # `cmp -s` integrity verification (the same proven primitive as the
-# expected-source gate), one same-filesystem atomic rename. The artifact
+# expected-source gate), then one same-filesystem atomic create-if-absent
+# publication (POSIX hard-link `ln` without -f). The artifact
 #   config.yaml.invalid[.N]
 # is persistent, never a rollback source, never deleted by cleanup, and its
-# content is never printed. Existing names are never overwritten: the probe
-# picks the first NON-existing name (base, .1 .. .99) and refuses to use a
-# symlinked entry at all, so nothing outside the config directory can be
-# reached and no user file is clobbered. If preservation cannot be
-# completed and verified, the caller aborts BEFORE the commit: the original
-# stays in place and nothing is lost. No-op for a valid current config and
-# for a missing/empty one (no bytes to preserve).
+# content is never printed. Publication can never overwrite an existing
+# entry: ln fails on any occupied name (plain file, symlink, dangling
+# link) and a collision only advances to the next suffix (base, .1 .. .99),
+# so even a writer that claims the name between any check and the
+# publication is never clobbered. A publication failure that is not a
+# collision (hard links unsupported, cross-device, I/O error) fails
+# closed: the caller aborts BEFORE the commit, the original stays in place
+# and nothing is lost. No-op for a valid current config and for a
+# missing/empty one (no bytes to preserve).
 preserve_invalid_current() {
-    _pi_i=""
-    _pi_try="$CONFIG_DIR/config.yaml.invalid"
-    while [ -e "$_pi_try" ] || [ -L "$_pi_try" ]; do
-        _pi_i=$((_pi_i + 1))
-        [ "$_pi_i" -le 99 ] || return 1
-        _pi_try="$CONFIG_DIR/config.yaml.invalid.$_pi_i"
-    done
+    # Stage the bytes on the same filesystem as the config directory and
+    # verify the copy before any publication is attempted.
     cp -f "$CONFIG_PATH" "$RECOVERY_STAGE" || return 1
     command -v cmp >/dev/null 2>&1 || { rm -f "$RECOVERY_STAGE" || true; return 1; }
     cmp -s "$RECOVERY_STAGE" "$CONFIG_PATH" || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    command -v ln >/dev/null 2>&1 || { rm -f "$RECOVERY_STAGE" || true; return 1; }
     chmod 600 "$RECOVERY_STAGE" 2>/dev/null || true
-    mv -f "$RECOVERY_STAGE" "$_pi_try" || return 1
-    RECOVERY_PATH="$_pi_try"
-    return 0
+    # Publish with an atomic create-if-absent: POSIX ln(1) without -f fails
+    # when the destination name already exists (a plain file, a symlink, a
+    # dangling link — link(2) never follows or replaces). A name claimed by
+    # a racing writer after any check can therefore never be overwritten;
+    # a collision only advances to the next suffix. Any other failure
+    # (hard links unsupported, cross-device, I/O error) fails closed and
+    # the caller aborts BEFORE config.yaml is replaced.
+    _pi_i=""
+    _pi_try="$CONFIG_DIR/config.yaml.invalid"
+    while :; do
+        if [ ! -d "$_pi_try" ] && ln "$RECOVERY_STAGE" "$_pi_try" 2>/dev/null; then
+            if [ -f "$_pi_try" ]; then
+                RECOVERY_PATH="$_pi_try"
+                # Drop the staging link; the bytes survive via RECOVERY_PATH.
+                rm -f "$RECOVERY_STAGE" || true
+                return 0
+            fi
+            # The name turned into a directory between the check and the
+            # link, so the bytes landed inside it. Remove the stray link,
+            # keep this importer's stage, fail closed.
+            rm -f "$_pi_try/${RECOVERY_STAGE##*/}" 2>/dev/null || true
+            rm -f "$RECOVERY_STAGE" || true
+            return 1
+        fi
+        if [ -e "$_pi_try" ] || [ -L "$_pi_try" ]; then
+            # Name occupied (pre-existing entry or a lost naming race):
+            # never overwrite it, take the next suffix.
+            _pi_i=$((_pi_i + 1))
+            [ "$_pi_i" -le 99 ] || break
+            _pi_try="$CONFIG_DIR/config.yaml.invalid.$_pi_i"
+            continue
+        fi
+        break
+    done
+    # Suffixes exhausted, or ln failed for a non-collision reason.
+    rm -f "$RECOVERY_STAGE" || true
+    return 1
 }
 # END INVALID CONFIG PRESERVATION v1
 

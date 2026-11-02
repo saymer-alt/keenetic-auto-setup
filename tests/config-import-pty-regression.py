@@ -45,6 +45,15 @@ name; symlinks are never renamed onto and outside files are never touched
 (R16). A normal valid-current import creates no recovery artifact and no
 new warnings (R17).
 
+PR #325 no-clobber race contracts (R18–R20): the publication of the
+recovery artifact is an atomic create-if-absent (POSIX hard-link ln),
+so a name claimed by a racing writer between the name probe and the
+publication is never overwritten (R18; the racing writer is injected by
+a fake chmod immediately before publication). An already-occupied
+regular name keeps its bytes and the artifact takes the next suffix
+(R19). When hard-link creation itself fails (unsupported filesystem,
+I/O error), the import fails closed BEFORE replacing config.yaml (R20).
+
 The reader is extracted from the production script (same approach as
 tests/doctor-ubi-regression.sh): the PTY reproduces the real tty behavior,
 but no router is contacted and nothing outside the temporary fixture tree
@@ -940,6 +949,7 @@ def test_e2e_invalid_preservation_cases():
 
     GARBAGE_A = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nplace-A\n"
     OLD_RECOVERY = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nolder-recovery\n"
+    RACE_BYTES = b"racing-writer-claimed-this-name\n"
     OUTSIDE_BYTES = b"outside-target-must-never-change\n"
     CANDIDATE = b"mixed-port: 7890\nmode: rule\nsecret: null\nrecovery: yes\n"
     FAIL_CANDIDATE = b"mixed-port: 7890\nmode: rule\nPOST_COMMIT_FAIL\n"
@@ -985,6 +995,10 @@ def test_e2e_invalid_preservation_cases():
                 break
             n = str(int(n or "0") + 1)
         return found
+
+    def stage_leftovers():
+        d = os.path.dirname(config_path)
+        return [n for n in sorted(os.listdir(d)) if n.startswith(".config.yaml")]
 
     try:
         for argv in sh_shells():
@@ -1084,6 +1098,112 @@ def test_e2e_invalid_preservation_cases():
                       and b"not a valid Mihomo config" not in out
                       and b"preserved verbatim" not in out,
                       "rc=%r tail=%r" % (rc, out[-140:]))
+
+                # R18 — no-clobber race at publication: a racing writer
+                # claims config.yaml.invalid AFTER the importer chose the
+                # name and immediately BEFORE publication (injected by a
+                # fake chmod, the last operation before publication). The
+                # publication must be an atomic create-if-absent: the
+                # racing writer's file keeps its bytes and the artifact
+                # takes the next suffix; nothing is overwritten.
+                reset(GARBAGE_A)
+                racebin = os.path.join(
+                    tempfile.gettempdir(), "kas-test-racebin-%d-%s"
+                    % (os.getpid(), argv[-1]))
+                os.makedirs(racebin, exist_ok=True)
+                with open(os.path.join(racebin, "chmod"), "w") as fh:
+                    fh.write(
+                        "#!/bin/sh\n"
+                        "for a in \"$@\"; do\n"
+                        "    case \"$a\" in\n"
+                        "        *.config.yaml.invalid.new.*)\n"
+                        "            d=${a%/*}\n"
+                        "            if [ ! -e \"$d/config.yaml.invalid\" ] && "
+                        "[ ! -L \"$d/config.yaml.invalid\" ]; then\n"
+                        "                printf 'racing-writer-claimed-this-name\\n' "
+                        "> \"$d/config.yaml.invalid\"\n"
+                        "            fi\n"
+                        "            ;;\n"
+                        "    esac\n"
+                        "done\n"
+                        "PATH=/usr/bin:/bin\n"
+                        "export PATH\n"
+                        "exec chmod \"$@\"\n")
+                os.chmod(os.path.join(racebin, "chmod"), 0o755)
+                rc, out, _master = paste(
+                    argv, CANDIDATE,
+                    env_extra={"PATH": racebin + os.pathsep + os.environ["PATH"]})
+                names = recovery_names()
+                after = read_file(config_path)
+                shutil.rmtree(racebin, ignore_errors=True)
+                check("R18 racing writer never clobbered at publication (%s)" % shell_name,
+                      rc == 0 and after == CANDIDATE
+                      and names == [recovery_base, recovery_base + ".1"]
+                      and digest(recovery_base) == sha256_of_bytes(RACE_BYTES)
+                      and digest(recovery_base + ".1") == sha256_of_bytes(GARBAGE_A)
+                      and (os.stat(recovery_base + ".1").st_mode & 0o777) == 0o600
+                      and not stage_leftovers()
+                      and b"MAKE_MIHOMO_FAIL" not in out
+                      and b"racing-writer" not in out,
+                      "rc=%r names=%r" % (rc, names))
+
+                # R19 — normal-path GREEN for the no-overwrite guarantee:
+                # an occupied REGULAR recovery name keeps its bytes, the
+                # artifact takes the next suffix, and the occupied file's
+                # content is never printed.
+                reset(GARBAGE_A)
+                want = sha256_of(config_path)
+                with open(recovery_base, "wb") as fh:
+                    fh.write(OLD_RECOVERY)
+                rc, out, _master = paste(argv, CANDIDATE)
+                names = recovery_names()
+                check("R19 occupied recovery name keeps its bytes (%s)" % shell_name,
+                      rc == 0 and read_file(config_path) == CANDIDATE
+                      and names == [recovery_base, recovery_base + ".1"]
+                      and digest(recovery_base) == sha256_of_bytes(OLD_RECOVERY)
+                      and digest(recovery_base + ".1") == sha256_of_bytes(GARBAGE_A)
+                      and (os.stat(recovery_base + ".1").st_mode & 0o777) == 0o600
+                      and not stage_leftovers()
+                      and b"older-recovery" not in out,
+                      "rc=%r names=%r" % (rc, names))
+                if os.path.lexists(recovery_base + ".1"):
+                    os.remove(recovery_base + ".1")
+                if os.path.lexists(recovery_base):
+                    os.remove(recovery_base)
+
+                # R20 — unsupported hard links: when the atomic
+                # create-if-absent publication itself fails (link(2)
+                # unsupported, cross-device, I/O error — simulated by a
+                # fake ln that always refuses), the import fails closed
+                # BEFORE replacing config.yaml: the original bytes stay in
+                # place and no recovery artifact is published.
+                reset(GARBAGE_A)
+                want = sha256_of(config_path)
+                nolnbin = os.path.join(
+                    tempfile.gettempdir(), "kas-test-noln-%d-%s"
+                    % (os.getpid(), argv[-1]))
+                os.makedirs(nolnbin, exist_ok=True)
+                with open(os.path.join(nolnbin, "ln"), "w") as fh:
+                    fh.write(
+                        "#!/bin/sh\n"
+                        "case \"$2\" in\n"
+                        "    */config.yaml.invalid*) exit 3 ;;\n"
+                        "esac\n"
+                        "PATH=/usr/bin:/bin\n"
+                        "export PATH\n"
+                        "exec ln \"$@\"\n")
+                os.chmod(os.path.join(nolnbin, "ln"), 0o755)
+                rc, out, _master = paste(
+                    argv, CANDIDATE,
+                    env_extra={"PATH": nolnbin + os.pathsep + os.environ["PATH"]})
+                shutil.rmtree(nolnbin, ignore_errors=True)
+                check("R20 hard-link publication failure fails closed (%s)" % shell_name,
+                      rc == 1 and read_file(config_path) == GARBAGE_A
+                      and digest(config_path) == want
+                      and recovery_names() == []
+                      and not stage_leftovers()
+                      and b"Cannot safely preserve" in out,
+                      "rc=%r tail=%r" % (rc, out[-160:]))
             finally:
                 for path in (config_path, backup_path):
                     if os.path.exists(path) or os.path.islink(path):
