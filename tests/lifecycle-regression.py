@@ -425,7 +425,13 @@ esac
 sleep() { :; }
 netstat() { echo '127.0.0.1:7890 '; }
 mv() {
-  case "$*" in *config.yaml*)
+  case "$*" in *config.yaml.invalid*)
+    # The recovery-preservation rename (PR #325 final review) is not a
+    # transactional commit: it moves a stage to a persistent non-rollback
+    # artifact and is exempt from the commit event, while still running
+    # under the lifecycle lock (the owner check below is shared).
+    [ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || return 90 ;;
+  *config.yaml*)
     [ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || return 90
     [ ! -f "$LAB/running" ] || return 91
     echo commit >> "$LAB/actions" ;;

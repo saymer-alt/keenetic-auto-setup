@@ -206,6 +206,40 @@ verify_expected_source() {
 }
 # END KAS EXPECTED SOURCE GATE v1
 
+# BEGIN INVALID CONFIG PRESERVATION v1 (issue #320, PR #325 final review)
+# An unusable NONEMPTY current config.yaml is never silently destroyed by
+# the atomic candidate replacement: it is preserved byte-for-byte in a
+# clearly marked NON-rollback artifact. Mechanism reuses the project's
+# existing primitives only: stage beside the config (umask 077, chmod 600),
+# `cmp -s` integrity verification (the same proven primitive as the
+# expected-source gate), one same-filesystem atomic rename. The artifact
+#   config.yaml.invalid[.N]
+# is persistent, never a rollback source, never deleted by cleanup, and its
+# content is never printed. Existing names are never overwritten: the probe
+# picks the first NON-existing name (base, .1 .. .99) and refuses to use a
+# symlinked entry at all, so nothing outside the config directory can be
+# reached and no user file is clobbered. If preservation cannot be
+# completed and verified, the caller aborts BEFORE the commit: the original
+# stays in place and nothing is lost. No-op for a valid current config and
+# for a missing/empty one (no bytes to preserve).
+preserve_invalid_current() {
+    _pi_i=""
+    _pi_try="$CONFIG_DIR/config.yaml.invalid"
+    while [ -e "$_pi_try" ] || [ -L "$_pi_try" ]; do
+        _pi_i=$((_pi_i + 1))
+        [ "$_pi_i" -le 99 ] || return 1
+        _pi_try="$CONFIG_DIR/config.yaml.invalid.$_pi_i"
+    done
+    cp -f "$CONFIG_PATH" "$RECOVERY_STAGE" || return 1
+    command -v cmp >/dev/null 2>&1 || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    cmp -s "$RECOVERY_STAGE" "$CONFIG_PATH" || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    chmod 600 "$RECOVERY_STAGE" 2>/dev/null || true
+    mv -f "$RECOVERY_STAGE" "$_pi_try" || return 1
+    RECOVERY_PATH="$_pi_try"
+    return 0
+}
+# END INVALID CONFIG PRESERVATION v1
+
 # BEGIN MIHOMO PROCESS STATE v1
 # Identical standalone contract: 0 running, 1 stopped, 2 unknown.
 # MP_PIDS contains only positive evidence; unknown is never absence.
@@ -316,6 +350,11 @@ mp_pids() {
 # before it may serve as a rollback source, unusable files stay on disk for
 # manual inspection, and a failure without a validated backup reports the
 # exact reason instead of claiming a restore.
+# Preservation (PR #325 final review): a nonempty unusable current config
+# is preserved byte-for-byte as config.yaml.invalid[.N] before the atomic
+# replacement; the artifact is never a rollback source and its content is
+# never printed. If preservation cannot be verified, the import aborts
+# before the commit so no user bytes can be lost.
 
 set -e
 
@@ -325,6 +364,7 @@ BACKUP_PATH="$CONFIG_DIR/config.yaml.bak"
 STAGE_CONFIG="$CONFIG_DIR/.config.yaml.new.$$"
 BACKUP_STAGE="$CONFIG_DIR/.config.yaml.bak.new.$$"
 ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.rollback.$$"
+RECOVERY_STAGE="$CONFIG_DIR/.config.yaml.invalid.new.$$"
 TEST_LOG="/tmp/mihomo-config-test.$$"
 INIT_SCRIPT="/opt/etc/init.d/S99mihomo"
 
@@ -337,6 +377,9 @@ CONFIG_COMMIT_STARTED=0
 # no unusable file is ever deleted or presented as a rollback point.
 BACKUP_ROLLBACK_SAFE=0
 BACKUP_PRESENT_INVALID=0
+# Set when an unusable nonempty current config has been preserved verbatim
+# in a clearly marked non-rollback artifact (config.yaml.invalid[.N]).
+RECOVERY_PATH=""
 # Saved terminal settings while the interactive reader enforces ICRNL
 # (restored by cleanup); empty when the terminal was not touched.
 CI_TTY_STTY_SAVE=""
@@ -388,7 +431,9 @@ cleanup() {
         stty -F /dev/tty "$CI_TTY_STTY_SAVE" 2>/dev/null || true
         CI_TTY_STTY_SAVE=""
     fi
-    rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
+    # Only staging files are removed here. A preserved config.yaml.invalid
+    # recovery artifact and a validated config.yaml.bak are never deleted.
+    rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$RECOVERY_STAGE" "$TEST_LOG" 2>/dev/null || true
     ml_lifecycle_release || true
 }
 
@@ -496,10 +541,14 @@ rollback_config() {
         if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
             warn "The service was running before the import; it cannot be restored automatically without a validated config. Manual recovery is required."
         fi
-        if [ "$BACKUP_PRESENT_INVALID" -eq 1 ]; then
-            error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH; an unusable previous file is retained at $BACKUP_PATH for manual inspection."
+        _ci_recovery=""
+        if [ -n "$RECOVERY_PATH" ]; then
+            _ci_recovery=" The original unusable config was preserved verbatim at $RECOVERY_PATH."
         fi
-        error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH for manual recovery."
+        if [ "$BACKUP_PRESENT_INVALID" -eq 1 ]; then
+            error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH; an unusable previous file is retained at $BACKUP_PATH for manual inspection.$_ci_recovery"
+        fi
+        error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH for manual recovery.$_ci_recovery"
     fi
     log "Rolling back config.yaml..."
 
@@ -726,6 +775,18 @@ if [ "$CURRENT_CONFIG_USABLE" -eq 1 ]; then
         BACKUP_ROLLBACK_SAFE=1
     else
         CURRENT_CONFIG_USABLE=0
+        # The unusable current file is preserved verbatim BEFORE the commit
+        # can replace it. If preservation cannot be completed and verified,
+        # the import aborts here: the original stays untouched and nothing
+        # is lost (PR #325 final review).
+        if [ -s "$CONFIG_PATH" ]; then
+            if preserve_invalid_current; then
+                log "The unusable previous config was preserved verbatim at $RECOVERY_PATH (marked invalid; not a rollback source)."
+            else
+                restore_old_service || true
+                error "Cannot safely preserve the unusable current config.yaml; import aborted before any change. The original file is untouched at $CONFIG_PATH."
+            fi
+        fi
         warn "Current config.yaml is not a valid Mihomo config; it will not be backed up as a rollback source."
     fi
 fi
@@ -798,6 +859,9 @@ elif [ "$BACKUP_PRESENT_INVALID" -eq 1 ]; then
     status_out "$COLOR_CYAN" "[info] Recovery import complete; no previous-config backup exists — the unusable previous file was kept at $BACKUP_PATH for manual inspection, and automatic rollback is not available."
 else
     status_out "$COLOR_CYAN" "[info] Recovery import complete; no previous-config backup exists, automatic rollback is not available."
+fi
+if [ -n "$RECOVERY_PATH" ]; then
+    status_out "$COLOR_CYAN" "[info] The previous (invalid) config.yaml was preserved verbatim at $RECOVERY_PATH; it is NOT a working backup or a rollback source."
 fi
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     status_out "$COLOR_GREEN" "[OK] Mihomo is running with the new config."

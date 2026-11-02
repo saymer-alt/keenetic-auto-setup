@@ -35,6 +35,16 @@ restored" (R9); a valid current config replaces a stale unusable backup
 (R10); an interruption at any point never damages the last good copy (R11);
 recovery works with the service running and restores it (R12).
 
+PR #325 final-review contracts (R13–R17): an unusable nonempty current
+config is preserved BYTE-FOR-BYTE in a clearly marked non-rollback
+recovery artifact (config.yaml.invalid[.N]) before the candidate replaces
+it (R13), survives a post-commit failure unchanged (R14), and an
+unverifiable preservation aborts the import before any change (R15, the
+integrity check cmp is unavailable). Collisions choose the next free
+name; symlinks are never renamed onto and outside files are never touched
+(R16). A normal valid-current import creates no recovery artifact and no
+new warnings (R17).
+
 The reader is extracted from the production script (same approach as
 tests/doctor-ubi-regression.sh): the PTY reproduces the real tty behavior,
 but no router is contacted and nothing outside the temporary fixture tree
@@ -44,6 +54,7 @@ live router or a non-root host it is skipped.
 """
 
 import fcntl
+import hashlib
 import os
 import pty
 import re
@@ -440,6 +451,13 @@ def test_e2e_full_script():
                   and after.decode() == original_config,
                   "rc=%r" % (rc,))
     finally:
+        # E3 intentionally leaves a config behind; remove the fixture files
+        # so later E2E sections pass their "no real install" precondition.
+        for path in (config_path, backup_path, calls_log):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
         for path in reversed(created):
             try:
                 os.remove(path)
@@ -875,6 +893,229 @@ def daemon_capable():
     return shutil.which("python3") is not None
 
 
+def sha256_of(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def test_e2e_invalid_preservation_cases():
+    """PR #325 final review: an unusable NONEMPTY current config.yaml must
+    never be silently destroyed by the atomic candidate replacement. The
+    importer preserves it byte-for-byte in a clearly marked NON-rollback
+    recovery artifact (config.yaml.invalid[.N], mode 0600), fails closed
+    when preservation cannot be verified, never renames onto symlinks,
+    never overwrites an existing recovery file, and never creates the
+    artifact on a normal valid-current import. Assertions compare real
+    file bytes and SHA256 digests, not output strings.
+    """
+    ok, why = e2e_possible()
+    if not ok:
+        print("[SKIP] end-to-end invalid preservation cases (%s)" % why)
+        return
+
+    created = []
+
+    def ensure_dir(path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+            created.append(path)
+
+    for path in ("/opt", "/opt/sbin", "/opt/etc", "/opt/etc/init.d",
+                 "/opt/etc/mihomo"):
+        ensure_dir(path)
+
+    fake_bin = "/opt/sbin/mihomo"
+    fake_init = "/opt/etc/init.d/S99mihomo"
+    config_path = "/opt/etc/mihomo/config.yaml"
+    backup_path = "/opt/etc/mihomo/config.yaml.bak"
+    recovery_base = "/opt/etc/mihomo/config.yaml.invalid"
+    outside = "/tmp/.kas-test-outside-target"
+    created.extend([fake_bin, fake_init, outside])
+
+    with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(FAKE_MIHOMO_TWO_RULES)
+    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\nexit 0\n")
+    os.chmod(fake_bin, 0o755)
+    os.chmod(fake_init, 0o755)
+
+    GARBAGE_A = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nplace-A\n"
+    OLD_RECOVERY = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nolder-recovery\n"
+    OUTSIDE_BYTES = b"outside-target-must-never-change\n"
+    CANDIDATE = b"mixed-port: 7890\nmode: rule\nsecret: null\nrecovery: yes\n"
+    FAIL_CANDIDATE = b"mixed-port: 7890\nmode: rule\nPOST_COMMIT_FAIL\n"
+    VALID_PREV = b"mixed-port: 7890\nmode: rule\nold: yes\n"
+
+    def reset(config_bytes):
+        for path in (config_path, backup_path):
+            if os.path.exists(path) or os.path.islink(path):
+                os.remove(path)
+        n = ""
+        while True:
+            name = recovery_base + (".%s" % n if n else "")
+            if not os.path.exists(name) and not os.path.islink(name):
+                break
+            os.remove(name)
+            n = str(int(n or "0") + 1)
+        if config_bytes is not None:
+            with open(config_path, "wb") as fh:
+                fh.write(config_bytes)
+
+    def paste(shell_argv, candidate, timeout=40, env_extra=None):
+        return run_pty(
+            shell_argv, SCRIPT,
+            [("send", b"\n"), ("wait_pat", PROMPT), ("sleep", 0.5),
+             ("send", candidate), ("sleep", 0.5), ("send", b"\x04"),
+             ("sleep", 1.0)],
+            icrnl=True, timeout=timeout, env_extra=env_extra)
+
+    def read_file(path):
+        return open(path, "rb").read() if os.path.exists(path) else None
+
+    def digest(path):
+        return sha256_of(path) if os.path.exists(path) else None
+
+    def recovery_names():
+        found = []
+        n = ""
+        while True:
+            name = recovery_base + (".%s" % n if n else "")
+            if os.path.exists(name) or os.path.islink(name):
+                found.append(name)
+            else:
+                break
+            n = str(int(n or "0") + 1)
+        return found
+
+    try:
+        for argv in sh_shells():
+            shell_name = " ".join(argv)
+            try:
+                # R13 — invalid nonempty current, no backup: the damaged
+                # YAML survives byte-for-byte in the recovery artifact,
+                # the .bak is not created, the path is reported without
+                # the content.
+                reset(GARBAGE_A)
+                want = sha256_of(config_path)
+                rc, out, _master = paste(argv, CANDIDATE)
+                names = recovery_names()
+                after = read_file(config_path)
+                check("R13 damaged YAML preserved byte-for-byte (%s)" % shell_name,
+                      rc == 0 and after == CANDIDATE and names == [recovery_base]
+                      and digest(recovery_base) == want
+                      and read_file(backup_path) is None
+                      and b"config.yaml.invalid" in out
+                      and b"MAKE_MIHOMO_FAIL" not in out and b"place-A" not in out,
+                      "rc=%r names=%r" % (rc, names))
+
+                # R14 — post-commit failure: the preserved original is
+                # unchanged, no restore is claimed, the path is reported.
+                reset(GARBAGE_A)
+                want = sha256_of(config_path)
+                rc, out, _master = paste(argv, FAIL_CANDIDATE)
+                check("R14 recovery artifact survives post-commit failure (%s)" % shell_name,
+                      rc == 1 and digest(recovery_base) == want
+                      and read_file(config_path) == FAIL_CANDIDATE
+                      and b"no validated previous-config backup" in out
+                      and b"Previous config restored." not in out
+                      and b"config.yaml.invalid" in out,
+                      "rc=%r digest=%r" % (rc, digest(recovery_base)))
+
+                # R15 — unverifiable preservation (cmp unavailable): the
+                # import must abort BEFORE replacing the original; nothing
+                # is lost, the reason is printed.
+                reset(GARBAGE_A)
+                want = sha256_of(config_path)
+                fakebin = os.path.join(
+                    tempfile.gettempdir(), "kas-test-nocmp-%d-%s"
+                    % (os.getpid(), argv[-1]))
+                os.makedirs(fakebin, exist_ok=True)
+                with open(os.path.join(fakebin, "cmp"), "w") as fh:
+                    fh.write("#!/bin/sh\nexit 1\n")
+                os.chmod(os.path.join(fakebin, "cmp"), 0o755)
+                rc, out, _master = paste(
+                    argv, CANDIDATE,
+                    env_extra={"PATH": fakebin + os.pathsep + os.environ["PATH"]})
+                after = read_file(config_path)
+                check("R15 unverifiable preservation refuses the commit (%s)" % shell_name,
+                      rc == 1 and after == GARBAGE_A and digest(config_path) == want
+                      and recovery_names() == []
+                      and b"Cannot safely preserve" in out,
+                      "rc=%r after=%r tail=%r" % (rc, after, out[-160:]))
+
+                # R16 — collisions and symlinks: a symlink at the base name
+                # is skipped (never renamed onto, outside file untouched),
+                # an occupied regular name is skipped, the next free name
+                # is chosen; existing files keep their bytes. The probe
+                # order is base, .1, .2, ... so base and .1 are occupied
+                # and .2 is the expected fresh artifact.
+                reset(GARBAGE_A)
+                with open(outside, "wb") as fh:
+                    fh.write(OUTSIDE_BYTES)
+                os.symlink(outside, recovery_base)
+                with open(recovery_base + ".1", "wb") as fh:
+                    fh.write(OLD_RECOVERY)
+                rc, out, _master = paste(argv, CANDIDATE)
+                names = recovery_names()
+                check("R16 collisions choose a safe name, symlinks untouched (%s)" % shell_name,
+                      rc == 0 and read_file(config_path) == CANDIDATE
+                      and os.path.islink(recovery_base)
+                      and read_file(outside) == OUTSIDE_BYTES
+                      and digest(recovery_base + ".1") == sha256_of_bytes(OLD_RECOVERY)
+                      and names == [recovery_base, recovery_base + ".1",
+                                    recovery_base + ".2"]
+                      and digest(recovery_base + ".2") == sha256_of_bytes(GARBAGE_A),
+                      "rc=%r names=%r" % (rc, names))
+                for extra in (".2", ".1"):
+                    if os.path.lexists(recovery_base + extra):
+                        os.remove(recovery_base + extra)
+                if os.path.lexists(recovery_base):
+                    os.remove(recovery_base)
+                if os.path.lexists(outside):
+                    os.remove(outside)
+
+                # R17 — normal valid-current import: no recovery artifact,
+                # no preservation warnings, classic backup contract.
+                reset(VALID_PREV)
+                rc, out, _master = paste(argv, CANDIDATE)
+                check("R17 normal import creates no recovery artifact (%s)" % shell_name,
+                      rc == 0 and read_file(config_path) == CANDIDATE
+                      and recovery_names() == []
+                      and read_file(backup_path) == VALID_PREV
+                      and b"not a valid Mihomo config" not in out
+                      and b"preserved verbatim" not in out,
+                      "rc=%r tail=%r" % (rc, out[-140:]))
+            finally:
+                for path in (config_path, backup_path):
+                    if os.path.exists(path) or os.path.islink(path):
+                        os.remove(path)
+                n = ""
+                while True:
+                    name = recovery_base + (".%s" % n if n else "")
+                    if not os.path.exists(name) and not os.path.islink(name):
+                        break
+                    os.remove(name)
+                    n = str(int(n or "0") + 1)
+                if os.path.exists(outside) or os.path.islink(outside):
+                    os.remove(outside)
+
+    finally:
+        for path in reversed(created):
+            try:
+                os.remove(path)
+            except OSError:
+                shutil.rmtree(path, ignore_errors=True)
+        for path in ("/opt/etc/mihomo", "/opt/etc/init.d", "/opt/etc",
+                     "/opt/sbin", "/opt"):
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+
+
+def sha256_of_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
 def main():
     if not os.path.exists(SCRIPT):
         print("[FAIL] config-import.sh not found under %s" % ROOT)
@@ -883,6 +1124,7 @@ def main():
     test_e2e_full_script()
     test_e2e_recovery_cases()
     test_e2e_rollback_contracts()
+    test_e2e_invalid_preservation_cases()
     if failures:
         print("[FAIL] config-import PTY reader regression: %d failure(s)"
               % len(failures))
