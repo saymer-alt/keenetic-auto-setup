@@ -24,6 +24,17 @@ overwrites an existing good config.yaml.bak with unusable current content;
 an invalid nonempty current config keeps a good backup too; a valid current
 config still becomes the new backup exactly as before.
 
+PR #325 review contracts (R6–R12, end-to-end section): candidate validity
+and rollback validity are separate. No backup is ever created from unusable
+content (R6); an existing unusable backup is kept for manual inspection but
+never trusted as a rollback source (R7); a post-commit failure rolls back
+only to a validated backup, verifies the restore and restarts the service
+(R8); without a validated backup the importer fails closed with accurate
+wording and retains every available byte, never claiming "previous config
+restored" (R9); a valid current config replaces a stale unusable backup
+(R10); an interruption at any point never damages the last good copy (R11);
+recovery works with the service running and restores it (R12).
+
 The reader is extracted from the production script (same approach as
 tests/doctor-ubi-regression.sh): the PTY reproduces the real tty behavior,
 but no router is contacted and nothing outside the temporary fixture tree
@@ -594,6 +605,276 @@ def test_e2e_recovery_cases():
             pass
 
 
+FAKE_MIHOMO_TWO_RULES = """#!/bin/sh
+f=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-f" ] && f="$a"
+  prev="$a"
+done
+if [ -n "$f" ]; then
+  if [ -f "$f" ] && grep -q MAKE_MIHOMO_FAIL "$f" 2>/dev/null; then
+    echo "synthetic mihomo: config rejected" >&2
+    exit 1
+  fi
+  exit 0
+fi
+# No -f: the post-install re-check of the installed canonical config.
+# A candidate marked POST_COMMIT_FAIL passes its own -t staging check but
+# fails after the commit, which deterministically drives the rollback path.
+if [ -f /opt/etc/mihomo/config.yaml ] && grep -q POST_COMMIT_FAIL /opt/etc/mihomo/config.yaml 2>/dev/null; then
+  echo "synthetic mihomo: installed config rejected" >&2
+  exit 1
+fi
+exit 0
+"""
+
+# A named background daemon: a python3 copy named exactly "mihomo" listening
+# on 7890, so `pidof mihomo` sees it and the contract port is genuinely
+# bound. start/stop mirror the real init contract. python3 is used because
+# minimal images (Ubuntu busybox) ship no nc applet.
+FAKE_INIT_DAEMON = """#!/bin/sh
+PIDFILE=/tmp/.kas-test-mihomo.pid
+BIN=/tmp/mihomo
+case "$1" in
+  start)
+    cp "$(command -v python3)" "$BIN" 2>/dev/null || exit 1
+    chmod 755 "$BIN"
+    # setsid detaches the daemon from the test PTY session, so it survives
+    # the importer exit the way a real init-started daemon would.
+    setsid "$BIN" -c 'import socket
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("0.0.0.0", 7890))
+s.listen(5)
+while 1:
+    c, _ = s.accept()
+    c.close()
+' </dev/null >/dev/null 2>&1 &
+    echo $! > "$PIDFILE"
+    ;;
+  stop)
+    [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+    rm -f "$PIDFILE"
+    ;;
+esac
+exit 0
+"""
+
+
+def daemon_running():
+    result = subprocess.run(["pidof", "mihomo"], capture_output=True, text=True)
+    return result.returncode == 0 and result.stdout.strip() != ""
+
+
+def daemon_hard_stop(fake_init):
+    subprocess.run([fake_init, "stop"], capture_output=True)
+    subprocess.run(["pkill", "-x", "mihomo"], capture_output=True)
+    try:
+        os.remove("/tmp/mihomo")
+    except OSError:
+        pass
+    time.sleep(0.3)
+
+
+def test_e2e_rollback_contracts():
+    """PR #325 review (2026-11-01): candidate validity and rollback validity
+    are separate contracts. The importer must
+      - validate the current config regardless of any existing backup and
+        never create a backup from unusable content (R6, R7);
+      - validate an existing backup before trusting it as a rollback source
+        and keep unusable files on disk for manual inspection (R7);
+      - roll back only to a validated backup and verify the restored config
+        (R8), keeping the service state contract (R12);
+      - fail closed with accurate wording when no validated backup exists,
+        retaining every available byte for manual recovery and never
+        claiming "previous config restored" (R9);
+      - overwrite a stale unusable backup with a validated current config
+        (R10);
+      - never damage the last good copy on interruption at any point (R11).
+    """
+    ok, why = e2e_possible()
+    if not ok:
+        print("[SKIP] end-to-end rollback contracts (%s)" % why)
+        return
+    if not (os.path.exists("/bin/busybox") and daemon_capable()):
+        check("rollback contracts prerequisites", False,
+              "/bin/busybox (shell matrix) and python3 (named daemon "
+              "emulation) are required")
+        return
+
+    created = []
+
+    def ensure_dir(path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+            created.append(path)
+
+    for path in ("/opt", "/opt/sbin", "/opt/etc", "/opt/etc/init.d",
+                 "/opt/etc/mihomo"):
+        ensure_dir(path)
+
+    fake_bin = "/opt/sbin/mihomo"
+    fake_init = "/opt/etc/init.d/S99mihomo"
+    config_path = "/opt/etc/mihomo/config.yaml"
+    backup_path = "/opt/etc/mihomo/config.yaml.bak"
+    created.extend([fake_bin, fake_init])
+
+    with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(FAKE_MIHOMO_TWO_RULES)
+    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(FAKE_INIT_DAEMON)
+    os.chmod(fake_bin, 0o755)
+    os.chmod(fake_init, 0o755)
+
+    CANDIDATE = b"mixed-port: 7890\nmode: rule\nsecret: null\nrecovery: yes\n"
+    FAIL_CANDIDATE = b"mixed-port: 7890\nmode: rule\nPOST_COMMIT_FAIL\n"
+    GARBAGE_A = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nplace-A\n"
+    GARBAGE_B = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nplace-B\n"
+    VALID_PREV = b"mixed-port: 7890\nmode: rule\nold: yes\n"
+
+    def reset(config_bytes, bak_bytes):
+        daemon_hard_stop(fake_init)
+        for path in (config_path, backup_path):
+            if os.path.exists(path):
+                os.remove(path)
+        if config_bytes is not None:
+            with open(config_path, "wb") as fh:
+                fh.write(config_bytes)
+        if bak_bytes is not None:
+            with open(backup_path, "wb") as fh:
+                fh.write(bak_bytes)
+
+    def paste(shell_argv, candidate, timeout=40, wait_after=1.0):
+        return run_pty(
+            shell_argv, SCRIPT,
+            [("send", b"\n"), ("wait_pat", PROMPT), ("sleep", 0.5),
+             ("send", candidate), ("sleep", 0.5), ("send", b"\x04"),
+             ("sleep", wait_after)],
+            icrnl=True, timeout=timeout)
+
+    def read_file(path):
+        return open(path, "rb").read() if os.path.exists(path) else None
+
+    for argv in sh_shells():
+        shell_name = " ".join(argv)
+        try:
+            # R6 — invalid nonempty current config, no backup: no unusable
+            # .bak may be created and no "[OK] backup" may be claimed.
+            reset(GARBAGE_A, None)
+            rc, out, _master = paste(argv, CANDIDATE)
+            check("R6 invalid current + no backup stays backup-free (%s)" % shell_name,
+                  rc == 0 and read_file(config_path) == CANDIDATE
+                  and read_file(backup_path) is None
+                  and b"[OK] Previous configuration backup" not in out
+                  and b"no previous-config backup exists" in out,
+                  "rc=%r bak=%r tail=%r" % (rc, read_file(backup_path), out[-140:]))
+
+            # R7 — invalid current + unusable existing backup: the backup is
+            # kept byte-identically for manual inspection, never trusted,
+            # and no rollback capability is claimed.
+            reset(GARBAGE_A, GARBAGE_B)
+            rc, out, _master = paste(argv, CANDIDATE)
+            check("R7 invalid backup kept but not trusted (%s)" % shell_name,
+                  rc == 0 and read_file(config_path) == CANDIDATE
+                  and read_file(backup_path) == GARBAGE_B
+                  and b"cannot be used for automatic rollback" in out
+                  and b"[OK] Previous configuration backup" not in out,
+                  "rc=%r bak=%r tail=%r" % (rc, read_file(backup_path), out[-140:]))
+
+            # R8 — post-commit failure with a validated backup: rollback
+            # restores the known-good config and restarts the service.
+            reset(VALID_PREV, None)
+            subprocess.run([fake_init, "start"], capture_output=True)
+            check("R8 daemon preconditions (%s)" % shell_name, daemon_running())
+            rc, out, _master = paste(argv, FAIL_CANDIDATE)
+            after = read_file(config_path)
+            bak = read_file(backup_path)
+            check("R8 post-commit failure rolls back to validated backup (%s)" % shell_name,
+                  rc == 1 and after == VALID_PREV and bak == VALID_PREV
+                  and b"previous config restored" in out
+                  and daemon_running(),
+                  "rc=%r after=%r bak=%r daemon=%s" % (rc, after, bak, daemon_running()))
+
+            # R9 — post-commit failure with no validated backup: fail closed,
+            # retain the candidate bytes, never claim a restore.
+            reset(GARBAGE_A, None)
+            rc, out, _master = paste(argv, FAIL_CANDIDATE)
+            after = read_file(config_path)
+            check("R9 no validated backup fails closed (%s)" % shell_name,
+                  rc == 1 and after == FAIL_CANDIDATE
+                  and b"no validated previous-config backup" in out
+                  and b"Previous config restored." not in out
+                  and read_file(backup_path) is None,
+                  "rc=%r after=%r tail=%r" % (rc, after, out[-160:]))
+
+            # R10 — valid current config replaces a stale unusable backup.
+            reset(b"mixed-port: 7890\nmode: rule\nold-two\n", GARBAGE_B)
+            rc, out, _master = paste(argv, CANDIDATE)
+            check("R10 valid current overwrites stale unusable backup (%s)" % shell_name,
+                  rc == 0 and read_file(config_path) == CANDIDATE
+                  and read_file(backup_path)
+                  == b"mixed-port: 7890\nmode: rule\nold-two\n",
+                  "rc=%r bak=%r" % (rc, read_file(backup_path)))
+
+            # R11 — interruption near the commit window must never damage
+            # the last good copy: config.yaml is either the untouched
+            # previous config or a fully installed candidate; the backup is
+            # either absent or byte-identical to the previous config.
+            prev3 = b"mixed-port: 7890\nmode: rule\nold-three\n"
+            reset(prev3, None)
+            rc, out, _master = run_pty(
+                argv, SCRIPT,
+                [("send", b"\n"), ("wait_pat", PROMPT), ("sleep", 0.5),
+                 ("send", CANDIDATE), ("sleep", 0.5), ("send", b"\x04"),
+                 ("wait_pat", b"Mihomo config test passed."), ("sleep", 0.3),
+                 ("send", b"\x03"), ("sleep", 4.0)],
+                icrnl=True, timeout=40)
+            after = read_file(config_path)
+            bak = read_file(backup_path)
+            allowed_config = (after in (prev3, CANDIDATE))
+            allowed_bak = bak in (None, prev3)
+            check("R11 interruption never damages the last good copy (%s)" % shell_name,
+                  allowed_config and allowed_bak,
+                  "rc=%r after=%r bak=%r" % (rc, after, bak))
+
+            # R12 — recovery import with the service running: daemon stopped
+            # for the import, started again afterwards, backup untouched.
+            reset(b"", b"mixed-port: 7890\nmode: rule\nsecret: real-old\n")
+            subprocess.run([fake_init, "start"], capture_output=True)
+            check("R12 daemon preconditions (%s)" % shell_name, daemon_running())
+            rc, out, _master = paste(argv, CANDIDATE)
+            check("R12 recovery with running service (%s)" % shell_name,
+                  rc == 0 and read_file(config_path) == CANDIDATE
+                  and read_file(backup_path)
+                  == b"mixed-port: 7890\nmode: rule\nsecret: real-old\n"
+                  and daemon_running(),
+                  "rc=%r daemon=%s tail=%r" % (rc, daemon_running(), out[-140:]))
+        finally:
+            daemon_hard_stop(fake_init)
+            for path in (config_path, backup_path):
+                if os.path.exists(path):
+                    os.remove(path)
+
+    for path in reversed(created):
+        try:
+            os.remove(path)
+        except OSError:
+            shutil.rmtree(path, ignore_errors=True)
+    for path in ("/opt/etc/mihomo", "/opt/etc/init.d", "/opt/etc",
+                 "/opt/sbin", "/opt"):
+        try:
+            os.rmdir(path)
+        except OSError:
+            pass
+
+
+def daemon_capable():
+    """The daemon emulation needs python3 to copy-and-rename as a named
+    listening process."""
+    return shutil.which("python3") is not None
+
+
 def main():
     if not os.path.exists(SCRIPT):
         print("[FAIL] config-import.sh not found under %s" % ROOT)
@@ -601,6 +882,7 @@ def main():
     test_reader_scenarios()
     test_e2e_full_script()
     test_e2e_recovery_cases()
+    test_e2e_rollback_contracts()
     if failures:
         print("[FAIL] config-import PTY reader regression: %d failure(s)"
               % len(failures))
