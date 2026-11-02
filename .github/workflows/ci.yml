@@ -70,6 +70,32 @@ jobs:
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
 
+      # Issue #320 backport: full-script E2E as root exercises the
+      # recovery import, .bak protection, config.yaml.invalid[.N]
+      # preservation (atomic no-clobber ln) and R13-R20 contracts.
+      - name: Config import full-script recovery E2E (root, disposable /opt)
+        run: sudo python3 tests/config-import-pty-regression.py .
+
+      - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
+        run: python3 tests/update-opkg-staleness-regression.py
+
+      # Issue #320 backport: proves the stale-opkg-database downgrade
+      # mechanism with the pinned official Entware opkg (offline root).
+      - name: OPKG downgrade repro (pinned official Entware opkg, offline root)
+        run: |
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+          sudo chown 0:0 "$RUNNER_TEMP/entware-opkg"
+          sudo env KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" \
+            python3 tests/test_opkg_downgrade_repro.py -v
+
+      # Issue #159 backport: exposure audit honors the owner Controller
+      # contract (empty/YAML-null secret and open Controller are accepted).
+      - name: Exposure audit regression (dash and BusyBox ash)
+        run: python3 tests/exposure-check-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 

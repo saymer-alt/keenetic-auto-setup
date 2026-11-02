@@ -162,6 +162,73 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN INVALID CONFIG PRESERVATION v1 (issue #320, PR #325 final review)
+# An unusable NONEMPTY current config.yaml is never silently destroyed by
+# the atomic candidate replacement: it is preserved byte-for-byte in a
+# clearly marked NON-rollback artifact. Mechanism reuses the project's
+# existing primitives only: stage beside the config (umask 077, chmod 600),
+# `cmp -s` integrity verification (the same proven primitive as the
+# expected-source gate), then one same-filesystem atomic create-if-absent
+# publication (POSIX hard-link `ln` without -f). The artifact
+#   config.yaml.invalid[.N]
+# is persistent, never a rollback source, never deleted by cleanup, and its
+# content is never printed. Publication can never overwrite an existing
+# entry: ln fails on any occupied name (plain file, symlink, dangling
+# link) and a collision only advances to the next suffix (base, .1 .. .99),
+# so even a writer that claims the name between any check and the
+# publication is never clobbered. A publication failure that is not a
+# collision (hard links unsupported, cross-device, I/O error) fails
+# closed: the caller aborts BEFORE the commit, the original stays in place
+# and nothing is lost. No-op for a valid current config and for a
+# missing/empty one (no bytes to preserve).
+preserve_invalid_current() {
+    # Stage the bytes on the same filesystem as the config directory and
+    # verify the copy before any publication is attempted.
+    cp -f "$CONFIG_PATH" "$RECOVERY_STAGE" || return 1
+    command -v cmp >/dev/null 2>&1 || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    cmp -s "$RECOVERY_STAGE" "$CONFIG_PATH" || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    command -v ln >/dev/null 2>&1 || { rm -f "$RECOVERY_STAGE" || true; return 1; }
+    chmod 600 "$RECOVERY_STAGE" 2>/dev/null || true
+    # Publish with an atomic create-if-absent: POSIX ln(1) without -f fails
+    # when the destination name already exists (a plain file, a symlink, a
+    # dangling link — link(2) never follows or replaces). A name claimed by
+    # a racing writer after any check can therefore never be overwritten;
+    # a collision only advances to the next suffix. Any other failure
+    # (hard links unsupported, cross-device, I/O error) fails closed and
+    # the caller aborts BEFORE config.yaml is replaced.
+    _pi_i=""
+    _pi_try="$CONFIG_DIR/config.yaml.invalid"
+    while :; do
+        if [ ! -d "$_pi_try" ] && ln "$RECOVERY_STAGE" "$_pi_try" 2>/dev/null; then
+            if [ -f "$_pi_try" ]; then
+                RECOVERY_PATH="$_pi_try"
+                # Drop the staging link; the bytes survive via RECOVERY_PATH.
+                rm -f "$RECOVERY_STAGE" || true
+                return 0
+            fi
+            # The name turned into a directory between the check and the
+            # link, so the bytes landed inside it. Remove the stray link,
+            # keep this importer's stage, fail closed.
+            rm -f "$_pi_try/${RECOVERY_STAGE##*/}" 2>/dev/null || true
+            rm -f "$RECOVERY_STAGE" || true
+            return 1
+        fi
+        if [ -e "$_pi_try" ] || [ -L "$_pi_try" ]; then
+            # Name occupied (pre-existing entry or a lost naming race):
+            # never overwrite it, take the next suffix.
+            _pi_i=$((_pi_i + 1))
+            [ "$_pi_i" -le 99 ] || break
+            _pi_try="$CONFIG_DIR/config.yaml.invalid.$_pi_i"
+            continue
+        fi
+        break
+    done
+    # Suffixes exhausted, or ln failed for a non-collision reason.
+    rm -f "$RECOVERY_STAGE" || true
+    return 1
+}
+# END INVALID CONFIG PRESERVATION v1
+
 # BEGIN MIHOMO PROCESS STATE v1
 # Identical standalone contract: 0 running, 1 stopped, 2 unknown.
 # MP_PIDS contains only positive evidence; unknown is never absence.
@@ -264,6 +331,19 @@ mp_pids() {
 # candidate -> contract check -> controlled one-Mihomo stop -> mihomo -t ->
 # previous-config backup -> atomic rename -> start/process/port verification.
 # Any post-commit failure restores the previous config and service state.
+#
+# Recovery (issue #320, PR #325 review): when the current config.yaml is
+# missing, empty or fails `mihomo -t`, the import still proceeds as a
+# recovery import. Candidate validity and rollback validity are separate:
+# unusable content is never backed up, an existing backup is validated
+# before it may serve as a rollback source, unusable files stay on disk for
+# manual inspection, and a failure without a validated backup reports the
+# exact reason instead of claiming a restore.
+# Preservation (PR #325 final review): a nonempty unusable current config
+# is preserved byte-for-byte as config.yaml.invalid[.N] before the atomic
+# replacement; the artifact is never a rollback source and its content is
+# never printed. If preservation cannot be verified, the import aborts
+# before the commit so no user bytes can be lost.
 
 set -e
 
@@ -273,6 +353,7 @@ BACKUP_PATH="$CONFIG_DIR/config.yaml.bak"
 STAGE_CONFIG="$CONFIG_DIR/.config.yaml.new.$$"
 BACKUP_STAGE="$CONFIG_DIR/.config.yaml.bak.new.$$"
 ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.rollback.$$"
+RECOVERY_STAGE="$CONFIG_DIR/.config.yaml.invalid.new.$$"
 TEST_LOG="/tmp/mihomo-config-test.$$"
 INIT_SCRIPT="/opt/etc/init.d/S99mihomo"
 
@@ -280,6 +361,14 @@ SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
 CONFIG_REPLACED=0
 CONFIG_COMMIT_STARTED=0
+# Rollback validity is tracked separately from candidate validity (PR #325
+# review): only a backup that passed `mihomo -t` may ever be restored, and
+# no unusable file is ever deleted or presented as a rollback point.
+BACKUP_ROLLBACK_SAFE=0
+BACKUP_PRESENT_INVALID=0
+# Set when an unusable nonempty current config has been preserved verbatim
+# in a clearly marked non-rollback artifact (config.yaml.invalid[.N]).
+RECOVERY_PATH=""
 # Saved terminal settings while the interactive reader enforces ICRNL
 # (restored by cleanup); empty when the terminal was not touched.
 CI_TTY_STTY_SAVE=""
@@ -331,7 +420,9 @@ cleanup() {
         stty -F /dev/tty "$CI_TTY_STTY_SAVE" 2>/dev/null || true
         CI_TTY_STTY_SAVE=""
     fi
-    rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$TEST_LOG" 2>/dev/null || true
+    # Only staging files are removed here. A preserved config.yaml.invalid
+    # recovery artifact and a validated config.yaml.bak are never deleted.
+    rm -f "$STAGE_CONFIG" "$BACKUP_STAGE" "$ROLLBACK_STAGE" "$RECOVERY_STAGE" "$TEST_LOG" 2>/dev/null || true
     ml_lifecycle_release || true
 }
 
@@ -427,6 +518,27 @@ restore_old_service() {
 
 rollback_config() {
     _ci_reason="$1"
+    if [ "$BACKUP_ROLLBACK_SAFE" -ne 1 ]; then
+        # No validated rollback source exists: fail closed and honestly.
+        # The installed candidate and any unusable previous file stay on
+        # disk for manual recovery; nothing is deleted and no success is
+        # claimed (PR #325 review, R9).
+        if mihomo_running; then
+            stop_mihomo_confirmed || true
+            warn "Mihomo was stopped: the installed candidate did not pass verification and no validated configuration is available to restore."
+        fi
+        if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
+            warn "The service was running before the import; it cannot be restored automatically without a validated config. Manual recovery is required."
+        fi
+        _ci_recovery=""
+        if [ -n "$RECOVERY_PATH" ]; then
+            _ci_recovery=" The original unusable config was preserved verbatim at $RECOVERY_PATH."
+        fi
+        if [ "$BACKUP_PRESENT_INVALID" -eq 1 ]; then
+            error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH; an unusable previous file is retained at $BACKUP_PATH for manual inspection.$_ci_recovery"
+        fi
+        error "$_ci_reason — no validated previous-config backup exists; automatic rollback is not available. The installed candidate is retained at $CONFIG_PATH for manual recovery.$_ci_recovery"
+    fi
     log "Rolling back config.yaml..."
 
     mp_known || error "Runtime UNKNOWN; rollback backup retained at $BACKUP_PATH"
@@ -434,9 +546,6 @@ rollback_config() {
         stop_mihomo_confirmed || error "Cannot confirm stop; rollback backup retained at $BACKUP_PATH"
     fi
     mp_stopped || error "Cannot prove stop before config rollback; backup: $BACKUP_PATH"
-
-    [ -s "$BACKUP_PATH" ] ||
-        error "$_ci_reason — rollback backup is missing or empty: $BACKUP_PATH"
 
     cp -f "$BACKUP_PATH" "$ROLLBACK_STAGE" ||
         error "$_ci_reason — cannot stage rollback config. Backup remains at $BACKUP_PATH"
@@ -447,6 +556,15 @@ rollback_config() {
 
     CONFIG_REPLACED=0
     CONFIG_COMMIT_STARTED=0
+    # Verify the restored config before any success is claimed (R8): the
+    # backup was validated at the backup decision point, and the restore is
+    # re-checked here so the message can never be a false positive.
+    if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -t >"$TEST_LOG" 2>&1; then
+        echo
+        cat "$TEST_LOG" 2>/dev/null || true
+        echo
+        error "$_ci_reason — the restored backup failed Mihomo validation; manual review required. Files: config at $CONFIG_PATH, backup at $BACKUP_PATH."
+    fi
     log "Previous config restored."
 
     if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
@@ -480,7 +598,20 @@ echo "=== Mihomo Config Import ==="
 
 [ -x "$INIT_SCRIPT" ] || error "Mihomo init script not found: $INIT_SCRIPT"
 [ -d "$CONFIG_DIR" ] || error "Mihomo config directory not found: $CONFIG_DIR. Run setup.sh first."
-[ -s "$CONFIG_PATH" ] || error "Current config.yaml is missing or empty. Run setup.sh first."
+# Issue #320: an empty or missing current config used to hard-block the
+# importer with a misleading "Run setup.sh first" hint even on an installed
+# system. KAS is provably installed here (init script above), so a recovery
+# import of a new valid YAML is allowed instead. The backup step below never
+# overwrites an existing good config.yaml.bak with unusable current content.
+CURRENT_CONFIG_USABLE=1
+if [ ! -s "$CONFIG_PATH" ]; then
+    CURRENT_CONFIG_USABLE=0
+    if [ -s "$BACKUP_PATH" ]; then
+        warn "Current config.yaml is missing or empty; recovery import will proceed. The existing backup at $BACKUP_PATH is preserved."
+    else
+        warn "Current config.yaml is missing or empty; recovery import will proceed without a previous-config backup."
+    fi
+fi
 
 MIHOMO_BIN=$(resolve_mihomo) || error "Mihomo binary not found in /opt/sbin or /opt/bin."
 
@@ -599,24 +730,63 @@ if ! "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t >"$TEST_LOG" 2>&1; the
 fi
 log "Mihomo config test passed."
 
-log "Saving previous config as $BACKUP_PATH ..."
-cp -f "$CONFIG_PATH" "$BACKUP_STAGE" || {
-    restore_old_service || true
-    error "Could not create config backup; candidate was not installed."
-}
+# Issue #320 + PR #325 review: the previous config is validated here
+# regardless of any existing backup, and an existing backup is validated
+# before it may ever serve as a rollback source. Unusable content is never
+# backed up, never deleted, and never claimed as a rollback point — it
+# simply stays on disk for manual inspection.
+if [ "$CURRENT_CONFIG_USABLE" -eq 1 ]; then
+    if "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$CONFIG_PATH" -t >/dev/null 2>&1; then
+        log "Saving previous config as $BACKUP_PATH ..."
+        cp -f "$CONFIG_PATH" "$BACKUP_STAGE" || {
+            restore_old_service || true
+            error "Could not create config backup; candidate was not installed."
+        }
 
-_old_size=$(wc -c < "$CONFIG_PATH" 2>/dev/null || true)
-_bak_size=$(wc -c < "$BACKUP_STAGE" 2>/dev/null || true)
-[ -n "$_old_size" ] && [ "$_old_size" = "$_bak_size" ] || {
-    restore_old_service || true
-    error "Config backup verification failed; candidate was not installed."
-}
+        _old_size=$(wc -c < "$CONFIG_PATH" 2>/dev/null || true)
+        _bak_size=$(wc -c < "$BACKUP_STAGE" 2>/dev/null || true)
+        [ -n "$_old_size" ] && [ "$_old_size" = "$_bak_size" ] || {
+            restore_old_service || true
+            error "Config backup verification failed; candidate was not installed."
+        }
 
-chmod 600 "$BACKUP_STAGE" 2>/dev/null || true
-mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
-    restore_old_service || true
-    error "Could not commit config backup; candidate was not installed."
-}
+        chmod 600 "$BACKUP_STAGE" 2>/dev/null || true
+        mv -f "$BACKUP_STAGE" "$BACKUP_PATH" || {
+            restore_old_service || true
+            error "Could not commit config backup; candidate was not installed."
+        }
+        # The backup is the config that just passed `mihomo -t` above.
+        BACKUP_ROLLBACK_SAFE=1
+    else
+        CURRENT_CONFIG_USABLE=0
+        # The unusable current file is preserved verbatim BEFORE the commit
+        # can replace it. If preservation cannot be completed and verified,
+        # the import aborts here: the original stays untouched and nothing
+        # is lost (PR #325 final review).
+        if [ -s "$CONFIG_PATH" ]; then
+            if preserve_invalid_current; then
+                log "The unusable previous config was preserved verbatim at $RECOVERY_PATH (marked invalid; not a rollback source)."
+            else
+                restore_old_service || true
+                error "Cannot safely preserve the unusable current config.yaml; import aborted before any change. The original file is untouched at $CONFIG_PATH."
+            fi
+        fi
+        warn "Current config.yaml is not a valid Mihomo config; it will not be backed up as a rollback source."
+    fi
+fi
+if [ "$CURRENT_CONFIG_USABLE" -eq 0 ]; then
+    if [ -s "$BACKUP_PATH" ]; then
+        if "$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$BACKUP_PATH" -t >/dev/null 2>&1; then
+            BACKUP_ROLLBACK_SAFE=1
+            log "Recovery mode: existing backup at $BACKUP_PATH validated and preserved untouched as the rollback source."
+        else
+            BACKUP_PRESENT_INVALID=1
+            log "Recovery mode: existing $BACKUP_PATH is not a valid Mihomo config; it is kept on disk for manual inspection and cannot be used for automatic rollback."
+        fi
+    else
+        log "Recovery mode: no previous-config backup exists; automatic rollback will not be attempted."
+    fi
+fi
 
 mp_stopped || error "Cannot prove Mihomo stopped before config commit."
 log "Installing config atomically..."
@@ -662,7 +832,16 @@ SERVICE_STOPPED_BY_US=0
 
 echo
 status_out "$COLOR_GREEN" "[OK] Mihomo configuration installed successfully."
-status_out "$COLOR_GREEN" "[OK] Previous configuration backup: $BACKUP_PATH"
+if [ "$BACKUP_ROLLBACK_SAFE" -eq 1 ]; then
+    status_out "$COLOR_GREEN" "[OK] Previous configuration backup: $BACKUP_PATH"
+elif [ "$BACKUP_PRESENT_INVALID" -eq 1 ]; then
+    status_out "$COLOR_CYAN" "[info] Recovery import complete; no previous-config backup exists — the unusable previous file was kept at $BACKUP_PATH for manual inspection, and automatic rollback is not available."
+else
+    status_out "$COLOR_CYAN" "[info] Recovery import complete; no previous-config backup exists, automatic rollback is not available."
+fi
+if [ -n "$RECOVERY_PATH" ]; then
+    status_out "$COLOR_CYAN" "[info] The previous (invalid) config.yaml was preserved verbatim at $RECOVERY_PATH; it is NOT a working backup or a rollback source."
+fi
 if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
     status_out "$COLOR_GREEN" "[OK] Mihomo is running with the new config."
 else
