@@ -31,6 +31,11 @@ log.write_text(json.dumps(calls))
 args = sys.argv[1:]
 if "--version" in args:
     print("mockcurl 8.5.0 (mock) libcurl")
+    print("Features: AsynchDNS IPv6 Largefile SSL UnixSockets")
+    protocols = "dial file ftp ftps gopher http https imap mqtt pop3 rtsp sftp smb smtp telnet tftp ws"
+    if plan.get("curl_no_telnet"):
+        protocols = protocols.replace(" telnet", "")
+    print("Protocols: " + protocols)
     sys.exit(0)
 
 url = next(a for a in args if "://" in a)
@@ -449,6 +454,13 @@ def main():
          {"expect_in": ("proven by the TLS/HTTPS stage", "telnet probe disagreed",
                         "VERDICT: target chain confirmed"),
           "cli_args": target_args}),
+        # issue #158: curl built without telnet skips the TCP-only probe
+        # without spending a request; TLS still proves TCP reachability
+        ("curl_without_telnet_skips_probe", {"curl_no_telnet": True}, 0,
+         {"expect_in": ("telnet protocol NOT available",
+                        "the TCP-only probe was skipped without spending a request",
+                        "proven by the TLS/HTTPS stage", "VERDICT: target chain confirmed"),
+          "cli_args": target_args, "want_curl_calls": 7}),
         ("dns_fail_https_ok_resolvers_disagree", {"dns": "nxdomain", "target": "pass"}, 0,
          {"expect_in": ("NXDOMAIN", "despite the system resolver failure",
                         "VERDICT: target chain confirmed"),
@@ -648,6 +660,36 @@ def main():
                 print("PASS", " ".join(shell), "dns_without_timeout_guarded")
             except subprocess.TimeoutExpired:
                 raise AssertionError("dns probe hung without a timeout wrapper")
+
+        # issue #158: no timeout wrapper + healthy HTTPS 200 must still state
+        # exactly what was confirmed (and what was not), with curl-path DNS
+        # side evidence recorded; verdict stays honestly inconclusive (exit 3)
+        with tempfile.TemporaryDirectory(prefix="kas-netdoc-noto-") as tmp:
+            lab = Path(tmp)
+            fakebin = make_lab(lab, {})
+            env = base_env(lab, fakebin)
+            # remove only the directories that provide a timeout binary, so
+            # the doctor still finds its own helpers (tr/awk/grep) while the
+            # timeout wrapper stays genuinely unavailable
+            def _has_timeout(d):
+                if not d:
+                    return False
+                return any((Path(d) / n).exists() for n in ("timeout", "timeout.exe"))
+            kept = [str(fakebin)] + [d for d in env["PATH"].split(os.pathsep) if not _has_timeout(d)]
+            env["PATH"] = os.pathsep.join(kept)
+            r = run_tool(shell, target_args, env)
+            out = r.stdout + r.stderr
+            assert r.returncode == 3, ("expected exit 3", r.returncode, out[-600:])
+            assert "no timeout wrapper" in out, out[-800:]
+            assert "Confirmed stages: tcp.connect=PASS, tls.handshake=PASS, http.response=PASS" in out, out[-900:]
+            assert "Missing evidence: dns.router=NOT TESTED" in out, out[-900:]
+            jf = lab / "r.json"
+            r2 = run_tool(shell, target_args + ["--json", str(jf)], env)
+            data = json.loads(jf.read_text())
+            byid = {c["id"]: c for c in data["checks"]}
+            assert byid["dns.curl-path"]["status"] == "PASS", byid.get("dns.curl-path")
+            assert "not an independent DNS stage" in byid["dns.curl-path"]["detail"], byid["dns.curl-path"]
+            print("PASS", " ".join(shell), "no_timeout_https_confirmed_inventory")
 
         # DNS probe time limit via a timeout wrapper (when available)
         if shutil.which("timeout"):
