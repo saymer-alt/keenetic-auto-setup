@@ -1,29 +1,26 @@
-name: Publish KAS Web v0.1.0-beta.4 to the experimental update channel (one-shot, requires owner GO)
+name: Publish the KAS Web v0.1.0-beta.4 Release (one-shot, requires owner GO)
 
 # Separate-owner-action workflow: it never runs on pull requests. It fires only
 # on a push to its dedicated ops branch after the owner explicitly decides to
 # publish. Nothing here rebuilds the panel: every IPK byte comes from the
 # pinned, verified CI run and is hash-checked against it.
 #
-# Publishing transaction, in order:
+# RELEASE-ONLY Stage A of the beta.4 publication. In order:
 # 1. Pinned SOURCE_SHA + VERIFIED_RUN are resolved and refused on placeholders.
-# 2. The live experimental channel state and repository Latest are recorded;
-# anything other than the PREVIOUS_TAG index (v0.1.0-beta.3) or this
-# run's own beta.4 index
-# refuses the run (never clobber an unknown live index).
-# 3. CI artifacts are downloaded and hash-verified; the channel index for
-# beta.4 is rebuilt from them.
+# 2. The verified run and tag identity are checked; the live legacy channel
+# index and repository Latest are recorded for the final invariants.
+# 3. CI artifacts are downloaded and hash-verified; the beta.4 index is
+# rebuilt from them and used only to verify the release assets.
 # 4. The beta.4 release is created as a DRAFT first and published
 # (draft=false) only after its assets verify byte for byte. A partial
 # upload therefore leaves an invisible draft, not a public broken release,
 # and a later retry resumes the same draft instead of failing forever.
-# 5. The experimental channel index is switched, and the restore trap stays
-# armed until EVERY final publication assertion has passed (index digest,
-# asset metadata and the GitHub Latest invariant). On any failure the trap
-# reinstates the verified PREVIOUS_TAG backup — but only when the live asset is
-# still the one this run uploaded, so a parallel index change is never
-# clobbered. An unexpected Latest change restores the channel and then
-# fails loudly: the workflow never rewrites or deletes Latest itself.
+# 5. Final invariants: the legacy channel index and GitHub Latest must be
+# byte-identical to their pre-run state. This workflow NEVER touches
+# kas-web-channel-experimental, GitHub Pages or Latest; switching the legacy
+# channel is a separate one-shot workflow
+# (ops-switch-legacy-channel-beta4.yml) that runs only after Stage B
+# (GitHub Pages serving the verified beta.4 index) is confirmed.
 # 6. A repeat run after any partial failure is safe: the existing release is
 # deep-verified against the same manifests and completed, never recreated.
 
@@ -85,11 +82,11 @@ jobs:
           assert [a['name'] for a in r['assets']]==['panel-update.json']
           assert r['assets'][0]['state']=='uploaded'
           assert index['tag'] in (os.environ['PREVIOUS_TAG'], os.environ['BETA_TAG']), 'live experimental index points at %s; refusing to publish over an unknown state' % index['tag']
-          print('PASS: experimental channel found with a single uploaded index asset (tag %s); it will be backed up and verified' % index['tag'])
+          print('PASS: experimental channel found with a single uploaded index asset (tag %s); its digest is recorded and asserted unchanged at the end' % index['tag'])
           PY
           # The repository "Latest" release must be identical after publishing
           # (KAS Core latest is never moved by a KAS WEB beta). Recorded here,
-          # asserted again under the restore trap after the channel switch.
+          # asserted again in the final verification step.
           gh release download "$CHANNEL_TAG" --repo "$GH_REPO" --pattern panel-update.json --dir "$RUNNER_TEMP/legacy-before"
           sha256sum "$RUNNER_TEMP/legacy-before/panel-update.json" | cut -d' ' -f1 > "$RUNNER_TEMP/legacy-index.sha256"
           gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' > "$RUNNER_TEMP/latest-before.txt"
@@ -97,7 +94,7 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - name: Download unchanged, hash-checked pinned CI artifacts and back up channel index
+      - name: Download unchanged, hash-checked pinned CI artifacts and snapshot the live channel index
         run: |
           set -euo pipefail
           mkdir -p build/ipk build/channel-old build/ci-manifests
@@ -118,7 +115,7 @@ jobs:
           done
           test "$(find build/ci-manifests -maxdepth 1 -name '*.json' -type f | wc -l)" -eq 4
           (cd build/ipk && sha256sum ./*.ipk > SHA256SUMS && sha256sum -c SHA256SUMS)
-          # The switched index points at the canonical beta release tag.
+          # The release index points at the canonical beta release tag.
           python3 web/control-center/packaging/update-manifest.py \
             --channel experimental --tag "$BETA_TAG" build/ipk/*.ipk > build/panel-update.json
           python3 - <<'PY'
@@ -148,7 +145,7 @@ jobs:
           backup=(build/'channel-old/panel-update.json').read_bytes()
           old=json.load(open(os.environ['RUNNER_TEMP']+'/old-channel.json'))
           assert hashlib.sha256(backup).hexdigest() == old['assets'][0]['digest'].split(':',1)[1]
-          print('PASS: previous channel backed up; new manifest agrees with the verified artifacts')
+          print('PASS: live channel index recorded; new manifest agrees with the verified artifacts')
           PY
       - name: Publish the canonical prerelease (draft first, resume instead of recreate)
         run: |

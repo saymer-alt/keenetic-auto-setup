@@ -19,6 +19,7 @@ list:
   - unexpected Latest change;
   - Pages not serving beta.4 before the legacy switch;
   - legacy switch attempted while Pages still serves beta.3;
+  - tampered (replaced) published release IPK after Stage A;
   - unknown legacy index state;
   - switch failure and restore;
   - idempotent rerun after success.
@@ -717,6 +718,25 @@ def scenario_switch_pages_mismatch(sandbox, release_blocks, switch_blocks, fail)
     check(legacy_index(sandbox)['tag'] == PREVIOUS_TAG, 'legacy index must stay on beta.3')
 
 
+def scenario_switch_release_tampered(sandbox, release_blocks, switch_blocks, fail):
+    sandbox.reset_state(include_beta4=True)
+    pages_beta4_serving(sandbox)
+    # Stage A published, then one release IPK asset was replaced with
+    # different bytes (same name): Stage C must abort and never reach the
+    # legacy channel, even though Pages still serves a valid beta.4 index.
+    state = sandbox.state()
+    rel = state['releases'][BETA4_TAG]
+    name = ipk_name('aarch64-3.10')
+    old = base64.b64decode(rel['assets'][name]['bytes_b64'])
+    rel['assets'][name] = asset_obj(name, old[:-1] + bytes([old[-1] ^ 0xFF]), BETA4_TAG)
+    sandbox.state_path.write_text(json.dumps(state), encoding='utf-8')
+    code, _ = last_result(run_steps(sandbox, switch_blocks, None))
+    check = Checker('tampered beta.4 release asset refused')
+    check(code != 0, 'workflow must fail when a published release asset drifted')
+    check(legacy_index(sandbox)['tag'] == PREVIOUS_TAG,
+          'legacy index must stay on beta.3 after a tampered-release refusal')
+
+
 def scenario_switch_legacy_unknown(sandbox, release_blocks, switch_blocks, fail):
     sandbox.reset_state(include_beta4=True)
     pages_beta4_serving(sandbox)
@@ -781,6 +801,7 @@ SCENARIOS = [
     ('legacy switch refused while Pages serves beta.3', 'switch_beta3', None),
     ('legacy switch refused while Pages unreachable', 'switch_pages_missing', None),
     ('Pages registry/index mismatch refused', 'switch_mismatch', None),
+    ('tampered beta.4 release asset refused', 'switch_tampered', None),
     ('legacy unknown state refused', 'switch_unknown', None),
     ('legacy switch failure restores beta.3', 'switch_restore',
      {'phase': 'channel_upload', 'nth': 1}),
@@ -801,6 +822,7 @@ SWITCH_FNS = {
     'switch_beta3': scenario_switch_pages_still_beta3,
     'switch_pages_missing': scenario_switch_pages_missing,
     'switch_mismatch': scenario_switch_pages_mismatch,
+    'switch_tampered': scenario_switch_release_tampered,
     'switch_unknown': scenario_switch_legacy_unknown,
     'switch_restore': scenario_switch_failure_restores,
     'switch_latest': scenario_switch_latest_changed,

@@ -7,11 +7,16 @@ name: Switch the legacy experimental channel to KAS Web v0.1.0-beta.4 (one-shot,
 # so installed beta.3 panels can upgrade.
 #
 # Fail-closed preconditions (all verified before any mutation):
-#   - the beta.4 Release is published with 5 uploaded assets;
+#   - the beta.4 Release is published with exactly the five verified assets
+#     (four IPKs + SHA256SUMS) whose names, sizes and SHA256 digests match
+#     the index rebuilt from the pinned CI artifacts; the live Release is
+#     re-read immediately before the switch so an asset replaced after
+#     Stage A aborts instead of reaching legacy panels;
 #   - GitHub Pages registry marks experimental published with BETA_TAG and
 #     serves an experimental index byte-identical to the one rebuilt from
 #     the verified CI artifacts;
-#   - the legacy live index is either PREVIOUS_TAG (expected) or already
+#   - the legacy live release carries exactly one uploaded panel-update.json
+#     asset, and its index is either PREVIOUS_TAG (expected) or already
 #     BETA_TAG (idempotent rerun). Anything else — including network or
 #     HTTP errors on the Pages read — aborts without touching anything.
 #
@@ -109,6 +114,31 @@ jobs:
               assert p['sha256']==hashlib.sha256(raw).hexdigest() and p['size']==len(raw)
           print('PASS: rebuilt beta.4 index agrees with verified CI manifests and IPK bytes')
           PY
+          # Fail-closed against post-publication tampering: the five assets
+          # currently on the beta.4 Release must match the index rebuilt from
+          # the pinned CI artifacts by name, size and SHA256 — Stage C never
+          # promotes a Release whose packages drifted after Stage A.
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release-live.json
+          gh release download "$BETA_TAG" --repo "$GH_REPO" --pattern SHA256SUMS --dir build/release-sums
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open('build/beta-release-live.json'))
+          idx=json.load(open('build/panel-update.json'))
+          assert not r['draft'] and r['tag_name']==os.environ['BETA_TAG']
+          assets={a['name']:a for a in r['assets']}
+          expected={p['name'] for p in idx['packages']}|{'SHA256SUMS'}
+          assert set(assets)==expected, \
+            'published release assets %s do not match the verified index %s' % (sorted(assets), sorted(expected))
+          for p in idx['packages']:
+              a=assets[p['name']]
+              assert a['state']=='uploaded'
+              assert a['size']==p['size'] and a['digest']=='sha256:'+p['sha256'], \
+                'published asset %s differs from the pinned artifacts (size/digest)' % p['name']
+          print('PASS: published beta.4 release assets match the rebuilt index (names, sizes, SHA256)')
+          PY
+          # The published SHA256SUMS must validate the locally rebuilt IPK bytes
+          # directly (format-independent: works on any coreutils).
+          (cd build/ipk && sha256sum -c ../release-sums/SHA256SUMS)
       - name: Verify GitHub Pages serves this exact beta.4 index (fail closed)
         run: |
           set -euo pipefail
@@ -150,8 +180,19 @@ jobs:
             if [ "$code" = "404" ]; then return 4; fi
             return 1
           }
-          if ! fetch "$(gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" --jq '.assets[0].browser_download_url')" \
-              build/legacy-live.json; then
+          # The legacy release itself must be consistent before it is touched:
+          # exactly one canonical uploaded index asset, never a draft.
+          gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/legacy-release.json
+          python3 - build/legacy-release.json > build/legacy-url.txt <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          a=r['assets']
+          assert not r['draft'], 'legacy channel release is a draft; refusing to switch'
+          assert len(a)==1 and a[0]['name']=='panel-update.json' and a[0]['state']=='uploaded', \
+            'legacy channel release must carry exactly one uploaded panel-update.json asset (found %s)' % [x['name'] for x in a]
+          print(a[0]['browser_download_url'])
+          PY
+          if ! fetch "$(cat build/legacy-url.txt)" build/legacy-live.json; then
             echo "legacy live index is unreachable; refusing to switch on an unverified state" >&2
             exit 1
           fi
@@ -226,6 +267,27 @@ jobs:
             echo "live legacy index changed since the precheck; refusing to overwrite an unknown state" >&2
             exit 1
           fi
+          # Re-read the published beta.4 Release immediately before mutating the
+          # channel: an asset replaced after the verification step must abort the
+          # switch here (inside the restore window) instead of reaching legacy
+          # panels.
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > build/beta-release-preread.json
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open('build/beta-release-preread.json'))
+          idx=json.load(open('build/panel-update.json'))
+          assets={a['name']:a for a in r['assets']}
+          expected={p['name'] for p in idx['packages']}|{'SHA256SUMS'}
+          assert set(assets)==expected, \
+            'live beta.4 release asset set drifted since verification: %s' % sorted(assets)
+          for p in idx['packages']:
+              a=assets[p['name']]
+              assert a['state']=='uploaded' and a['size']==p['size'] and a['digest']=='sha256:'+p['sha256'], \
+                'published %s drifted from the verified index; refusing to switch the channel' % p['name']
+          print('PASS: live beta.4 release re-read matches the verified index right before the switch')
+          PY
+          gh release download "$BETA_TAG" --repo "$GH_REPO" --pattern SHA256SUMS --dir build/sums-preread
+          (cd build/ipk && sha256sum -c ../sums-preread/SHA256SUMS)
           gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
           python3 - <<'PY'

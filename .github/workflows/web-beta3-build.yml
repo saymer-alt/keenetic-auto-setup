@@ -29,10 +29,10 @@ on:
         type: string
         default: 'kas-web-beta3'
       previous_version:
-        description: 'Internal version of the previous release, e.g. 0.1.0~beta.3-1'
+        description: 'Internal version of the release the current one upgrades from, e.g. 0.1.0~beta.2-1 for a beta.3 build'
         required: false
         type: string
-        default: '0.1.0~beta.3-1'
+        default: '0.1.0~beta.2-1'
 
 permissions:
   contents: read
@@ -42,8 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
+      # Push events have no inputs context, so the fallbacks ARE the push
+      # configuration: VERSION=beta.3 vs PREVIOUS_VERSION=beta.2 must stay a
+      # strictly ordered pair (compare-versions fails on equality under set -e).
       VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.3-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.2-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
