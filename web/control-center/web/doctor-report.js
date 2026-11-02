@@ -1,7 +1,7 @@
 // Versioned interpretation of the existing redacted Doctor report. No new probes.
 (function(root){
 'use strict';
-const versions=new Set(['1.2.18','1.2.19','1.2.20','1.2.21']);
+const versions=new Set(['1.2.18','1.2.19','1.2.20','1.2.21','1.2.22']);
 function parse(data){
  const unknown={supported:false,facts:{},findings:[]};
  if(!data||data.error_code||typeof data.details!=='string'||data.details.length>262144)return unknown;

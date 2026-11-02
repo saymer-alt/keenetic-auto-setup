@@ -126,6 +126,10 @@ jobs:
         run: |
           sh tests/doctor-mt-netfilter-regression.sh .
           busybox ash tests/doctor-mt-netfilter-regression.sh .
+      - name: Doctor native OpkgTunN observation (dash and BusyBox ash)
+        run: |
+          sh tests/doctor-native-tun-regression.sh .
+          busybox ash tests/doctor-native-tun-regression.sh .
 
       - name: Local Markdown links
         run: python3 tests/docs-links.py
