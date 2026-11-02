@@ -6,8 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [1.8.5] - 2026-11-02
 
+- **Watchdog 2.0, этап 1 — инцидентная диагностика только для наблюдаемости (issue #328, Draft PR):** политика рестартов не менялась. Добавлены: раздельный по классам (`wan_failure`/`proxy_tunnel_failure`/`port_failure`) учёт подтверждённых сбоев и transient-попыток в tmpfs (`/tmp/mihomo_watchdog.incidents`); строка доказательств `[FAIL] ... curl_rc=.. elapsed_ms=..` перед каждым рестартом из уже собранных данных; ограниченная read-only диагностика по событию (L2) при повторных сбоях — порог/окно/собственный cooldown/бюджет запросов/дедупликация `[DIAG-*]`-маркеров с честными `UNKNOWN/LOW`-оценками причины; опциональный read-only Controller-запрос только при явно заданном `MIHOMO_CONTROLLER_URL`; ограниченный post-restart recheck `SOCKS recovered/still failing/unknown` отдельно от `[RESTART-OK]`. Прямые WAN-пробы зафиксированы `--noproxy '*'` (env-прокси не может исказить проверку). Новых обязательных зависимостей нет; латентность из `/proc/uptime`. Регрессии: `tests/watchdog-diagnostics-regression.py` (13 сценариев, sh/dash/BusyBox ash); контрактные пины `tests/contracts.sh` не тронуты. Поле FIELD PASS не заявляется: аппаратная приёмка — отдельный шаг.
+
+## [1.8.5]
 ### Ownership journal для будущего безопасного удаления (KAS #179; main PR #193, stable PR #195)
 - `install.sh` фиксирует только новые, проверенно созданные ресурсы в `/opt/etc/keenetic-auto-setup/ownership.v1`: пакеты, ProxyN, политику, DNS-перехват и проектные файлы. Старые или переиспользованные ресурсы не присваиваются KAS.
 - Журнал записывается атомарно, с правами `0600`, под lifecycle lock. Повреждённый журнал или символическая ссылка блокирует установку; секреты и пользовательские YAML не сохраняются.
