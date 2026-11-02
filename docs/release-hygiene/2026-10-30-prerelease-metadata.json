@@ -1,0 +1,652 @@
+{
+  "captured_utc": "2026-10-30",
+  "source": "GitHub releases API",
+  "note": "Archive release metadata/checksums; source tags retained. This is not an archive of binary bytes.",
+  "releases": [
+    {
+      "tag": "v0.1.0-beta.1",
+      "id": 428794583,
+      "name": "KAS Control Center v0.1.0-beta.1 — first public beta",
+      "body": "# KAS Control Center v0.1.0-beta.1\n\n**First public beta of the optional KAS WEB panel.** This is **not** a KAS core release, and does **not** change the KAS `main`/`stable` delivery or the GitHub `latest` release.\n\n**Highlights:** WEB Status/Doctor, safe YAML import via existing KAS, exclusion-filter editor for Mihomo subscription servers, RU/EN and light/dark UI, separate manual update controls for Mihomo/MagiTrickle, and manual authenticated panel self-update from the dedicated experimental channel.\n\n**Field evidence (2026-10-30):** real Keenetic Giga KN-1010 / KeeneticOS 5.1.8 / Entware MIPSel confirmed installation, provider exclusion filtering (including persistence after reboot), panel operation and real Web self-update test16 -> test17 with the newly running version verified. Beta itself is not yet claimed to have been installed on production or physical ARM64 devices.\n\n**Architecture / support matrix:**\n- `mipsel-3.4`: hardware-tested on KN-1010 (previous test versions), first beta candidate built and checked in CI.\n- `aarch64-3.10`: native ARM64 service/opkg/Web-update tests and QEMU/ported-system evidence; **no physical ARM64 WEB IPK acceptance yet**.\n- `armv7-3.2` and `mips-3.4`: experimental cross-built IPKs; no physical device acceptance.\nAll four IPKs here derive from **the same reviewed source commit** and passed package, ELF and SHA256 integrity checks.\n\n**Important security note:** by default the optional panel listens on the `br0` IPv4 address on TCP/8081 without KAS-level authentication or TLS; source-subnet-only access is optional and OFF by default. Binding to `br0` does NOT stop clients on other permitted routed networks. Restrict reachability with Keenetic firewall/ACL rules or use suitable authentication and secure transport. Do **not** expose unauthenticated control endpoints to WAN or public KeenDNS reverse proxies. Passwords sent over plain HTTP Basic are not encrypted.\n\n**Installation (opt-in, manual):**\n1. Ensure Entware and KAS are already working; back up important configs and retain SSH access.\n2. Determine the exact Entware architecture (`opkg print-architecture`), download its **one** matching IPK plus `SHA256SUMS` from this release, and verify `sha256sum -c SHA256SUMS` in a directory containing all four listed IPKs (or compare the exact file's checksum). Treat the GitHub release account as the source of trust.\n3. Copy the verified IPK to the router and install using `opkg install /path/to/verified-file.ipk`; start with `/opt/etc/init.d/S98kas-control-center start`.\n4. Open `http://<router-br0-IPv4>:8081/` (or previously saved port), confirm version and access restrictions, then perform a controlled smoke test. IPK `postinst` does **not** auto-start the panel.\n5. To remove only this panel: `/opt/etc/init.d/S98kas-control-center stop` and `opkg remove kas-control-center`. User-owned settings are preserved; applied Mihomo filter rules are not removed automatically.\n\n**Updates/recovery:** user-confirmed panel update is deliberately manual. There is **no automatic IPK rollback**, and MagiTrickle update also has no automatic rollback. The experimental channel index is not changed by this release, and beta is installed **manually**. Do not force-remove or force-overwrite an IPK when owner/lock/drain checks refuse.\n\n**Documentation:** [Beta checklist, support matrix and detailed instructions](https://github.com/saymer-alt/keenetic-auto-setup/blob/92e301da2464ac9694fff3f41f4ee1cb9be90708/web/control-center/BETA_RELEASE.md) · [IPK packaging and removal](https://github.com/saymer-alt/keenetic-auto-setup/blob/92e301da2464ac9694fff3f41f4ee1cb9be90708/web/control-center/packaging/README.md).\n\n**Release provenance:** source SHA `92e301da2464ac9694fff3f41f4ee1cb9be90708`; build [GitHub Actions #41022180215](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41022180215); internal Entware version `0.1.0~beta.1-1`. GitHub release asset filenames normalize `~` to `.`; check the **internal Version** for the actual package version.\n",
+      "created_at": "2026-10-30T07:46:47Z",
+      "published_at": "2026-10-30T08:27:35Z",
+      "target": "92e301da2464ac9694fff3f41f4ee1cb9be90708",
+      "assets": [
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_aarch64-3.10.ipk",
+          "digest": "sha256:b00560ce490e96039adf8b2e5c9e76ad36702391dee6e6fe8d3199ce9e136d39",
+          "size": 2785821,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.1/kas-control-center_0.1.0.beta.1-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_armv7-3.2.ipk",
+          "digest": "sha256:0595453752701b67ce054703c7c3a11ae2e7ff78c0f0fc9c9cbfd5b2e266d30c",
+          "size": 2801600,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.1/kas-control-center_0.1.0.beta.1-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_mips-3.4.ipk",
+          "digest": "sha256:9e0b5ab641d632e2a372ff8407f8282aa58004e1f7dd03c510feb45f399ac117",
+          "size": 2701484,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.1/kas-control-center_0.1.0.beta.1-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_mipsel-3.4.ipk",
+          "digest": "sha256:09043081d4dbdd28545613f3ade063a7dfb3f22655e14229f45049efa1fa1ec2",
+          "size": 2679027,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.1/kas-control-center_0.1.0.beta.1-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:dd1f62ad17307f5d8eddcd4f3b4d70e5108e75cd71b9837051454eb25c415c3b",
+          "size": 467,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/v0.1.0-beta.1/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-9c71528",
+      "id": 428738847,
+      "name": "KAS Web test17 — experimental self-update hardware candidate",
+      "body": "Experimental KAS Web test17 (not stable / not beta).\nExact tested source: 9c715283d525e0f57fee7bfb795d7d0dcc851bd1\nCI run: https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41017455546\nChanges versus test16: RU/EN wording for exclusion-list checkbox and neutral remote-network access descriptions.\nNo KAS core/filter algorithm/auth/security changes.\nFor KN-1010 (MIPSel) owner to test: test16 -> test17 via panel experimental channel after channel index is published.\nThis release does NOT imply real KeeneticOS web self-update is proven; hardware testing is still required.\n",
+      "created_at": "2026-10-30T07:00:26Z",
+      "published_at": "2026-10-30T07:06:59Z",
+      "target": "9c715283d525e0f57fee7bfb795d7d0dcc851bd1",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test44.9c715283d525-1_aarch64-3.10.ipk",
+          "digest": "sha256:5763dd1103737073aaadbf746faf0c473d797dc9ede1e2286f0927e335846e8f",
+          "size": 2785844,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-9c71528/kas-control-center_0.0.1.test44.9c715283d525-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test44.9c715283d525-1_armv7-3.2.ipk",
+          "digest": "sha256:767bc219839c0d54a1ef11c1b61156aad4e1816d7513f2d482dc747a1748e85c",
+          "size": 2801503,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-9c71528/kas-control-center_0.0.1.test44.9c715283d525-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test44.9c715283d525-1_mips-3.4.ipk",
+          "digest": "sha256:ff1cd3aad0c7d099794c02333871ebc6b8be3002fead6a01c70ad2fa5e8c5dde",
+          "size": 2701656,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-9c71528/kas-control-center_0.0.1.test44.9c715283d525-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test44.9c715283d525-1_mipsel-3.4.ipk",
+          "digest": "sha256:78c5c774e64bf9335d2ee71e23e27a8e5185562ef4c0ed00e3f08fb85a748728",
+          "size": 2678729,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-9c71528/kas-control-center_0.0.1.test44.9c715283d525-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:4b220364b602d745c5483122b16969a6799152367ea205d80e4dc8b224c4287c",
+          "size": 519,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-9c71528/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-92e301d",
+      "id": 428801926,
+      "name": "KAS Web beta1 experimental update candidate (same IPKs as v0.1.0-beta.1)",
+      "body": "Compatibility wrapper for the currently installed KAS WEB experimental updater. Exactly the same reviewed CI IPKs as v0.1.0-beta.1 (no rebuild). Manual check/apply only. Not stable, no automatic rollback.",
+      "created_at": "2026-10-30T07:46:47Z",
+      "published_at": "2026-10-30T08:34:32Z",
+      "target": "92e301da2464ac9694fff3f41f4ee1cb9be90708",
+      "assets": [
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_aarch64-3.10.ipk",
+          "digest": "sha256:b00560ce490e96039adf8b2e5c9e76ad36702391dee6e6fe8d3199ce9e136d39",
+          "size": 2785821,
+          "download_count": 0,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-92e301d/kas-control-center_0.1.0.beta.1-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_armv7-3.2.ipk",
+          "digest": "sha256:0595453752701b67ce054703c7c3a11ae2e7ff78c0f0fc9c9cbfd5b2e266d30c",
+          "size": 2801600,
+          "download_count": 0,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-92e301d/kas-control-center_0.1.0.beta.1-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_mips-3.4.ipk",
+          "digest": "sha256:9e0b5ab641d632e2a372ff8407f8282aa58004e1f7dd03c510feb45f399ac117",
+          "size": 2701484,
+          "download_count": 0,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-92e301d/kas-control-center_0.1.0.beta.1-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.1.0.beta.1-1_mipsel-3.4.ipk",
+          "digest": "sha256:09043081d4dbdd28545613f3ade063a7dfb3f22655e14229f45049efa1fa1ec2",
+          "size": 2679027,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-92e301d/kas-control-center_0.1.0.beta.1-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:dd1f62ad17307f5d8eddcd4f3b4d70e5108e75cd71b9837051454eb25c415c3b",
+          "size": 467,
+          "download_count": 0,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-92e301d/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-channel-experimental",
+      "id": 428738893,
+      "name": "KAS Web experimental update channel",
+      "body": "Experimental KAS Web update index. Candidate is the source-pinned test17 prerelease; not stable. Owner must test test16 to test17 update on hardware before beta.",
+      "created_at": "2026-10-30T07:00:26Z",
+      "published_at": "2026-10-30T07:07:03Z",
+      "target": "9c715283d525e0f57fee7bfb795d7d0dcc851bd1",
+      "assets": [
+        {
+          "name": "panel-update.json",
+          "digest": "sha256:f6e47c1edbb157b152a2be7fdea7af0dc42c45ad0185ffd8e52afe851bfcbdc7",
+          "size": 1869,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-channel-experimental/panel-update.json"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-c3cc2ce",
+      "id": 427553372,
+      "name": "KAS Web: optional experimental IPKs (c3cc2ce)",
+      "body": "Optional experimental KAS Control Center IPKs: tabbed UI, authentication settings, configurable port, compiled panel version and read-only component inventory. Includes a project GitHub link.\n\nFresh IPK installations default to port8081. Authentication and Home-only restriction are optional/off by default. Entware mode verifies the existing root password without storing or changing it. A separate panel password uses login kas.\n\nInstall only by choice on a test device. Existing manual panel installations must be removed by their original helper before IPK installation; preserve/save the desired old port first. The package refuses foreign/manual files. Start the panel explicitly after install/update; no KAS auto-install. User settings and KAS core are preserved on package removal.\n\nSource: c3cc2ceb417a2fa56eee72d3d2cec277c2564cfa. The release tag points at the publication workflow commit; each package BUILD_INFO records the tested binary source. CI checks include real Entware opkg offline-root transactions, Go/race/Node, ARM64/MIPSel CPU emulation and existing native KeeneticOS importer/filter/lifecycle checks. These do not constitute physical acceptance of these IPKs on every architecture.\n\nThis release contains ONLY the optional panel, not the laboratory kas-core package. Existing KAS script installations may show the core bundle as absent and watchdog as unrecorded; this does not mean their services are stopped. The overview now reports executable-matched process evidence and sourced versions (Mihomo local API; MagiTrickle package metadata). Doctor displays validated summary findings/counts instead of generic command completion. Script-installed watchdog shows its actual digest. Future package ordering uses a numeric CI run counter, so updating from either prior 0.0.0~git package does not need --force-downgrade.\n\nInstructions: https://github.com/saymer-alt/keenetic-auto-setup/blob/c3cc2ceb417a2fa56eee72d3d2cec277c2564cfa/web/control-center/packaging/README.md\nReview: https://github.com/saymer-alt/keenetic-auto-setup/pull/267\n",
+      "created_at": "2026-10-29T06:52:20Z",
+      "published_at": "2026-10-29T07:04:43Z",
+      "target": "4e62cdc199aa462e7af34f4e7fe6b3398a33bf73",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test8.c3cc2ceb417a-1_aarch64-3.10.ipk",
+          "digest": "sha256:56e643820804f0bac60793e873e17f643e6c2d1b554c47421c02aaa4fde61a15",
+          "size": 2649735,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c3cc2ce/kas-control-center_0.0.1.test8.c3cc2ceb417a-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test8.c3cc2ceb417a-1_armv7-3.2.ipk",
+          "digest": "sha256:c45ec8100640371532a09f7f190de8496e3c0c11797353a002e36f74ad73d1b9",
+          "size": 2663370,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c3cc2ce/kas-control-center_0.0.1.test8.c3cc2ceb417a-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test8.c3cc2ceb417a-1_mips-3.4.ipk",
+          "digest": "sha256:daebe5d94c4db35a2073868a129790fe8de2585f704fe7c05221618c68d1a554",
+          "size": 2567083,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c3cc2ce/kas-control-center_0.0.1.test8.c3cc2ceb417a-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test8.c3cc2ceb417a-1_mipsel-3.4.ipk",
+          "digest": "sha256:863452563788a76cccedef803d54f64086f9da03239d352234d62b24962a1ffa",
+          "size": 2544861,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c3cc2ce/kas-control-center_0.0.1.test8.c3cc2ceb417a-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:14518df6a687ece2184be05c5c8b1e464d4a86443d6da5383fe3d615022c8925",
+          "size": 515,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c3cc2ce/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-b0e3c0c",
+      "id": 427847848,
+      "name": "KAS Web test13: editor enabled, router link, Doctor fix (b0e3c0c)",
+      "body": "Экспериментальная KAS Web 0.0.1~test13.b0e3c0ca561d-1.\n\nРедактор фильтра серверов подписки теперь доступен при штатном запуске IPK без legacy-файла export-names. Поддерживаются обычные HTTP-провайдеры; применение и снятие фильтра требуют подтверждения и выполняются штатным импортёром KAS с проверкой исходного конфига. Mihomo может временно перезапуститься. URL подписки и секреты не выдаются API редактора.\n\n«Панель роутера» открывает HTTP-корень текущего роутера в новой вкладке без порта KAS; ссылка видна и на мобильных экранах. Через внешний HTTPS reverse proxy локальный адрес не угадывается. При нестандартном порте административного интерфейса используйте его фактический адрес.\n\nВстроенный Doctor 1.2.19 выбирает актуальный совместимый пакет Mihomo теми же правилами, что штатный обновлятор, вместо первого совпадения в списке GitHub assets. Прежние темы, RU/EN, ссылки MT/MetaCubeXD/генератора и ручные обновления Mihomo/MT сохранены.\n\nВсе семь проверок точного SOURCE_SHA завершились успешно, включая native KAS, импорт и фильтрацию в эмуляторе, MIPSel/ARM64 settings и настоящий opkg/init lifecycle. IPK скопированы из успешной сборки 40871820680 без пересборки. Это лабораторные проверки; аппаратная приёмка этой версии ещё предстоит.\n\nОбновление самой панели из Web, подробная RU/EN сводка Doctor и карточка свободного места пока не реализованы: задачи #273 и #274. Новые диагностические скрипты — отдельная будущая работа #270. История старых IPK и автоматический откат версий не включены.\n\nОбновление поверх test11: обычный opkg install, затем S98kas-control-center start, проверить kas-control-center -version и обновить страницу Ctrl+F5. Настройки панели сохраняются. Пакет только панели, без лабораторного kas-core; main/stable/latest не изменяются.\n\nИсходники: b0e3c0ca561deedcb2e8b555cd345ae121f6aada. Тег указывает на коммит публикации; BUILD_INFO внутри IPK фиксирует проверенные исходники.\nИзменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/275\nИнструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/b0e3c0ca561deedcb2e8b555cd345ae121f6aada/web/control-center/packaging/README.md\n",
+      "created_at": "2026-10-29T12:37:31Z",
+      "published_at": "2026-10-29T12:37:54Z",
+      "target": "71f88fa86c06de76904e65d7aeb2428b00e8d260",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test13.b0e3c0ca561d-1_aarch64-3.10.ipk",
+          "digest": "sha256:e1afdee884e9f50b8db5c32349c1f1adeb29d89686fccf9bc510cc833e852607",
+          "size": 2702297,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-b0e3c0c/kas-control-center_0.0.1.test13.b0e3c0ca561d-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test13.b0e3c0ca561d-1_armv7-3.2.ipk",
+          "digest": "sha256:d0f5a19e59938543ba28308f3aa963a407ead058efadd2175abf6e50af2aeb13",
+          "size": 2714914,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-b0e3c0c/kas-control-center_0.0.1.test13.b0e3c0ca561d-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test13.b0e3c0ca561d-1_mips-3.4.ipk",
+          "digest": "sha256:cf411ed60af639c5f73958c643e9310d3d981b53c96025eba45aa1fcb881570c",
+          "size": 2617641,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-b0e3c0c/kas-control-center_0.0.1.test13.b0e3c0ca561d-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test13.b0e3c0ca561d-1_mipsel-3.4.ipk",
+          "digest": "sha256:dac703985e0eca2d45a3b750948597d6c81a3f89edd0f57b583fbfc3990457a0",
+          "size": 2594338,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-b0e3c0c/kas-control-center_0.0.1.test13.b0e3c0ca561d-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:db9e729054cb3f19b1b9f9f24acf0f31318319e2e6a068cbce59a045d55812a3",
+          "size": 519,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-b0e3c0c/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-894a524",
+      "id": 427526609,
+      "name": "KAS Web: optional experimental IPKs (894a524)",
+      "body": "Optional experimental KAS Control Center IPKs: tabbed UI, authentication settings, configurable port, compiled panel version and read-only component inventory. Includes a project GitHub link.\n\nFresh IPK installations default to port8081. Authentication and Home-only restriction are optional/off by default. Entware mode verifies the existing root password without storing or changing it. A separate panel password uses login kas.\n\nInstall only by choice on a test device. Existing manual panel installations must be removed by their original helper before IPK installation; preserve/save the desired old port first. The package refuses foreign/manual files. Start the panel explicitly after install/update; no KAS auto-install. User settings and KAS core are preserved on package removal.\n\nSource: 894a5248d53d983c5d66e8ea7bcce5b9a2f10e23. The release tag points at the publication workflow commit; each package BUILD_INFO records the tested binary source. CI checks include real Entware opkg offline-root transactions, Go/race/Node, ARM64/MIPSel CPU emulation and existing native KeeneticOS importer/filter/lifecycle checks. These do not constitute physical acceptance of these IPKs on every architecture.\n\nThis release contains ONLY the optional panel, not the laboratory kas-core package. Existing KAS script installations may show the core bundle as absent and watchdog as unrecorded; this does not mean their services are stopped. Doctor command-completion wording remains unchanged.\n\nInstructions: https://github.com/saymer-alt/keenetic-auto-setup/blob/894a5248d53d983c5d66e8ea7bcce5b9a2f10e23/web/control-center/packaging/README.md\nReview: https://github.com/saymer-alt/keenetic-auto-setup/pull/267\n",
+      "created_at": "2026-10-29T06:21:12Z",
+      "published_at": "2026-10-29T06:21:49Z",
+      "target": "bf471e7b7c26de4f1b0d018c976e113a6e169e10",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.0.git894a5248d53d-1_aarch64-3.10.ipk",
+          "digest": "sha256:97540c25e869d18f3b98bc67e2bcb66ed37c65d7232ba7683d0636616beb72e4",
+          "size": 2638158,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-894a524/kas-control-center_0.0.0.git894a5248d53d-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.git894a5248d53d-1_armv7-3.2.ipk",
+          "digest": "sha256:12a489e3cb07f5f1012f839130a52829a2c7abca056b8ac5c4d8c15bc2575b39",
+          "size": 2653024,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-894a524/kas-control-center_0.0.0.git894a5248d53d-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.git894a5248d53d-1_mips-3.4.ipk",
+          "digest": "sha256:85ab7024fca2664ac5b8ceda7614664c6b48afdf968d836350e5f80af56a7bbf",
+          "size": 2556697,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-894a524/kas-control-center_0.0.0.git894a5248d53d-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.git894a5248d53d-1_mipsel-3.4.ipk",
+          "digest": "sha256:2242b5e3ec1e1d14ecd8a7188a2d397afe85165840b3d054022109372f15785f",
+          "size": 2532836,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-894a524/kas-control-center_0.0.0.git894a5248d53d-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:2b4a7a2a5bfafb474b0a2b330a6eda6e4017036c094ed58703d6b7754015d8e7",
+          "size": 503,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-894a524/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-77ac40e",
+      "id": 427924144,
+      "name": "KAS Web test15: readable Doctor overview and import notices (77ac40e)",
+      "body": "Экспериментальная KAS Web 0.0.1~test15.77ac40efcc4f-1.\n\nНовое в test15: после ручного запуска Doctor в «Диагностике» показана RU/EN сводка того же отчёта — модель/KeeneticOS, тип хранилища /opt, filesystem/source, свободное/общее место /opt и /tmp, RAM/подкачка, процессы и история watchdog. Переключение языка не запускает новые проверки. Полный технический отчёт и копирование сохранены.\n\nЭто сведения последнего Doctor, не отдельный live-монитор. Неизвестные версии/неполный или противоречивый отчёт не объявляются здоровыми. WARN/FAIL сохраняются с локализованной категорией и раскрываемыми техническими сведениями. Не все английские сообщения переведены; отсутствие подкачки пока может отображаться как «Не удалось определить». Сводка не диагностирует причину недоступности каждого сайта и не определяет стабильность провайдера.\n\nИсправлена залипшая плашка импорта: активная операция видна во всех вкладках, свежий завершённый результат — только во вкладке её запуска; добавлена кнопка закрытия. Завершённая операция, полученная при перезагрузке страницы, не создаёт новое глобальное уведомление. Сам результат сохраняется в соответствующих блоках.\n\nСохранены изменения test13: редактор фильтра доступен при штатном запуске IPK без старого export-names; ссылка на интерфейс роутера; Doctor 1.2.19 с исправленным выбором пакета Mihomo. Применение фильтра по-прежнему через подтверждение и штатный импортёр; возможен краткий перезапуск Mihomo.\n\nПубликация разрешена только после успеха всех семи проверок точного SOURCE_SHA. IPK скопированы из сборки 40882006271 без пересборки. Локально 63 Node, Go/vet и 9 IPK PASS; независимое ревью выполнено, найденный пропуск preamble-warning исправлен с RED→GREEN тестом. Лабораторные результаты не заменяют аппаратную приёмку test15.\n\nОбновление самой панели из Web (#273), дальнейшие сведения о панели в shell Doctor (#274), подробные рекомендации и новые диагностические инструменты (#270) ещё не реализованы. История старых пакетов и автоматический откат версий не включены.\n\nМожно обновить test13 обычным opkg install, затем явно запустить S98kas-control-center start и обновить страницу Ctrl+F5. Настройки панели сохраняются. Только необязательная панель, без лабораторного kas-core; main/stable/latest не изменяются.\n\nИсходники: 77ac40efcc4ffd84de5ead5b44f33c62c87e0a57. Тег указывает на коммит публикации; BUILD_INFO фиксирует проверенные исходники.\nИзменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/276 и https://github.com/saymer-alt/keenetic-auto-setup/pull/277\nИнструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/77ac40efcc4ffd84de5ead5b44f33c62c87e0a57/web/control-center/DOCTOR_REPORT.md\n",
+      "created_at": "2026-10-29T13:46:36Z",
+      "published_at": "2026-10-29T13:48:28Z",
+      "target": "2baeed4d880471ff6aa630d6ef04c46c0ea548da",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test15.77ac40efcc4f-1_aarch64-3.10.ipk",
+          "digest": "sha256:2191fdc512c9f2584208b83663c894ff32eed1b02ff6628c8246740265b5f665",
+          "size": 2706453,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/kas-control-center_0.0.1.test15.77ac40efcc4f-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test15.77ac40efcc4f-1_armv7-3.2.ipk",
+          "digest": "sha256:1136fa5949207316f9108fe3ce00d4a2b5a95e5313f81c364ad32433ea622815",
+          "size": 2717706,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/kas-control-center_0.0.1.test15.77ac40efcc4f-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test15.77ac40efcc4f-1_mips-3.4.ipk",
+          "digest": "sha256:dec04021a41af8125087412e20a22e94741cb6c4908ba44bb5c17f1209e887b1",
+          "size": 2621721,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/kas-control-center_0.0.1.test15.77ac40efcc4f-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test15.77ac40efcc4f-1_mipsel-3.4.ipk",
+          "digest": "sha256:69195d3b5d43f74172ea5fd19e3ee3a68901f483264797f489ba0daa4c044869",
+          "size": 2598366,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/kas-control-center_0.0.1.test15.77ac40efcc4f-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:361eea29b0e23817841aa3a5781ec561614f399efa1a4656b2c1527870cadccf",
+          "size": 519,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-66d976e",
+      "id": 427723326,
+      "name": "KAS Web: MT updates, panel links and themes (66d976e)",
+      "body": "Экспериментальная KAS Web 0.0.1~test11.66d976e83ee1-1.\n\nВключает изменения test10: ручную проверку и обновление MagiTrickle через подключённые репозитории opkg; раздельные сведения о работающем Mihomo, пакете opkg и записи KAS. Добавлены ссылки на MagiTrickle и MetaCubeXD в новых вкладках, кнопка генератора в «Конфигурации» и выбор «Как в системе / Светлая / Тёмная» в настройках.\n\nСсылки используют текущий HTTP-адрес роутера и стандартные порты 8080/9090, не передают пароль, query или hash. Через внешний HTTPS reverse proxy локальные адреса не угадываются. Для изменённых портов используйте фактические адреса вручную. Генератор открывается как существующее HTTPS Pages-приложение, не включается в IPK. Тема сохраняется только в браузере; не меняет настройки роутера.\n\nПроверки обновлений запускаются вручную. Обновление MT требует отдельного подтверждения, обновляет только magitrickle и его штатные зависимости, перезапускает сервис; возможен временный перерыв DNS/маршрутизации. Автоматического транзакционного отката MT нет. Закрытие браузера не прерывает установку. При ошибке проверяйте фактическое состояние и Doctor. Обновление MT отказывает при остановленном/неподтверждённом сервисе и uptime до 300 секунд.\n\nВсе семь exact-source проверок GitHub прошли; IPK скопированы из успешной сборки без пересборки. Локально проверены 51 тест интерфейса, Chromium с ручными/автоматическими темами и перезагрузкой страницы, Go и восемь тестов IPK. Обновление MT и оба изменённых conffiles проверены фактическим Entware opkg в изолированном каталоге с локальным feed; процессы/hooks этого сценария синтетические и не заменяют аппаратную приёмку MT Web update.\n\nОбычный Doctor и отчёт сохранены. Полноценные новые диагностические скрипты ещё предстоит разработать на основе накопленных наработок, затем подключить к Web: https://github.com/saymer-alt/keenetic-auto-setup/issues/270. Новая проверка конкретного сайта в этой версии не реализована.\n\nПакет можно установить поверх test9 или test10 обычным opkg install, без force-downgrade. Затем явно запустить S98kas-control-center start и обновить страницу Ctrl+F5. Сохранённые настройки панели остаются. Это только необязательная панель, без лабораторного kas-core; main/stable/latest не изменяются.\n\nИсходники бинарного файла: 66d976e83ee19820acb949cb68ae923321adbcca. Тег релиза указывает на коммит публикации; BUILD_INFO внутри IPK фиксирует проверенные исходники.\nИзменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/271\nИнструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/66d976e83ee19820acb949cb68ae923321adbcca/web/control-center/packaging/README.md\n",
+      "created_at": "2026-10-29T10:27:47Z",
+      "published_at": "2026-10-29T10:28:12Z",
+      "target": "6f8fd2075ba9dc4718dd8bf3a74567689f32f933",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test11.66d976e83ee1-1_aarch64-3.10.ipk",
+          "digest": "sha256:fc4b92d8d4859b4f5519263e3ee29977a539955fc711b6377f735149479358d5",
+          "size": 2699880,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-66d976e/kas-control-center_0.0.1.test11.66d976e83ee1-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test11.66d976e83ee1-1_armv7-3.2.ipk",
+          "digest": "sha256:67f42860ff8618c11f88d6fdd07ec33e95a55017d63353289301ac60223328f1",
+          "size": 2713339,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-66d976e/kas-control-center_0.0.1.test11.66d976e83ee1-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test11.66d976e83ee1-1_mips-3.4.ipk",
+          "digest": "sha256:3bf0f5d337e6610b29bbb5e758fc2347dd72891eca650968433416f65db57ea0",
+          "size": 2614960,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-66d976e/kas-control-center_0.0.1.test11.66d976e83ee1-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test11.66d976e83ee1-1_mipsel-3.4.ipk",
+          "digest": "sha256:dc186e570eff4bb73516688cae6f953ce35a2ec5d22070ac5543587111251fbe",
+          "size": 2591744,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-66d976e/kas-control-center_0.0.1.test11.66d976e83ee1-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:c6f7b23e0ed75c462c1f0cfbe31f6cc148f1733e1da05558d3e1ce8f67a62280",
+          "size": 519,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-66d976e/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-57ea99c",
+      "id": 427655024,
+      "name": "KAS Web: MagiTrickle updates (57ea99c)",
+      "body": "Экспериментальная KAS Web 0.0.1~test10.57ea99c75fa5-1.\n\nДобавлены отдельные кнопки проверки и обновления MagiTrickle через подключённые репозитории opkg. Проверка вручную обновляет индексы и читает установленный пакет и list-upgradable. Подтверждённое применение повторяет проверку, устанавливает только magitrickle со штатными зависимостями и перезапускает его сервис. Не используется установка KAS целиком или обновление всех пакетов.\n\nВо время обновления MT возможен перерыв DNS и маршрутизации. Его пакетный postinst может сам перезапустить сервис. Автоматического транзакционного отката MT нет: при ошибке проверяйте фактическое состояние и Doctor. Изменённые conffiles сохраняет opkg; панель сверяет содержимое двух конфигов, установленную версию и работающий процесс. Это не проверка доступа клиентов. Применение отказывает при остановленном/неподтверждённом сервисе и uptime до 300 секунд. Не перезагружайте роутер во время операции.\n\nMihomo теперь раздельно показывает работающую версию API, сведения opkg и записанный выпуск штатного обновления KAS. Совпадающий или старый выпуск не предлагается к установке; сведения opkg не подменяют версию бинарника. При отсутствии записи KAS выпуск пакета помечается как неподтверждённый. Старая запись KAS связывает версию, архитектуру и размер, а не криптографический хеш.\n\nОба обновления требуют явного подтверждения и занимают общий слот панели. Установка не прерывается при закрытии браузера. Отмена проверки метаданных ограничена по времени и завершает её дочерний загрузчик. Старый успешный результат не выдаётся за новую операцию после потери HTTP-ответа.\n\nПакеты скопированы без пересборки из успешного exact-source CI. Проверены Go/race/vet, 44 теста интерфейса, Chromium, фактический Entware opkg с изолированным HTTP feed/IPK (обновление, no-op, оба изменённых conffiles), существующие тесты IPK и нативные KeeneticOS сценарии импорта/фильтров/KAS. Процессы/uptime/hooks нового MT сценария синтетические; физическая приёмка обновления MT через Web ещё не проведена.\n\nОбновляйте существующий IPK панели обычным opkg install и явно запускайте S98kas-control-center start. Сохранённые настройки остаются. Этот релиз содержит только необязательную панель, без лабораторного kas-core; main/stable/latest не изменяются. Watchdog и self-update панели пока не добавлены.\n\nИсточник бинарника: 57ea99c75fa59ce9165280b9beea0e93fd415fe9. Тег указывает на отдельный коммит публикации; BUILD_INFO внутри IPK фиксирует проверенные исходники. Обновление test9 → test10 не требует force-downgrade.\n\nДля проверки на KN-1010 сначала обновите только панель, выполните Ctrl+F5 и проверьте версии Mihomo и MT отдельными кнопками. Перед реальным обновлением MT учитывайте возможный перерыв DNS/маршрутизации.\n\nИнструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/57ea99c75fa59ce9165280b9beea0e93fd415fe9/web/control-center/packaging/README.md\nИзменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/269\n",
+      "created_at": "2026-10-29T08:56:53Z",
+      "published_at": "2026-10-29T09:16:05Z",
+      "target": "c63e0e42598380b0b24848eb626be1f77248c838",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test10.57ea99c75fa5-1_aarch64-3.10.ipk",
+          "digest": "sha256:b63d22d39639260da1ff16d8afe4ec945ad10c742c26914561a104950c7262b5",
+          "size": 2698683,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-57ea99c/kas-control-center_0.0.1.test10.57ea99c75fa5-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test10.57ea99c75fa5-1_armv7-3.2.ipk",
+          "digest": "sha256:4db0506acb52a03e5adc07fd698352a6251af41b71d326834d16ab460a498ff2",
+          "size": 2711649,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-57ea99c/kas-control-center_0.0.1.test10.57ea99c75fa5-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test10.57ea99c75fa5-1_mips-3.4.ipk",
+          "digest": "sha256:62b66c14ae267eb5dbc18e4ca655448c565b1193b7518a02410e630c9287f25a",
+          "size": 2614027,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-57ea99c/kas-control-center_0.0.1.test10.57ea99c75fa5-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test10.57ea99c75fa5-1_mipsel-3.4.ipk",
+          "digest": "sha256:da69151585f37f6d50f0f8d3220ae8b5d7bf17ae954243f6354064f7f0a8900a",
+          "size": 2590858,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-57ea99c/kas-control-center_0.0.1.test10.57ea99c75fa5-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:6537c707f9b4c3f765ac31462d66325a68d9f515e60ed10c9be0dc0833cf237d",
+          "size": 519,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-57ea99c/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-08ae70e",
+      "id": 427609730,
+      "name": "KAS Web: manual Mihomo updates (08ae70e)",
+      "body": "Экспериментальная KAS Web 0.0.1~test9.08ae70e37291-1: ручная проверка обновлений Mihomo и запуск штатного update-mihomo.sh после подтверждения в панели. Автоматических проверок и обновлений нет.\n\nОбновление панели устанавливается через opkg поверх предыдущего IPK. Сохранённые настройки панели сохраняются. После установки запустите панель явно: sh /opt/etc/init.d/S98kas-control-center start. Порт новой установки — 8081. Этот релиз содержит только необязательную панель, без лабораторного kas-core.\n\nПроверка обновлений обращается к фиксированному каналу saymer-alt/entware-go:latest. Применение использует встроенную точную копию штатного скрипта без произвольных команд, URL и аргументов. Скрипт сохраняет штатные блокировки, правило одного Mihomo, проверку конфигурации и восстановление при предусмотренных ошибках. Закрытие браузера не останавливает операцию. Во время обновления Mihomo может временно остановиться; не перезагружайте роутер.\n\nВ интерфейсе различаются изменение бинарного файла, отсутствие изменений и неподтверждённый результат. При ошибке панель не утверждает, что восстановление прошло успешно: проверьте состояние сервиса и Doctor.\n\nИсходники бинарного файла: 08ae70e37291d90c3807b2ac231c7a9e87fd1372. Тег релиза указывает на отдельный коммит публикации; BUILD_INFO внутри каждого пакета фиксирует проверенные исходники. Пакеты скопированы без пересборки из успешного CI. Все семь проверок этих исходников прошли: Go/race/Node, ARM64/MIPSel CPU, IPK/lifecycle и нативные KeeneticOS сценарии импорта, фильтрации и установки KAS. Новое обновление через HTTP дополнительно проверено на полном штатном скрипте в изолированных файловых сценариях: замена, отсутствие обновления, ошибка запуска с восстановлением старого бинарного файла и сервиса. Эти сценарии используют синтетические PID и не заменяют аппаратную приёмку нового обновления через Web.\n\nИзвестное ограничение: метаданные релиза с активами в состоянии starter отклоняются строже, чем в штатном CLI. Обновление MagiTrickle, watchdog и самой панели через Web в этот релиз не входит.\n\nПроверка на KN-1010: обновите только IPK панели, выполните жёсткое обновление страницы, проверьте версию test9 и кнопку «Проверить обновления». Если доступная версия Mihomo старее установленной, применение должно быть недоступно. Не требуется понижать Mihomo ради теста.\n\nИнструкция: https://github.com/saymer-alt/keenetic-auto-setup/blob/08ae70e37291d90c3807b2ac231c7a9e87fd1372/web/control-center/packaging/README.md\nИзменения: https://github.com/saymer-alt/keenetic-auto-setup/pull/268\n",
+      "created_at": "2026-10-29T08:22:51Z",
+      "published_at": "2026-10-29T08:23:11Z",
+      "target": "bf0bccf6a0cc292e0d454faefa49e11e4e7e45a9",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test9.08ae70e37291-1_aarch64-3.10.ipk",
+          "digest": "sha256:715e6d1adca76d10d1f2898923cc8ba93169eb099b3b5bf1c417f861f8759f4b",
+          "size": 2687655,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-08ae70e/kas-control-center_0.0.1.test9.08ae70e37291-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test9.08ae70e37291-1_armv7-3.2.ipk",
+          "digest": "sha256:84bde62dd97a982cb69d4031a3de777748d4f1d85be5f7c4bdfbc771f02c3a4b",
+          "size": 2701172,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-08ae70e/kas-control-center_0.0.1.test9.08ae70e37291-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test9.08ae70e37291-1_mips-3.4.ipk",
+          "digest": "sha256:8b7a3778e3b6b141dd62ff05c022c089d37d2dbbf5c8d0a0629e9f1338d157b1",
+          "size": 2602401,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-08ae70e/kas-control-center_0.0.1.test9.08ae70e37291-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test9.08ae70e37291-1_mipsel-3.4.ipk",
+          "digest": "sha256:db441e967e8fba870af6b9905b2368cc7bcdae9c9fc27be20f1af002c100dd5f",
+          "size": 2580199,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-08ae70e/kas-control-center_0.0.1.test9.08ae70e37291-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:019fd2658345f08e903c3e2e4e55dbc035263c48e8485d643d0f894c44324996",
+          "size": 515,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-08ae70e/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-kn1010-ui-66ab147",
+      "id": 426713472,
+      "name": "KAS Web: KN-1010 UI test 66ab147",
+      "body": "Тестовый комплект KAS Web для Keenetic KN-1010 (MIPSel softfloat).\nДве кнопки фильтра: Исключить выбранные и Снять фильтр, с подтверждением без отдельного шага применения.\nИсправлено определение установленного magitrickled; индикация остаётся проверкой наличия файла.\nHome-only ограничение выключено по умолчанию: доступ из SSTP/L2TP и других подсетей определяется firewall/маршрутами KeeneticOS.\nОграничение можно включить в панели; настройка сохраняется. Слушатель остаётся на адресе Home, без wildcard/WAN-привязки.\nИсходная ревизия: 66ab147bb6c1526f7317239b0543968b8ea6623f, Draft PR #263.\nКомплект перенесён из успешного Actions artifact 40697645736 без пересборки.\nАрхив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.\nЭто аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.\nТег указывает на коммит публикации; исходная ревизия бинарника отдельно закреплена выше и в BUILD_INFO.\nmain/stable не изменяются; автоматической установки нет.\n",
+      "created_at": "2026-10-28T13:36:20Z",
+      "published_at": "2026-10-28T13:36:32Z",
+      "target": "a35624b9c6dfee160c903093e2cf7edd6d30f006",
+      "assets": [
+        {
+          "name": "kas-web-kn1010-ui-66ab147.tar.gz",
+          "digest": "sha256:03fa4f9151f922e8c06874ac52182e86a9827198ebe569410465c9c69f36b6d1",
+          "size": 4964008,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-ui-66ab147/kas-web-kn1010-ui-66ab147.tar.gz"
+        },
+        {
+          "name": "kas-web-kn1010-ui-66ab147.tar.gz.sha256",
+          "digest": "sha256:afd46392d0c0a4d128b97a6d0fc3162382380cb756f4a6c603de53122f939de3",
+          "size": 99,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-ui-66ab147/kas-web-kn1010-ui-66ab147.tar.gz.sha256"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-kn1010-sstp-58ff21d",
+      "id": 426667021,
+      "name": "KAS Web: KN-1010 SSTP test 58ff21d",
+      "body": "Тестовый комплект KAS Web для Keenetic KN-1010 (MIPSel softfloat).\nHome-only ограничение выключено по умолчанию: доступ из SSTP/L2TP и других подсетей определяется firewall/маршрутами KeeneticOS.\nОграничение можно включить в панели; настройка сохраняется. Слушатель остаётся на адресе Home, без wildcard/WAN-привязки.\nИсходная ревизия: 58ff21d2f60383c43f8bd637548de817464410b6, Draft PR #263.\nКомплект перенесён из успешного Actions artifact 40691209145 без пересборки.\nАрхив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.\nЭто аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.\nТег указывает на коммит публикации; исходная ревизия бинарника отдельно закреплена выше и в BUILD_INFO.\nmain/stable не изменяются; автоматической установки нет.\n",
+      "created_at": "2026-10-28T12:54:23Z",
+      "published_at": "2026-10-28T12:54:35Z",
+      "target": "38b4989c454130bb06083cf5a932933c04f87bfd",
+      "assets": [
+        {
+          "name": "kas-web-kn1010-sstp-58ff21d.tar.gz",
+          "digest": "sha256:4ba4c41093942dd0725f84aa1139b718d052e9ab5df55b2f5908bdff38e98bf2",
+          "size": 4963310,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-sstp-58ff21d/kas-web-kn1010-sstp-58ff21d.tar.gz"
+        },
+        {
+          "name": "kas-web-kn1010-sstp-58ff21d.tar.gz.sha256",
+          "digest": "sha256:bae0bcb8f103377fb670e837301dec5724328d9639acafd5ab1c6b39e2e5f4dc",
+          "size": 101,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-sstp-58ff21d/kas-web-kn1010-sstp-58ff21d.tar.gz.sha256"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-kn1010-ef63bcc",
+      "id": 426643221,
+      "name": "KAS Web: KN-1010 test ef63bcc",
+      "body": "Тестовый комплект KAS Web для Keenetic KN-1010 (MIPSel softfloat).\nИсходная ревизия: ef63bccf4a2c97fd232acbad06e958f5da213b98, Draft PR #263.\nКомплект перенесён из успешного Actions artifact 40686364136 без пересборки.\nАрхив содержит панель, установочный скрипт, BUILD_INFO, инструкцию и SHA256SUMS.\nЭто аппаратная тестовая сборка, не стабильный релиз и не подтверждение приёмки KN-1010.\nmain/stable не изменяются; автоматической установки нет.\n",
+      "created_at": "2026-10-28T12:15:33Z",
+      "published_at": "2026-10-28T12:31:18Z",
+      "target": "ef63bccf4a2c97fd232acbad06e958f5da213b98",
+      "assets": [
+        {
+          "name": "kas-web-kn1010-ef63bcc.tar.gz",
+          "digest": "sha256:9549274e0a757a2160b03ffe46c51c9e575e43e0be327c4c3af64dcbd5b7ed43",
+          "size": 4951990,
+          "download_count": 4,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-ef63bcc/kas-web-kn1010-ef63bcc.tar.gz"
+        },
+        {
+          "name": "kas-web-kn1010-ef63bcc.tar.gz.sha256",
+          "digest": "sha256:d68aac00f71f9dfad6a6d6f395121a90b159d4d3bdc07ad18c16fac41dca127a",
+          "size": 96,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-kn1010-ef63bcc/kas-web-kn1010-ef63bcc.tar.gz.sha256"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-c0dac74",
+      "id": 426860395,
+      "name": "KAS Web: optional experimental IPKs (c0dac74)",
+      "body": "Optional experimental KAS Control Center IPKs: tabbed UI, authentication settings and configurable port.\n\nFresh IPK installations default to port8081. Authentication and Home-only restriction are optional/off by default. Entware mode verifies the existing root password without storing or changing it. A separate panel password uses login kas.\n\nInstall only by choice on a test device. Existing manual panel installations must be removed by their original helper before IPK installation; preserve/save the desired old port first. The package refuses foreign/manual files. Start the panel explicitly after install/update; no KAS auto-install. User settings and KAS core are preserved on package removal.\n\nSource: c0dac7471aeda115dbcb2c3f4276e4c603eb4b33. The release tag points at the publication workflow commit; each package BUILD_INFO records the tested binary source. CI checks include real Entware opkg offline-root transactions, Go/race/Node, ARM64/MIPSel CPU emulation and existing native KeeneticOS importer/filter/lifecycle checks. These do not constitute physical acceptance of these IPKs on every architecture.\n\nInstructions: https://github.com/saymer-alt/keenetic-auto-setup/blob/c0dac7471aeda115dbcb2c3f4276e4c603eb4b33/web/control-center/packaging/README.md\nReview: https://github.com/saymer-alt/keenetic-auto-setup/pull/265\n",
+      "created_at": "2026-10-28T15:21:23Z",
+      "published_at": "2026-10-28T15:38:55Z",
+      "target": "ea669c18ee2d985bce11b8ad67270f47d931b9f6",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.0.gitc0dac7471aed-1_aarch64-3.10.ipk",
+          "digest": "sha256:4452e4c6ea9bcad0717dd5049a0da17ea60761cfb0cfa29db6c5289843b28736",
+          "size": 2631455,
+          "download_count": 3,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c0dac74/kas-control-center_0.0.0.gitc0dac7471aed-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.gitc0dac7471aed-1_armv7-3.2.ipk",
+          "digest": "sha256:b83ec50ea38c4ec72876649c2eeaf70fa0dad3885d582c6f501a937b4c5cf02a",
+          "size": 2644622,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c0dac74/kas-control-center_0.0.0.gitc0dac7471aed-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.gitc0dac7471aed-1_mips-3.4.ipk",
+          "digest": "sha256:28bdfce544d95aec42b107e448982b0d9999b40f1f0d955c1098c34b39cfe083",
+          "size": 2547695,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c0dac74/kas-control-center_0.0.0.gitc0dac7471aed-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.0.gitc0dac7471aed-1_mipsel-3.4.ipk",
+          "digest": "sha256:93eaf213e02a24714d4b67845c1c50a735f20b1e8f2824c11dab5e1be697e37c",
+          "size": 2523695,
+          "download_count": 5,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c0dac74/kas-control-center_0.0.0.gitc0dac7471aed-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:30f78a4abaced000a68f906e13c9d2f36726157c150b4e5a8754bf6bade2823d",
+          "size": 503,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-c0dac74/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "kas-web-ipk-62a97a3",
+      "id": 428629013,
+      "name": "KAS Web test16 — KN-1010 hardware acceptance",
+      "body": "Экспериментальный prerelease KAS Control Center для аппаратной приёмки на KN-1010. **Не stable.** Устанавливается только вручную поверх test15; настройки панели, пароль, порт и YAML сохраняются.\n\n**Source (точный SHA):** `62a97a3ae888f862bfcaf6f47a8131263450e662` — ветка `feat/kas-web-night-acceptance` (PR #283, стек поверх #279). Каждый IPK содержит внутренний `Version: 0.0.1~test43.62a97a3ae888-1` и `Source: 62a97a3…` в control; BUILD_INFO артефактов подтверждает `vcs.revision=62a97a3…`, `vcs.modified=false`. Проверено реальным Entware opkg: `test43` строго новее установленного `test15`. Исходный CI: [run 40970460866](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/40970460866) (success, четыре архитектуры, SHA256SUMS сверены).\n\n**Новое: самообновление WEB через IPK (#273/#279).** В панели появилось ручное «Проверить / Обновить»: отдельный worker, штатный opkg, durable gate, runtime receipt и подтверждение новой версии через свежий `/api/components`. Полный цикл доказан native ARM64 E2E в CI (real opkg/preinst → init → receipt → reconnect); отказы (место, скачивание, подменённые index/asset, чужой ABI, занятый opkg-lock, start failure + recovery) проверены.\n\n**Исправления ночной приёмки (#283):** 413 при oversized-загрузке доставлялся клиенту как сетевой сбой (RST) — тело запроса теперь ограниченно дочитывается; регрессия в `test_panel_user_night.sh` (19 сценариев).\n\n**Ограничение:** аппаратной приёмки KeeneticOS на момент публикации НЕТ — это и есть цель test16. Обратная связь по KN-1010 нужна до любых дальнейших публикаций. Channel index для самообновления ещё не публикуется. main/stable/latest, релизы ядра KAS и существующие release assets не изменялись.\n\n## KN-1010: обновление поверх test15 (mipsel-3.4)\n\nВыполнять по одному, после каждого смотреть вывод:\n\n```sh\n# 1. Текущее состояние: версия, пакет, место\nopkg list-installed | grep kas-control-center\n/opt/etc/init.d/S98kas-control-center status || true\ndf -h /opt; df -i /opt\n\n# 2. Скачать test16 (mipsel-3.4) и сверить SHA256\ncurl -fSsL --connect-timeout 7 --max-time 60 -o /tmp/test16.ipk \\\n  https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/kas-control-center_0.0.1%7Etest43.62a97a3ae888-1_mipsel-3.4.ipk\necho 'ecf646c1feb30e4a78b47c00eba771da08e62729744cd744e6ee6aa0ee31c50d  /tmp/test16.ipk' | sha256sum -c -\n\n# 3. Установить строго один пакет; ничего другого не трогаем\nopkg install /tmp/test16.ipk\n\n# 4. Запустить и проверить\n/opt/etc/init.d/S98kas-control-center start\n/opt/etc/init.d/S98kas-control-center status\n```\nIPK содержит ~7.7 MiB unpacked (`Installed-Size`); резервы места из preflight: 4×IPK + 3×payload + 8 MiB.\n\n## Восстановление при отказе старта (без опасных флагов opkg)\n\n```sh\n# Статус и журнал\n/opt/etc/init.d/S98kas-control-center status || true\n/opt/etc/init.d/S98kas-control-center start 2>&1 | tail -5\n\n# Прерванное самообновление (если появился durable gate): проверит отсутствие\n# worker/opkg, целостность payload и запустит только проверенный бинарник\n/opt/bin/kas-control-center -recover-panel-update\n\n# Откат на test15 ТОЛЬКО явной установкой прежнего IPK (зафиксируйте его URL/SHA до обновления):\n# https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-77ac40e/kas-control-center_0.0.1.test15.77ac40efcc4f-1_mipsel-3.4.ipk\n```\nНастройки (`/opt/etc/kas-control-center.settings.json`, пароль, порт) не входят в пакет и переживают установку/откат; `--force-*` не применять.",
+      "created_at": "2026-10-27T18:30:55Z",
+      "published_at": "2026-10-30T03:37:54Z",
+      "target": "main",
+      "assets": [
+        {
+          "name": "kas-control-center_0.0.1.test43.62a97a3ae888-1_aarch64-3.10.ipk",
+          "digest": "sha256:eab0f05e1a0aeba5b4e9e89258ecd783415ce1564b1d0ef4e9d65b4dbae42bac",
+          "size": 2785663,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/kas-control-center_0.0.1.test43.62a97a3ae888-1_aarch64-3.10.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test43.62a97a3ae888-1_armv7-3.2.ipk",
+          "digest": "sha256:9d88f0c3ef48e2df0d66d77770fcbc5851096f2dca6228426ea90f96eb65aa5a",
+          "size": 2801545,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/kas-control-center_0.0.1.test43.62a97a3ae888-1_armv7-3.2.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test43.62a97a3ae888-1_mips-3.4.ipk",
+          "digest": "sha256:66a7daf8364f8b41e72db02020ca33a483aa960d83f54a064e94cc20a7641060",
+          "size": 2701298,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/kas-control-center_0.0.1.test43.62a97a3ae888-1_mips-3.4.ipk"
+        },
+        {
+          "name": "kas-control-center_0.0.1.test43.62a97a3ae888-1_mipsel-3.4.ipk",
+          "digest": "sha256:ecf646c1feb30e4a78b47c00eba771da08e62729744cd744e6ee6aa0ee31c50d",
+          "size": 2678508,
+          "download_count": 2,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/kas-control-center_0.0.1.test43.62a97a3ae888-1_mipsel-3.4.ipk"
+        },
+        {
+          "name": "SHA256SUMS",
+          "digest": "sha256:5c64b31bac21132cf59b46eda596d7e72355eb8ba1d3a01f8c4f4cb0009d145e",
+          "size": 511,
+          "download_count": 1,
+          "url": "https://github.com/saymer-alt/keenetic-auto-setup/releases/download/kas-web-ipk-62a97a3/SHA256SUMS"
+        }
+      ]
+    }
+  ]
+}
