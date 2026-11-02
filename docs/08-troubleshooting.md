@@ -113,6 +113,32 @@ curl -x socks5://127.0.0.1:7890 https://ipinfo.io
 
 ---
 
+### IPv6 в сегменте и у Proxy0 — разные состояния
+
+В KeeneticOS 5.0+ галочка **«Включить IPv6»** находится в настройках
+отдельного локального сегмента (например, `Bridge0` с описанием `SSTP_SE`).
+Её не следует путать с IPv6-состоянием прокси-интерфейса `Proxy0`.
+Штатный read-only источник фактов — `show interface BridgeN` и
+`show interface ProxyN`, поле `summary.layer.ipv6`. Дополнительно
+`show ipv6 subnets` показывает действующие IPv6-подсети.
+
+```bash
+ndmc -c 'show interface Bridge0'
+ndmc -c 'show interface Proxy0'
+ndmc -c 'show ipv6 subnets'
+```
+
+В разрабатываемой версии Doctor выводит `INFO` о runtime IPv6
+для каждого обнаруженного `BridgeN` (не более восьми), и отдельно IPv4/IPv6
+для проектного `ProxyN`. **`ipv6: disabled` у LAN — нормальная настройка,**
+не WARN/FAIL, и даже link-local `fe80::` не означает, что IPv6 включён
+для клиентов сегмента. У проектного `ProxyN` `ipv4: disabled` — WARN,
+поскольку локальный успешный SOCKS-запрос не доказывает работоспособность
+маршрутизации Keenetic через этот интерфейс. `pending`/невозможность
+прочитать статус — не доказанный FAIL. Ни Doctor, ни KAS не включают IPv6
+и не меняют настройки сети автоматически.
+
+---
 ## 🟡 Watchdog
 
 ---
