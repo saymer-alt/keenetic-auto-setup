@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.21"
+DOCTOR_VERSION="1.2.22"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -2631,6 +2631,33 @@ else
         info "mitun0 interface is not present"
     fi
     info "No causal link between Mihomo state (incl. TUN stack) and MagiTrickle state is claimed by this report."
+
+    # BEGIN DOCTOR NATIVE OPKG TUN v1
+    # KeeneticOS 5.0+ recognizes opkg-created TUN devices as NDMS objects
+    # (OpkgTunN, NDM-3846). KAS standard configs keep device mitun0. This
+    # block only OBSERVES a native-named opkg tun device and its relation
+    # to the Mihomo config reference. Read-only: no settings, routes,
+    # policies or services are touched. NDM attach/boot-order behavior and
+    # traffic counters for app-created devices are field-reported as
+    # inconsistent and stay UNVERIFIED (issue #242 native-first research,
+    # 03.11.2026) - no native topology is claimed to be supported.
+    _sys_net="${KAS_SYS_NET:-/sys/class/net}"
+    _nt_devs=""
+    if [ -d "$_sys_net" ]; then
+        _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
+    fi
+    _nt_cfg_native=0
+    if grep -Eq '^[[:space:]]*device:[[:space:]]*"?opkgtun[0-9]"?([[:space:]#].*)?$' "$CONFIG" 2>/dev/null; then
+        _nt_cfg_native=1
+    fi
+    if [ "$_nt_cfg_native" -eq 1 ] && [ -n "$_nt_devs" ]; then
+        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_devs% }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
+    elif [ "$_nt_cfg_native" -eq 1 ]; then
+        info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
+    elif [ -n "$_nt_devs" ]; then
+        info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
+    fi
+    # END DOCTOR NATIVE OPKG TUN v1
 
     # Logs: MagiTrickle writes zerolog output to stdout, which is
     # lost at daemonization - there is no log file by default.
