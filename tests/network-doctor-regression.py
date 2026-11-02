@@ -667,16 +667,34 @@ def main():
         with tempfile.TemporaryDirectory(prefix="kas-netdoc-noto-") as tmp:
             lab = Path(tmp)
             fakebin = make_lab(lab, {})
+            # Field image (issue #158): no timeout binary anywhere, while the
+            # doctor's own helpers still work. Filtering PATH directories is
+            # not portable (timeout shares a directory with tr/awk on Git
+            # Bash and ubuntu), so the lab PATH is made self-contained:
+            # copies of every external helper the tool needs, NO timeout.
+            for helper in ("sed", "head", "grep", "cut", "tr", "awk", "cat",
+                           "tail", "date"):
+                src = shutil.which(helper)
+                if not src:
+                    continue
+                # forwarding shims: PATH is fakebin-only, each shim execs the
+                # real binary by absolute path; works on Git Bash and CI alike
+                shim = fakebin / helper
+                shim.write_text(
+                    "#!/bin/sh\nexec '%s' \"$@\"\n" % str(src).replace("\\", "/")
+                )
+                shim.chmod(0o755)
+            # the mocked tools are python scripts: expose python3 via a tiny
+            # exec wrapper so the real interpreter (and its DLLs) stay in place
+            real_py = shutil.which("python3") or shutil.which("python")
+            if real_py:
+                pyw = fakebin / "python3"
+                pyw.write_text(
+                    "#!/bin/sh\nexec \"%s\" \"$@\"\n" % str(real_py).replace("\\", "/")
+                )
+                pyw.chmod(0o755)
             env = base_env(lab, fakebin)
-            # remove only the directories that provide a timeout binary, so
-            # the doctor still finds its own helpers (tr/awk/grep) while the
-            # timeout wrapper stays genuinely unavailable
-            def _has_timeout(d):
-                if not d:
-                    return False
-                return any((Path(d) / n).exists() for n in ("timeout", "timeout.exe"))
-            kept = [str(fakebin)] + [d for d in env["PATH"].split(os.pathsep) if not _has_timeout(d)]
-            env["PATH"] = os.pathsep.join(kept)
+            env["PATH"] = str(fakebin)  # no timeout utility in this PATH
             r = run_tool(shell, target_args, env)
             out = r.stdout + r.stderr
             assert r.returncode == 3, ("expected exit 3", r.returncode, out[-600:])
