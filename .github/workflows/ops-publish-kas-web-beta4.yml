@@ -6,26 +6,26 @@ name: Publish KAS Web v0.1.0-beta.4 to the experimental update channel (one-shot
 # pinned, verified CI run and is hash-checked against it.
 #
 # Publishing transaction, in order:
-#   1. Pinned SOURCE_SHA + VERIFIED_RUN are resolved and refused on placeholders.
-#   2. The live experimental channel state and repository Latest are recorded;
-#      anything other than the PREVIOUS_TAG index (v0.1.0-beta.3) or this
-#      run's own beta.4 index
-#      refuses the run (never clobber an unknown live index).
-#   3. CI artifacts are downloaded and hash-verified; the channel index for
-#      beta.4 is rebuilt from them.
-#   4. The beta.4 release is created as a DRAFT first and published
-#      (draft=false) only after its assets verify byte for byte. A partial
-#      upload therefore leaves an invisible draft, not a public broken release,
-#      and a later retry resumes the same draft instead of failing forever.
-#   5. The experimental channel index is switched, and the restore trap stays
-#      armed until EVERY final publication assertion has passed (index digest,
-#      asset metadata and the GitHub Latest invariant). On any failure the trap
-#      reinstates the verified PREVIOUS_TAG backup — but only when the live asset is
-#      still the one this run uploaded, so a parallel index change is never
-#      clobbered. An unexpected Latest change restores the channel and then
-#      fails loudly: the workflow never rewrites or deletes Latest itself.
-#   6. A repeat run after any partial failure is safe: the existing release is
-#      deep-verified against the same manifests and completed, never recreated.
+# 1. Pinned SOURCE_SHA + VERIFIED_RUN are resolved and refused on placeholders.
+# 2. The live experimental channel state and repository Latest are recorded;
+# anything other than the PREVIOUS_TAG index (v0.1.0-beta.3) or this
+# run's own beta.4 index
+# refuses the run (never clobber an unknown live index).
+# 3. CI artifacts are downloaded and hash-verified; the channel index for
+# beta.4 is rebuilt from them.
+# 4. The beta.4 release is created as a DRAFT first and published
+# (draft=false) only after its assets verify byte for byte. A partial
+# upload therefore leaves an invisible draft, not a public broken release,
+# and a later retry resumes the same draft instead of failing forever.
+# 5. The experimental channel index is switched, and the restore trap stays
+# armed until EVERY final publication assertion has passed (index digest,
+# asset metadata and the GitHub Latest invariant). On any failure the trap
+# reinstates the verified PREVIOUS_TAG backup — but only when the live asset is
+# still the one this run uploaded, so a parallel index change is never
+# clobbered. An unexpected Latest change restores the channel and then
+# fails loudly: the workflow never rewrites or deletes Latest itself.
+# 6. A repeat run after any partial failure is safe: the existing release is
+# deep-verified against the same manifests and completed, never recreated.
 
 on:
   push:
@@ -76,7 +76,7 @@ jobs:
             echo "A kas-web-ipk alias must not be created; refusing" >&2; exit 1
           fi
           gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > "$RUNNER_TEMP/old-channel.json"
-          gh release download "$CHANNEL_TAG" --repo "$GH_REPO"             --pattern panel-update.json --dir "$RUNNER_TEMP/live-index"
+          gh release download "$CHANNEL_TAG" --repo "$GH_REPO" --pattern panel-update.json --dir "$RUNNER_TEMP/live-index"
           python3 - "$RUNNER_TEMP/old-channel.json" "$RUNNER_TEMP/live-index/panel-update.json" <<'PY'
           import json,os,sys
           r=json.load(open(sys.argv[1]))
@@ -84,12 +84,14 @@ jobs:
           assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
           assert [a['name'] for a in r['assets']]==['panel-update.json']
           assert r['assets'][0]['state']=='uploaded'
-          assert index['tag'] in (os.environ['PREVIOUS_TAG'], os.environ['BETA_TAG']),             'live experimental index points at %s; refusing to publish over an unknown state' % index['tag']
+          assert index['tag'] in (os.environ['PREVIOUS_TAG'], os.environ['BETA_TAG']), 'live experimental index points at %s; refusing to publish over an unknown state' % index['tag']
           print('PASS: experimental channel found with a single uploaded index asset (tag %s); it will be backed up and verified' % index['tag'])
           PY
           # The repository "Latest" release must be identical after publishing
           # (KAS Core latest is never moved by a KAS WEB beta). Recorded here,
           # asserted again under the restore trap after the channel switch.
+          gh release download "$CHANNEL_TAG" --repo "$GH_REPO" --pattern panel-update.json --dir "$RUNNER_TEMP/legacy-before"
+          sha256sum "$RUNNER_TEMP/legacy-before/panel-update.json" | cut -d' ' -f1 > "$RUNNER_TEMP/legacy-index.sha256"
           gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' > "$RUNNER_TEMP/latest-before.txt"
       - uses: actions/checkout@v4
         with:
@@ -230,72 +232,18 @@ jobs:
           assert assets['SHA256SUMS']['browser_download_url'].endswith('/'+os.environ['BETA_TAG']+'/SHA256SUMS')
           print('PASS: published release carries the canonical download URLs')
           PY
-      - name: Switch only experimental channel index (canonical BETA_TAG), verify, restore on any failure until the final gate
+      - name: Verify the legacy channel was NOT touched by this release-only run
         run: |
           set -euo pipefail
-          # Digests of the three states this step reasons about.
-          sha256sum build/panel-update.json | cut -d' ' -f1 > build/new-index.sha256
-          sha256sum build/channel-old/panel-update.json | cut -d' ' -f1 > build/old-index.sha256
-          live_digest() {
-            gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" --jq '.assets[0].digest' 2>/dev/null | cut -d':' -f2
-          }
-          restore() {
-            status=$?
-            trap - EXIT # one rollback attempt; never re-enter the trap
-            if [ "$status" -eq 0 ]; then return; fi
-            echo "Publication verification failed (exit $status); rolling back the experimental index" >&2
-            live=$(live_digest || true)
-            if [ "$live" = "$(cat build/new-index.sha256)" ]; then
-              # The live asset is still ours: safe to reinstate the verified
-              # beta.2 backup byte for byte.
-              if gh release upload "$CHANNEL_TAG" build/channel-old/panel-update.json \
-                   --repo "$GH_REPO" --clobber; then
-                restored=$(live_digest || true)
-                if [ "$restored" = "$(cat build/old-index.sha256)" ]; then
-                  echo "RESTORED: experimental channel is back on the verified beta.2 index" >&2
-                else
-                  echo "RESTORE FAILED: upload accepted but the live digest does not match the beta.2 backup; manual intervention required" >&2
-                fi
-              else
-                echo "RESTORE FAILED: manual intervention required (beta.2 backup: build/channel-old/panel-update.json)" >&2
-              fi
-            elif [ "$live" = "$(cat build/old-index.sha256)" ]; then
-              echo "RESTORED (already): live index is the beta.2 backup; nothing to clobber" >&2
-            elif [ -z "$live" ]; then
-              echo "RESTORE FAILED: could not read the live index digest; manual intervention required (beta.2 backup: build/channel-old/panel-update.json)" >&2
-            else
-              # Someone changed the index after our upload. Reinstating beta.2
-              # would destroy that parallel change, so leave it and escalate.
-              echo "RESTORE SKIPPED: live index changed after our upload (digest $live); refusing to clobber a parallel change — manual comparison required" >&2
-            fi
-            echo "NOTE: the created release/tag is NOT removed automatically; inspect it before any manual cleanup" >&2
-          }
-          trap restore EXIT
-          live=$(live_digest)
-          if [ "$live" = "$(cat build/old-index.sha256)" ]; then
-            gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
-          elif [ "$live" = "$(cat build/new-index.sha256)" ]; then
-            echo "Live experimental index already carries this exact beta.4 index (previous partial run); verifying instead of re-uploading"
-          else
-            echo "Live experimental index is neither the previous backup nor this run's beta.4 index; refusing to overwrite an unknown state" >&2
-            exit 1
-          fi
-          gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
-          python3 - <<'PY'
-          import json,hashlib,pathlib,os
-          r=json.load(open('build/channel-updated.json'))
-          index=pathlib.Path('build/panel-update.json').read_bytes()
-          assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
-          assert len(r['assets'])==1 and r['assets'][0]['name']=='panel-update.json'
-          assert r['assets'][0]['digest']=='sha256:'+hashlib.sha256(index).hexdigest()
-          assert r['assets'][0]['size']==len(index) and r['assets'][0]['state']=='uploaded'
-          assert json.loads(index)['tag']==os.environ['BETA_TAG']
-          print('PASS: experimental channel points existing panels at the canonical beta.4 release')
-          PY
-          # All final publication assertions stay INSIDE the restore window:
-          # a failure here must still reinstate the beta.2 index.
-          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = "$(cat "$RUNNER_TEMP/latest-before.txt")" \
-            || { echo "FATAL: repository Latest release changed during publishing — the channel is being restored; investigate Latest manually (never rewrite Latest automatically)" >&2; exit 1; }
-          trap - EXIT
-          echo 'PASS: published canonical beta.4 and switched the experimental index; Latest unchanged'
-          echo 'NOTE: if this workflow had failed and restored earlier, do not declare the release fully deployed unless this final PASS printed.'
+          # Stage A contract: this workflow publishes the release and must not
+          # modify kas-web-channel-experimental, Pages, or any update index.
+          before=$(cat "$RUNNER_TEMP/legacy-index.sha256")
+          gh release download "$CHANNEL_TAG" --repo "$GH_REPO" --pattern panel-update.json --dir build/legacy-after
+          after=$(sha256sum build/legacy-after/panel-update.json | cut -d' ' -f1)
+          test "$before" = "$after" || { echo "FATAL: legacy channel index changed during a release-only run" >&2; exit 1; }
+          echo "PASS: legacy experimental channel untouched (index sha256 $after)"
+      - name: Verify GitHub Latest is unchanged
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = "$(cat "$RUNNER_TEMP/latest-before.txt")" || { echo "FATAL: repository Latest release changed during publishing; investigate manually (never rewrite Latest automatically)" >&2; exit 1; }
+          echo 'PASS: published the beta.4 release; legacy channel, Pages and Latest untouched'

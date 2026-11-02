@@ -1,0 +1,248 @@
+name: Switch the legacy experimental channel to KAS Web v0.1.0-beta.4 (one-shot, requires owner GO)
+
+# Stage C of the beta.4 publication (docs/updates-pages-architecture.md):
+# runs ONLY after Stage A (beta.4 Release published) and Stage B (GitHub
+# Pages serving the beta.4 index, verified). This workflow switches the
+# legacy kas-web-channel-experimental release index from beta.3 to beta.4
+# so installed beta.3 panels can upgrade.
+#
+# Fail-closed preconditions (all verified before any mutation):
+#   - the beta.4 Release is published with 5 uploaded assets;
+#   - GitHub Pages registry marks experimental published with BETA_TAG and
+#     serves an experimental index byte-identical to the one rebuilt from
+#     the verified CI artifacts;
+#   - the legacy live index is either PREVIOUS_TAG (expected) or already
+#     BETA_TAG (idempotent rerun). Anything else — including network or
+#     HTTP errors on the Pages read — aborts without touching anything.
+#
+# Rollback: on any failure after the upload, the previous index bytes are
+# reinstated (unless a parallel change is detected — that escalates).
+# GitHub Latest is asserted unchanged. Never rewrite Latest automatically.
+
+on:
+  push:
+    branches:
+      - ops/switch-legacy-channel-beta4
+    paths:
+      - .github/workflows/ops-switch-legacy-channel-beta4.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kas-web-legacy-switch
+  cancel-in-progress: false
+
+jobs:
+  switch:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_SHA: 0000000000000000000000000000000000000000 # PIN the beta.4 head SHA (merge commit) before triggering
+      VERIFIED_RUN: '0' # PIN the successful candidate-build run id for that SHA
+      BETA_TAG: v0.1.0-beta.4
+      PREVIOUS_TAG: v0.1.0-beta.3 # the currently live legacy release
+      CHANNEL_TAG: kas-web-channel-experimental
+      BETA_VERSION: '0.1.0~beta.4-1'
+      ARTIFACT_PREFIX: kas-web-beta4
+      PAGES_BASE: https://saymer-alt.github.io/keenetic-auto-setup
+    steps:
+      - name: Validate pins, the beta.4 release and the verified run
+        run: |
+          set -euo pipefail
+          case "$SOURCE_SHA" in [0-9a-f]*) test "${#SOURCE_SHA}" -eq 40 || { echo "PIN SOURCE_SHA (40 hex)" >&2; exit 1; };; *) echo "PIN SOURCE_SHA" >&2; exit 1;; esac
+          case "$SOURCE_SHA" in 0000000000000000000000000000000000000000) echo "SOURCE_SHA is still the placeholder" >&2; exit 1;; esac
+          case "$VERIFIED_RUN" in 0|'') echo "PIN VERIFIED_RUN" >&2; exit 1;; esac
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.head_sha')" = "$SOURCE_SHA"
+          test "$(gh api "repos/$GH_REPO/actions/runs/$VERIFIED_RUN" --jq '.conclusion')" = success
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$BETA_TAG" --jq '.object.sha')" = "$SOURCE_SHA"
+          gh api "repos/$GH_REPO/releases/tags/$BETA_TAG" > "$RUNNER_TEMP/release.json"
+          python3 - "$RUNNER_TEMP/release.json" <<'PY'
+          import json,os,sys
+          r=json.load(open(sys.argv[1]))
+          assert r['tag_name']==os.environ['BETA_TAG'] and not r['draft'] and r['target_commitish']==os.environ['SOURCE_SHA']
+          assert r['prerelease'] is True
+          assert len(r['assets'])==5 and all(a['state']=='uploaded' for a in r['assets'])
+          print('PASS: beta.4 release is published with 5 uploaded assets')
+          PY
+          gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' > "$RUNNER_TEMP/latest-before.txt"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Download hash-checked artifacts and rebuild the beta.4 index
+        run: |
+          set -euo pipefail
+          mkdir -p build/ipk build/ci-manifests
+          for arch in aarch64-3.10 armv7-3.2 mipsel-3.4 mips-3.4; do
+            dir="build/artifact-$arch"; mkdir -p "$dir"
+            gh run download "$VERIFIED_RUN" --repo "$GH_REPO" \
+              --name "$ARTIFACT_PREFIX-$arch-$SOURCE_SHA" --dir "$dir"
+            (cd "$dir" && sha256sum -c SHA256SUMS)
+            cp "$dir/manifest-canonical.json" "build/ci-manifests/$arch.json"
+            src="$(find "$dir" -maxdepth 1 -name '*.ipk' -type f -print -quit)"
+            cp "$src" "build/ipk/$(basename "$src" | tr '~' '.')"
+          done
+          test "$(find build/ci-manifests -maxdepth 1 -name '*.json' -type f | wc -l)" -eq 4
+          python3 web/control-center/packaging/update-manifest.py \
+            --channel experimental --tag "$BETA_TAG" build/ipk/*.ipk > build/panel-update.json
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          canonical=json.loads(pathlib.Path('build/panel-update.json').read_text())
+          assert canonical['tag']==os.environ['BETA_TAG'] and canonical['channel']=='experimental'
+          ci={}
+          for arch in ('aarch64-3.10','armv7-3.2','mipsel-3.4','mips-3.4'):
+              m=json.loads(pathlib.Path('build/ci-manifests',arch+'.json').read_text())
+              assert m['tag']==os.environ['BETA_TAG'] and len(m['packages'])==1
+              x=dict(m['packages'][0]); x['name']=x['name'].replace('~','.')
+              assert x['architecture']==arch and x['source_sha']==os.environ['SOURCE_SHA']
+              ci[arch]=x
+          assert {p['architecture']:p for p in canonical['packages']}==ci, 'CI manifest mismatch'
+          for p in canonical['packages']:
+              raw=pathlib.Path('build/ipk',p['name']).read_bytes()
+              assert p['sha256']==hashlib.sha256(raw).hexdigest() and p['size']==len(raw)
+          print('PASS: rebuilt beta.4 index agrees with verified CI manifests and IPK bytes')
+          PY
+      - name: Verify GitHub Pages serves this exact beta.4 index (fail closed)
+        run: |
+          set -euo pipefail
+          fetch() { # fetch <url> <outfile>: 0 on HTTP 200, 4 on HTTP 404, 1 on other errors
+            local code
+            code=$(curl -sSL --max-time 20 -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || return 1
+            if [ "$code" = "200" ]; then return 0; fi
+            if [ "$code" = "404" ]; then return 4; fi
+            return 1
+          }
+          expected=$(sha256sum build/panel-update.json | cut -d' ' -f1)
+          fetch "$PAGES_BASE/updates/channels.json" build/pages-registry.json \
+            || { echo "Pages registry is unreachable; refusing to switch the legacy channel" >&2; exit 1; }
+          fetch "$PAGES_BASE/updates/experimental/panel-update.json" build/pages-index.json \
+            || { echo "Pages experimental index is unreachable; refusing to switch the legacy channel" >&2; exit 1; }
+          python3 - <<'PY'
+          import hashlib,json,os
+          reg=json.load(open('build/pages-registry.json'))
+          idx=json.load(open('build/pages-index.json'))
+          expected=open('build/panel-update.json','rb').read()
+          assert reg.get('schema')==1
+          e=reg['channels'].get('experimental',{})
+          assert e.get('published') is True and e.get('tag')==os.environ['BETA_TAG'], \
+            'Pages registry does not declare experimental published at %s' % os.environ['BETA_TAG']
+          assert idx['tag']==os.environ['BETA_TAG'], 'Pages experimental index tag mismatch'
+          assert hashlib.sha256(open('build/pages-index.json','rb').read()).hexdigest() \
+             == hashlib.sha256(expected).hexdigest(), 'Pages index bytes differ from the rebuilt index'
+          s=reg['channels'].get('stable',{})
+          assert s.get('published') is False, 'Stable must stay unpublished'
+          print('PASS: Pages serves beta.4 (registry + index verified by digest)')
+          PY
+      - name: Classify the legacy live state and back it up
+        run: |
+          set -euo pipefail
+          fetch() {
+            local code
+            code=$(curl -sSL --max-time 20 -o "$2" -w '%{http_code}' "$1" 2>/dev/null) || return 1
+            if [ "$code" = "200" ]; then return 0; fi
+            if [ "$code" = "404" ]; then return 4; fi
+            return 1
+          }
+          if ! fetch "$(gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" --jq '.assets[0].browser_download_url')" \
+              build/legacy-live.json; then
+            echo "legacy live index is unreachable; refusing to switch on an unverified state" >&2
+            exit 1
+          fi
+          legacy_tag=$(python3 -c 'import json,sys;print(json.load(open("build/legacy-live.json"))["tag"])')
+          echo "legacy live tag: $legacy_tag"
+          if [ "$legacy_tag" = "$BETA_TAG" ]; then
+            if python3 -c 'import hashlib,sys;a=open("build/legacy-live.json","rb").read();b=open("build/panel-update.json","rb").read();sys.exit(0 if hashlib.sha256(a).hexdigest()==hashlib.sha256(b).hexdigest() else 1)'; then
+              echo "ALREADY SWITCHED: legacy index is byte-identical to the beta.4 index; nothing to do"
+              # Marker for the next step: a bare `exit 0` here would still let
+              # the switch step run and fail on the missing backup files.
+              touch build/already-switched
+              exit 0
+            fi
+            echo "legacy tag is $BETA_TAG but bytes differ from the rebuilt index; refusing to overwrite an unknown state" >&2
+            exit 1
+          fi
+          if [ "$legacy_tag" != "$PREVIOUS_TAG" ]; then
+            echo "legacy live tag is $legacy_tag, expected $PREVIOUS_TAG; refusing to switch over an unknown state" >&2
+            exit 1
+          fi
+          cp build/legacy-live.json build/legacy-backup.json
+          sha256sum build/legacy-backup.json | cut -d' ' -f1 > build/legacy-backup.sha256
+          echo "BACKED UP: legacy beta.3 index (sha256 $(cat build/legacy-backup.sha256))"
+      - name: Switch the legacy index to beta.4 (backup + restore trap + Latest gate)
+        run: |
+          set -euo pipefail
+          if [ -f build/already-switched ]; then
+            echo 'PASS: idempotent rerun - the legacy channel already serves beta.4; nothing to do'
+            exit 0
+          fi
+          new_digest=$(sha256sum build/panel-update.json | cut -d' ' -f1)
+          backup_digest=$(cat build/legacy-backup.sha256)
+          live_digest() {
+            gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" --jq '.assets[0].digest' 2>/dev/null | cut -d':' -f2
+          }
+          restore() {
+            status=$?
+            trap - EXIT # one rollback attempt; never re-enter the trap
+            if [ "$status" -eq 0 ]; then return; fi
+            echo "Legacy switch failed (exit $status); rolling back to $PREVIOUS_TAG" >&2
+            live=$(live_digest || true)
+            if [ "$live" = "$new_digest" ]; then
+              # gh release upload has no --filename flag: stage the backup
+              # under the canonical asset name so the clobber targets the
+              # same single panel-update.json asset (never adds a second one).
+              mkdir -p build/restore
+              cp build/legacy-backup.json build/restore/panel-update.json
+              if gh release upload "$CHANNEL_TAG" build/restore/panel-update.json \
+                   --repo "$GH_REPO" --clobber \
+                 || gh release upload "$CHANNEL_TAG" build/restore/panel-update.json \
+                      --repo "$GH_REPO" --clobber; then
+                restored=$(live_digest || true)
+                if [ "$restored" = "$(cat build/legacy-backup.sha256)" ]; then
+                  echo "RESTORED: legacy channel is back on $PREVIOUS_TAG" >&2
+                else
+                  echo "RESTORE FAILED: upload accepted but live digest does not match the backup; manual intervention required" >&2
+                fi
+              else
+                echo "RESTORE FAILED: manual intervention required" >&2
+              fi
+            elif [ "$live" = "$(cat build/legacy-backup.sha256)" ]; then
+              echo "RESTORED (already): live index is the backup; nothing to clobber" >&2
+            elif [ -z "$live" ]; then
+              echo "RESTORE FAILED: could not read the live digest; manual intervention required" >&2
+            else
+              echo "RESTORE SKIPPED: live index changed after our upload (digest $live); refusing to clobber a parallel change — manual comparison required" >&2
+            fi
+          }
+          trap restore EXIT
+          live=$(live_digest)
+          if [ "$live" != "$(cat build/legacy-backup.sha256)" ]; then
+            echo "live legacy index changed since the precheck; refusing to overwrite an unknown state" >&2
+            exit 1
+          fi
+          gh release upload "$CHANNEL_TAG" build/panel-update.json --repo "$GH_REPO" --clobber
+          gh api "repos/$GH_REPO/releases/tags/$CHANNEL_TAG" > build/channel-updated.json
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          r=json.load(open('build/channel-updated.json'))
+          index=pathlib.Path('build/panel-update.json').read_bytes()
+          assert r['tag_name']=='kas-web-channel-experimental' and not r['draft']
+          assert len(r['assets'])==1 and r['assets'][0]['name']=='panel-update.json'
+          assert r['assets'][0]['digest']=='sha256:'+hashlib.sha256(index).hexdigest()
+          assert r['assets'][0]['size']==len(index) and r['assets'][0]['state']=='uploaded'
+          assert json.loads(index)['tag']==os.environ['BETA_TAG']
+          print('PASS: legacy experimental channel points existing panels at beta.4')
+          PY
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = "$(cat "$RUNNER_TEMP/latest-before.txt")" \
+            || { echo "FATAL: repository Latest release changed during the switch — the legacy channel is being restored; investigate Latest manually (never rewrite Latest automatically)" >&2; exit 1; }
+          trap - EXIT
+          echo 'PASS: legacy channel switched to beta.4; Latest unchanged'
+          echo 'NOTE: installed beta.3 panels can now upgrade to beta.4 through the legacy channel; beta.4 panels read GitHub Pages.'
+        env:
+          LATEST_BEFORE_FILE: latest-before.txt
