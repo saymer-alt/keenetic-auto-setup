@@ -1,5 +1,8 @@
 # AGENTS.md — keenetic-auto-setup
 
+> **Общее правило для всех проектов saymer-alt:** [Proof Before Build](https://github.com/saymer-alt/saymer-alt/blob/main/PROOF-BEFORE-BUILD.md) ([PR #9](https://github.com/saymer-alt/saymer-alt/pull/9)). Специализированное ТЭО и пример KAS: [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). Новые функции — только после доказательства проблемы, сравнения альтернатив, оценки пользы, стоимости и рисков. Обязательные safety-контракты KAS сохраняются.
+
+
 ## ⚑ Решение владельца от 2026-10-11: WORKING-FIRST / LICENSE AUDIT DEFERRED
 
 **ПРОЕКТЫ ВЕДУТСЯ В ПЕРВУЮ ОЧЕРЕДЬ ДЛЯ ЛИЧНОГО НЕКОММЕРЧЕСКОГО ИСПОЛЬЗОВАНИЯ. РЕПОЗИТОРИИ ПУБЛИЧНЫЕ.**
@@ -113,6 +116,7 @@ Confirmed by code and docs:
   (update-mihomo.sh); backup + sanity + sh -n + atomic mv (update-watchdog.sh).
 - Simplicity is more important than features (docs/10): do not add a feature that
   complicates the system and raises breakage risk.
+- **Proof Before Build (owner decision 2026-10-26):** before implementing a new feature or major integration, first defend the need, reproduce the problem, compare alternatives including native KeeneticOS/wait/no change, evaluate technical/economic benefit, full maintenance costs, risks and measurable acceptance criteria. Follow [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). A one-issue short assessment suffices; a failed proof means defer/skip, not expanding scope. Existing safety contracts and routine narrowly scoped bug fixes are not waived.
 - User-facing terminal status colors are a project contract, not decoration. Follow
   [docs/18-output-colors.md](docs/18-output-colors.md): normal progress and OK are green,
   INFO is cyan, WARN is yellow, ERROR/FAIL are red. Textual prefixes remain mandatory;
@@ -187,6 +191,11 @@ Risk-zone specifics:
 - Tunnel MTU: "slow / some sites do not work" can be a path-MTU symptom. Do not treat 1200–1300 as a universal default: 1200 is a live-working anchor for the documented nested Keenetic WARP-over-ProxyN/Mihomo topology. Distinguish the Keenetic WireGuard/WARP MTU from Mihomo `tun.mtu` (`mitun0`); see docs/09 and encyclopedia/34.
 
 ## 6. AI agent working rules
+
+**MANDATORY — KAS-AGENT-001 / anti-monkey-paw task contract (owner decision, 2026-10-30).**
+**Общая политика для всех репозиториев:** [saymer-alt/AGENT-TASK-CONTRACT.md](https://github.com/saymer-alt/saymer-alt/blob/main/AGENT-TASK-CONTRACT.md) (обязательна наряду с более строгим локальным KAS-AGENT-001).
+Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read [docs/AGENT-TASK-CONTRACT.md](docs/AGENT-TASK-CONTRACT.md) and [docs/CONSTITUTION.md](docs/CONSTITUTION.md). Tasks that affect repository history, releases, IPKs, updater, running services, network or owner settings must be written **clearly and in sufficient technical detail**, not shortened to save tokens: state the human-visible goal, current refs/SHA and already completed work, scope and non-goals, protected state, dependencies, explicit permission gates, negative cases, exact tests and Definition of Done. **A technically literal but harmful outcome is FAIL**, even if all listed steps were performed. Do not infer destructive permissions from vague verbs such as "cleanup", "merge" or "release"; when materially ambiguous, stop that risky action and continue safe authorized work. In final reports distinguish planned, implemented, CI-verified, field-tested, merged and published. Small narrow changes may use proportionally shorter specifications; never omit essential constraints.
+
 
 - Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
   bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.

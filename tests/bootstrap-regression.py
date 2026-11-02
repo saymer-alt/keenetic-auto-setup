@@ -18,6 +18,12 @@ download_project_script() { :; }
 printf 'SETUP_RAN\\n'
 """
 BAD_SYNTAX = GOOD + "if then\n"
+GOOD_IMPORT = """#!/bin/sh
+# BEGIN MIHOMO LIFECYCLE LOCK v1
+printf 'IMPORT_RAN\\n'
+printf 'Example start: mixed-port: 7890\\n'
+"""
+BAD_IMPORT_SYNTAX = GOOD_IMPORT + "if then\n"
 MOCK = r"""#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -46,28 +52,33 @@ log.append(phase)
 count.write_text(json.dumps(log))
 plan=json.loads((lab/'plan.json').read_text())
 action=plan.get(phase,'fail')
+good=os.environ.get('GOOD_IMPORT') if os.environ.get('SCRIPT_MODE')=='import' else os.environ['GOOD_SCRIPT']
+bad=os.environ.get('BAD_IMPORT_SYNTAX') if os.environ.get('SCRIPT_MODE')=='import' else os.environ['BAD_SYNTAX']
 if action=='fail':
     dst.write_text('#!/bin/sh\\necho PARTIAL_SHOULD_NEVER_RUN\\n')
     sys.exit(28)
 if action=='good':
-    dst.write_text(os.environ['GOOD_SCRIPT'])
+    dst.write_text(good)
 elif action=='bad_syntax':
-    dst.write_text(os.environ['BAD_SYNTAX'])
+    dst.write_text(bad)
 elif action=='html':
     dst.write_text('<html>not a shell script</html>')
 elif action=='json':
     dst.write_text('{"content":"base64"}')
 elif action=='empty':
     dst.write_text('')
+elif action=='wrong_script':
+    dst.write_text(os.environ['GOOD_SCRIPT'])
 elif action=='exit7':
-    dst.write_text(os.environ['GOOD_SCRIPT'].replace(
-        "printf 'SETUP_RAN\\n'","printf 'SETUP_RAN\\n'; exit 7"))
+    mark=os.environ.get('RUN_MARK') or 'SETUP_RAN'
+    dst.write_text(good.replace("printf '"+mark+"\\n'", "printf '"+mark+"\\n'; exit 7"))
 else:
     raise RuntimeError(action)
 """
 
 
-def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=()):
+def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=(),
+             script_mode=None, run_marker="SETUP_RAN", script_name="setup.sh"):
     with tempfile.TemporaryDirectory(prefix="kas-bootstrap-test-") as tmp:
         lab = Path(tmp)
         fakebin = lab / "bin"
@@ -83,10 +94,15 @@ def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=()):
             "LAB": tmp,
             "GOOD_SCRIPT": GOOD,
             "BAD_SYNTAX": BAD_SYNTAX,
+            "GOOD_IMPORT": GOOD_IMPORT,
+            "BAD_IMPORT_SYNTAX": BAD_IMPORT_SYNTAX,
             "KAS_BOOTSTRAP_REF": "test-ref",
             "NO_COLOR": "1",
             "TERM": "dumb",
         })
+        if script_mode:
+            env["SCRIPT_MODE"] = script_mode
+            env["RUN_MARK"] = run_marker
         r = subprocess.run(
             shell + [str(ROOT / "bootstrap.sh"), *cli_args],
             text=True,
@@ -101,14 +117,16 @@ def exercise(shell, title, plan, want_calls, want_exit, want_run, cli_args=()):
         if r.returncode != want_exit:
             raise AssertionError((title, r.returncode, want_exit, r.stdout, r.stderr))
         assert calls == want_calls, (title, calls, want_calls, r.stdout, r.stderr)
-        assert ("SETUP_RAN" in r.stdout) == want_run, (
+        assert (run_marker in r.stdout) == want_run, (
             title, r.stdout, r.stderr)
         if title == "safe_check_only":
+            assert "CHECK_ONLY" in r.stdout and "nothing executed" in r.stdout
+        if title == "import_check_only":
             assert "CHECK_ONLY" in r.stdout and "nothing executed" in r.stdout
         assert not list(lab.glob("kas-setup.*")), (title, "staged secret not removed")
         assert "PARTIAL_SHOULD_NEVER_RUN" not in r.stdout, title
         if want_exit == 1 and not want_run:
-            assert "Could not fetch valid KAS setup.sh" in r.stderr, (title, r.stderr)
+            assert ("Could not fetch valid KAS " + script_name) in r.stderr, (title, r.stderr)
         print("PASS", shell, title)
 
 
@@ -134,6 +152,32 @@ def main():
                                                      "api": "bad_syntax"},
                  ["raw", "ipv4", "api"], 1, False)
         exercise(shell, "exit_propagation", {"raw": "exit7"}, ["raw"], 7, True)
+        import_args = ("--script", "config-import.sh")
+        exercise(shell, "import_raw_reset_then_ipv4_good",
+                 {"raw": "fail", "ipv4": "good"}, ["raw", "ipv4"], 0, True,
+                 cli_args=import_args, script_mode="import", run_marker="IMPORT_RAN",
+                 script_name="config-import.sh")
+        exercise(shell, "import_all_sources_fail", {},
+                 ["raw", "ipv4", "api"], 1, False,
+                 cli_args=import_args, script_mode="import",
+                 script_name="config-import.sh")
+        exercise(shell, "import_html_rejected", {"raw": "html", "ipv4": "html", "api": "html"},
+                 ["raw", "ipv4", "api"], 1, False,
+                 cli_args=import_args, script_mode="import",
+                 script_name="config-import.sh")
+        exercise(shell, "import_wrong_script_rejected",
+                 {"raw": "wrong_script", "ipv4": "wrong_script", "api": "wrong_script"},
+                 ["raw", "ipv4", "api"], 1, False,
+                 cli_args=import_args, script_mode="import",
+                 script_name="config-import.sh")
+        exercise(shell, "import_bad_shell_rejected",
+                 {"raw": "bad_syntax", "ipv4": "bad_syntax", "api": "bad_syntax"},
+                 ["raw", "ipv4", "api"], 1, False,
+                 cli_args=import_args, script_mode="import",
+                 script_name="config-import.sh")
+        exercise(shell, "import_check_only", {"raw": "good"}, ["raw"], 0, False,
+                 cli_args=("--check", *import_args), script_mode="import",
+                 run_marker="IMPORT_RAN", script_name="config-import.sh")
         with tempfile.TemporaryDirectory(prefix="kas-bootstrap-ref-") as tmp:
             env = os.environ.copy()
             env["KAS_BOOTSTRAP_REF"] = "../../attacker"

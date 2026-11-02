@@ -1,0 +1,50 @@
+name: KAS Web night user-scenario acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/test_panel_user_night.sh'
+      - 'web/control-center/**'
+      - '.github/workflows/web-night-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  night-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Build panel and fetch real mihomo and Entware opkg
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          (cd web/control-center && go generate ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath \
+            -ldflags "-X main.panelBuildVersion=0.0.0~night-1 -X main.panelBuildSHA=$SOURCE_SHA" \
+            -o "$RUNNER_TEMP/kas-night-native" .)
+          curl --fail --location --connect-timeout 15 --max-time 180 \
+            https://github.com/MetaCubeX/mihomo/releases/download/v1.19.13/mihomo-linux-amd64-compatible-v1.19.13.gz \
+            -o "$RUNNER_TEMP/mihomo.gz"
+          printf '%s  %s\n' e7a2bb3680cfbc58f9c382e46ca1863eb6093743da2ba86a81588bb552b8002a "$RUNNER_TEMP/mihomo.gz" | sha256sum -c -
+          gunzip -c "$RUNNER_TEMP/mihomo.gz" > "$RUNNER_TEMP/mihomo-amd64"
+          printf '%s  %s\n' beb84c5168ca6b5a4a4874731b6e994d8a082a353ba566eddd5c7536fd40d5c4 "$RUNNER_TEMP/mihomo-amd64" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/mihomo-amd64"
+          curl --fail --location --connect-timeout 15 --max-time 60 \
+            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
+          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+      - name: User-scenario acceptance on real processes (not firmware acceptance)
+        run: |
+          sudo env KAS_SERVICE_LAB=1 GITHUB_ACTIONS=true \
+            sh tests/test_panel_user_night.sh \
+            "$RUNNER_TEMP/kas-night-native" "$RUNNER_TEMP/mihomo-amd64" \
+            "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA"

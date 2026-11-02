@@ -8,8 +8,9 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 
 | Script | Purpose / documentation |
 | --- | --- |
-| [`uninstall.sh`](../../uninstall.sh) | [Read-only `--check` preflight; `--remove`/`--purge` are blocked](../23-uninstall.md) |
-| [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` with GitHub fallbacks before starting the wizard](SETUP.md#why-bootstrapsh-exists) |
+| [`uninstall-packages.sh`](../../uninstall-packages.sh) | [Stop Mihomo/MagiTrickle via native Entware init.d, then remove their packages through OPKG; YAML preserved, KeeneticOS routing/DNS/Netfilter retained](../23-uninstall.md) |
+| [`uninstall.sh`](../../uninstall.sh) | [Read-only `--check`/`--plan` preflight; `--remove`/`--purge` are blocked](../23-uninstall.md) |
+| [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` (or `--script config-import.sh` — the standalone importer, #255) with GitHub fallbacks before starting the selected target](SETUP.md#why-bootstrapsh-exists) |
 | [`setup.sh`](../../setup.sh) | [Setup wizard: detects `ram`/`disk`, delegates to `install.sh`, offers configuration import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |
 | [`config-import.sh`](../../config-import.sh) | [Import and safely replace `config.yaml`](CONFIG_IMPORT.md) |
@@ -19,6 +20,10 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 | [`mihomo-interface-check.sh`](../../mihomo-interface-check.sh) | [Show Linux WAN/VPN interface names for `interface-name`](../../ARCHITECTURE.md) |
 | [`mihomo-proxy-selection-watch.sh`](../../mihomo-proxy-selection-watch.sh) | [Show which Mihomo server is selected now](../11-proxy-selection-watch.md) |
 | [`mihomo-route-check.sh`](../../mihomo-route-check.sh) | [Check whether a specific site is reachable through Mihomo](ROUTE_CHECK.md) |
+| [`kas-download-check.sh`](../../kas-download-check.sh) | [Read-only diagnostics of KAS script download and GitHub reachability: DNS → TCP → TLS → HTTP → transfer → file validation, sources reported separately](DOWNLOAD_CHECK.md) |
+| [`kas-exposure-check.sh`](../../kas-exposure-check.sh) | [Read-only local exposure audit: listening sockets, bind classes, allow-lan/external-controller/secret (value never shown), Controller probe](EXPOSURE_CHECK.md) |
+| [`kas-network-doctor.sh`](../../kas-network-doctor.sh) | [Staged diagnosis for one target: DNS, TCP, TLS, HTTP, egress, Mihomo path and ProxyN (explicit run)](NETWORK_DOCTOR.md) |
+| [`kas-sys-metrics.sh`](../../kas-sys-metrics.sh) | [Read-only router metrics: SoC temperature, load average, uptime, memory (#309)](SYS_METRICS.md) |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Update the Mihomo core with validation and rollback](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Update the watchdog mechanism](UPDATES.md#watchdog-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Check Mihomo and restart it only on a confirmed failure](../04-watchdog.md) |

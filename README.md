@@ -4,6 +4,8 @@
 
 [English](docs/EN/README.md)
 
+> 🪞 Зеркало (только чтение): [gitlab.com/saymer-alt/keenetic-auto-setup](https://gitlab.com/saymer-alt/keenetic-auto-setup) — синхронизируется автоматически из GitHub; Releases, Issues и PR ведутся только на GitHub. Подробности: [docs/gitlab-mirror.md](docs/gitlab-mirror.md).
+
 **Быстрый переход:** [Частые команды](#частые-команды) · [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
 
 ---
@@ -48,8 +50,10 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 2. Выполните в SSH роутера:
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
+
+Скачивает `config-import.sh` в приватный файл с резервами raw → IPv4/X25519 → GitHub Contents API и проверяет shebang, маркеры проекта и `sh -n` до запуска (issue #255).
 
 3. Когда появится приглашение `YAML (or s to skip):`, вставьте скопированный YAML в терминал и нажмите **Ctrl+D один раз**, чтобы завершить ввод.
 
@@ -155,7 +159,17 @@ MagiTrickle: http://192.168.1.1:8080/
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
-## 7. Справочник
+## 7. Удаление
+
+Удалить Mihomo и MagiTrickle **без форматирования /opt**:
+
+```sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+```
+
+YAML сохраняются. Настройки ProxyN, DNS, политик и Netfilter KeeneticOS не удаляются. Проверено в QEMU и на KN-1010.
+
+## 8. Справочник
 
 - [Полное HOWTO](docs/HOWTO_RU.md)
 - [Энциклопедия / карта системы](docs/encyclopedia/00-karta-sistemy.md)

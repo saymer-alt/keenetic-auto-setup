@@ -43,8 +43,10 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 **5. Safely import YAML instead (recommended)**
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
+
+Downloads `config-import.sh` into a private file with raw → IPv4/X25519 → GitHub Contents API fallbacks and verifies shebang, project markers and `sh -n` before running it (issue #255).
 
 **6. Inspect the setup — Doctor**
 
@@ -69,6 +71,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
+
+**10. Remove only Mihomo and MagiTrickle packages (no /opt formatting)**
+
+~~~sh
+curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
+~~~
+
+**Minimal native-service removal, NOT full KeeneticOS rollback.** Disables the KAS cron watchdog, disables native autostart and calls the two Entware init.d stop scripts before `opkg remove`. Checks that both daemons stopped. YAML is preserved by default using copies under `/opt/var/kas-yaml.*` and missing files restored. Use `--purge-config` to explicitly remove YAML after packages, or `--cleanup` to additionally remove recorded KAS MagiTrickle feed and Netfilter hook files. KeeneticOS ProxyN, policy, DNS interception and live Netfilter rules are NOT modified; review routing separately (`sh uninstall.sh --plan`). Verified by full Router Emulator QEMU E2E and on the KN-1010 test router, including repeat removal and reboot. No IPK rollback cache or drive formatting.
 
 ---
 

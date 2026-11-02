@@ -213,16 +213,29 @@ if [ "$MODE" = --plan ]; then
         exit 3
     }
     if [ -n "$_proxy_deps" ]; then
-        printf '%s\n' "$_proxy_deps" | while IFS='|' read -r _proxy _state; do
+        # A pipeline would lose this flag in a subshell on ash/dash. Preserve
+        # the foreign-dependency verdict in the current process instead.
+        _foreign_proxy_dep=0
+        while IFS='|' read -r _proxy _state; do
+            [ -n "$_proxy" ] || continue
             if grep -Fqx "owned|proxy|$_proxy" "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
-                report REVIEW "$_proxy" "ledger-owned bridge to 127.0.0.1:7890, state=$_state; must check live policies"
+                report REVIEW "$_proxy" "ledger-created bridge to 127.0.0.1:7890, state=$_state; inspect policies before detaching"
             else
+                _foreign_proxy_dep=1
                 report BLOCKED "$_proxy" "unowned bridge to 127.0.0.1:7890, state=$_state; preserve"
             fi
-        done
-        report BLOCKED 'opkg/mihomo' 'ProxyN still points to port 7890; package removal requires dependency handling'
+        done <<_KAS_PROXY_DEPS
+$_proxy_deps
+_KAS_PROXY_DEPS
+        if [ "$_foreign_proxy_dep" -ne 0 ]; then
+            report BLOCKED 'opkg/mihomo' 'an unowned ProxyN depends on 127.0.0.1:7890; preserve package and bridge'
+        elif grep -Fqx 'owned|package|mihomo' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+            report REVIEW 'opkg/mihomo' 'all observed 7890 ProxyN bridges are ledger-owned; safely detach and verify before removing package'
+        else
+            report SHARED_OR_FOREIGN 'opkg/mihomo' 'package not owned, even though proxy bridges are ledger-owned'
+        fi
     elif grep -Fqx 'owned|package|mihomo' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
-        report CANDIDATE 'opkg/mihomo' 'owned; verify no other consumers and service state before removal'
+        report CANDIDATE 'opkg/mihomo' 'ledger-owned; verify no other consumers and service state before removing'
     else
         report SHARED_OR_FOREIGN 'opkg/mihomo' 'not owned in this journal'
     fi
@@ -242,8 +255,29 @@ if [ "$MODE" = --plan ]; then
        grep -Fqx 'owned|watchdog|wrapper' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
         report REVIEW 'mihomo watchdog' 'owned files; shared crontab must not be replaced wholesale'
     fi
-    report PRESERVE 'unowned proxies, shared policies and DNS intercept' 'must not be removed by this tool'
-    report PRESERVE '/opt/etc/mihomo/config.yaml' 'user YAML must remain'
+    # The current router state and the creation journal must BOTH support
+    # each proposed teardown. These are REVIEW notices, never delete grants.
+    if grep -Fqx 'owned|policy|bypass_wa' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        if printf '%s\n' "$_rc" | grep -Eq '^ip policy bypass_wa[[:space:]]*$'; then
+            report REVIEW 'policy/bypass_wa' 'created by KAS; verify current permits, host bindings and external consumers before removing'
+        else
+            report REVIEW 'policy/bypass_wa' 'ledger records creation, but policy is not visible in running-config; do not guess'
+        fi
+    else
+        report PRESERVE 'policy/bypass_wa' 'not created by this KAS installation'
+    fi
+    if grep -Fqx 'enabled|dns|intercept' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        if printf '%s\n' "$_rc" | grep -Eq '^[[:space:]]+intercept enable[[:space:]]*$'; then
+            report REVIEW 'dns-proxy intercept' 'KAS enabled it from OFF; later shared use is unknown, do not automatically disable'
+        else
+            report REVIEW 'dns-proxy intercept' 'ownership records enable, but it is no longer active; do not toggle'
+        fi
+    else
+        report PRESERVE 'dns-proxy intercept' 'not originally enabled by KAS; current state must be retained'
+    fi
+    report PRESERVE 'other/unowned ProxyN, policies and Entware' 'must not be removed by this tool'
+    report BACKUP_REQUIRED '/opt/etc/mihomo/config.yaml' 'package removal can delete YAML; secure verified backup and restore before package removal'
+    report BACKUP_REQUIRED '/opt/var/lib/magitrickle/config.yaml' 'package removal can delete YAML; secure verified backup and restore before package removal'
     report BLOCKED '--remove / --purge' 'not implemented; do not substitute manual package removal'
     printf '[KAS uninstall] Plan completed without changes.\n'
 fi

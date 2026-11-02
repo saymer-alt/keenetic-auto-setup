@@ -46,11 +46,25 @@ jobs:
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
 
+      - name: Stable release gate workflow contract
+        run: python3 tests/stable-release-gate-regression.py
+
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
+
+      # The one-shot beta.2/beta.3/beta.4 publisher and legacy-switch workflows
+      # and their dry-run suites were retired on 2026-11-02 after the staged
+      # beta.4 publication completed (docs/github-cleanup-plan-20261030.md);
+      # tests/_publication_testkit.py keeps the shared fixtures alive.
+
+      - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
+        run: python3 tests/pages-deploy-dryrun.py
+
+      - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
+        run: python3 tests/candidate-build-dryrun.py
 
       - name: First-fetch bootstrap mocked-network and BusyBox acceptance
         run: python3 tests/bootstrap-regression.py
@@ -58,14 +72,29 @@ jobs:
       - name: First-fetch README command offline shell regression
         run: python3 tests/bootstrap-readme-regression.py
 
+      - name: Internal wget fallback timeout and cleanup regression
+        run: python3 tests/setup-wget-regression.py
+
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
 
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
 
+      - name: Minimal OPKG-only partial uninstall regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-regression.py
+
+      - name: Native service stop and simple uninstall regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-service-regression.py
+
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
+
+      - name: Config import full-script recovery E2E (root, disposable /opt)
+        run: sudo python3 tests/config-import-pty-regression.py .
+
+      - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
+        run: python3 tests/update-opkg-staleness-regression.py
 
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
@@ -73,8 +102,22 @@ jobs:
       - name: Rollback fault regression (dash and BusyBox ash)
         run: python3 tests/rollback-regression.py
 
+      - name: Config import expected-source gate regression (dash and BusyBox ash)
+        run: python3 tests/config-import-filter-gate-regression.py
+
+      - name: Network Doctor staged diagnostic regression (dash and BusyBox ash)
+        run: python3 tests/network-doctor-regression.py
+
+      - name: Router sys-metrics collector regression (dash and BusyBox ash)
+        run: python3 tests/sys-metrics-regression.py
+
       - name: Downloader partial-transfer regression (dash and BusyBox ash)
         run: python3 tests/download-regression.py
+
+      - name: Exposure audit regression (dash and BusyBox ash)
+        run: python3 tests/exposure-check-regression.py
+      - name: Download reachability diagnostic regression (dash and BusyBox ash)
+        run: python3 tests/download-check-regression.py
 
       - name: Process discovery and KAS-SAFETY-001 executable policy matrix (dash and BusyBox ash)
         run: |
@@ -91,6 +134,7 @@ jobs:
         run: |
           python3 tests/ipk-selection-regression.py
           python3 tests/ipk-package-release-regression.py
+          python3 tests/doctor-package-selection-regression.py
 
       - name: Whitespace
         shell: bash

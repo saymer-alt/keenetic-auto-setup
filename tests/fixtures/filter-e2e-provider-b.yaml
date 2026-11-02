@@ -1,0 +1,14 @@
+# Disposable laboratory payload for the KAS native filter E2E (lab-second).
+# TEST-NET addresses and dummy UUIDs only; these are not real servers or
+# credentials and must never be referenced outside the native E2E lab.
+proxies:
+  - name: Gamma
+    type: vless
+    server: 192.0.2.3
+    port: 443
+    uuid: 00000000-0000-0000-0000-00000000bb01
+  - name: Delta
+    type: vless
+    server: 192.0.2.4
+    port: 443
+    uuid: 00000000-0000-0000-0000-00000000bb02
