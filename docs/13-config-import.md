@@ -6,10 +6,10 @@
 
 1. Создайте конфиг в [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/).
 2. Скопируйте весь YAML.
-3. На Keenetic выполните:
+3. На Keenetic выполните (обёртка доставляет \`config-import.sh\` в приватный файл с резервами raw → IPv4/X25519 → GitHub Contents API и проверяет shebang, маркеры проекта и \`sh -n\` до запуска, issue #255):
 
 \`\`\`bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 \`\`\`
 
 4. Вставьте YAML и нажмите **Ctrl+D**.
@@ -25,7 +25,7 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 - importer не запускает второй Mihomo рядом с daemon: работающий сервис останавливается и остановка подтверждается;
 - watchdog получает \`/tmp/mihomo.maintenance\` и не вмешивается в плановую паузу;
 - candidate проверяется настоящим \`mihomo -t\`;
-- текущий валидный \`config.yaml\` сохраняется как \`/opt/etc/mihomo/config.yaml.bak\` (см. «Восстановление» ниже);
+- текущий валидный \`config.yaml\` сохраняется как \`/opt/etc/mihomo/config.yaml.bak\` (см. «Восстановление» ниже); предыдущая \`.bak\` при новом импорте перезаписывается;
 - candidate становится canonical config одним same-filesystem \`mv\`;
 - если сервис ранее работал, он запускается снова; проверяются процесс и порт 7890;
 - при ошибке validation/start/port старый конфиг атомарно восстанавливается из \`.bak\`, а прежнее состояние сервиса возвращается.
