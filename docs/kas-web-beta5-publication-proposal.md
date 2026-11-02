@@ -1,0 +1,163 @@
+# KAS WEB beta.5 — техническое предложение: переиспользуемая публикация и чистка candidate-build
+
+Статус: **предложение на ревью** (02.11.2026). Публикация beta.5 не выполняется
+этим документом; релиз, Pages и каналы не затрагиваются. Реализация — только
+после ревью владельца и отдельного GO.
+
+## 1. Контекст
+
+- One-shot publisher/switch workflows (beta.2/beta.3/beta.4) выведены из
+  эксплуатации и удалены из main (PR #334, merge `09a1be3`): это были
+  ветко-пиновые разовые процедуры.
+- Legacy Release `kas-web-channel-experimental` удалён — этап «переключение
+  legacy» в пайплайне beta.5 **не существует**: панели beta.4+ читают GitHub
+  Pages, байты пакетов берут из обычного Release.
+- Действующий канальный деплой `updates-pages-deploy.yml` (workflow_dispatch,
+  явные пины channel/release_tag/verified_run/expected_source_sha) сохранён и
+  переиспользуется как есть.
+- Автоматический candidate-build (`web-beta3-build.yml`) при push в main
+  запускается со **stale-дефолтами** `VERSION=0.1.0~beta.3-1` /
+  `PREVIOUS_VERSION=0.1.0~beta.2-1` и paths-фильтром `web/control-center/**`:
+  правки документации запускают crossbuild четырёх архитектур со старой
+  версией (пример: merge `09a1be3`, run 41514672816 — безвреден, но шумный и
+  вводит в заблуждение списком артефактов `kas-web-beta3-*`).
+- Требование владельца: перед beta.5 — проверенная процедура публикации нового
+  Release; candidate-build — только с явными параметрами версии, «без случайной
+  сборки beta.3 по умолчанию».
+
+## 2. Цели и не-цели
+
+**Цели:** один переиспользуемый dispatch-публикатор Release для beta.N;
+устранение stale-дефолтов candidate-build без поломки действующего CI;
+dry-run-проверенная процедура до первого реального запуска.
+
+**Не-цели:** публикация beta.5; изменения Pages/stable/Latest; правки
+`updates-pages-deploy.yml` (остаётся без изменений); удаление/пересборка
+существующих релизов и тегов.
+
+## 3. Дизайн: `publish-web-beta-release.yml` (dispatch-only, без ops-веток)
+
+Ключевое отличие от удалённых one-shot: **все пины — typed `workflow_dispatch`
+inputs**, а не hardcoded env на ветке. Это устраняет сам класс «веток под
+запуск» и делает workflow переиспользуемым для beta.5/6/7 без правок файла.
+
+### 3.1 Входы (все обязательные, с валидацией)
+
+| Input | Валидация |
+|---|---|
+| `version` | `^0\.1\.0~beta\.\d+-1$` (opkg-comparable формат линейки) |
+| `previous_version` | тот же формат; строго меньше `version` (реальный Entware `compare-versions`, негативная проверка обратного порядка) |
+| `tag` | `^v0\.1\.0-beta\.\d+$`; тег не существует ИЛИ указывает на `source_sha` |
+| `previous_tag` | существует, prerelease; используется только для текста примечаний |
+| `verified_run` | числовой; `head_sha == source_sha`, `conclusion == success` |
+| `source_sha` | 40 hex; коммит существует; не совпадает с infra-merge коммитами (защита от «собрали не то») |
+| `artifact_prefix` | `^kas-web-beta\d+$`; артефакты `<prefix>-<abi>-<sha>` существуют в run, не expired |
+
+### 3.2 Шаги (наследие проверенной beta.4-процедуры)
+
+1. **Resolve & refuse placeholders/инварианты входов** — включая реальный
+   Entware-лестничный тест `version >> previous_version` (как в
+   `web-beta3-build.yml`) и отказ при равенстве/обратном порядке.
+2. **Snapshot инвариантов**: digest `channels.json` + experimental-индекса
+   Pages, Latest, отсутствие `kas-web-ipk-<sha>` alias-релиза, отсутствие
+   `kas-web-channel-*` каналов (они удалены — их появление = чужое вмешательство).
+3. **Скачивание verified артефактов**: `sha256sum -c` build-time `SHA256SUMS`
+   каждого из 4 ABI; согласование с per-arch CI-манифестами; сборка
+   `panel-update.json` через `update-manifest.py --tag <tag>`.
+4. **Draft-first создание Release** (`--target source_sha`, `--draft
+   --prerelease --latest=false`), retry read-only lookup (инцидент beta.3:
+   eventual consistency listing).
+5. **Upload + байтовая верификация**: имя/размер/SHA256/state каждого ассета
+   против манифеста; `browser_download_url` заканчивается каноническим путём
+   `/<tag>/<name>`; затем `draft=false` только после полного PASS.
+6. **Финальные инварианты**: Latest не изменился; Pages-индексы и
+   `channels.json` байт-идентичны снапшоту из п.2 (публикатор **никогда** не
+   пишет в Pages — канальный деплой отдельный dispatch).
+7. **Идемпотентный повтор**: существующий релиз (draft или published)
+   резюмируется после глубокой верификации против тех же манифестов, никогда
+   не пересоздаётся; частичная загрузка оставляет невидимый draft.
+
+**Переключение канала для beta.5** = повторный dispatch существующего
+`updates-pages-deploy.yml` с `release_tag=v0.1.0-beta.5` после проверки
+Release — отдельный шаг процедуры, как в beta.4 (Stage B), без нового кода.
+
+### 3.3 Проверки и тесты
+
+- Новый dry-run набор `tests/web-beta-publish-dryrun.py` на фикстурах
+  `tests/_publication_testkit.py` (уже в main): happy path, частичный отказ и
+  resume, битый артефакт, Latest-hijack отказ, негатив «подменённый ассет
+  после публикации», идемпотентный повтор, refusal на все невалидные входы.
+- Вынос переиспользуемых сценариев из логики удалённого
+  `beta4-publication-dryrun.py` (14 сценариев) — контрактная часть переносится
+  на новый workflow, исторические сценарии legacy-свитча не переносятся
+  (этапа больше нет).
+- CI: новый шаг в Shell contracts рядом с pages-deploy/candidate наборами.
+
+## 4. Чистка candidate-build без поломки CI
+
+Проблема — stale push-дефолты + широкий paths-фильтр (раздел 1). Варианты:
+
+| Вариант | Плюсы | Минусы |
+|---|---|---|
+| **A (рекомендуется):** сузить paths push-триггера до `web/control-center/packaging/**` + сам файл workflow; дефолты поднимать в процедуре публикации beta.N (шаг чек-листа) | doc-правки больше не жгут 4 кросс-сборки; CI push-валидация лестницы сохраняется для значимых правок | дефолты остаются stale между релизами (документируется как «дефолт ≠ актуальный релиз») |
+| B: убрать push-триггер вовсе (только dispatch) | никаких случайных сборок | теряется автоматическая валидация лестницы на push; candidate-сборка после каждого merge main перестаёт быть доказательством |
+| C: дефолт = «отказ» (fail push-джобу при deфолтах) | невозможно забыть | ломает смысл push-валидации; красный main после каждого doc-merge |
+
+**Рекомендация — A**: минимальный diff в `web-beta3-build.yml`
+(paths-фильтр), плюс в чек-лист публикации beta.5 (раздел 6) добавляется шаг
+«поднять `version`/`previous_version`/`tag`/`artifact_prefix` дефолты в
+`web-beta3-build.yml` в том же PR, что и код beta.5» — тогда к моменту merge
+beta.5 дефолты всегда актуальны, а doc-push не триггерит сборки.
+
+Явные dispatch-параметры для beta.5 (пример):
+
+```text
+version=0.1.0~beta.5-1
+previous_version=0.1.0~beta.4-1
+tag=v0.1.0-beta.5
+artifact_prefix=kas-web-beta5
+verified_run=<dispatch-сборка на проверенном SHA beta.5>
+source_sha=<чистый исходный SHA beta.5, не infra-merge>
+```
+
+## 5. Единая модель достоверной версии/ревизии и SHA256 (увязка с #335/#337)
+
+Публикатор обязан публиковать **те же идентификаторы**, которые панель (#335)
+и Doctor (#337) показывают пользователю:
+
+- `BUILD_INFO` каждого IPK: `Version` (opkg-comparable `0.1.0~beta.5-1`),
+  `KAS_SOURCE_SHA`, `Binary_SHA256` — уже производятся `build-ipk.py`;
+- индекс `panel-update.json` per-package: `version`, `source_sha`, `sha256`,
+  `size`, `binary_sha256` — уже производятся `update-manifest.py`;
+- тело Release: source SHA, verified run ID, таблица SHA256 по архитектурам —
+  генерируется публикатором из верифицированных манифестов, не руками;
+- никакого «придуманного» формата: версия beta.5 продолжает проверенную
+  opkg-линейку `0.1.0~beta.N-1` (то же требование честной версии, что в #335
+  для watchdog: формат подтверждается реальным сравнением, а не выдумкой).
+
+Таким образом карточка «Версии» панели, полный отчёт Doctor и страница Release
+ссылаются на один и тот же набор {version, source SHA, SHA256} без ручного
+дублирования.
+
+## 6. Чек-лист beta.5 (черновик процедуры, каждый запуск — по отдельному GO)
+
+1. Код beta.5 готов в main; CI зелёный.
+2. В том же PR: поднять дефолты `web-beta3-build.yml` (раздел 4, вариант A).
+3. Dispatch candidate-build с явными параметрами (раздел 4) на чистом SHA.
+4. Реализовать `publish-web-beta-release.yml` + dry-run набор (разделы 3.3),
+   ревью, merge — отдельным PR до любого реального запуска.
+5. **GO PUBLISH**: dispatch публикатора → верификация Release (все PASS).
+6. **GO PAGES**: dispatch `updates-pages-deploy.yml`
+   (`release_tag=v0.1.0-beta.5`, `bootstrap=false`) → независимая HTTP-верификация.
+7. Аппаратная приёмка обновления beta.4 → beta.5 на NC-4210 (владелец).
+
+## 7. Риски
+
+- Dispatch-inputs публикатора вводимы кем угодно с правами write —
+  смягчение: все шаги fail-closed по верификации (run/SHA/тег/артефакты),
+  публикация без корректного verified run невозможна; workflow остаётся
+  `if: github.repository == 'saymer-alt/keenetic-auto-setup'`.
+- Нельзя переиспользовать пин beta.4 (`7b0323b6`/run `41337020621`) для beta.5 —
+  валидация входов отвергнет (run head_sha ≠ source_sha, артефакты beta.4).
+- Pages-инвариант публикатора защищает от расхождения каналов, но сам деплой
+  Pages остаётся отдельным осознанным шагом (fail-safe по дизайну beta.4).
