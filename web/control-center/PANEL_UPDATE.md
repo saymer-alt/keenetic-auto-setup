@@ -1,19 +1,5 @@
 # Ручное обновление панели (#273)
 
-<<<<<<< HEAD
-Реализация: ручное обновление через WEB (#273, #289), отдельный
-update-worker, проверка release metadata и контрольных сумм перед установкой IPK.
-Это технический контракт, а не инструкция на отдельную тестовую версию.
-
-**Текущее состояние:** experimental-канал получает актуальный Web prerelease
-через `kas-web-channel-experimental/panel-update.json`. Установка выполняется
-только после подтверждения пользователя, автоматического отката нет. Полевое
-обновление на реальном устройстве и известная проблема старой открытой страницы
-зафиксированы в [#289](https://github.com/saymer-alt/keenetic-auto-setup/issues/289)
-и [#311](https://github.com/saymer-alt/keenetic-auto-setup/issues/311).
-Номер актуальной тестовой версии определяется опубликованным индексом,
-а не зафиксированным в документации текстом.
-=======
 Реализация разработана поверх #278 и #279 (см. также #283, #285).
 **Обновление статуса, 02.11.2026:** **beta.4 опубликована** (`v0.1.0-beta.4`,
 пререлиз, source-pinned на `7b0323b6`, run 41492190833) и полностью
@@ -51,7 +37,6 @@ GitHub Pages (реестр `channels.json` + канальные индексы; 
 ведёт workflow `web-beta3-build.yml`; публикация канальных индексов —
 one-shot `updates-pages-deploy.yml` с явными пинами, запускаемый только
 владельцем. Архитектура: [docs/updates-pages-architecture.md](../../docs/updates-pages-architecture.md).
->>>>>>> origin/main
 
 ## Отсутствующий стабильный выпуск
 
@@ -133,8 +118,8 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
 Выбор хранится приватно в `/opt/etc/kas-control-center-update/channel` (0600,
 одна строка `experimental` или `stable`); отсутствие файла означает канал,
 зашитый в сборку (`panelBuildChannel`). Файл настроек панели при этом не меняется:
-строгий парсер настроек раннего Web-клиента не знает новых полей, а его обновление
-читает только experimental index — действующие настройки не расширяются новыми полями.
+строгий парсер настроек установленной beta.1 не знает новых полей, а её обновление
+читает только experimental index — совместимость с уже опубликованной beta.1 сохранена.
 
 - Смена канала — отдельная авторизованная мутация (`POST /api/updates/panel/channel`,
   Origin/Host/confirm как у остальных операций). Она сама не запускает ни проверку,
@@ -142,7 +127,7 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
   найденного на другом канале, нельзя. Канал сборки — только происхождение сборки
   (provenance), а не ограничение выбора: обе цели доступны на любой сборке.
 - experimental index принимает два формата тега релиза: исторический
-  `kas-web-ipk-<SHA>` (историческая совместимость) и
+  `kas-web-ipk-<SHA>` (legacy-фоллбэк для чтения установленной beta.1) и
   канонический публичный `v0.1.0-beta.N` (а также `kas-web-v0.1.0-beta.N`).
   stable channel — только `kas-web-vX.Y.Z` и только релиз без prerelease.
   Форматы не смешиваются.
@@ -160,16 +145,6 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
 - Compiled identity и BUILD_INFO содержат Channel. Stable-канал публикуется
   отдельным решением владельца; наличие stable parser не означает готовность
   stable канала.
-<<<<<<< HEAD
-- Index `panel-update.json` находится в выделенном release
-  `kas-web-channel-experimental`; его обновление отдельно подтверждает владелец.
-- experimental index указывает на immutable prerelease с каноническим
-  публичным тегом по поддерживаемой грамматике (например, шаблон
-  `v0.1.0-beta.N`): один release с одним набором IPK и `SHA256SUMS`,
-  без дублирующего `kas-web-ipk-<SHA>` alias. Исторический формат
-  `kas-web-ipk-<SHA>` может оставаться в парсере для совместимости,
-  но новые публикации не создают такой alias.
-=======
 - Index `panel-update.json`: панели beta.4+ читают GitHub Pages
   (`updates/experimental/panel-update.json` + `channels.json`; deployment —
   `updates-pages-deploy.yml`). Служебный Release
@@ -186,7 +161,6 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
   legacy-парсер
   `kas-web-ipk-<SHA>` остаётся в коде как фоллбэк, но publication-пайплайн
   alias с beta.2 не создаёт.
->>>>>>> origin/main
 - stable index (`kas-web-channel-stable`) указывает на обычный релиз
   `kas-web-vX.Y.Z` (не prerelease), IPK собраны с `--channel stable`. GitHub
   `latest` не используется ни одним каналом.
@@ -205,7 +179,7 @@ SHA256, размеры, структура IPK, точные package/Version/ABI
 ```sh
 python3 web/control-center/packaging/update-manifest.py \
   --channel experimental --tag kas-web-ipk-SHA package.ipk > panel-update.json
-# канонический публичный экспериментальный выпуск:
+# канонический публичный beta-релиз (для панелей beta.2+):
 python3 web/control-center/packaging/update-manifest.py \
   --channel experimental --tag v0.1.0-beta.N package.ipk > panel-update.json
 ```
