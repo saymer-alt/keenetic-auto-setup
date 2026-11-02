@@ -63,4 +63,3 @@ ls -l /opt/etc/keenetic-auto-setup/ownership.v1
 | `/opt/etc/keenetic-auto-setup/ownership.v1` | install.sh | не переопределяется | журнал создания остаётся за script-KAS |
 | `/opt/etc/mihomo/config.yaml`, MT config, политики, ProxyN | пользователь/installer | не принадлежат пакету | opkg remove kas-core их не трогает (bundle-level тест) |
 | Панель `kas-control-center` | WEB-пакет (#289/#293) | отдельный цикл версий | kas-core ≠ WEB; панель читает activation receipt read-only |
-

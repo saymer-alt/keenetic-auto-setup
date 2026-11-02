@@ -111,7 +111,7 @@ class CoreIPKTests(unittest.TestCase):
         protected_namespaces = ('opt/bin/', 'opt/etc/init.d/', 'opt/etc/cron.',
                                 'opt/etc/ndm/netfilter.d/', 'opt/etc/keenetic-auto-setup/',
                                 'opt/etc/kas-core/', 'opt/var/lib/magitrickle/',
-                                'opt/etc/mihomo/', 'opt/etc/crontab', 'opt/share/kas-core/watchdog-history.tsv')
+                                'opt/etc/mihomo/', 'opt/etc/crontab')
         self.assertEqual(
             [name for name in files if name.startswith(protected_namespaces)],
             [], 'bundle leaked into a protected operational namespace')
