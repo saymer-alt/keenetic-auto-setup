@@ -122,6 +122,10 @@ jobs:
         run: |
           sh tests/doctor-mt-scope-regression.sh .
           busybox ash tests/doctor-mt-scope-regression.sh .
+      - name: Doctor MagiTrickle effective netfilter (dash and BusyBox ash)
+        run: |
+          sh tests/doctor-mt-netfilter-regression.sh .
+          busybox ash tests/doctor-mt-netfilter-regression.sh .
 
       - name: Local Markdown links
         run: python3 tests/docs-links.py
