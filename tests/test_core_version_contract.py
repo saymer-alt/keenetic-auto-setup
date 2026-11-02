@@ -69,6 +69,8 @@ class CoreVersionContractOpkgTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = Path(__import__('tempfile').mkdtemp(prefix='kas-core-ver-'))
+        cls.root = cls.tmp / 'root'
+        (cls.root / 'opt/tmp').mkdir(parents=True)
         cls.config = cls.tmp / 'opkg.conf'
         cls.config.write_text('dest root /\narch all 100\n')
 
@@ -78,7 +80,12 @@ class CoreVersionContractOpkgTests(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def compare(self, left, op, right, expected=0):
+        # Same invocation shape as the panel's read-only version comparison
+        # (web/control-center/panel_update_package.go): offline root plus a
+        # pre-created tmp dir, so opkg never touches runner-local /opt.
         result = subprocess.run([opkg_binary(), '-f', str(self.config),
+                                 '--offline-root', str(self.root),
+                                 '--tmp-dir', str(self.root / 'opt/tmp'),
                                  'compare-versions', left, op, right],
                                 capture_output=True, text=True)
         self.assertEqual(
