@@ -91,6 +91,12 @@ jobs:
       - name: Config import PTY reader regression (dash and BusyBox ash)
         run: python3 tests/config-import-pty-regression.py .
 
+      - name: Config import full-script recovery E2E (root, disposable /opt)
+        run: sudo python3 tests/config-import-pty-regression.py .
+
+      - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
+        run: python3 tests/update-opkg-staleness-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
