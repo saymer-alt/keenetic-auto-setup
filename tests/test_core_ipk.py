@@ -104,12 +104,35 @@ class CoreIPKTests(unittest.TestCase):
         for name in expected:
             self.assertEqual(files['opt/libexec/kas/' + name], (REPO / name).read_bytes())
         self.assertFalse(any(name.startswith(('opt/bin/', 'opt/etc/')) for name in files))
+        # Phase-A sentinel (issue #295 scenario 9): enumerate the operational
+        # namespaces the bundle must NEVER ship or touch. The builder emits
+        # only opt/libexec/kas and opt/share/kas-core; this pin fails loudly
+        # if that ever drifts (cron, init, netfilter, state, config).
+        protected_namespaces = ('opt/bin/', 'opt/etc/init.d/', 'opt/etc/cron.',
+                                'opt/etc/ndm/netfilter.d/', 'opt/etc/keenetic-auto-setup/',
+                                'opt/etc/kas-core/', 'opt/var/lib/magitrickle/',
+                                'opt/etc/mihomo/', 'opt/etc/crontab', 'opt/share/kas-core/watchdog-history.tsv')
+        self.assertEqual(
+            [name for name in files if name.startswith(protected_namespaces)],
+            [], 'bundle leaked into a protected operational namespace')
         manifest = json.loads(files['opt/share/kas-core/scripts.json'])
         self.assertEqual(manifest['activation'], 'explicit-watchdog-lab')
         for entry in manifest['scripts'] + manifest['tools']:
             self.assertEqual(entry['sha256'], hashlib.sha256(files[entry['path'].lstrip('/')]).hexdigest())
         self.assertEqual(files['opt/share/kas-core/LICENSE'], (REPO / 'LICENSE').read_bytes())
         self.assertIn(b'Architecture: all\n', self.members(self.build(), 'control.tar.gz')['control'])
+        # Control hooks stay validation-only: no hook may write into the
+        # operational namespaces (cron, init, netfilter, crontab) — guarded
+        # activation belongs to the explicit activation tool, not to opkg.
+        controls = self.members(self.build(), 'control.tar.gz')
+        forbidden_hook_fragments = (b'cron.5mins', b'/etc/init.d', b'netfilter.d',
+                                    b'crontab', b'S99mihomo', b'rc.unslung')
+        for hook in ('preinst', 'postinst', 'prerm'):
+            body = controls.get(hook)
+            self.assertIsNotNone(body, 'missing control hook ' + hook)
+            for fragment in forbidden_hook_fragments:
+                self.assertNotIn(fragment, body,
+                                 'control hook %s references %r' % (hook, fragment))
 
 
     def test_live_root_installation_is_explicitly_blocked(self):

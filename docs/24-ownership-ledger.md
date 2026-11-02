@@ -49,3 +49,18 @@ ls -l /opt/etc/keenetic-auto-setup/ownership.v1
 **Не редактируйте журнал вручную.** Запись подтверждает лишь факт создания/включения во время установки, а не текущую эксклюзивность владения. Даже при наличии журнала удаление должно отдельно проверять актуальные зависимости, общее использование пакетов и сохранение пользовательских данных.
 
 **Задача [#179](https://github.com/saymer-alt/keenetic-auto-setup/issues/179) завершена для минимального удаления пакетов.** Штатный [`uninstall-packages.sh`](../uninstall-packages.sh) удаляет Mihomo и MagiTrickle через OPKG с остановкой сервисов и сохранением YAML; опубликован в `stable` (PR #244). **Это не полный откат KeeneticOS:** `ProxyN`, `bypass_wa`, DNS intercept и действующие Netfilter-правила не очищаются автоматически, а журнал владения не даёт оснований удалять чужие или общие ресурсы.
+
+## Владение между script-KAS, kas-core (лабораторный пакет) и панелью
+
+Матрица владения для будущей миграции `kas-core.ipk` (issue #295, фаза A). Пакет kas-core существует только как lab-квалификация (`packaging/core/`), live-root установка заблокирована; таблица фиксирует целевое владение, чтобы коллизии обнаруживались до установки.
+
+| Ресурс | Владелец сегодня | kas-core после миграции | Коллизия/правило |
+|---|---|---|---|
+| `/opt/bin/mihomo_watchdog.sh` | `update-watchdog.sh` (canonical, legacy-хэши + каталог предков) | `kas-core-watchdog.sh apply` через `update-watchdog.sh --package-candidate` | modified/foreign файл блокирует активацию; receipt `/opt/etc/kas-core/watchdog.json` |
+| `/opt/etc/cron.5mins/mihomo_watchdog` | `update-watchdog.sh` (wrapper) | остаётся у installer/updater | пакет никогда не пишет в cron.5mins (sentinel в `tests/test_core_ipk.py`) |
+| `/opt/libexec/kas/` | отсутствует (нет установки) | opkg (bundle) | foreign файлы в каталоге блокируют install/upgrade/remove |
+| `/opt/share/kas-core/` | отсутствует | opkg (manifest, BUILD_INFO, каталог) | tamper → status `bundle_changed` |
+| `/opt/etc/keenetic-auto-setup/ownership.v1` | install.sh | не переопределяется | журнал создания остаётся за script-KAS |
+| `/opt/etc/mihomo/config.yaml`, MT config, политики, ProxyN | пользователь/installer | не принадлежат пакету | opkg remove kas-core их не трогает (bundle-level тест) |
+| Панель `kas-control-center` | WEB-пакет (#289/#293) | отдельный цикл версий | kas-core ≠ WEB; панель читает activation receipt read-only |
+
