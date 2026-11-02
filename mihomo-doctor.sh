@@ -592,6 +592,30 @@ first_line() {
     printf '%s\n' "$1" | head -n 1
 }
 
+# BEGIN DOCTOR INTERFACE IPV6 LAYER READER v1
+# Read KeeneticOS interface runtime (summary.layer), not raw IPv6 addresses.
+# A link-local IPv6 address can exist even when segment IPv6 is disabled.
+# Unknown/unreadable is never silently converted into disabled.
+doc_read_interface_layers() {
+    DOC_IPV4_LAYER=unknown
+    DOC_IPV6_LAYER=unknown
+    _dil_iface=$1
+    _dil_output=$(ndmc -c "show interface $_dil_iface" 2>/dev/null | tr -d '\r')
+    printf '%s\n' "$_dil_output" | grep -Eq "^[[:space:]]*id:[[:space:]]*$_dil_iface[[:space:]]*$" || return 1
+    _dil_states=$(printf '%s\n' "$_dil_output" | awk '
+        /^[[:space:]]*summary:[[:space:]]*$/ {summary=1; next}
+        summary && /^[[:space:]]*layer:[[:space:]]*$/ {layer=1; next}
+        layer && $1 == "ipv4:" {v4=$2}
+        layer && $1 == "ipv6:" {v6=$2}
+        END {print (v4 == "" ? "unknown" : v4), (v6 == "" ? "unknown" : v6)}
+    ')
+    set -- $_dil_states
+    DOC_IPV4_LAYER=${1:-unknown}
+    DOC_IPV6_LAYER=${2:-unknown}
+    return 0
+}
+# END DOCTOR INTERFACE IPV6 LAYER READER v1
+
 proxy_profile_class() {
     # Same compatibility contract as install.sh. Old installers used other
     # descriptions, so naming alone is never a warning/failure: the functional
@@ -2502,6 +2526,49 @@ else
         elif [ -n "$FOREIGN_PROXIES" ]; then
             info "Foreign Proxy interface(s) present:$FOREIGN_PROXIES - not used as the Mihomo bridge, reported only"
         fi
+
+        # BEGIN DOCTOR INTERFACE IPV6 AUDIT v1
+        # KeeneticOS 5.0+ has a per-LAN-segment "Enable IPv6" control.
+        # BridgeN IPv6 and the upstream ProxyN IPv6 are distinct; neither
+        # a disabled LAN IPv6 nor a pending ProxyN IPv6 proves tunnel failure.
+        # Read-only state only; never toggle IPv6, routes or policies.
+        if [ -n "$PROJECT_PROXY" ]; then
+            if doc_read_interface_layers "$PROJECT_PROXY"; then
+                case "$DOC_IPV4_LAYER" in
+                    running)
+                        info "Project proxy $PROJECT_PROXY: IPv4 runtime=running"
+                        ;;
+                    disabled)
+                        warn "Project proxy $PROJECT_PROXY: IPv4 runtime=disabled despite internet-capable ProxyN; inspect Keenetic interface/logs and routing (SOCKS port alone does not prove ProxyN routing)"
+                        ;;
+                    *)
+                        info "Project proxy $PROJECT_PROXY: IPv4 runtime=$DOC_IPV4_LAYER (not a proven down state)"
+                        ;;
+                esac
+                info "Project proxy $PROJECT_PROXY: IPv6 runtime=$DOC_IPV6_LAYER (independent of LAN segment IPv6)"
+            else
+                info "Project proxy $PROJECT_PROXY: IPv4/IPv6 runtime=unknown (show interface unavailable)"
+            fi
+        fi
+
+        # Configured LAN bridges only, bounded to 8. Description, IPs,
+        # endpoints and full ndmc output are never included in reports.
+        _doc_bridges=$(printf '%s\n' "$RC_DUMP" | awk '$1 == "interface" && $2 ~ /^Bridge[0-9]+$/ {print $2}' | head -n 8)
+        for _doc_bridge in $_doc_bridges; do
+            if doc_read_interface_layers "$_doc_bridge"; then
+                case "$DOC_IPV6_LAYER" in
+                    running|disabled|pending)
+                        info "LAN segment $_doc_bridge: IPv6 runtime=$DOC_IPV6_LAYER (per-segment setting; disabled is allowed)"
+                        ;;
+                    *)
+                        info "LAN segment $_doc_bridge: IPv6 runtime=unknown"
+                        ;;
+                esac
+            else
+                info "LAN segment $_doc_bridge: IPv6 runtime=unknown (show interface unavailable)"
+            fi
+        done
+        # END DOCTOR INTERFACE IPV6 AUDIT v1
 
         # bypass_wa is a user-owned failover policy. Its health contract is
         # intentionally weaker than the installer-owned ProxyN contract:
