@@ -445,7 +445,13 @@ mv() {
             assert 'not found' not in p.stderr and 'SECOND-ELF' not in p.stderr, p.stderr
             if success:
                 assert p.stderr == '', p.stderr
-                expected = ['validate', 'commit', 'commit', 'validate']
+                # Sequence (PR #325 review fix): candidate validation, then
+                # the current-config validation at the backup decision point
+                # (both under the lifecycle lock — the fixture mihomo exits
+                # 90 without a lock owner), the two mv commits (backup,
+                # config), the post-install validation, and the service
+                # events for the running case.
+                expected = ['validate', 'validate', 'commit', 'commit', 'validate']
                 if case == 'running': expected = ['stop'] + expected + ['start']
                 assert events == expected, (case, events)
                 assert cfg.read_bytes() == candidate.read_bytes()
