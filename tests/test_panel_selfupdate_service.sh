@@ -98,8 +98,8 @@ ip address add 192.168.254.1/24 dev br0
 ip link set br0 up
 # Lab TLS trust: the panel and worker keep standard certificate verification.
 openssl req -x509 -newkey rsa:2048 -keyout "$LAB/ca.key" -out "$LAB/ca.crt" -days 2 -nodes   -subj '/CN=KAS Selfupdate Lab CA'   -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
-openssl req -newkey rsa:2048 -keyout "$LAB/server.key" -out "$LAB/server.csr" -nodes -subj '/CN=github.com' -addext 'subjectAltName=DNS:github.com,DNS:api.github.com' >/dev/null 2>&1
-printf 'subjectAltName=DNS:github.com,DNS:api.github.com\n' > "$LAB/server.ext"
+openssl req -newkey rsa:2048 -keyout "$LAB/server.key" -out "$LAB/server.csr" -nodes -subj '/CN=github.com' -addext 'subjectAltName=DNS:github.com,DNS:api.github.com,DNS:saymer-alt.github.io' >/dev/null 2>&1
+printf 'subjectAltName=DNS:github.com,DNS:api.github.com,DNS:saymer-alt.github.io\n' > "$LAB/server.ext"
 openssl x509 -req -in "$LAB/server.csr" -CA "$LAB/ca.crt" -CAkey "$LAB/ca.key" -CAcreateserial -out "$LAB/server.crt" -days 2 -extfile "$LAB/server.ext" >/dev/null 2>&1
 cat "$LAB/ca.crt" > /usr/local/share/ca-certificates/kas-selfupdate-lab.crt
 update-ca-certificates >/dev/null 2>&1
@@ -108,7 +108,7 @@ CA_HASH=$(openssl x509 -in /usr/local/share/ca-certificates/kas-selfupdate-lab.c
 mkdir -p /opt/etc/ssl/certs
 cat "$LAB/ca.crt" > /opt/etc/ssl/certs/ca-certificates.crt
 cp /etc/hosts "$LAB/hosts.backup"
-printf '\n127.0.0.1 github.com\n127.0.0.1 api.github.com\n' >> /etc/hosts
+printf '\n127.0.0.1 github.com\n127.0.0.1 api.github.com\n127.0.0.1 saymer-alt.github.io\n' >> /etc/hosts
 install -m 755 "$OPKG" /opt/bin/opkg
 python3 - "$REPO" "$LAB" "$SOURCE_SHA" "$OLD_BINARY" "$NEW_BINARY" "$STABLE_BINARY" <<'PY'
 import base64
@@ -294,7 +294,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split('?')[0]
         prefix = '/saymer-alt/keenetic-auto-setup/releases/download/'
         tags_api = '/repos/saymer-alt/keenetic-auto-setup/releases/tags/'
-        if path == prefix + 'kas-web-channel-experimental/panel-update.json':
+        if path == '/keenetic-auto-setup/updates/channels.json':
+            # Registry for the Pages-based source (beta.4): both channels are
+            # marked published so the lab exercises the real update cycle.
+            body = json.dumps({'schema': 1, 'generated': 'lab',
+                'channels': {'experimental': {'published': True, 'tag': tag},
+                             'stable': {'published': True, 'tag': stable_tag}}}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == '/keenetic-auto-setup/updates/experimental/panel-update.json':
+            target = serve / 'index.json'
+        elif path == '/keenetic-auto-setup/updates/stable/panel-update.json':
+            target = serve / 'index-stable.json'
+        elif path == prefix + 'kas-web-channel-experimental/panel-update.json':
             target = serve / 'index.json'
         elif path == prefix + 'kas-web-channel-stable/panel-update.json':
             target = serve / 'index-stable.json'

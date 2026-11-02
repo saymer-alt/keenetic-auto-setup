@@ -4,6 +4,8 @@
 
 **Version policy:** testing builds change frequently. This page deliberately does not pin a beta number, an old release URL or an architecture-specific IPK filename. Use the **currently published KAS Web prerelease** for a new installation; historical builds are not an ongoing distribution channel.
 
+**If the panel is already installed** (releases that read GitHub Pages and newer), the primary update route is the **update button inside the panel itself** (the "Panel update" card, Beta channel): it offers the current prerelease, verifies SHA256 and asks for explicit confirmation. The manual IPK installation below is for **first-time installation** and for recovery when the panel is unreachable.
+
 ## Requirements and access
 
 - Keenetic/Netcraze with Entware, SSH and a working KAS. The default web listener needs an unambiguous private IPv4 on the management `br0` interface; this is not necessarily a home network.

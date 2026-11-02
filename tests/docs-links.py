@@ -12,14 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 SCHEMES = {"http", "https", "mailto", "tel", "data"}
 # Current user-facing KAS Web guides must not depend on a fast-moving beta tag.
-# Historical ADRs, release transactions, CI fixtures and changelogs are outside
-# this guard: they need exact release IDs as evidence.
+# Historical ADRs, release transactions, CI fixtures, changelogs and the
+# PANEL_UPDATE.md status/contract document are outside this guard: they need
+# exact release IDs as evidence.
 EVERGREEN_WEB_GUIDES = (
     "README.md",
     "docs/EN/README.md",
     "docs/26-kas-web-beta-install.md",
     "docs/EN/WEB_BETA_INSTALL.md",
-    "web/control-center/PANEL_UPDATE.md",
     "web/control-center/packaging/README.md",
 )
 PINNED_WEB_PREVIEW = re.compile(

@@ -13,14 +13,19 @@ let browser;
 // sticky sidebar and the skip-link render at the current scroll offset.
 const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();});await page.screenshot({path:path.join(previews,name),fullPage:true});};
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let panelOperation=null,panelTarget=false,panelLoseResponse=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
+ let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
   const req=route.request(),url=new URL(req.url());
   if(!url.pathname.startsWith('/api/')){
    const file=path.join(root,'web/control-center/web',url.pathname==='/'?'index.html':url.pathname.slice(1));
-   return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
+   const headers={'Cache-Control':'no-store'}; // mirrors the server policy from main.go
+   if(url.pathname==='/app.js'&&(panelTarget||panelServedNewBundle)){
+     return route.fulfill({status:200,contentType:'application/javascript',headers,
+       body:require('node:fs').readFileSync(file,'utf8')+'\nwindow.KAS_PANEL_BUNDLE="v0.1.1";'});
+   }
+   return route.fulfill({path:file,contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html',headers});
   }
   requests.push({path:url.pathname,body:req.postDataJSON()});let data={},status=200;
   if(url.pathname==='/api/updates/panel/check')data={state:'OK',channel:'experimental',installed_version:'0.1.0',runtime_version:'0.1.0',available_version:'0.1.1',relation:'newer'};
@@ -167,13 +172,25 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
  await page.reload();await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Установка пакета'));
  panelOperation={...panelOperation,State:'OK',Phase:'complete',Gate:false};
  await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('ещё не подтверждена'));
- panelTarget=true;await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Запущена новая версия'));
- await page.locator('#en').click();assert.match(await page.locator('#panel-update-state').innerText(),/New running version verified/);await page.locator('#ru').click();
+ // Issue #311: after a fully verified success the panel reloads itself once.
+ let loads=0;page.on('load',()=>loads++);
+ const previousLoads=loads;
+ panelTarget=true;panelServedNewBundle=true;
+ await page.waitForFunction(()=>document.getElementById('panel-update-state').textContent.includes('Запущена новая версия'));
+ await page.waitForFunction(()=>window.KAS_PANEL_BUNDLE==='v0.1.1',null,{timeout:15000});
+ assert.equal(await page.evaluate(()=>sessionStorage.getItem('kas_updated_to')),null,'reload marker consumed');
+ assert.ok(loads-previousLoads>=1,'interface reloaded automatically');
+ // Wait out the notice window and prove exactly one reload, no loop.
+ await page.waitForTimeout(3000);
+ assert.equal(loads-previousLoads,1,'exactly one automatic reload');
+ assert.match(await page.locator('#panel-build').innerText(),/v0\.1\.1/,'version B visible without Ctrl+F5');
+ assert.match(await page.locator('#panel-update-state').innerText(),/Панель обновлена до v0\.1\.1\. Интерфейс загружен заново\./);
+ await page.locator('#en').click();assert.match(await page.locator('#panel-update-state').innerText(),/Panel updated to v0\.1\.1/);await page.locator('#ru').click();
  await page.setViewportSize({width:390,height:844});await page.locator('#nav-subscriptions').click();
  await shot('subscriptions-mobile.png');
  await page.emulateMedia({colorScheme:'dark'});await shot('subscriptions-dark-mobile.png');
  await page.reload();await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
  assert.equal(await page.locator('#operation-banner').isVisible(),false,'historical result reappeared on reload');
- assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; no JS errors.');
+ assert.deepEqual(errors,[]);console.log('PASS: real Chromium navigation, RU/EN, search, preserved selections/YAML, cancel/apply/clear, settings modes/cancel/current proof/port conflict/address/read failure/no credential storage, keyboard, 4 screen widths, dark mode; self-update auto-reload with fresh bundle, single reload, no Ctrl+F5; no JS errors.');
  await browser.close();
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(async()=>{await browser?.close();});

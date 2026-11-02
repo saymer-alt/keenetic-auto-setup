@@ -1,7 +1,8 @@
 # GitHub inventory and safe cleanup plan — snapshot 30.10.2026
 
-Status: **plan only**. Nothing is deleted, closed, unpublished or force-pushed by
-this document. Every irreversible action requires a separate explicit owner GO,
+Status: **ledger** (план + записи исполнения). Каждый шаг исполнения ниже
+выполнен по отдельному явному GO владельца; сам документ ничего не удаляет.
+Всё необратимое требует отдельного явного owner GO,
 as fixed in #282 and the release-hygiene ledger (#292). Numbers are a snapshot,
 not a deletion list: between the original cleanup request and this snapshot the
 owner already retired 9 short-lived prereleases into
@@ -118,3 +119,77 @@ KAS/Mihomo/MagiTrickle не затрагиваются; ничего не уда
 (sha256 7746779e31d2ab37dd917423ce4b3b86ae8a8031fb4569367ec60e48ab6f521c) + `SHA256SUMS-2`.
 Сами релизы предлагаются к удалению отдельным GO владельца (пока сохранены);
 исходные теги остаются в репозитории.
+
+---
+
+## Исполнено 02.11.2026 (после перехода WEB на beta.4)
+
+### Контекст: ступенчатая публикация beta.4 выполнена
+
+- Инфраструктура: PR #331 (merge `d69903a`), Stage A — Release `v0.1.0-beta.4`
+  (run 41492190833), Stage B — Pages experimental → beta.4 (run 41496358204),
+  Stage C — legacy Release переключён на beta.4 (run 41498019338). Оба канала
+  обслуживают идентичный индекс `a9914512872eb08d1f9b3ae752a3fec679f2016c4c51601e276ce87ed64710ac`.
+- Аппаратное подтверждение: NC-4210 обновлён beta.3 → beta.4 через WEB-панель
+  (`kas-control-center 0.1.0~beta.4-1`, aarch64-3.10).
+
+### Релиз удалён
+
+`v0.1.0-beta.3` (Release ID 430112110, source/tag `804a23c97e814b96d92446c42ff3d171b5200f8f`,
+published 2026-10-31T18:37:47Z, prerelease, author github-actions[bot]). Метаданные ассетов:
+
+| Ассет | ID | Размер | SHA256 |
+|---|---|---|---|
+| kas-control-center_0.1.0.beta.3-1_aarch64-3.10.ipk | 696164758 | 2 795 096 | `a28f9d36eccc1bfe67211d3267cdd7b627a01ed786a076c7501118b7ff43637d` |
+| kas-control-center_0.1.0.beta.3-1_armv7-3.2.ipk | 696164753 | 2 812 761 | `71d35f6fa8c467ce5e99df9f17035c9d9fb4bde060541333f20f673b25857ea6` |
+| kas-control-center_0.1.0.beta.3-1_mips-3.4.ipk | 696164755 | 2 712 809 | `83f04749e537f5b9f44f3d1cf4fcea0a161cb384e71be0a5d1b676caeedaa0b4` |
+| kas-control-center_0.1.0.beta.3-1_mipsel-3.4.ipk | 696164754 | 2 689 391 | `3acb716ffe71d844d1e92bc5d643d3d7da4bc3fe5dd81a7268128670b89c0599` |
+| SHA256SUMS | 696164756 | 467 | `8e277282272a957146d5d421083f4a37795f9f726cf0c28b0f35b68a44bb60d6` |
+
+Git-тег `v0.1.0-beta.3` сохранён. Индекс beta.3 канонически записан: SHA256
+(`f2d5eac66f022dc85b0726c1b8970e11f00484c94e2f36be5450f5bdc5dfbcac`) и
+дайджесты IPK зафиксированы выше и в этом файле.
+
+### Релиз удалён (второй, окончательный)
+
+`kas-web-channel-experimental` (legacy-канал обновлений; Release ID 428738893,
+создан 2026-10-30T07:00:26Z, опубликован 2026-10-30T07:07:03Z, единственный
+asset `panel-update.json` ID 702698353, 1863 B). История обслуженных индексов:
+beta.1/test17-эпоха → `f2d5eac66f022dc85b0726c1b8970e11f00484c94e2f36be5450f5bdc5dfbcac`
+(beta.3, до 02.11.2026) → `a9914512872eb08d1f9b3ae752a3fec679f2016c4c51601e276ce87ed64710ac`
+(beta.4, финальное содержимое — идентично Pages experimental). Удалён
+02.11.2026 отдельным GO владельца, который сознательно прекращает поддержку
+обновлений старых test17/beta.1/beta.2/beta.3 через legacy-канал: панели
+beta.4+ полностью обслуживаются GitHub Pages. Git-тег
+`kas-web-channel-experimental` сохранён (9c715283, правило #282 — теги не
+удаляются этим документом). После удаления проверено: Pages experimental
+продолжает отдавать индекс beta.4 (`a9914512…`), релиз beta.4 и канонические
+URL загрузки работают, Latest не изменён.
+
+### KN-1010 — архивный стенд
+
+02.11.2026 владелец исключил пилотный **KN-1010** из действующего парка
+тестирования KAS WEB: исторический стенд, его старые установки
+test16/test17/beta.1 больше не поддерживаются и не являются блокирующей
+зависимостью для развития KAS WEB и инфраструктуры обновлений. Исторические
+результаты тестирования (test16→test17 аппаратная приёмка 30.10.2026 и др.)
+сохранены в документации как архивные. Актуальная аппаратная приёмка KAS WEB —
+подтверждённый **NC-4210** (beta.3 → beta.4 field pass) и последующие тесты;
+текущую версию KAS WEB на KN-1010 проверять не требуется.
+
+### Прочее сохранено
+
+- `kas-web-ipk-92e301d` (beta.1), `kas-web-ipk-9c71528` (test17),
+  `kas-web-ipk-62a97a3` (test16), архивный релиз, все релизы ядра `v1.x`,
+  релиз `mihomo`, все git-теги — без изменений.
+
+### One-shot workflows выведены из эксплуатации
+
+`ops-publish-kas-web-beta2-20261030.yml`, `ops-publish-kas-web-beta3-20261031.yml`,
+`ops-publish-kas-web-beta4.yml`, `ops-switch-legacy-channel-beta4.yml` — разовые
+процедуры завершённых публикаций (beta.2, beta.3, Stage A/Stage C beta.4).
+Удалены вместе со своими dry-run наборами (`tests/publish-transaction-dryrun.py`,
+`tests/beta4-publication-dryrun.py`); общие фикстуры (`find_bash`, `build_ipk`)
+перенесены в `tests/_publication_testkit.py` для выживших наборов
+(`pages-deploy-dryrun.py`, `candidate-build-dryrun.py`). Действующие механизмы
+candidate-build (`web-beta3-build.yml`) и `updates-pages-deploy.yml` не изменены.
