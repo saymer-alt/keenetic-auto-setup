@@ -122,9 +122,10 @@ Doctor + watchdog + MetaCubeXD закрывают локальную экспл�
 KAS Web уже существует как самостоятельный необязательный Entware IPK; MetaCubeXD
 остаётся отдельным средством управления Mihomo, KAS Web не дублирует весь его функционал.
 
-- **Beta.6:** релизная интеграция в [PR #363](https://github.com/saymer-alt/keenetic-auto-setup/pull/363) — default TCP 18080 с безопасным fallback, версия Mihomo API, системные метрики, идентификация watchdog. На дату записи это Draft-кандидат, а не подтверждённый опубликованный релиз.
+- **Beta.6 — опубликована 03.11.2026:** [v0.1.0-beta.6](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.6), [PR #363](https://github.com/saymer-alt/keenetic-auto-setup/pull/363) merged; default TCP 18080 с безопасным fallback, версия Mihomo API, системные метрики, идентификация watchdog. Аппаратные field-проверки остаются у владельца.
 - **Beta.7 (предварительный план):** Network Doctor с ручным запуском из Web (начать с default + Mihomo), read-only диагностика MagiTrickle/Netfilter, идентификатор watchdog в полном отчёте Doctor, KeenDNS/UX-регрессии, затем условные задачи без расширения безопасного базового scope.
 - **Обязательный подробный план и перенос в новый чат:** [KAS Web beta.7 handoff](kas-web-beta7-handoff-2026-11-03.md).
+- **P0 до выпуска beta.7:** завершить миграцию исторического `web-beta3-build.yml` → `kas-web-candidate-build.yml` с обновлением provenance-проверок publisher и dryrun-тестов; изменение не вошло в beta.6.
 - **Не дублировать готовое:** кнопка скачивания актуального YAML уже присутствует в `main` по состоянию на 03.11.2026; beta.7 только проверяет её работу.
 - **Принцип:** CLI/read-only и фикстуры сначала, затем тонкий Web-адаптер, никакого второго тяжёлого monitoring stack, автоисправлений, изменения маршрутов или опросов внешних сайтов при открытии панели.
 
