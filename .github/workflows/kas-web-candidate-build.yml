@@ -1,38 +1,36 @@
-name: KAS Web candidate IPKs (no publication)
+name: KAS Web official candidate IPKs (no publication)
 
 on:
   push:
     branches:
-      - main # after merge: the release candidate must be rebuilt from the real merge commit before any publish
+      - main # after merge: automatic verification only; official candidates are explicitly dispatched
     paths:
-      - '.github/workflows/web-beta3-build.yml'
+      - '.github/workflows/kas-web-candidate-build.yml'
       - 'web/control-center/**'
       - '!web/control-center/**/*.md'
   workflow_dispatch:
-    # Candidate builds from the selected commit; no publication or Pages writes.
-    # This workflow keeps its historical filename for downstream compatibility.
-    # Push builds use beta.6 test inputs, dispatch may override all four values.
+    # The single reusable beta-agnostic candidate builder. A release
+    # candidate is produced ONLY by this explicit dispatch with all four
+    # confirmed parameters; the publisher accepts nothing else. Push events
+    # run the verification suite but build no artifacts, so an automatic
+    # run can never masquerade as an official release candidate.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0.beta.6-1'
-        required: false
+        description: 'Internal IPK version, e.g. 0.1.0.beta.6-1 (dotted, no tilde)'
+        required: true
         type: string
-        default: '0.1.0.beta.6-1'
       tag:
         description: 'Canonical release tag, e.g. v0.1.0-beta.6'
-        required: false
+        required: true
         type: string
-        default: 'v0.1.0-beta.6'
       artifact_prefix:
         description: 'Uploaded artifact name prefix, e.g. kas-web-beta6'
-        required: false
+        required: true
         type: string
-        default: 'kas-web-beta6'
       previous_version:
-        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.5-1 for beta.6'
-        required: false
+        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.5-1'
+        required: true
         type: string
-        default: '0.1.0.beta.5-1'
 
 permissions:
   contents: read
@@ -42,13 +40,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      # Push has no inputs context. Keep the beta.6 candidate above the
-      # currently published beta.5, which uses the DOTTED version 0.1.0.beta.5-1.
-      # Do NOT use 0.1.0~beta.6-1: it sorts OLDER than published beta.5.
-      # The eventual stable must sort above the dotted prereleases (e.g. 0.1.1-1).
+      # Dispatch: the explicitly confirmed release pair. Push has no inputs
+      # context, so the ladder runs on an EVERGREEN placeholder pair: a pure
+      # compare-versions semantics regression that stays valid regardless of
+      # what is published and never claims a release. Do NOT use tilde forms:
+      # 0.1.0~beta.N-1 sorts OLDER than the dotted prereleases.
+      # The eventual stable must sort above the dotted prereleases (0.1.1-1).
       # compare-versions rejects equal versions.
-      VERSION: ${{ inputs.version || '0.1.0.beta.6-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.5-1' }}
+      VERSION: ${{ inputs.version || '0.1.0.beta.9-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.8-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,7 +63,7 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg ladder (published beta.5 → beta.6 → future stable)
+      - name: Real Entware opkg ladder (release pair → future stable)
         run: |
           set -euo pipefail
           # Shared Entware mirror can be slow from CI (observed ~13 KB/s);
@@ -89,6 +89,10 @@ jobs:
 
   crossbuild:
     needs: metadata-tests
+    # Artifacts exist only for an explicitly dispatched candidate. A push run
+    # must never upload packages that could be mistaken for a release
+    # candidate without the confirmed version/tag/prefix parameters.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -97,8 +101,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0.beta.6-1' }}
-      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.6' }}
+      BETA_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.tag }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +160,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_prefix || 'kas-web-beta6' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS
