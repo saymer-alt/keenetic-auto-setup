@@ -172,8 +172,8 @@ class Publisher:
                 "candidate run is not completed/success at the pinned source SHA")
         require(record.get("event") == "workflow_dispatch" and
                 record.get("head_branch") == "main" and
-                str(record.get("path", "")).split("@", 1)[0] == ".github/workflows/web-beta3-build.yml",
-                "candidate run must be an explicitly dispatched WEB build on main")
+                str(record.get("path", "")).split("@", 1)[0] == ".github/workflows/kas-web-candidate-build.yml",
+                "candidate run must be an explicitly dispatched kas-web-candidate-build run on main")
         # An infra/docs-only merge with explicitly relabelled old IPKs must not
         # masquerade as a new WEB source release. Require real WEB changes since
         # the previous published beta, not just publisher/workflow/doc updates.
