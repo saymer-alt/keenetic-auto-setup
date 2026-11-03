@@ -52,6 +52,23 @@ func TestMetricsExistingCollectorWithFixtures(t *testing.T){
 	}
 }
 
+// The production router's BusyBox ash 1.37 rejects "sh -s" with exit 245.
+// Our CI host's /bin/sh may accept it, so guard against that regression with
+// a shell that deliberately rejects -s yet otherwise runs the real collector.
+func TestMetricsCollectorWithoutDashS(t *testing.T) {
+	script, err := assets.ReadFile("scripts/kas-sys-metrics.sh")
+	if err != nil { t.Fatal(err) }
+	sys, proc := fixtureMetricsRoots(t)
+	shell := filepath.Join(t.TempDir(), "busybox-compatible-sh")
+	wrapper := "#!/bin/sh\ncase \"$1\" in -s) echo 'Invalid option \"-s\"' >&2; exit 245 ;; esac\nexec /bin/sh \"$@\"\n"
+	if err := os.WriteFile(shell, []byte(wrapper), 0700); err != nil { t.Fatal(err) }
+	m, err := runMetricsCollectorWithShell(context.Background(), shell, script, sys, proc)
+	if err != nil { t.Fatal("BusyBox-compatible invocation failed:", err) }
+	if m.Load.Status != "PASS" || m.Uptime.Status != "PASS" || m.Memory.Status != "PASS" {
+		t.Fatalf("collector did not produce expected metrics: %+v", m)
+	}
+}
+
 func TestMetricsContractRejectsInvalidData(t *testing.T){
 	for _,payload:=range []string{
 		`{"schema":"wrong","tool":"kas-sys-metrics.sh","tool_version":"0.1.0"}`,
