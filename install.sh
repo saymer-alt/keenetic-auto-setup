@@ -250,6 +250,60 @@ mp_pids() {
 }
 # END MIHOMO PROCESS STATE v1
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Single authoritative Mihomo init-script resolution for standalone KAS
+# tools. Upstream Entware renamed the packaged script S99mihomo ->
+# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
+# ship S99, so both names are field realities. Contract (identical block
+# in every consumer; guard-tested by
+# tests/mihomo-init-contract-regression.py):
+#   - only the two known names are candidates, never a glob;
+#   - exactly one executable regular-file candidate is authoritative
+#     (return 0, MIHOMO_INIT_RESOLVED);
+#   - two executable candidates mean ambiguous ownership: return 2 with
+#     state "ambiguous" — KAS refuses to pick one because two Mihomo
+#     launches at boot would break the one-Mihomo invariant; the operator
+#     removes the stale leftover;
+#   - classification dereferences the path exactly like the boot init:
+#     a directory or a non-executable/dangling entry is unusable (return
+#     2 carries the offending path, state notfile:/notexec:); KAS only
+#     ever executes stop/start/restart through the resolved path and
+#     never modifies it;
+#   - no known name exists: return 1, state "absent".
+# Diagnostics only: this block never creates, renames, chmods or deletes
+# package-owned init scripts (owner decision 2026-11-03).
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    _mir_found=""
+    _mir_state="absent"
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+            _mir_state=""
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        MIHOMO_INIT_STATE=""
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
 
 set -e
 
@@ -2266,18 +2320,22 @@ fi
 # no-op for the running service. Restart only when this installer changed
 # something Mihomo must reload. If the service is stopped, start it so the
 # installer can still satisfy its working-stack contract.
+# Issue #355: the init script is resolved by the guarded contract
+# (S28mihomo or S99mihomo, exactly one authoritative script, ambiguity
+# fails closed) instead of the literal S99 path.
 mp_known || err "Runtime UNKNOWN; service action aborted."
 MIHOMO_SERVICE_ACTION=none
-if [ -x /opt/etc/init.d/S99mihomo ]; then
+if resolve_mihomo_init; then
+    MIHOMO_INIT_SCRIPT="$MIHOMO_INIT_RESOLVED"
     if [ "$MIHOMO_RESTART_NEEDED" -eq 1 ]; then
         if mihomo_running; then
             log "Mihomo binary/config changed - restarting service"
-            /opt/etc/init.d/S99mihomo restart || warn "Mihomo restart failed"
+            "$MIHOMO_INIT_SCRIPT" restart || warn "Mihomo restart failed"
             MIHOMO_SERVICE_ACTION=restart
         else
             log "Mihomo binary/config changed and service is stopped - starting service"
             mp_stopped || err "Cannot prove stop before service start."
-            /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
+            "$MIHOMO_INIT_SCRIPT" start || warn "Mihomo start failed"
             MIHOMO_SERVICE_ACTION=start
         fi
     elif mihomo_running; then
@@ -2285,11 +2343,21 @@ if [ -x /opt/etc/init.d/S99mihomo ]; then
     else
         log "Mihomo binary/config unchanged but daemon is stopped - starting service"
         mp_stopped || err "Cannot prove stop before service start."
-        /opt/etc/init.d/S99mihomo start || warn "Mihomo start failed"
+        "$MIHOMO_INIT_SCRIPT" start || warn "Mihomo start failed"
         MIHOMO_SERVICE_ACTION=start
     fi
 else
-    warn "S99mihomo not found, cannot manage Mihomo service"
+    case "$MIHOMO_INIT_STATE" in
+        absent)
+            warn "Mihomo init script not found (expected S28mihomo or S99mihomo), cannot manage Mihomo service"
+            ;;
+        ambiguous)
+            warn "Both /opt/etc/init.d/S28mihomo and /opt/etc/init.d/S99mihomo exist; ownership is ambiguous and the installer will not pick one. Remove the stale leftover so exactly one Mihomo init script remains."
+            ;;
+        *)
+            warn "Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}, cannot manage Mihomo service"
+            ;;
+    esac
 fi
 
 if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then
@@ -2366,11 +2434,21 @@ else
     check_fail "Mihomo binary not found (/opt/sbin/mihomo or /opt/bin/mihomo)"
 fi
 
-# Mihomo init script
-if [ -x /opt/etc/init.d/S99mihomo ]; then
-    check_ok "Mihomo init script present"
+# Mihomo init script (issue #355: guarded S28/S99 resolution)
+if resolve_mihomo_init; then
+    check_ok "Mihomo init script present: $MIHOMO_INIT_RESOLVED"
 else
-    check_fail "Mihomo init script /opt/etc/init.d/S99mihomo missing"
+    case "$MIHOMO_INIT_STATE" in
+        absent)
+            check_fail "Mihomo init script missing (expected /opt/etc/init.d/S28mihomo or /opt/etc/init.d/S99mihomo)"
+            ;;
+        ambiguous)
+            check_fail "Both /opt/etc/init.d/S28mihomo and /opt/etc/init.d/S99mihomo exist (ambiguous ownership; remove the stale leftover)"
+            ;;
+        *)
+            check_fail "Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}"
+            ;;
+    esac
 fi
 
 # Project proxy — canonical or legacy-compatible ProxyN. Compatibility is

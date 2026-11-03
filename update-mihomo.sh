@@ -404,6 +404,60 @@ log() { status_out "$COLOR_GREEN" "[updater] $1"; }
 warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
 error() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Single authoritative Mihomo init-script resolution for standalone KAS
+# tools. Upstream Entware renamed the packaged script S99mihomo ->
+# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
+# ship S99, so both names are field realities. Contract (identical block
+# in every consumer; guard-tested by
+# tests/mihomo-init-contract-regression.py):
+#   - only the two known names are candidates, never a glob;
+#   - exactly one executable regular-file candidate is authoritative
+#     (return 0, MIHOMO_INIT_RESOLVED);
+#   - two executable candidates mean ambiguous ownership: return 2 with
+#     state "ambiguous" — KAS refuses to pick one because two Mihomo
+#     launches at boot would break the one-Mihomo invariant; the operator
+#     removes the stale leftover;
+#   - classification dereferences the path exactly like the boot init:
+#     a directory or a non-executable/dangling entry is unusable (return
+#     2 carries the offending path, state notfile:/notexec:); KAS only
+#     ever executes stop/start/restart through the resolved path and
+#     never modifies it;
+#   - no known name exists: return 1, state "absent".
+# Diagnostics only: this block never creates, renames, chmods or deletes
+# package-owned init scripts (owner decision 2026-11-03).
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    _mir_found=""
+    _mir_state="absent"
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+            _mir_state=""
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        MIHOMO_INIT_STATE=""
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
 # Retry wrapper: attempts a command up to 3 times with 2s delay
 retry() {
   for i in 1 2 3; do
@@ -1318,12 +1372,26 @@ fi
 # -----------------------------
 # 8. Find init script (needed for the one-instance stop and the service steps)
 # -----------------------------
-INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
-
-if [ -n "$INIT_SCRIPT" ]; then
+# Issue #355: a bare `find -name '*mihomo*' | head -1` could pick an
+# arbitrary script when a feed upgrade leaves both S28mihomo and S99mihomo
+# behind. The guarded resolver returns exactly one authoritative script,
+# fails closed on ambiguity and never follows symlinks.
+if resolve_mihomo_init; then
+  INIT_SCRIPT="$MIHOMO_INIT_RESOLVED"
   log "Found init script: $INIT_SCRIPT"
 else
-  log "WARNING: No init script found in /opt/etc/init.d"
+  INIT_SCRIPT=""
+  case "$MIHOMO_INIT_STATE" in
+    ambiguous)
+      error "Both /opt/etc/init.d/S28mihomo and /opt/etc/init.d/S99mihomo exist; ownership is ambiguous and the updater will not pick one (a second Mihomo instance must not be started). Remove the stale leftover so exactly one Mihomo init script remains, then re-run."
+      ;;
+    absent)
+      log "WARNING: No Mihomo init script found in /opt/etc/init.d (expected S28mihomo or S99mihomo)"
+      ;;
+    *)
+      log "WARNING: Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}; treated as no init script"
+      ;;
+  esac
 fi
 
 # -----------------------------

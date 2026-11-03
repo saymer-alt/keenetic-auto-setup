@@ -101,6 +101,9 @@ jobs:
       - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
         run: python3 tests/update-opkg-staleness-regression.py
 
+      - name: Mihomo init S28/S99 resolution contract regression (issue #355)
+        run: sudo python3 tests/mihomo-init-contract-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 

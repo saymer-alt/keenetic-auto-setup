@@ -162,6 +162,60 @@ ml_lifecycle_release() {
 }
 # END MIHOMO LIFECYCLE LOCK v1
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Single authoritative Mihomo init-script resolution for standalone KAS
+# tools. Upstream Entware renamed the packaged script S99mihomo ->
+# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
+# ship S99, so both names are field realities. Contract (identical block
+# in every consumer; guard-tested by
+# tests/mihomo-init-contract-regression.py):
+#   - only the two known names are candidates, never a glob;
+#   - exactly one executable regular-file candidate is authoritative
+#     (return 0, MIHOMO_INIT_RESOLVED);
+#   - two executable candidates mean ambiguous ownership: return 2 with
+#     state "ambiguous" — KAS refuses to pick one because two Mihomo
+#     launches at boot would break the one-Mihomo invariant; the operator
+#     removes the stale leftover;
+#   - classification dereferences the path exactly like the boot init:
+#     a directory or a non-executable/dangling entry is unusable (return
+#     2 carries the offending path, state notfile:/notexec:); KAS only
+#     ever executes stop/start/restart through the resolved path and
+#     never modifies it;
+#   - no known name exists: return 1, state "absent".
+# Diagnostics only: this block never creates, renames, chmods or deletes
+# package-owned init scripts (owner decision 2026-11-03).
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    _mir_found=""
+    _mir_state="absent"
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+            _mir_state=""
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        MIHOMO_INIT_STATE=""
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
 # BEGIN KAS EXPECTED SOURCE GATE v1 (opt-in)
 # API callers (web control center) stage a private snapshot of the config.yaml
 # bytes the operator reviewed. When KAS_EXPECTED_SOURCE names that snapshot,
@@ -399,7 +453,8 @@ BACKUP_STAGE="$CONFIG_DIR/.config.yaml.bak.new.$$"
 ROLLBACK_STAGE="$CONFIG_DIR/.config.yaml.rollback.$$"
 RECOVERY_STAGE="$CONFIG_DIR/.config.yaml.invalid.new.$$"
 TEST_LOG="/tmp/mihomo-config-test.$$"
-INIT_SCRIPT="/opt/etc/init.d/S99mihomo"
+# Resolved by resolve_mihomo_init (issue #355): S28mihomo or S99mihomo.
+INIT_SCRIPT=""
 
 SERVICE_WAS_RUNNING=0
 SERVICE_STOPPED_BY_US=0
@@ -640,7 +695,20 @@ trap 'signal_handler HUP' HUP
 
 echo "=== Mihomo Config Import ==="
 
-[ -x "$INIT_SCRIPT" ] || error "Mihomo init script not found: $INIT_SCRIPT"
+if ! resolve_mihomo_init; then
+    case "$MIHOMO_INIT_STATE" in
+        absent)
+            error "Mihomo init script not found (expected /opt/etc/init.d/S28mihomo or /opt/etc/init.d/S99mihomo). Run setup.sh first."
+            ;;
+        ambiguous)
+            error "Mihomo init script ownership is ambiguous: both /opt/etc/init.d/S28mihomo and /opt/etc/init.d/S99mihomo exist. KAS will not pick one because two Mihomo launches would break the one-instance invariant. Remove the stale leftover so exactly one Mihomo init script remains, then retry. Config not changed."
+            ;;
+        *)
+            error "Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}. KAS never follows or modifies init scripts it cannot verify. Config not changed."
+            ;;
+    esac
+fi
+INIT_SCRIPT="$MIHOMO_INIT_RESOLVED"
 [ -d "$CONFIG_DIR" ] || error "Mihomo config directory not found: $CONFIG_DIR. Run setup.sh first."
 # Issue #320: an empty or missing current config used to hard-block the
 # importer with a misleading "Run setup.sh first" hint even on an installed
