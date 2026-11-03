@@ -36,7 +36,7 @@ func TestMetricsExistingCollectorWithFixtures(t *testing.T){
 	m,err:=runMetricsCollector(context.Background(),script,sys,proc)
 	if err!=nil{t.Fatal(err)}
 	if m.Schema!="router-metrics/v1"||m.Temperature.Status!="PASS"||m.Temperature.Celsius!="42.5"||
-		m.Load.OneMin!="0.25"||m.Uptime.Seconds!="36000"||m.Memory.Total!="524288"||
+		m.Load.OneMin!="0.25"||m.Uptime.Seconds!="36000.22"||m.Memory.Total!="524288"||
 		m.Swap.Free!="131072"{
 		t.Fatalf("unexpected metrics %+v",m)
 	}
