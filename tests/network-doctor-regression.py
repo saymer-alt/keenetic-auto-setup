@@ -334,6 +334,10 @@ def main():
         ("http_target_skips_tls", {"target": "http200"}, 0,
          {"expect_in": ("TLS stage NOT TESTED by design", "http.response: HTTP 200",
                         "VERDICT: target chain confirmed", "plain HTTP target"),
+          "cli_args": ["--target", "192.0.2.10"]}),        # review fix: an IP literal has no name resolution - curl-path DNS
+        # side evidence must NOT be recorded even when the target is reached
+        ("ip_target_no_curlpath_dns", {"target": "pass"}, 0,
+         {"expect_not_in": ("dns.curl-path",),
           "cli_args": ["--target", "192.0.2.10"]}),
         ("dns_nxdomain", {"dns": "nxdomain", "target": "exit6"}, 1,
          {"expect_in": ("NXDOMAIN", "VERDICT: confirmed failure", "'dns.router'",
