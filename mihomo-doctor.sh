@@ -2317,10 +2317,39 @@ else
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
         [ -n "$_v" ] && MT_REMAP=$_v
         # BEGIN DOCTOR MT LINK PARSE v1
-        # YAML "- br0" is a sequence item, not a sibling key.
+        # YAML "- br0" is a sequence item, not a sibling key. Two shapes
+        # are handled: block sequences (items may sit at the key indent or
+        # deeper) and flow-style inline lists (`link: [br0, br1]`).
         MT_LINK=$(awk '
-            /^  link:/ { l=1; next }
-            l && /^  -[[:space:]]+/ { sub(/^  -[[:space:]]+/, ""); sub(/\r$/, ""); print; next }
+            function emit(v) {
+                sub(/\r$/, "", v)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                gsub(/"/, "", v)
+                if (v != "") print v
+            }
+            /^  link:/ {
+                l=1
+                # flow-style inline list on the key line itself
+                _v=$0
+                sub(/^  link:[[:space:]]*/, "", _v)
+                sub(/#.*$/, "", _v)
+                if (_v ~ /^\[/) {
+                    sub(/^\[/, "", _v); sub(/\]$/, "", _v)
+                    _n=split(_v, _a, ",")
+                    for (_i=1; _i<=_n; _i++) emit(_a[_i])
+                    l=0
+                }
+                next
+            }
+            l && /^[[:space:]]+-[[:space:]]+/ {
+                _v=$0
+                sub(/^[[:space:]]+-[[:space:]]+/, "", _v)
+                sub(/[[:space:]]*#.*$/, "", _v)
+                emit(_v)
+                next
+            }
+            # the next 2-space sibling key ends the sequence; deeper lines
+            # stay inside it
             l && /^  [^[:space:]#-]/ { l=0 }
         ' "$MT_CFG" | tr '\n' ' ')
         # END DOCTOR MT LINK PARSE v1

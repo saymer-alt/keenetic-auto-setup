@@ -72,4 +72,37 @@ printf '%s\n' "$out" | grep -Fq 'br0=no, br1=yes' || fail_test 'br1 not parsed'
 sed 's/rule: speedtest.net/rule: not-speedtest.example/' "$TMP/fixture.yaml" > "$TMP/no-speedtest.yaml"
 out=$(sh "$TMP/runner.sh" "$TMP/no-speedtest.yaml" "$TMP/link.sh" "$TMP/scope.sh")
 printf '%s\n' "$out" | grep -Fq 'speedtest.net=not detected' || fail_test 'false positive test site'
+# flow-style inline list (A2 fix: the inline value used to be discarded)
+cat > "$TMP/flow.yaml" <<'YAML'
+app:
+  link: [br0, br1]
+groups: []
+YAML
+out=$(sh "$TMP/runner.sh" "$TMP/flow.yaml" "$TMP/link.sh" "$TMP/scope.sh")
+printf '%s
+' "$out" | grep -Fq 'br0=yes, br1=yes' || fail_test 'flow-style app.link not parsed'
+
+# deeper-indented sequence items (A2 fix: 4-space items used to be dropped)
+cat > "$TMP/deep.yaml" <<'YAML'
+app:
+  link:
+    - br0
+    - br1
+groups: []
+YAML
+out=$(sh "$TMP/runner.sh" "$TMP/deep.yaml" "$TMP/link.sh" "$TMP/scope.sh")
+printf '%s
+' "$out" | grep -Fq 'br0=yes, br1=yes' || fail_test 'deep-indent app.link items dropped'
+
+# inline comments must not leak into interface names
+cat > "$TMP/comments.yaml" <<'YAML'
+app:
+  link:
+  - br0 # home bridge
+  - br1 # guest
+groups: []
+YAML
+out=$(sh "$TMP/runner.sh" "$TMP/comments.yaml" "$TMP/link.sh" "$TMP/scope.sh")
+printf '%s
+' "$out" | grep -Fq 'br0=yes, br1=yes' || fail_test 'commented items mis-parsed'
 echo '[OK] Doctor MT link/rule inventory regression passed'
