@@ -55,14 +55,13 @@ jobs:
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
 
-      - name: Beta.3 publish transaction dry-run (mock GitHub, real step scripts)
-        run: python3 tests/publish-transaction-dryrun.py
+      # The one-shot beta.2/beta.3/beta.4 publisher and legacy-switch workflows
+      # and their dry-run suites were retired on 2026-11-02 after the staged
+      # beta.4 publication completed (docs/github-cleanup-plan-20261030.md);
+      # tests/_publication_testkit.py keeps the shared fixtures alive.
 
       - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
         run: python3 tests/pages-deploy-dryrun.py
-
-      - name: Beta.4 split publication dry-run (release-only + legacy switch, mock GitHub and Pages)
-        run: python3 tests/beta4-publication-dryrun.py
 
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py

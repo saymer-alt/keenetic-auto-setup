@@ -40,11 +40,12 @@ BETA4_PREFIX = 'kas-web-beta4'
 
 
 def pub():
-    from importlib import util as _util
-    spec = _util.spec_from_file_location('pub', HERE / 'publish-transaction-dryrun.py')
-    module = _util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Shared bash/fixture helpers; full context in tests/_publication_testkit.py.
+    import sys as _sys
+    if str(HERE) not in _sys.path:
+        _sys.path.insert(0, str(HERE))
+    import _publication_testkit
+    return _publication_testkit
 
 
 def crossbuild_run_blocks():
