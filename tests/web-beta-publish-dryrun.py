@@ -108,6 +108,7 @@ class FakeGithub:
         self.release_obj = None
         self.remote_bytes = {}
         self.latest = {"tag_name": "v1.8.5", "id": 999}
+        self.comparison = {"status": "ahead", "files": [{"filename": "web/control-center/web/app.js"}]}
         self.record = {"head_sha": SHA, "status": "completed", "conclusion": "success",
                        "event": "workflow_dispatch", "head_branch": "main",
                        "path": ".github/workflows/web-beta3-build.yml@main"}
@@ -123,6 +124,8 @@ class FakeGithub:
             return {"sha": path.rsplit("/", 1)[-1]}
         if "/actions/runs/" in path:
             return self.record
+        if "/compare/" in path:
+            return self.comparison
         if "/releases/latest" in path:
             return self.latest
         if "/git/ref/tags/" in path:
@@ -348,6 +351,12 @@ def main():
     def missing_previous(a, gh, *_):
         gh.prior["draft"] = True
     scenario("previous Release still draft", missing_previous, False,
+             lambda gh, *_: no_release(gh))
+    def infra_only(a, gh, *_):
+        gh.comparison = {"status": "ahead", "files": [
+            {"filename": ".github/workflows/publish-web-beta-release.yml"},
+            {"filename": "docs/kas-web-beta5-publication-proposal.md"}]}
+    scenario("infra/docs-only commit cannot claim beta.5 code", infra_only, False,
              lambda gh, *_: no_release(gh))
     def alias(a, gh, *_):
         gh.alias = True
