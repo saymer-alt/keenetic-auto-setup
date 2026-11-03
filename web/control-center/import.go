@@ -152,3 +152,24 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  }(entry)
  respondImport(w,http.StatusAccepted,entry)
 }
+
+// handleDownloadConfig returns the exact current on-disk Mihomo YAML.
+// It uses the same bounded config source as the existing provider editor.
+// No config mutation, backup job, password prompt or extra service is needed.
+func (a *app) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
+ if r.Method != http.MethodGet {
+  filterError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+  return
+ }
+ content, err := a.filterConfig()
+ if err != nil {
+  filterError(w, http.StatusServiceUnavailable, "CONFIG_UNAVAILABLE")
+  return
+ }
+ w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
+ w.Header().Set("Content-Disposition", `attachment; filename="config.yaml"`)
+ w.Header().Set("Cache-Control", "no-store")
+ w.Header().Set("X-Content-Type-Options", "nosniff")
+ w.WriteHeader(http.StatusOK)
+ _, _ = w.Write(content)
+}

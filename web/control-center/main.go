@@ -267,6 +267,7 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("/api/settings", a.handleSettings)
 	mux.HandleFunc("/api/doctor", a.handleDoctor)
 	mux.HandleFunc("/api/config/import", a.handleImport)
+	mux.HandleFunc("/api/config/download", a.handleDownloadConfig)
 	mux.HandleFunc("/api/config/operation", a.handleImportStatus)
 	mux.HandleFunc("/api/providers/names", a.handleProviderNames)
 	mux.HandleFunc("/api/filter/providers", a.handleFilterInspect)
