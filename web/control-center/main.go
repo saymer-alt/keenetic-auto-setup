@@ -306,7 +306,7 @@ func main() {
 	providerExport := flag.Bool("provider-names-export", false, "enable explicit read-only local Mihomo names export")
 	providerSecretFile := flag.String("provider-secret-file", "", "optional 0600 file with local Mihomo API secret; requires export")
 	settingsFile := flag.String("settings-file", panelSettingsPath, "private persistent panel settings")
-	initialPort := flag.Int("initial-port", 8081, "default port when no settings exist")
+	initialPort := flag.Int("initial-port", 18080, "default port when no settings exist")
 	flag.Parse()
 	if *workerOnly || *recoverUpdate {
 		p := newPanelUpdater("/opt")
@@ -334,8 +334,8 @@ func main() {
 		log.Fatal("invalid initial port")
 	}
 	// Only the untouched IPK/automatic default may select a different port.
-	// A saved config (including 8081) or explicit -listen never auto-hops.
-	autoStartupPort := *lanMode && (*listen == "" || *listen == "auto") && *initialPort == 8081
+	// A saved config (including previous 8081) or explicit -listen never auto-hops.
+	autoStartupPort := *lanMode && (*listen == "" || *listen == "auto") && *initialPort == 18080
 	var config *panelConfig
 	if *lanMode {
 		var err error
@@ -458,11 +458,11 @@ func main() {
 		config.Port = selectedPort
 		config.AutoPortFallback = true
 		lan.panel.Store(config)
-		fmt.Printf("AUTO_PORT_SELECTED: default 8081 occupied; selected %d\n", selectedPort)
+		fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", selectedPort)
 	} else if config != nil && config.AutoPortFallback {
 		// A saved first-start fallback is retained across reboot. Repeat the
 		// fixed, nonsecret reason in init/status for operator visibility.
-		fmt.Printf("AUTO_PORT_SELECTED: default 8081 occupied; selected %d\n", config.Port)
+		fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", config.Port)
 	}
 	app.listeners = newPanelListeners(app)
 	app.listeners.replace(listener)
