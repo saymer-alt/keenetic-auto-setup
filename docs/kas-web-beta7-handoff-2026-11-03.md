@@ -2,14 +2,23 @@
 
 > **Статус: ROADMAP / DESIGN, не реализованный релиз.** Это закреплённый план следующего цикла, а не разрешение на merge, Release, Pages, `stable` или доступ к физическим роутерам. Проверять актуальные HEAD/CI/GitHub issues перед началом работ. Приоритет: сначала завершить и испытать beta.6.
 
+## Обновление статуса после выпуска beta.6 (03.11.2026, подтверждено GitHub)
+
+- **beta.6 ОПУБЛИКОВАНА:** [Release v0.1.0-beta.6](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.6), пакет `0.1.0.beta.6-1`, GitHub prerelease, четыре IPK + SHA256SUMS. Финальный `main` / релизный SHA: `b7d97c297a70c90980d932bf571cd0ff6ee52ad9`.
+- [Интеграционный #363](https://github.com/saymer-alt/keenetic-auto-setup/pull/363) merged (`2f18c1742955f9b352d9131375ce43c10d9faec8`), [фикc имени артефактов #370](https://github.com/saymer-alt/keenetic-auto-setup/pull/370) merged. Не повторять интеграцию исходных PR #359–#362.
+- [Candidate build 41701185022](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41701185022), [publisher 41702447669](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41702447669), [Pages deploy 41703509323](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41703509323): GitHub API показывает completed/success на том же SHA. По отчёту агента публичный experimental index переведён на beta.6; перед разработкой проверить HTTP по [channels.json](https://saymer-alt.github.io/keenetic-auto-setup/updates/channels.json) и [experimental/panel-update.json](https://saymer-alt.github.io/keenetic-auto-setup/updates/experimental/panel-update.json).
+- **Реальные NC-4210 и KN-1012 пока не получили подтверждённого hardware FIELD PASS.** Проверить ручную установку, upgrade, фактический порт (новая установка 18080, сохранённые настройки сохраняют порт), password-file 401/200 и KeenDNS/Origin/Host. CI не заменяет полевые испытания.
+- **P0 технический долг, не выполненный при beta.6:** в актуальном `main` остался `.github/workflows/web-beta3-build.yml`, а `kas-web-candidate-build.yml` отсутствует. Ранее запрошенная миграция не была выполнена. Выделить отдельный безопасный PR перед публикацией beta.7: переименовать без дублирования, обновить pin в `scripts/kas_web_beta_publisher.py`, `tests/web-beta-publish-dryrun.py`, `tests/candidate-build-dryrun.py`, активные workflow и docs; проверить dispatch, 4 архитектуры, отказ publisher для неверного workflow, version/SHA/asset proofs. **Не изменять выпущенную beta.6 задним числом**; сохранить возможность использовать её release artifacts и верные historical tests. Не смешивать с первой функциональной реализацией Network Doctor.
+- Дополнительные beta.6 production bugfix, обязательные для регрессии beta.7: watchdog `now_ms()` с zero-padded дробью uptime `090` (POSIX shell arithmetic) и `auth_mode:none` + `-password-file` (пароль 401/200). Они уже включены в релизную ветку main; не отменять.
+
 ## 1. Исходная точка и зависимости
 
 - Репозиторий: https://github.com/saymer-alt/keenetic-auto-setup
-- beta.6 на момент подготовки плана: **интеграционный Draft PR #363** https://github.com/saymer-alt/keenetic-auto-setup/pull/363 (порт `18080`, fallback `18081..18090`, Mihomo API `v1.19.33`, read-only `router-metrics/v1`, watchdog source/hash evidence). Не объявлять её опубликованной, пока это не подтверждено GitHub Release и Pages.
-- Релиз beta.6 и хотя бы первые аппаратные smoke/upgrade-проверки должны предшествовать окончательному решению о выпуске beta.7. Регрессии beta.6 исправляются раньше новых функций.
+- Историческая запись на момент первоначального плана (уже не текущий статус): **интеграционный Draft PR #363** https://github.com/saymer-alt/keenetic-auto-setup/pull/363 (порт `18080`, fallback `18081..18090`, Mihomo API `v1.19.33`, read-only `router-metrics/v1`, watchdog source/hash evidence). Не объявлять её опубликованной, пока это не подтверждено GitHub Release и Pages.
+- Релиз beta.6 уже опубликован; **первые аппаратные smoke/upgrade-проверки ещё нужны** перед окончательным решением о выпуске beta.7. Регрессии beta.6 исправляются раньше новых функций.
 - Исходные PR #359/#360/#361/#362 и интеграционный #363 не сливать повторно. Проверять фактический новый `main` после завершения beta.6; будущие ветки beta.7 создавать от актуального `main`, а не от beta.6 Draft.
 - Инженерный протокол beta.5/beta.6: PR #358 и `docs/kas-web-beta5-field-lessons-2026-11-03.md` (пока находится в его ветке); не путать этот документ с принятой реализацией.
-- Для изменения стратегии публикации: отдельная миграция старого имени `web-beta3-build.yml` на `kas-web-candidate-build.yml` обсуждается для beta.6; перед работой выяснить, сделана ли она, не вводить ещё один дублирующий сборщик.
+- Миграция старого имени `web-beta3-build.yml` на `kas-web-candidate-build.yml` **не вошла в выпущенную beta.6**; это явный P0 технический долг перед публикацией beta.7. Делать отдельным проверенным PR без второго сборщика.
 
 ## 2. Зафиксированный предварительный состав beta.7
 
