@@ -50,7 +50,7 @@ sh kas-network-doctor.sh --target example.com --no-egress    # skip the egress o
 
 Target and port rules: the URL path and query are preserved and probed as given (`--target https://example.com/missing` really probes `/missing`; a query-only URL like `https://example.com?token=abc` is probed with its query); port priority is explicit `--port` > the port inside the URL > the scheme default (443/80); IPv6 literals and non-numeric ports are an explicit usage error, never a silent probe of another address, and usage errors never echo the raw input. Report policy: **the path and the query are never printed** - in stdout, the text report and the JSON any non-root path appears as `[path withheld]`, the query as `[query withheld]`, userinfo as `[credentials withheld]`; the network probe always uses the full URL.
 
-Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` chain confirmed (DNS+TCP+TLS answered, HTTP answered with any status); `1` confirmed stage failure; `2` usage error; `3` inconclusive (nothing FAILed, but the chain never completed).
+Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` chain confirmed (DNS+TCP+TLS answered, HTTP answered with any status); `1` confirmed stage failure; `2` usage error; `3` inconclusive (nothing FAILed, but the chain never completed); the verdict prints an exact inventory of confirmed stages and missing evidence instead of "nothing is proven".
 
 ## Stages and stable check ids
 
@@ -58,8 +58,9 @@ Statuses: `PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED`. Exit codes: `0` ch
 | --- | --- |
 | `tools.curl` | curl availability (without it most stages are `UNSUPPORTED`, verdict inconclusive) |
 | `dns.router` | system-resolver lookup with explicit NXDOMAIN / SERVFAIL / REFUSED / timeout classification; `NOT TESTED` for IP targets |
+| `dns.curl-path` | side evidence only: when the independent DNS stage could not run (no `timeout`, no nslookup or exhausted budget) but the target was reached via TLS/HTTP, records `PASS` "the name resolved on the curl path". NOT an independent DNS stage, not part of the verdict chain, not a substitute |
 | `dns.custom` | the same name via `--dns-server`; disagreement with `dns.router` is printed as a fact |
-| `tcp.connect` | TCP to host:port via the curl telnet trick; `curl 7` refused/unreachable; `curl 56` on telnet means the connection was established (peer closed the probe). When the TLS/HTTP stage proves the server exchange, TCP is recorded as proven and the disagreeing telnet observation is flagged explicitly |
+| `tcp.connect` | TCP to host:port via the curl telnet trick; telnet support is first detected from `curl -V` - a curl built without telnet skips the TCP-only probe without spending a request (`NOT TESTED`), and TLS/HTTP evidence confirms TCP instead; `curl 7` refused/unreachable; `curl 56` on telnet means the connection was established (peer closed the probe). When the TLS/HTTP stage proves the server exchange, TCP is recorded as proven and the disagreeing telnet observation is flagged explicitly |
 | `tls.handshake` | TLS handshake with verification enabled: `curl 35` (handshake), `60/19` (certificate: clock/CA), `43` (malformed), `56` (mid-handshake reset -> UNKNOWN) |
 | `http.response` | HTTP status and the redirect target (`%{redirect_url}`); **redirects are not followed** - one bounded request; 3xx comes with the redirect target and a captive-portal hypothesis; 4xx/5xx = "transport healthy, application answered" (a fact, not a network failure) |
 | `egress.direct` | observed direct egress address (api.ipify.org, one tiny request); disable with `--no-egress` |
