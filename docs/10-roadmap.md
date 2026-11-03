@@ -123,6 +123,7 @@ KAS Web уже существует как самостоятельный нео
 остаётся отдельным средством управления Mihomo, KAS Web не дублирует весь его функционал.
 
 - **Beta.6 — опубликована 03.11.2026:** [v0.1.0-beta.6](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.6), [PR #363](https://github.com/saymer-alt/keenetic-auto-setup/pull/363) merged; default TCP 18080 с безопасным fallback, версия Mihomo API, системные метрики, идентификация watchdog. Аппаратные field-проверки остаются у владельца.
+- **Beta.7 — P0 обязательное исправление:** автоматическая однократная миграция старого сохранённого TCP 8081 при upgrade beta.4/5/6 → beta.7, сохранение auth/настроек/backup, корректный новый URL; [#377](https://github.com/saymer-alt/keenetic-auto-setup/issues/377) после FIELD NC-4210, где beta.6 без ручного исправления порта не запустилась.
 - **Beta.7 (предварительный план):** Network Doctor с ручным запуском из Web (начать с default + Mihomo), read-only диагностика MagiTrickle/Netfilter, идентификатор watchdog в полном отчёте Doctor, KeenDNS/UX-регрессии, затем условные задачи без расширения безопасного базового scope.
 - **Обязательный подробный план и перенос в новый чат:** [KAS Web beta.7 handoff](kas-web-beta7-handoff-2026-11-03.md).
 - **P0 до выпуска beta.7:** завершить миграцию исторического `web-beta3-build.yml` → `kas-web-candidate-build.yml` с обновлением provenance-проверок publisher и dryrun-тестов; изменение не вошло в beta.6.
