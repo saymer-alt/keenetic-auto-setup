@@ -54,6 +54,16 @@ regular name keeps its bytes and the artifact takes the next suffix
 (R19). When hard-link creation itself fails (unsupported filesystem,
 I/O error), the import fails closed BEFORE replacing config.yaml (R20).
 
+Issue #320 post-#325 gap contracts (R21–R25): the remaining issue-listed
+scenarios that earlier groups left uncovered. A candidate that fails its
+own `mihomo -t` is rejected BEFORE any backup/preservation decision, so
+in recovery context the empty (R21) or invalid nonempty (R22) current
+config keeps its exact bytes, a good .bak keeps its bytes, and no
+recovery artifact appears. The file-argument mode (`sh config-import.sh
+file`) runs the same recovery transaction (R23) and the historical
+backup behavior (R24) as paste mode, and rejects an invalid candidate
+file without touching anything (R25).
+
 The reader is extracted from the production script (same approach as
 tests/doctor-ubi-regression.sh): the PTY reproduces the real tty behavior,
 but no router is contacted and nothing outside the temporary fixture tree
@@ -1236,6 +1246,200 @@ def sha256_of_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def test_e2e_recovery_gap_cases():
+    """Issue #320 post-#325 gap contracts (R21-R25): candidate rejection
+    happens before any backup or preservation decision, and the
+    file-argument mode delivers the same recovery guarantees as paste mode.
+
+      - R21: empty current + good .bak + invalid candidate: the import is
+        rejected, the empty current config keeps its exact bytes (still
+        empty), the good .bak keeps its bytes, and no recovery artifact or
+        backup is created;
+      - R22: invalid nonempty current + good .bak + invalid candidate: the
+        unusable current file keeps its bytes IN PLACE (preservation is not
+        triggered: the candidate never reached the commit stage), the good
+        .bak keeps its bytes;
+      - R23: file-argument mode, empty current + good .bak + valid
+        candidate file: recovery import installs the candidate, the .bak is
+        preserved untouched (same contract as R2, different delivery);
+      - R24: file-argument mode, valid current + stale good .bak: the
+        candidate installs and the previous valid config becomes the new
+        backup (historical behavior, same contract as R5);
+      - R25: file-argument mode, valid current + invalid candidate file:
+        rejected, config and .bak byte-identical, no artifacts.
+    """
+    ok, why = e2e_possible()
+    if not ok:
+        print("[SKIP] end-to-end recovery gap cases (%s)" % why)
+        return
+
+    created = []
+
+    def ensure_dir(path):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+            created.append(path)
+
+    for path in ("/opt", "/opt/sbin", "/opt/etc", "/opt/etc/init.d",
+                 "/opt/etc/mihomo"):
+        ensure_dir(path)
+
+    fake_bin = "/opt/sbin/mihomo"
+    fake_init = "/opt/etc/init.d/S99mihomo"
+    config_path = "/opt/etc/mihomo/config.yaml"
+    backup_path = "/opt/etc/mihomo/config.yaml.bak"
+    created.extend([fake_bin, fake_init])
+
+    with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(FAKE_MIHOMO_TWO_RULES)
+    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\nexit 0\n")
+    os.chmod(fake_bin, 0o755)
+    os.chmod(fake_init, 0o755)
+
+    GOOD_OLD = b"mixed-port: 7890\nmode: rule\nsecret: real-old\n"
+    CANDIDATE = b"mixed-port: 7890\nmode: rule\nsecret: null\nrecovery: yes\n"
+    INVALID_CANDIDATE = b"mixed-port: 7890\nmode: rule\nMAKE_MIHOMO_FAIL\n"
+    INVALID_CURRENT = b"mixed-port: 7890\nMAKE_MIHOMO_FAIL\nplace-A\n"
+
+    def reset(config_bytes, bak_bytes):
+        for path in (config_path, backup_path):
+            if os.path.exists(path) or os.path.islink(path):
+                os.remove(path)
+        if config_bytes is not None:
+            with open(config_path, "wb") as fh:
+                fh.write(config_bytes)
+        if bak_bytes is not None:
+            with open(backup_path, "wb") as fh:
+                fh.write(bak_bytes)
+
+    def read_file(path):
+        return open(path, "rb").read() if os.path.exists(path) else None
+
+    def recovery_names():
+        found = []
+        n = ""
+        while True:
+            name = "/opt/etc/mihomo/config.yaml.invalid" + (".%s" % n if n else "")
+            if os.path.exists(name) or os.path.islink(name):
+                found.append(name)
+            else:
+                break
+            n = str(int(n or "0") + 1)
+        return found
+
+    def paste(shell_argv, candidate):
+        return run_pty(
+            shell_argv, SCRIPT,
+            [("send", b"\n"), ("wait_pat", PROMPT), ("sleep", 0.5),
+             ("send", candidate), ("sleep", 0.5), ("send", b"\x04"),
+             ("sleep", 3.0)],
+            icrnl=True)
+
+    def run_file_mode(shell_argv, candidate_path):
+        env = dict(os.environ)
+        env["NO_COLOR"] = "1"
+        env["TERM"] = "dumb"
+        return subprocess.run(shell_argv + [SCRIPT, candidate_path],
+                              capture_output=True, timeout=60, env=env)
+
+    try:
+        for argv in sh_shells():
+            shell_name = " ".join(argv)
+            shell_tag = argv[-1].replace("/", "_")
+            try:
+                # R21 — empty current + good .bak + invalid candidate.
+                reset(b"", GOOD_OLD)
+                rc, out, _master = paste(argv, INVALID_CANDIDATE)
+                check("R21 invalid candidate rejected, empty config and .bak intact (%s)" % shell_name,
+                      rc is not None and rc != 0
+                      and b"Mihomo rejected the candidate config" in out
+                      and os.path.exists(config_path)
+                      and os.path.getsize(config_path) == 0
+                      and read_file(backup_path) == GOOD_OLD
+                      and recovery_names() == [],
+                      "rc=%r bak=%r" % (rc, read_file(backup_path)))
+
+                # R22 — invalid nonempty current + good .bak + invalid
+                # candidate: preservation is not triggered pre-commit; the
+                # unusable current file stays in place byte-identically.
+                reset(INVALID_CURRENT, GOOD_OLD)
+                want = read_file(config_path)
+                rc, out, _master = paste(argv, INVALID_CANDIDATE)
+                check("R22 invalid candidate rejected, invalid current untouched (%s)" % shell_name,
+                      rc is not None and rc != 0
+                      and b"Mihomo rejected the candidate config" in out
+                      and read_file(config_path) == want
+                      and read_file(backup_path) == GOOD_OLD
+                      and recovery_names() == [],
+                      "rc=%r config=%r" % (rc, read_file(config_path)))
+
+                # R23 — file-argument recovery: empty current + good .bak +
+                # valid candidate file.
+                reset(b"", GOOD_OLD)
+                cand_file = os.path.join(
+                    tempfile.gettempdir(), "kas-gap-cand-%d-%s.yaml"
+                    % (os.getpid(), shell_tag))
+                with open(cand_file, "wb") as fh:
+                    fh.write(CANDIDATE)
+                created.append(cand_file)
+                proc = run_file_mode(argv, cand_file)
+                out = proc.stdout + proc.stderr
+                check("R23 file-mode recovery import preserves good .bak (%s)" % shell_name,
+                      proc.returncode == 0
+                      and read_file(config_path) == CANDIDATE
+                      and read_file(backup_path) == GOOD_OLD
+                      and b"recovery" in out.lower(),
+                      "rc=%r bak=%r tail=%r"
+                      % (proc.returncode, read_file(backup_path), out[-140:]))
+
+                # R24 — file-argument mode keeps the historical backup
+                # behavior: a valid current config becomes the new backup.
+                reset(b"mixed-port: 7890\nmode: rule\nold-gap: yes\n", GOOD_OLD)
+                proc = run_file_mode(argv, cand_file)
+                check("R24 file-mode valid current becomes backup (%s)" % shell_name,
+                      proc.returncode == 0
+                      and read_file(config_path) == CANDIDATE
+                      and read_file(backup_path)
+                      == b"mixed-port: 7890\nmode: rule\nold-gap: yes\n",
+                      "rc=%r bak=%r" % (proc.returncode, read_file(backup_path)))
+
+                # R25 — file-argument mode rejects an invalid candidate file
+                # without touching config, .bak or creating artifacts.
+                reset(b"mixed-port: 7890\nmode: rule\nold-gap-2: yes\n", GOOD_OLD)
+                want = read_file(config_path)
+                bad_file = cand_file + ".bad"
+                with open(bad_file, "wb") as fh:
+                    fh.write(INVALID_CANDIDATE)
+                created.append(bad_file)
+                proc = run_file_mode(argv, bad_file)
+                out = proc.stdout + proc.stderr
+                check("R25 file-mode invalid candidate rejected untouched (%s)" % shell_name,
+                      proc.returncode != 0
+                      and b"Mihomo rejected the candidate config" in out
+                      and read_file(config_path) == want
+                      and read_file(backup_path) == GOOD_OLD
+                      and recovery_names() == [],
+                      "rc=%r tail=%r" % (proc.returncode, out[-140:]))
+            finally:
+                for path in (config_path, backup_path):
+                    if os.path.exists(path) or os.path.islink(path):
+                        os.remove(path)
+
+    finally:
+        for path in reversed(created):
+            try:
+                os.remove(path)
+            except OSError:
+                shutil.rmtree(path, ignore_errors=True)
+        for path in ("/opt/etc/mihomo", "/opt/etc/init.d", "/opt/etc",
+                     "/opt/sbin", "/opt"):
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+
+
 def main():
     if not os.path.exists(SCRIPT):
         print("[FAIL] config-import.sh not found under %s" % ROOT)
@@ -1245,6 +1449,7 @@ def main():
     test_e2e_recovery_cases()
     test_e2e_rollback_contracts()
     test_e2e_invalid_preservation_cases()
+    test_e2e_recovery_gap_cases()
     if failures:
         print("[FAIL] config-import PTY reader regression: %d failure(s)"
               % len(failures))

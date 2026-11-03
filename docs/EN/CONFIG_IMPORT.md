@@ -18,6 +18,8 @@ The launcher stages `config-import.sh` privately and verifies shebang, stable pr
 
 Interactive input is read from \`/dev/tty\`, so this still works when the importer itself is delivered through \`curl | sh\`.
 
+After the importer finishes (a successful import, the \`s\` skip, or a rejection), the \`curl\` side may print \`curl: (23) Failed writing received data\`: \`sh\` stopped consuming the delivered script, so curl no longer has a reader for its output pipe. That is expected delivery behavior — not an import error and not a configuration problem. Judge the result from the importer output above the curl line.
+
 ## Transaction
 
 - the candidate is staged beside \`config.yaml\`;
