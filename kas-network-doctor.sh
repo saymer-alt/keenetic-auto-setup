@@ -43,7 +43,7 @@
 set -u
 
 PROG_NAME="kas-network-doctor.sh"
-PROG_VERSION="0.1.0"
+PROG_VERSION="0.1.1"
 SCHEMA="network-diagnostics/v1"
 
 TARGET_INPUT=""
@@ -378,12 +378,26 @@ trap 'rm -f "$ERR_FILE" 2>/dev/null; exit' TERM
 # Tool inventory
 # ---------------------------------------------------------------
 section "Tools"
+# Issue #158: a curl built without the telnet protocol must not spend a
+# budgeted request on a guaranteed protocol-failure probe. Detect the
+# capability once from the local `curl --version` output (same shape as
+# kas-download-check.sh); absence only skips the TCP-only probe, and TLS/HTTP
+# evidence below can still prove TCP reachability.
+CURL_HAS_TELNET=0
 if command -v curl >/dev/null 2>&1; then
     CURL=$(command -v curl)
-    CURL_VER=$("$CURL" --version 2>/dev/null | head -n 1)
+    CURL_ALL=$("$CURL" --version 2>/dev/null)
+    CURL_VER=$(printf '%s
+' "$CURL_ALL" | head -n 1)
     rep "curl:     $CURL"
     rep "version:  $CURL_VER"
     record "tools.curl" "PASS" "curl available" "version: $CURL_VER"
+    if printf '%s
+' "$CURL_ALL" | grep -E '^Protocols:' | grep -Eq '[[:space:]]telnet([[:space:]]|$)'; then
+        CURL_HAS_TELNET=1
+    else
+        rep "capability: telnet protocol NOT available (TCP-only probe will be skipped without spending a request; TLS/HTTP evidence still available)"
+    fi
 else
     rep "curl:     MISSING"
     record "tools.curl" "UNSUPPORTED" "curl is not installed; install it with: opkg update && opkg install curl"
@@ -616,6 +630,10 @@ if [ -z "$CURL" ]; then
     unsup_out "tcp.connect: $TCP_DETAIL"
 elif ! budget_left; then
     TCP_STATUS="NOT TESTED"; TCP_DETAIL="request budget exhausted"
+    nt_out "tcp.connect: $TCP_DETAIL"
+elif [ "$CURL_HAS_TELNET" != "1" ]; then
+    TCP_STATUS="NOT TESTED"
+    TCP_DETAIL="curl lacks telnet protocol (capability detected from curl --version); the TCP-only probe was skipped without spending a request, and the TLS/HTTP stage can still prove TCP reachability"
     nt_out "tcp.connect: $TCP_DETAIL"
 else
     probe_http "tcp.connect" "telnet://$TARGET_HOST:$TARGET_PORT" --noproxy '*'
@@ -931,6 +949,20 @@ if [ "$DNS_STATUS" = "FAIL" ] && [ "$CHAIN_REACH" = "1" ]; then
 fi
 record "dns.router" "$DNS_STATUS" "$DNS_DETAIL" "${DNS_OBSERVED:+addresses: $DNS_OBSERVED}"
 record "tcp.connect" "$TCP_STATUS" "$TCP_DETAIL" "curl exit: ${TCP_RC:-n/a}"
+# Issue #158: when the independent DNS stage could not run (no timeout
+# wrapper, nslookup missing or budget), a reached target still proves that
+# the name resolved on the curl path. Recorded as side evidence only: it is
+# not an independent DNS stage, is not part of the chain pairs, and never
+# flips the verdict. A DNS FAIL keeps the existing dns-neutral fact instead.
+if [ "$CHAIN_REACH" = "1" ] && [ "$DNS_STATUS" != "PASS" ] && [ "$DNS_STATUS" != "FAIL" ]; then
+    # same IP-literal skip as chain_state/chain_inventory: an IP target has
+    # no name resolution, so curl-path resolution evidence does not apply
+    case "$TARGET_HOST" in
+        *[!0-9.]*)
+            record "dns.curl-path" "PASS" "target name resolved on the curl path (side evidence from the reached TLS/HTTP exchange; not an independent DNS stage)" "dns.router=$DNS_STATUS"
+            ;;
+    esac
+fi
 
 # ---------------------------------------------------------------
 # Egress observation (small, optional, factual; two tiny requests
@@ -1226,6 +1258,37 @@ chain_state() {
     printf 'ok'
 }
 
+chain_inventory() {
+    # prints what WAS and WAS NOT established across required stages, for
+    # the inconclusive verdict (issue #158): state exactly what was confirmed
+    # instead of "nothing is proven either way". Same required-stage skips
+    # as chain_state().
+    _ci_conf=""
+    _ci_miss=""
+    for _pair in "dns:$DNS_STATUS" "tcp:$TCP_STATUS" "tls:$TLS_STATUS" "http:$HTTP_STATUS"; do
+        _sid=${_pair%%:*}; _sst=${_pair#*:}
+        case "$_sid" in
+            dns) [ "${CHAIN_DNS_NEUTRAL:-0}" = "1" ] && continue
+                case "$TARGET_HOST" in *[!0-9.]*) : ;; *) continue ;; esac ;;
+            tls) [ "$TARGET_SCHEME" = "https" ] || continue ;;
+        esac
+        case "$_sid" in
+            dns) _ci_name="dns.router" ;;
+            tcp) _ci_name="tcp.connect" ;;
+            tls) _ci_name="tls.handshake" ;;
+            http) _ci_name="http.response" ;;
+        esac
+        if [ "$_sst" = "PASS" ]; then
+            _ci_conf="$_ci_conf$_ci_name=$_sst, "
+        else
+            _ci_miss="$_ci_miss$_ci_name=$_sst, "
+        fi
+    done
+    _ci_conf=${_ci_conf%, }
+    _ci_miss=${_ci_miss%, }
+    printf 'Confirmed stages: %s. Missing evidence: %s.' "${_ci_conf:-none}" "${_ci_miss:-none}"
+}
+
 section "Verdict"
 HYP_ALL=""
 NEXT_ALL=""
@@ -1301,7 +1364,7 @@ compare the same URL from another network to separate provider-side from server-
         FINAL_RC=0
         ;;
     *)
-        unknown_out "VERDICT: inconclusive - no required stage FAILed, but the chain never completed (missing tools, timeouts or exhausted budget). Nothing is proven either way."
+        unknown_out "VERDICT: inconclusive - no required stage FAILed, but the chain never completed (missing tools, timeouts or exhausted budget). $(chain_inventory)"
         SUMMARY="inconclusive"
         FINAL_RC=3
         ;;
