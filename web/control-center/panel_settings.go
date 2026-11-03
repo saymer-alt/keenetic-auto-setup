@@ -51,6 +51,9 @@ func (c *panelConfig) valid() bool {
 	if c.Version != 1 || c.Port < 1 || c.Port > 65535 {
 		return false
 	}
+	if c.AutoPortFallback && (c.Port <= autoPanelStartPort || c.Port > autoPanelLastPort) {
+		return false
+	}
 	switch c.AuthMode {
 	case "none", "entware", "legacy":
 		return c.PasswordHash == ""
