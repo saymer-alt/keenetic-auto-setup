@@ -33,6 +33,7 @@ type watchdogIdentity struct {
 	State           string `json:"state"`
 	InstalledSHA    string `json:"installed_sha256,omitempty"`
 	RecordedVersion string `json:"recorded_version,omitempty"`
+	SourceSnapshotSHA string `json:"source_snapshot_sha,omitempty"`
 }
 type componentsResponse struct {
 	Panel    buildIdentity    `json:"panel"`
@@ -126,6 +127,7 @@ func inventoryDigest(root, relative string) string {
 func componentInventory(root string) componentsResponse {
 	result := componentsResponse{Panel: compiledPanelIdentity(), Core: coreIdentity{State: "absent"}, Watchdog: watchdogIdentity{State: "unrecorded"}}
 	result.Watchdog.InstalledSHA = inventoryDigest(root, "bin/mihomo_watchdog.sh")
+	result.Watchdog.SourceSnapshotSHA = matchedWatchdogSourceSnapshot(result.Watchdog.InstalledSHA)
 	data, err := inventoryFile(root, "share/kas-core/scripts.json", 65536, false)
 	candidate := ""
 	if err != nil {
