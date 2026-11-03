@@ -20,6 +20,6 @@ jobs:
   native-web-import:
     uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@b6d29ae41cf5cf127a6faf8a6e941bc226fbe97e
     with:
-      emulator_ref: 6bd90b0af0d83ab689f4dc075ffe3ef7aff577e0
+      emulator_ref: b6d29ae41cf5cf127a6faf8a6e941bc226fbe97e
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web
