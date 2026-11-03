@@ -14,10 +14,10 @@ on:
     # Push builds use beta.5 test inputs, dispatch may override all four values.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0~beta.5-1'
+        description: 'Internal IPK version, e.g. 0.1.0.beta.5-1'
         required: false
         type: string
-        default: '0.1.0~beta.5-1'
+        default: '0.1.0.beta.5-1'
       tag:
         description: 'Canonical release tag, e.g. v0.1.0-beta.5'
         required: false
@@ -29,10 +29,10 @@ on:
         type: string
         default: 'kas-web-beta5'
       previous_version:
-        description: 'Previous published Web IPK version, e.g. 0.1.0~beta.4-1 for beta.5'
+        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.4-1 for beta.5'
         required: false
         type: string
-        default: '0.1.0~beta.4-1'
+        default: '0.1.0.beta.4-1'
 
 permissions:
   contents: read
@@ -43,9 +43,12 @@ jobs:
     timeout-minutes: 12
     env:
       # Push has no inputs context. Keep the beta.5 candidate above the
-      # currently published beta.4. compare-versions rejects equal versions.
-      VERSION: ${{ inputs.version || '0.1.0~beta.5-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.4-1' }}
+      # currently published beta.4 uses the DOTTED version 0.1.0.beta.4-1.
+      # Do NOT use 0.1.0~beta.5-1: it sorts OLDER than published beta.4.
+      # The eventual stable must sort above the dotted prereleases (e.g. 0.1.1-1).
+      # compare-versions rejects equal versions.
+      VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.4-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +63,7 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg strict version ladder (previous → current → stable)
+      - name: Real Entware opkg ladder (published beta.4 → beta.5 → future stable)
         run: |
           set -euo pipefail
           curl --fail --location --connect-timeout 15 --max-time 60 \
@@ -72,12 +75,12 @@ jobs:
           opkg="$RUNNER_TEMP/entware-opkg"
           args=(-f "$RUNNER_TEMP/offline/opkg.conf" --offline-root "$RUNNER_TEMP/offline" --tmp-dir "$RUNNER_TEMP/offline/opt/tmp" compare-versions)
           "$opkg" "${args[@]}" "$VERSION" '>>' "$PREVIOUS_VERSION"
-          "$opkg" "${args[@]}" '0.1.0-1' '>>' "$VERSION"
+          "$opkg" "${args[@]}" '0.1.1-1' '>>' "$VERSION"
           if "$opkg" "${args[@]}" "$PREVIOUS_VERSION" '>>' "$VERSION"; then
             echo "ERROR: $PREVIOUS_VERSION is not older than $VERSION" >&2; exit 1
           fi
-          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.0-1'; then
-            echo "ERROR: $VERSION is not older than stable" >&2; exit 1
+          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.1-1'; then
+            echo "ERROR: $VERSION is not older than future stable 0.1.1-1" >&2; exit 1
           fi
 
   crossbuild:
@@ -90,7 +93,7 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.5-1' }}
+      BETA_VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
       RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.5' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
