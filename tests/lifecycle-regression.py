@@ -319,7 +319,10 @@ cleanup_tmp
 
 
 def watchdog_functions():
-    return function(FILES[4], "can_restart") + '''
+    # can_restart restarts through the guarded S28/S99 resolution (#355),
+    # so the resolver function definition must travel with the extraction.
+    return function(FILES[4], "resolve_mihomo_init") \
+        + function(FILES[4], "can_restart") + '''
 RESTART_STATE="$LAB/restart-state"; MIN_RESTART_INTERVAL=300
 reset_healthy_heartbeat() { :; }
 '''
