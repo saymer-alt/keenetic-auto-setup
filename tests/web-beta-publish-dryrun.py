@@ -198,7 +198,6 @@ class FakeGithub:
 
 def scenario(label, mutate=None, expect_ok=True, postcheck=None):
     with tempfile.TemporaryDirectory(prefix="kas-web-release-offline-") as td:
-        store = artifacts_at(Path(td) / "fixtures") if False else None
         fixtures = Path(td) / "fixtures"
         fixtures.mkdir()
         store = artifacts_at(fixtures)
