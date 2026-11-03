@@ -135,7 +135,7 @@ function drawMetrics(){
  const temp=value(metricsData.temperature,['celsius'])?metricsData.temperature.celsius+' °C · '+t('metricsSensor',{type:metricsData.temperature.type,zone:metricsData.temperature.zone}):unknown;
  const load=value(metricsData.load,['one_min','five_min','fifteen_min'])?[metricsData.load.one_min,metricsData.load.five_min,metricsData.load.fifteen_min].join(' / '):unknown;
  const seconds=value(metricsData.uptime,['seconds'])?Number(metricsData.uptime.seconds):NaN;
- const uptime=Number.isSafeInteger(seconds)?t('metricsDays',{days:Math.floor(seconds/86400),hours:Math.floor(seconds%86400/3600)}):unknown;
+ const uptime=Number.isFinite(seconds)&&seconds>=0&&seconds<=1e10?t('metricsDays',{days:Math.floor(seconds/86400),hours:Math.floor(seconds%86400/3600)}):unknown;
  const mem=value(metricsData.memory,['mem_available_kb','mem_total_kb'])?kb(metricsData.memory.mem_available_kb)+' / '+kb(metricsData.memory.mem_total_kb):unknown;
  const swap=metricsData.swap?.status==='INFO'&&['total_kb','free_kb'].every(k=>/^[0-9]+$/.test(metricsData.swap[k]||''))?kb(metricsData.swap.free_kb)+' / '+kb(metricsData.swap.total_kb):unknown;
  for(const [key,reading] of [['metricsTemp',temp],['metricsLoad',load],['metricsUptime',uptime],['metricsMemory',mem],['metricsSwap',swap]]){
