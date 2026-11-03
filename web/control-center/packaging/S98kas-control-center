@@ -89,12 +89,30 @@ filter_startup_log() {
     target=$1
     saw_bind=0
     saw_address=0
+    saw_settings=0
+    saw_auto=0
     while IFS= read -r line; do
         case "$line" in
             *PORT_BIND_FAILED:*)
                 if [ "$saw_bind" -eq 0 ]; then
                     printf '%s\n' 'PORT_BIND_FAILED: requested panel address is unavailable; choose another panel port' >> "$target"
                     saw_bind=1
+                fi;;
+            *PANEL_SETTINGS_SAVE_FAILED:*)
+                if [ "$saw_settings" -eq 0 ]; then
+                    printf '%s\n' 'PANEL_SETTINGS_SAVE_FAILED: cannot safely persist selected panel port; startup refused' >> "$target"
+                    saw_settings=1
+                fi;;
+            'AUTO_PORT_SELECTED: default 8081 occupied; selected '*)
+                if [ "$saw_auto" -eq 0 ]; then
+                    chosen=${line##* }
+                    case "$chosen" in
+                        ''|*[!0-9]*) ;;
+                        *) if [ "$chosen" -ge 8082 ] && [ "$chosen" -le 8090 ]; then
+                               printf 'AUTO_PORT_SELECTED: 8081 occupied; using %s (settings saved)\n' "$chosen" >> "$target"
+                               saw_auto=1
+                           fi;;
+                    esac
                 fi;;
             'Home LAN HTTP '*|'Home-address HTTP '*)
                 if [ "$saw_address" -eq 0 ]; then
@@ -163,11 +181,15 @@ start_service() {
             [ "$state" != Z ] || rm -f "$PID"
         fi
         if grep -q '^PORT_BIND_FAILED:' "$STARTUP"; then
-            deny 'PORT_BIND_FAILED: requested panel address is unavailable; choose another panel port'
+            deny 'PORT_BIND_FAILED: requested panel address is unavailable; inspect port and settings'
+        fi
+        if grep -q '^PANEL_SETTINGS_SAVE_FAILED:' "$STARTUP"; then
+            deny 'PANEL_SETTINGS_SAVE_FAILED: cannot safely persist selected port; startup refused'
         fi
         deny 'process failed to remain active; check settings and private optional files'
     fi
     echo RUNNING
+    grep '^AUTO_PORT_SELECTED: ' "$STARTUP" || :
     grep '^PANEL_ADDRESS: ' "$STARTUP" || :
 }
 check_dirs
@@ -184,6 +206,8 @@ case "${1:-}" in
     status)
         service_pid=$(pid_value) || { echo NOT_RUNNING; exit 1; }
         alive "$service_pid" && identity "$service_pid" || { echo UNKNOWN; exit 1; }
-        echo RUNNING;;
+        echo RUNNING
+        grep '^AUTO_PORT_SELECTED: ' "$STARTUP" 2>/dev/null || :
+        grep '^PANEL_ADDRESS: ' "$STARTUP" 2>/dev/null || :;;
     *) deny 'usage: S98kas-control-center start|stop|restart|status';;
 esac
