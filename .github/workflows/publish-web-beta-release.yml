@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Internal package version, e.g. 0.1.0~beta.5-1'
+        description: 'Internal package version, e.g. 0.1.0.beta.5-1'
         required: true
         type: string
       previous_version:
-        description: 'Previous internal package version, e.g. 0.1.0~beta.4-1'
+        description: 'Previous internal package version, e.g. 0.1.0.beta.4-1'
         required: true
         type: string
       tag:
@@ -53,13 +53,14 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      KAS_PUBLISH_OPKG: ${{ runner.temp }}/entware-opkg
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Obtain SHA256-pinned real Entware opkg comparator
+        env:
+          KAS_PUBLISH_OPKG: ${{ runner.temp }}/entware-opkg
         shell: bash
         run: |
           set -euo pipefail
@@ -70,6 +71,7 @@ jobs:
       - name: Verify candidate, resume draft or publish verified Release only
         shell: bash
         env:
+          KAS_PUBLISH_OPKG: ${{ runner.temp }}/entware-opkg
           VERSION: ${{ inputs.version }}
           PREVIOUS_VERSION: ${{ inputs.previous_version }}
           RELEASE_TAG: ${{ inputs.tag }}

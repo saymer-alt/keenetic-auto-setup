@@ -257,6 +257,17 @@ def test_workflow():
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["publish"]
     assert job["permissions"] == {"actions": "read", "contents": "write"}
+    # GitHub Actions rejects runner.temp in jobs.<job>.env before any job
+    # is created. The runner context is available in individual steps.env.
+    assert "KAS_PUBLISH_OPKG" not in job.get("env", {}), (
+        "runner.temp must not be used in job-level environment")
+    download_step = next(s for s in job["steps"] if
+                         s.get("name", "").startswith("Obtain SHA256-pinned"))
+    publish_step = next(s for s in job["steps"] if
+                        s.get("name", "").startswith("Verify candidate"))
+    temp_expr = "${{ runner.temp }}/entware-opkg"
+    assert download_step["env"]["KAS_PUBLISH_OPKG"] == temp_expr
+    assert publish_step["env"]["KAS_PUBLISH_OPKG"] == temp_expr
     assert "refs/heads/main" in job["if"] and "saymer-alt/keenetic-auto-setup" in job["if"]
     assert job["steps"][-1]["env"]["SOURCE_SHA"] == "$" + "{{ inputs.source_sha }}"
     assert not any("release edit --latest" in str(s) or "deploy-pages" in str(s)
