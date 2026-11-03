@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	autoPanelStartPort = 8081
-	autoPanelLastPort  = 8090
+	autoPanelStartPort = 18080
+	autoPanelLastPort  = 18090
 )
 
 // Bind first; do not use a separate port availability probe (TOCTOU).
