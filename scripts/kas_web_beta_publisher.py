@@ -168,7 +168,7 @@ class Publisher:
                 "candidate run is not completed/success at the pinned source SHA")
         require(record.get("event") == "workflow_dispatch" and
                 record.get("head_branch") == "main" and
-                str(record.get("path", "")).startswith(".github/workflows/web-beta3-build.yml@"),
+                str(record.get("path", "")).split("@", 1)[0] == ".github/workflows/web-beta3-build.yml",
                 "candidate run must be an explicitly dispatched WEB build on main")
         previous = gh.release(a.previous_tag)
         require(previous and previous.get("tag_name") == a.previous_tag and
@@ -267,15 +267,15 @@ class Publisher:
         (dest / "SHA256SUMS").write_bytes(sums)
         names["SHA256SUMS"] = sums
         notes = ["KAS WEB %s (experimental prerelease)" % a.tag, "",
-                 "Source SHA: \`%s\`" % a.source_sha,
+                 "Source SHA: `%s`" % a.source_sha,
                  "Verified candidate run: %s" % a.verified_run,
-                 "Internal IPK version: \`%s\`" % a.version,
+                 "Internal IPK version: `%s`" % a.version,
                  "Previous release: %s" % a.previous_tag, "",
                  "Four verified architectures (SHA256 of actual IPK bytes):", "",
                  "| Architecture | Asset | SHA256 |",
                  "| --- | --- | --- |"]
         for item in aggregate["packages"]:
-            notes.append("| %s | \`%s\` | \`%s\` |" %
+            notes.append("| %s | `%s` | `%s` |" %
                          (item["architecture"], item["name"], item["sha256"]))
         notes += ["", "This Release does NOT switch the Pages update index.",
                   "A separate owner-approved GO PAGES is required.", ""]
