@@ -126,8 +126,7 @@ func (a *app) handleDoctor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	origin := r.Header.Get("Origin")
-	if origin != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" {
 		writeJSON(w, http.StatusForbidden, apiResult{State: "UNKNOWN", Time: now(), ErrorCode: "REQUEST_BLOCKED"})
 		return
 	}
@@ -274,11 +273,14 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("/api/filter/preview", a.handleFilterPreview)
 	mux.HandleFunc("/api/filter/apply", a.handleFilterApply)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.directHost(r.Host) && (a.proxyHost == "" || r.Host != a.proxyHost) {
+		automaticProxy:=a.automaticProxyHost(r)
+		if !a.directHost(r.Host) && (a.proxyHost == "" || r.Host != a.proxyHost) && !automaticProxy {
 			http.Error(w, "invalid host", http.StatusForbidden)
 			return
 		}
-		if a.lan != nil && !a.lan.allowed(w, r, a.proxyHost) {
+		proxyHost:=a.proxyHost
+		if automaticProxy{proxyHost=r.Host}
+		if a.lan != nil && !a.lan.allowed(w, r, proxyHost) {
 			return
 		}
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -295,8 +297,8 @@ func main() {
 	workerOnly := flag.Bool("panel-update-worker", false, "internal fixed panel updater job")
 	recoverUpdate := flag.Bool("recover-panel-update", false, "explicit recovery of interrupted panel update")
 	versionOnly := flag.Bool("version", false, "print compiled panel version and source, then exit")
-	listen := flag.String("listen", "", "IP:port; default loopback without -lan, Home br0 with -lan")
-	lanMode := flag.Bool("lan", false, "listen on private Home br0 IPv4, HTTP, no password by default")
+	listen := flag.String("listen", "", "IP:port; default loopback without -lan, all router IPv4 with -lan")
+	lanMode := flag.Bool("lan", false, "listen on all router IPv4 via KeeneticOS firewall, no password by default")
 	lanInterface := flag.String("lan-interface", "br0", "Home LAN bridge (currently br0 only)")
 	passwordFile := flag.String("password-file", "", "optional private file with KAS panel password")
 	proxyOrigin := flag.String("proxy-origin", "", "optional existing KeenDNS HTTPS URL allowed via router reverse proxy")
