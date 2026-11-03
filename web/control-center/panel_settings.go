@@ -128,12 +128,19 @@ func (a *app) currentHost() string {
 
 // Browsers omit the default HTTP port in Host/Origin even for a :80 URL.
 func (a *app) directHost(host string) bool {
-	current := a.currentHost()
-	if host == current {
-		return true
-	}
-	ip, port, err := net.SplitHostPort(current)
-	return err == nil && port == "80" && host == ip
+ current:=a.currentHost()
+ if host==current{return true}
+ listenIP,listenPort,err:=net.SplitHostPort(current)
+ if err!=nil{return false}
+ if a.lan==nil { return listenPort=="80" && host==listenIP }
+ ip,port,err:=net.SplitHostPort(host)
+ if err!=nil {
+  if listenPort!="80"{return false}
+  ip=host;port="80"
+ }
+ if port!=listenPort {return false}
+ candidate:=net.ParseIP(ip)
+ return candidate!=nil && candidate.To4()!=nil
 }
 func (a *app) currentPanel() *panelConfig {
 	if a.lan == nil {
@@ -225,7 +232,7 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		filterError(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
-	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
 		filterError(w, 403, "REQUEST_BLOCKED")
 		return
 	}
@@ -323,5 +330,12 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		a.listeners.replace(reserved)
 		reserved = nil
 	}
-	writeFilterJSON(w, 200, panelResponse(next, "http://"+address))
+	// Return a usable URL after a port change, not the wildcard listen IP.
+	displayAddress:=address
+	if a.directHost(r.Host) {
+		if clientIP,_,err:=net.SplitHostPort(r.Host);err==nil && net.ParseIP(clientIP)!=nil{
+			displayAddress=net.JoinHostPort(clientIP,strconv.Itoa(next.Port))
+		}
+	}
+	writeFilterJSON(w, 200, panelResponse(next, "http://"+displayAddress))
 }
