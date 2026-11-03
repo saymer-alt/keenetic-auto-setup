@@ -184,13 +184,13 @@ def wait_port(port, open_expected, timeout=20):
 
 def import_yaml(yaml_text, expected_state, timeout=120):
     body = yaml_text.encode() if isinstance(yaml_text, str) else yaml_text
-    accepted = api(8082, 'POST', '/api/config/import', confirm='apply',
+    accepted = api(18081, 'POST', '/api/config/import', confirm='apply',
                    content_type='application/x-yaml', raw=body, expected=202)
     require(accepted.get('id'), 'import id missing')
     deadline = time.monotonic() + timeout
     last = None
     while time.monotonic() < deadline:
-        last = api(8082, 'GET', '/api/config/operation')
+        last = api(18081, 'GET', '/api/config/operation')
         if last.get('state') in ('OK', 'FAIL'):
             break
         time.sleep(0.5)
@@ -206,10 +206,10 @@ try:
         return run([opkg, '-f', lab / 'opkg.conf', '--tmp-dir', lab / 'opkg-tmp', *args])
     pkg('install', package)
     require(not settings.exists(), 'install created settings')
-    wait_port(8081, 0)
+    wait_port(18080, 0)
     run(['sh', init, 'start'])
-    wait_port(8081, 1)
-    ok('A1 first start after IPK install serves the default port 8081')
+    wait_port(18080, 1)
+    ok('A1 first start after IPK install serves the default port 18080')
     print('NIGHT-DIAG etc:', sorted(entry.name for entry in Path('/opt/etc').iterdir()), flush=True)
     if settings.exists():
         print('NIGHT-DIAG settings:', settings.read_text()[:300], flush=True)
@@ -223,11 +223,11 @@ try:
                 print('NIGHT-DIAG panel argv:', cmdline.replace(b'', b' ').decode(), flush=True)
 
     try:
-        api(8081, 'GET', '/api/settings', creds=None)
+        api(18080, 'GET', '/api/settings', creds=None)
     except RuntimeError:
         print('NIGHT-401 first attempt failed; retrying after 1s', flush=True)
         time.sleep(1)
-        req = urllib.request.Request(f'http://{address}:8081/api/settings')
+        req = urllib.request.Request(f'http://{address}:18080/api/settings')
         try:
             r = opener.open(req, timeout=10)
             print('NIGHT-401 retry status=', r.status, flush=True)
@@ -235,29 +235,29 @@ try:
             print('NIGHT-401 retry status=', e.code, 'headers=', dict(e.headers), flush=True)
         print('NIGHT-401 settings exists=', settings.exists(), flush=True)
         raise
-    api(8081, 'POST', '/api/settings', body={'port': 8081, 'auth_mode': 'panel', 'password': password},
+    api(18080, 'POST', '/api/settings', body={'port': 18080, 'auth_mode': 'panel', 'password': password},
         confirm='settings')
-    api(8081, 'GET', '/api/settings', creds=None, expected=401)
+    api(18080, 'GET', '/api/settings', creds=None, expected=401)
     # The first verification is uncached; a failed attempt starts the bounded
     # anti-brute-force window inside which even correct credentials are
     # refused. Follow the user's real order: correct login first, typo after.
-    api(8081, 'GET', '/api/settings')
-    api(8081, 'GET', '/api/settings', creds=('kas', 'wrong'), expected=401)
+    api(18080, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings', creds=('kas', 'wrong'), expected=401)
     time.sleep(0.3)
-    api(8081, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings')
     ok('A2 panel password enforced, wrong password rejected')
-    api(8081, 'POST', '/api/settings', body={'port': 8082, 'auth_mode': 'panel', 'current_password': password},
+    api(18080, 'POST', '/api/settings', body={'port': 18081, 'auth_mode': 'panel', 'current_password': password},
         confirm='settings')
-    wait_port(8082, 1)
-    wait_port(8081, 0)
-    ok('A3 authenticated port change moves the live listener to 8082')
+    wait_port(18081, 1)
+    wait_port(18080, 0)
+    ok('A3 authenticated port change moves the live listener to 18081')
     settings_before = settings.read_bytes()
     run(['sh', init, 'restart'])
-    wait_port(8082, 1)
-    api(8082, 'GET', '/api/settings')
+    wait_port(18081, 1)
+    api(18081, 'GET', '/api/settings')
     require(settings.read_bytes() == settings_before, 'restart changed settings')
     ok('A4 service restart keeps port, password and settings byte-for-byte')
-    access = api(8082, 'GET', '/api/access')
+    access = api(18081, 'GET', '/api/access')
     require(access.get('home_only') is False, f'unexpected default access policy: {access}')
     ok('A5 subnet restriction defaults to off; policy is opt-in with no name assumptions')
 
@@ -317,8 +317,8 @@ try:
     require(mihomo_count == 1, f'expected exactly one mihomo, got: {mihomo_count}')
     ok('B4 the import transaction keeps exactly one mihomo running (no duplicate)')
     run(['sh', init, 'restart'])
-    wait_port(8082, 1)
-    api(8082, 'GET', '/api/settings')
+    wait_port(18081, 1)
+    api(18081, 'GET', '/api/settings')
     ok('B5 panel restart keeps working with the imported configuration')
 
     secret_url = 'https://subscription.invalid/private-token-1234567890'
@@ -329,7 +329,7 @@ try:
         + '    url: ' + secret_url + nl + '    path: ./proxy_provider/P.yaml' + nl
         + 'rules:' + nl + '  - MATCH,N' + nl)
     import_yaml(provider_config, 'OK')
-    data = api(8082, 'GET', '/api/filter/providers')
+    data = api(18081, 'GET', '/api/filter/providers')
     listing = json.dumps(data).encode()
     require(b'private-token' not in listing and b'subscription.invalid' not in listing,
             'subscription URL leaked')
@@ -337,13 +337,13 @@ try:
     import_yaml('mixed-port: 7890\nmode: rule\nrules:\n  - MATCH,DIRECT\n', 'OK')
     # The editor fails closed on shapes it cannot edit: a config without any
     # proxy-providers answers 422 UNSUPPORTED_PROVIDER_YAML by design.
-    api(8082, 'GET', '/api/filter/providers', expected=422)
+    api(18081, 'GET', '/api/filter/providers', expected=422)
     ok('C2 configuration without providers fails closed with UNSUPPORTED_PROVIDER_YAML')
     provider_config_again = provider_config
     import_yaml(provider_config_again, 'OK')
-    source_sha = api(8082, 'GET', '/api/filter/providers').get('source_sha')
+    source_sha = api(18081, 'GET', '/api/filter/providers').get('source_sha')
     require(source_sha and len(source_sha) == 64, f'unexpected source sha: {source_sha}')
-    apply_result = api(8082, 'POST', '/api/filter/apply', confirm='apply',
+    apply_result = api(18081, 'POST', '/api/filter/apply', confirm='apply',
                        body={'provider': 'P', 'names': ['night-a'], 'source_sha': source_sha},
                        expected=502)
     require(apply_result.get('error_code') == 'MIHOMO_UNAVAILABLE',
@@ -353,26 +353,26 @@ try:
     accepted = None
     for _ in range(10):
         try:
-            accepted = api(8082, 'POST', '/api/config/import', confirm='apply',
+            accepted = api(18081, 'POST', '/api/config/import', confirm='apply',
                            content_type='application/x-yaml', raw=good_yaml.encode(), expected=202)
             break
         except RuntimeError:
             time.sleep(1)
     require(accepted is not None and accepted.get('id'), 'import slot never freed after the filter refusal')
-    api(8082, 'POST', '/api/config/import', confirm='apply', content_type='application/x-yaml',
+    api(18081, 'POST', '/api/config/import', confirm='apply', content_type='application/x-yaml',
         raw=good_yaml.encode(), expected=409)
     # Wait for the running import before further scenarios: a mid-flight
     # transaction legitimately keeps every other mutation BUSY. No new POSTs.
     deadline = time.monotonic() + 120
     last = None
     while time.monotonic() < deadline:
-        last = api(8082, 'GET', '/api/config/operation')
+        last = api(18081, 'GET', '/api/config/operation')
         if last.get('state') in ('OK', 'FAIL'):
             break
         time.sleep(0.5)
     require(last is not None and last.get('state') == 'OK', f'E1 import state: {last}')
     ok('E1 a concurrent configuration mutation is refused with BUSY')
-    api(8082, 'POST', '/api/config/import', confirm='apply', content_type='application/x-yaml',
+    api(18081, 'POST', '/api/config/import', confirm='apply', content_type='application/x-yaml',
         raw=b'x' * (1024 * 1024 + 10), expected=413)
     ok('E2 oversized YAML is refused before staging')
     subprocess.run(['cp', '/etc/hosts', str(lab / 'hosts.backup')], check=True)
@@ -381,7 +381,7 @@ try:
     check = None
     for _ in range(10):
         try:
-            check = api(8082, 'POST', '/api/updates/check', confirm='check-updates', expected=502, timeout=40)
+            check = api(18081, 'POST', '/api/updates/check', confirm='check-updates', expected=502, timeout=40)
             break
         except RuntimeError:
             time.sleep(1)
@@ -390,17 +390,17 @@ try:
     require(code == 'UPDATE_CHECK_FAILED', f'unexpected unreachable-GitHub result: {check}')
     ok('E3 unreachable GitHub reports UPDATE_CHECK_FAILED without crashing the panel')
     run(['sh', '/opt/etc/init.d/S99mihomo', 'stop'])
-    status = api(8082, 'GET', '/api/status')
+    status = api(18081, 'GET', '/api/status')
     state = status.get('runtime', {}).get('mihomo', {}).get('state')
     require(state == 'stopped', f'unexpected mihomo runtime state: {status.get("runtime")}')
     ok('E4 installed-but-stopped Mihomo is reported honestly as stopped')
-    doctor = api(8082, 'POST', '/api/doctor', body={}, timeout=120)
+    doctor = api(18081, 'POST', '/api/doctor', body={}, timeout=120)
     require(doctor.get('exit_code') is not None and doctor.get('details'),
             f'unexpected doctor result keys: {sorted(doctor)}')
     ok('E5 Doctor runs on a bare system and returns a structured redacted result')
 
     run(['sh', init, 'stop'])
-    wait_port(8082, 0)
+    wait_port(18081, 0)
     sentinel = config.read_bytes()
     pkg('remove', 'kas-control-center')
     require(config.read_bytes() == sentinel, 'core YAML changed during WEB removal')
