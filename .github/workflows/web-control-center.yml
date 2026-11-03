@@ -42,6 +42,7 @@ jobs:
           cmp -s ../../mihomo-doctor.sh scripts/mihomo-doctor.sh
           cmp -s ../../config-import.sh scripts/config-import.sh
           cmp -s ../../update-mihomo.sh scripts/update-mihomo.sh
+          cmp -s ../../kas-sys-metrics.sh scripts/kas-sys-metrics.sh
       - name: Test read-only adapter
         run: |
           cd web/control-center
