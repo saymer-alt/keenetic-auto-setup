@@ -3,36 +3,36 @@ name: KAS Web candidate IPKs (no publication)
 on:
   push:
     branches:
-      - feat/kas-web-beta3-sidebar-theme-20261030 # candidate builds in the reviewed beta3 PR; never publishes
       - main # after merge: the release candidate must be rebuilt from the real merge commit before any publish
     paths:
       - '.github/workflows/web-beta3-build.yml'
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
   workflow_dispatch:
-    # Candidate builds for a NEW release (e.g. beta.4) are dispatched on the
-    # merge commit with explicit version/tag inputs; the push triggers above
-    # keep building beta.3-named candidates for the historical branches.
+    # Candidate builds from the selected commit; no publication or Pages writes.
+    # This workflow keeps its historical filename for downstream compatibility.
+    # Push builds use beta.5 test inputs, dispatch may override all four values.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0~beta.4-1'
+        description: 'Internal IPK version, e.g. 0.1.0.beta.5-1'
         required: false
         type: string
-        default: '0.1.0~beta.3-1'
+        default: '0.1.0.beta.5-1'
       tag:
-        description: 'Canonical release tag, e.g. v0.1.0-beta.4'
+        description: 'Canonical release tag, e.g. v0.1.0-beta.5'
         required: false
         type: string
-        default: 'v0.1.0-beta.3'
+        default: 'v0.1.0-beta.5'
       artifact_prefix:
-        description: 'Uploaded artifact name prefix, e.g. kas-web-beta4'
+        description: 'Uploaded artifact name prefix, e.g. kas-web-beta5'
         required: false
         type: string
-        default: 'kas-web-beta3'
+        default: 'kas-web-beta5'
       previous_version:
-        description: 'Internal version of the release the current one upgrades from, e.g. 0.1.0~beta.2-1 for a beta.3 build'
+        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.4-1 for beta.5'
         required: false
         type: string
-        default: '0.1.0~beta.2-1'
+        default: '0.1.0.beta.4-1'
 
 permissions:
   contents: read
@@ -42,11 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      # Push events have no inputs context, so the fallbacks ARE the push
-      # configuration: VERSION=beta.3 vs PREVIOUS_VERSION=beta.2 must stay a
-      # strictly ordered pair (compare-versions fails on equality under set -e).
-      VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.2-1' }}
+      # Push has no inputs context. Keep the beta.5 candidate above the
+      # currently published beta.4 uses the DOTTED version 0.1.0.beta.4-1.
+      # Do NOT use 0.1.0~beta.5-1: it sorts OLDER than published beta.4.
+      # The eventual stable must sort above the dotted prereleases (e.g. 0.1.1-1).
+      # compare-versions rejects equal versions.
+      VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.4-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,7 +63,7 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg strict version ladder (previous → current → stable)
+      - name: Real Entware opkg ladder (published beta.4 → beta.5 → future stable)
         run: |
           set -euo pipefail
           curl --fail --location --connect-timeout 15 --max-time 60 \
@@ -73,12 +75,12 @@ jobs:
           opkg="$RUNNER_TEMP/entware-opkg"
           args=(-f "$RUNNER_TEMP/offline/opkg.conf" --offline-root "$RUNNER_TEMP/offline" --tmp-dir "$RUNNER_TEMP/offline/opt/tmp" compare-versions)
           "$opkg" "${args[@]}" "$VERSION" '>>' "$PREVIOUS_VERSION"
-          "$opkg" "${args[@]}" '0.1.0-1' '>>' "$VERSION"
+          "$opkg" "${args[@]}" '0.1.1-1' '>>' "$VERSION"
           if "$opkg" "${args[@]}" "$PREVIOUS_VERSION" '>>' "$VERSION"; then
             echo "ERROR: $PREVIOUS_VERSION is not older than $VERSION" >&2; exit 1
           fi
-          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.0-1'; then
-            echo "ERROR: $VERSION is not older than stable" >&2; exit 1
+          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.1-1'; then
+            echo "ERROR: $VERSION is not older than future stable 0.1.1-1" >&2; exit 1
           fi
 
   crossbuild:
@@ -91,8 +93,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.3' }}
+      BETA_VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
+      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.5' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +152,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_prefix || 'kas-web-beta3' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix || 'kas-web-beta5' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS

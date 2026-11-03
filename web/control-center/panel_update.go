@@ -225,7 +225,7 @@ func (a *app) handlePanelChannel(w http.ResponseWriter, r *http.Request) {
 		updateJSON(w, 405, panelChannelState{ErrorCode: "METHOD_NOT_ALLOWED"})
 		return
 	}
-	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "set-panel-channel" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "set-panel-channel" {
 		updateJSON(w, 403, panelChannelState{ErrorCode: "REQUEST_BLOCKED"})
 		return
 	}

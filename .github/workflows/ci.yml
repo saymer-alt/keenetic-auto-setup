@@ -65,6 +65,9 @@ jobs:
       - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
         run: python3 tests/pages-deploy-dryrun.py
 
+      - name: Reusable WEB Release publisher dry-run (offline, no GitHub mutations)
+        run: python3 tests/web-beta-publish-dryrun.py
+
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py
 
