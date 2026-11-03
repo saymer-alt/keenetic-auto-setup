@@ -9,6 +9,7 @@ import (
  "net/netip"
  "os"
  "path/filepath"
+ "strings"
  "testing"
 )
 
@@ -73,6 +74,29 @@ func TestHomeLANOptionalPasswordAndOrigin(t *testing.T){
  if r:=request(a.expectedOrigin(a.host),"kas","bad");r.Code!=401{t.Fatal("wrong password",r.Code)}
  if r:=request("https://evil.example","kas",secret);r.Code!=403{t.Fatal("cross origin",r.Code)}
  if r:=request(a.expectedOrigin(a.host),"kas",secret);r.Code!=202{t.Fatal("authorized upload",r.Code,r.Body.String())}
+}
+
+func TestSavedNoneRecordCannotShadowPasswordFileOptIn(t *testing.T){
+ // The automatic first start persists auth_mode "none"; a later
+ // operator-created password file must still enforce authentication.
+ secret:="a very long user set passphrase"
+ a:=newApp("192.168.1.1:18080",nil)
+ a.lan=&homeLAN{address:a.host,clients:netip.MustParsePrefix("192.168.1.0/24"),
+  passwordEnabled:true,passwordDigest:sha256.Sum256([]byte(secret))}
+ a.lan.panel.Store(&panelConfig{Version:1,Port:18080,AuthMode:"none"})
+ call:=func(withPassword bool)int{
+  req:=httptest.NewRequest(http.MethodGet,"http://192.168.1.1:18080/api/status",nil)
+  req.RemoteAddr="192.168.1.44:1111"
+  req.Host=a.host
+  if withPassword{req.SetBasicAuth("kas",secret)}
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,req)
+  return w.Code
+ }
+ if n:=call(false);n!=401{t.Fatalf("saved none record disabled the password opt-in: %d",n)}
+ if n:=call(true);n!=200{t.Fatalf("correct password file credentials rejected: %d",n)}
+ if status:=a.lan.describe();!strings.Contains(status,"authentication=panel"){
+  t.Fatalf("status must report the enforced mode: %s",status)
+ }
 }
 
 func TestProxyOriginValidation(t *testing.T){
