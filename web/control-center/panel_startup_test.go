@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 )
@@ -168,6 +169,67 @@ func TestInitialPortSettingsCreateOnlyAndPrivate(t *testing.T) {
 	saved, _ = readPanelConfig(path)
 	if saved.Port != 8083 || saved.AuthMode != "entware" {
 		t.Fatal("existing settings mutated")
+	}
+}
+
+func TestSavedCustomPortNeverAutoHops(t *testing.T) {
+	// Covers existing beta.4/5 user ports, including the field workaround
+	// 18082, which must never be rewritten by a beta.6 first-start policy.
+	const custom = 18082
+	path := filepath.Join(t.TempDir(), "panel.json")
+	if err := saveInitialPanelConfig(path, &panelConfig{Version: 1, Port: custom, AuthMode: "entware"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := readPanelConfig(path)
+	if err != nil || cfg.Port != custom {
+		t.Fatal(cfg, err)
+	}
+	attempts := 0
+	listener, _, _, err := selectStartupListener(fmt.Sprintf("0.0.0.0:%d", cfg.Port), false,
+		func(int, bool) error { t.Fatal("mutated saved config"); return nil },
+		func(_, address string) (net.Listener, error) {
+			attempts++
+			if address != "0.0.0.0:18082" {
+				t.Fatal("changed a user-selected port", address)
+			}
+			return nil, syscall.EADDRINUSE
+		})
+	if listener != nil || err == nil || attempts != 1 {
+		t.Fatal(err, attempts)
+	}
+	after, _ := readPanelConfig(path)
+	if after.Port != custom || after.AuthMode != "entware" {
+		t.Fatal("user settings changed", after)
+	}
+}
+
+func TestInitialSettingsConcurrentStartsCreateOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.json")
+	var wg sync.WaitGroup
+	outcomes := make(chan error, 2)
+	for _, port := range []int{8082, 8083} {
+		wg.Add(1)
+		go func(selected int) {
+			defer wg.Done()
+			outcomes <- saveInitialPanelConfig(path, &panelConfig{
+				Version: 1, Port: selected, AuthMode: "none", AutoPortFallback: true,
+			})
+		}(port)
+	}
+	wg.Wait()
+	close(outcomes)
+	ok := 0
+	for err := range outcomes {
+		if err == nil {
+			ok++
+		}
+	}
+	if ok != 1 {
+		t.Fatal("create-only concurrency lost", ok)
+	}
+	cfg, err := readPanelConfig(path)
+	if err != nil || !cfg.AutoPortFallback || (cfg.Port != 8082 && cfg.Port != 8083) {
+		t.Fatal("bad persisted winner", cfg, err)
 	}
 }
 
