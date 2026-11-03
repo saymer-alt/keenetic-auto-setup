@@ -17,6 +17,7 @@ import (
 
 type homeLAN struct {
  address string
+ homeIP netip.Addr
  clients netip.Prefix
  homeOnly atomic.Bool
  accessPath string
@@ -53,15 +54,16 @@ func homeIPv4(iface string)(netip.Addr,netip.Prefix,error){
 func newHomeLAN(bind,iface,passwordFile string)(*homeLAN,error){
  ip,prefix,err:=homeIPv4(iface)
  if err!=nil{return nil,err}
- address:=net.JoinHostPort(ip.String(),"8081")
+ // The IPK defaults to all router IPv4 addresses. KeeneticOS owns WAN firewall policy.
+ address:=net.JoinHostPort("0.0.0.0","8081")
  if bind!=""&&bind!="auto"{
   host,port,e:=net.SplitHostPort(bind)
-  if e!=nil||port==""||port=="0"||host!=ip.String(){
+  if e!=nil||port==""||port=="0"||(host!=ip.String()&&host!="0.0.0.0"){
    return nil,errors.New("LAN listener must match actual Home bridge IPv4")
   }
   address=bind
  }
- p:=&homeLAN{address:address,clients:prefix}
+ p:=&homeLAN{address:address,homeIP:ip,clients:prefix}
  if err:=p.loadOptionalPassword(passwordFile);err!=nil{return nil,err}
  return p,nil
 }
@@ -96,6 +98,7 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
  // A Home client can forge Host/Origin, but not the TCP peer's source IP.
  ownHost,_,ownErr:=net.SplitHostPort(p.address)
  ownIP,ipErr:=netip.ParseAddr(ownHost)
+ if p.homeIP.IsValid(){ownIP=p.homeIP;ipErr=nil}
  routerProxy:=(proxyHost!="" && r.Host==proxyHost &&
      (client.IsLoopback() || (ownErr==nil && ipErr==nil && client==ownIP)))
  if p.homeOnly.Load() && !p.clients.Contains(client) && !routerProxy{
@@ -124,7 +127,10 @@ func (p *homeLAN) allowed(w http.ResponseWriter,r *http.Request,proxyHost string
 }
 func (p *homeLAN) describe()string{
  mode:="none";if config:=p.panel.Load();config!=nil{mode=config.mode()}else if p.passwordEnabled{mode="panel"}
- return fmt.Sprintf("Home-address HTTP %s; Home-only restriction=%t; authentication=%s",p.address,p.homeOnly.Load(),mode)
+ display:=p.address
+ host,port,err:=net.SplitHostPort(p.address)
+ if err==nil && host=="0.0.0.0" && p.homeIP.IsValid(){display=net.JoinHostPort(p.homeIP.String(),port)}
+ return fmt.Sprintf("Home-address HTTP %s; Home-only restriction=%t; authentication=%s",display,p.homeOnly.Load(),mode)
 }
 
 func validateProxyOrigin(value string)(string,error){
