@@ -55,7 +55,7 @@ func newHomeLAN(bind,iface,passwordFile string)(*homeLAN,error){
  ip,prefix,err:=homeIPv4(iface)
  if err!=nil{return nil,err}
  // The IPK defaults to all router IPv4 addresses. KeeneticOS owns WAN firewall policy.
- address:=net.JoinHostPort("0.0.0.0","8081")
+ address:=net.JoinHostPort("0.0.0.0","18080")
  if bind!=""&&bind!="auto"{
   host,port,e:=net.SplitHostPort(bind)
   if e!=nil||port==""||port=="0"||(host!=ip.String()&&host!="0.0.0.0"){
