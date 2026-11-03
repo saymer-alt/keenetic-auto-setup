@@ -459,6 +459,10 @@ func main() {
 		config.AutoPortFallback = true
 		lan.panel.Store(config)
 		fmt.Printf("AUTO_PORT_SELECTED: default 8081 occupied; selected %d\n", selectedPort)
+	} else if config != nil && config.AutoPortFallback {
+		// A saved first-start fallback is retained across reboot. Repeat the
+		// fixed, nonsecret reason in init/status for operator visibility.
+		fmt.Printf("AUTO_PORT_SELECTED: default 8081 occupied; selected %d\n", config.Port)
 	}
 	app.listeners = newPanelListeners(app)
 	app.listeners.replace(listener)
