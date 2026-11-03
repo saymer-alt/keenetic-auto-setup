@@ -32,12 +32,12 @@ func TestStartupAutoPortProbesActualBindInOrder(t *testing.T) {
 			t.Fatal(network)
 		}
 		attempted = append(attempted, address)
-		if strings.HasSuffix(address, ":8081") || strings.HasSuffix(address, ":8082") {
+		if strings.HasSuffix(address, ":18080") || strings.HasSuffix(address, ":18081") {
 			return nil, &net.OpError{Op: "listen", Net: "tcp", Err: syscall.EADDRINUSE}
 		}
 		return fakePortListener(t), nil
 	}
-	l, port, fallback, err := selectStartupListener("0.0.0.0:8081", true,
+	l, port, fallback, err := selectStartupListener("0.0.0.0:18080", true,
 		func(selected int, didFallback bool) error {
 			savedPort, savedFallback = selected, didFallback
 			return nil
@@ -46,8 +46,8 @@ func TestStartupAutoPortProbesActualBindInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	want := []string{"0.0.0.0:8081", "0.0.0.0:8082", "0.0.0.0:8083"}
-	if !reflect.DeepEqual(attempted, want) || port != 8083 || !fallback || savedPort != 8083 || !savedFallback {
+	want := []string{"0.0.0.0:18080", "0.0.0.0:18081", "0.0.0.0:18082"}
+	if !reflect.DeepEqual(attempted, want) || port != 18082 || !fallback || savedPort != 18082 || !savedFallback {
 		t.Fatalf("attempted=%v selected=%d fallback=%t persisted=%d/%t", attempted, port, fallback, savedPort, savedFallback)
 	}
 }
@@ -60,25 +60,25 @@ func TestStartupAutoPortFreeDefaultPersistedAndFixedAfterRestart(t *testing.T) {
 	calls := 0
 	bind := func(_, address string) (net.Listener, error) {
 		calls++
-		if address != "0.0.0.0:8081" {
+		if address != "0.0.0.0:18080" {
 			t.Fatal(address)
 		}
 		return fakePortListener(t), nil
 	}
-	l, port, fallback, err := selectStartupListener("0.0.0.0:8081", true, persist, bind)
-	if err != nil || port != 8081 || fallback {
+	l, port, fallback, err := selectStartupListener("0.0.0.0:18080", true, persist, bind)
+	if err != nil || port != 18080 || fallback {
 		t.Fatal(port, fallback, err)
 	}
 	l.Close()
 	saved, err := readPanelConfig(path)
-	if err != nil || saved.Port != 8081 || saved.AutoPortFallback {
+	if err != nil || saved.Port != 18080 || saved.AutoPortFallback {
 		t.Fatal("default port not persisted", saved, err)
 	}
 	// A saved port is fixed, even when occupied on a later boot.
 	calls = 0
 	bind = func(_, address string) (net.Listener, error) {
 		calls++
-		if address != "0.0.0.0:8081" {
+		if address != "0.0.0.0:18080" {
 			t.Fatal("hopped saved port", address)
 		}
 		return nil, syscall.EADDRINUSE
@@ -101,7 +101,7 @@ func TestStartupPortDoesNotHopForExplicitOrOtherErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			attempts, saved := 0, 0
-			l, _, _, err := selectStartupListener("0.0.0.0:8081", tc.auto, func(int, bool) error {
+			l, _, _, err := selectStartupListener("0.0.0.0:18080", tc.auto, func(int, bool) error {
 				saved++
 				return nil
 			}, func(_, _ string) (net.Listener, error) {
@@ -117,24 +117,24 @@ func TestStartupPortDoesNotHopForExplicitOrOtherErrors(t *testing.T) {
 
 func TestStartupAutoPortExhaustedFailClosed(t *testing.T) {
 	attempts := 0
-	l, _, _, err := selectStartupListener("0.0.0.0:8081", true, func(int, bool) error {
+	l, _, _, err := selectStartupListener("0.0.0.0:18080", true, func(int, bool) error {
 		t.Fatal("persisted nonexistent listener")
 		return nil
 	}, func(_, addr string) (net.Listener, error) {
 		attempts++
-		if addr != fmt.Sprintf("0.0.0.0:%d", 8080+attempts) {
+		if addr != fmt.Sprintf("0.0.0.0:%d", 18079+attempts) {
 			t.Fatal(addr)
 		}
 		return nil, syscall.EADDRINUSE
 	})
-	if l != nil || attempts != autoPanelLastPort-autoPanelStartPort+1 || err == nil || !strings.Contains(err.Error(), "8081-8090") {
+	if l != nil || attempts != autoPanelLastPort-autoPanelStartPort+1 || err == nil || !strings.Contains(err.Error(), "18080-18090") {
 		t.Fatal(err, attempts)
 	}
 }
 
 func TestStartupSettingsFailureClosesReservedSocket(t *testing.T) {
 	var obtained net.Listener
-	l, _, _, err := selectStartupListener("0.0.0.0:8081", true,
+	l, _, _, err := selectStartupListener("0.0.0.0:18080", true,
 		func(int, bool) error { return errors.New("readonly settings") },
 		func(_, _ string) (net.Listener, error) {
 			obtained = fakePortListener(t)
@@ -151,7 +151,7 @@ func TestStartupSettingsFailureClosesReservedSocket(t *testing.T) {
 func TestInitialPortSettingsCreateOnlyAndPrivate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "panel.json")
-	initial := &panelConfig{Version: 1, Port: 8083, AuthMode: "entware", AutoPortFallback: true}
+	initial := &panelConfig{Version: 1, Port: 18082, AuthMode: "entware", AutoPortFallback: true}
 	if err := saveInitialPanelConfig(path, initial); err != nil {
 		t.Fatal(err)
 	}
@@ -160,14 +160,14 @@ func TestInitialPortSettingsCreateOnlyAndPrivate(t *testing.T) {
 		t.Fatalf("unprotected initial settings %v %v", info, err)
 	}
 	saved, err := readPanelConfig(path)
-	if err != nil || saved.Port != 8083 || saved.AuthMode != "entware" || !saved.AutoPortFallback {
+	if err != nil || saved.Port != 18082 || saved.AuthMode != "entware" || !saved.AutoPortFallback {
 		t.Fatal(saved, err)
 	}
-	if err := saveInitialPanelConfig(path, &panelConfig{Version: 1, Port: 8090, AuthMode: "none"}); err == nil {
+	if err := saveInitialPanelConfig(path, &panelConfig{Version: 1, Port: 18090, AuthMode: "none"}); err == nil {
 		t.Fatal("overwrote existing explicit settings")
 	}
 	saved, _ = readPanelConfig(path)
-	if saved.Port != 8083 || saved.AuthMode != "entware" {
+	if saved.Port != 18082 || saved.AuthMode != "entware" {
 		t.Fatal("existing settings mutated")
 	}
 }
@@ -207,7 +207,7 @@ func TestInitialSettingsConcurrentStartsCreateOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.json")
 	var wg sync.WaitGroup
 	outcomes := make(chan error, 2)
-	for _, port := range []int{8082, 8083} {
+	for _, port := range []int{18081, 18082} {
 		wg.Add(1)
 		go func(selected int) {
 			defer wg.Done()
@@ -228,7 +228,7 @@ func TestInitialSettingsConcurrentStartsCreateOnly(t *testing.T) {
 		t.Fatal("create-only concurrency lost", ok)
 	}
 	cfg, err := readPanelConfig(path)
-	if err != nil || !cfg.AutoPortFallback || (cfg.Port != 8082 && cfg.Port != 8083) {
+	if err != nil || !cfg.AutoPortFallback || (cfg.Port != 18081 && cfg.Port != 18082) {
 		t.Fatal("bad persisted winner", cfg, err)
 	}
 }
@@ -239,7 +239,7 @@ func TestInitialPortSettingsRejectSymlinkAndUnsafeStorage(t *testing.T) {
 	if err := os.WriteFile(target, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &panelConfig{Version: 1, Port: 8082, AuthMode: "none", AutoPortFallback: true}
+	cfg := &panelConfig{Version: 1, Port: 18081, AuthMode: "none", AutoPortFallback: true}
 	link := filepath.Join(dir, "symlink")
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
