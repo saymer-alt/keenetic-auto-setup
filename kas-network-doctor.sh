@@ -955,7 +955,13 @@ record "tcp.connect" "$TCP_STATUS" "$TCP_DETAIL" "curl exit: ${TCP_RC:-n/a}"
 # not an independent DNS stage, is not part of the chain pairs, and never
 # flips the verdict. A DNS FAIL keeps the existing dns-neutral fact instead.
 if [ "$CHAIN_REACH" = "1" ] && [ "$DNS_STATUS" != "PASS" ] && [ "$DNS_STATUS" != "FAIL" ]; then
-    record "dns.curl-path" "PASS" "target name resolved on the curl path (side evidence from the reached TLS/HTTP exchange; not an independent DNS stage)" "dns.router=$DNS_STATUS"
+    # same IP-literal skip as chain_state/chain_inventory: an IP target has
+    # no name resolution, so curl-path resolution evidence does not apply
+    case "$TARGET_HOST" in
+        *[!0-9.]*)
+            record "dns.curl-path" "PASS" "target name resolved on the curl path (side evidence from the reached TLS/HTTP exchange; not an independent DNS stage)" "dns.router=$DNS_STATUS"
+            ;;
+    esac
 fi
 
 # ---------------------------------------------------------------
