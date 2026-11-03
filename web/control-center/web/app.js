@@ -130,7 +130,7 @@ function drawMetrics(){
  const list=el('metrics-values');list.replaceChildren();list.hidden=!metricsData;
  if(!metricsData)return;
  const unknown=t('metricsUnknown');
- const value=(item,fields)=>item?.status==='PASS'&&fields.every(f=>typeof item[f]==='string'&&/^[0-9]+(?:\\.[0-9]+)?$/.test(item[f]));
+ const value=(item,fields)=>item?.status==='PASS'&&fields.every(f=>typeof item[f]==='string'&&/^[0-9]+(?:\.[0-9]+)?$/.test(item[f]));
  const kb=(x)=>((Number(x)/1024).toFixed(1))+' MiB';
  const temp=value(metricsData.temperature,['celsius'])?metricsData.temperature.celsius+' °C · '+t('metricsSensor',{type:metricsData.temperature.type,zone:metricsData.temperature.zone}):unknown;
  const load=value(metricsData.load,['one_min','five_min','fifteen_min'])?[metricsData.load.one_min,metricsData.load.five_min,metricsData.load.fifteen_min].join(' / '):unknown;
