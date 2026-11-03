@@ -18,8 +18,10 @@ concurrency:
 
 jobs:
   native-web-import:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@b6d29ae41cf5cf127a6faf8a6e941bc226fbe97e
+    # 4dda865c: lab derives the managed panel port from guest evidence
+    # (beta.6 default 18080 with bounded fallback; beta.5 probes kept).
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@4dda865c3647facb1ad1ee2881d4a44172f181d9
     with:
-      emulator_ref: b6d29ae41cf5cf127a6faf8a6e941bc226fbe97e
+      emulator_ref: 4dda865c3647facb1ad1ee2881d4a44172f181d9
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web
