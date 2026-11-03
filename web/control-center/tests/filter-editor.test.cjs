@@ -423,7 +423,7 @@ test('Doctor warnings are findings rather than command failure',async()=>{
 test('script-installed watchdog shows its actual digest without a fictitious version',async()=>{
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded',installed_sha256:'b'.repeat(64)}}});
  await app.run('refreshComponents()');
- assert.match(app.el('watchdog-version').textContent,/Установлен.*bbbbbbbbbbbb/);
+ assert.match(app.el('watchdog-version').textContent,/Версия\/ревизия watchdog не подтверждена.*bbbbbbbbbbbb/);
 });
 
 test('updates check is manual and confirmation cancellation never starts updater',async()=>{
