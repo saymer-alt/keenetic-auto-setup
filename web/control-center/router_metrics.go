@@ -79,8 +79,8 @@ func validateMetrics(m *systemMetrics) bool {
 		if len(m.Temperature.Zone) > 80 || len(m.Temperature.Type) > 80 || (m.Temperature.Source != "sysfs:thermal" && m.Temperature.Source != "sysfs:hwmon") { return false }
 	}
 	if m.Uptime.Status == "PASS" {
-		u, err := strconv.ParseUint(m.Uptime.Seconds, 10, 64)
-		if err != nil || u > 10000000000 { return false }
+		u, err := strconv.ParseFloat(m.Uptime.Seconds, 64)
+		if err != nil || u < 0 || u > 10000000000 { return false }
 	}
 	if m.Memory.Status == "PASS" {
 		a, _ := strconv.ParseUint(m.Memory.Available, 10, 64)
