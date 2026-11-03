@@ -109,10 +109,6 @@ probe /opt/etc/cron.5mins/mihomo_watchdog unknown
 probe /opt/etc/crontab shared
 probe /opt/etc/ndm/netfilter.d/020-bypass_wa.sh unknown
 probe /opt/etc/init.d/S00ubifs unknown
-# Issue #355: upstream Entware renamed the packaged init script to
-# S28mihomo; the entware-go fork and older feeds still ship S99mihomo.
-# The read-only inventory reports both names, never follows or renames.
-probe /opt/etc/init.d/S28mihomo shared
 probe /opt/etc/init.d/S99mihomo shared
 probe /opt/etc/init.d/S99magitrickle shared
 probe /opt/var/lib/magitrickle/config.yaml shared
