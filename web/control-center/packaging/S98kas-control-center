@@ -103,13 +103,13 @@ filter_startup_log() {
                     printf '%s\n' 'PANEL_SETTINGS_SAVE_FAILED: cannot safely persist selected panel port; startup refused' >> "$target"
                     saw_settings=1
                 fi;;
-            'AUTO_PORT_SELECTED: default 8081 occupied; selected '*)
+            'AUTO_PORT_SELECTED: default 18080 occupied; selected '*)
                 if [ "$saw_auto" -eq 0 ]; then
                     chosen=${line##* }
                     case "$chosen" in
                         ''|*[!0-9]*) ;;
-                        *) if [ "$chosen" -ge 8082 ] && [ "$chosen" -le 8090 ]; then
-                               printf 'AUTO_PORT_SELECTED: 8081 occupied; using %s (settings saved)\n' "$chosen" >> "$target"
+                        *) if [ "$chosen" -ge 18081 ] && [ "$chosen" -le 18090 ]; then
+                               printf 'AUTO_PORT_SELECTED: 18080 occupied; using %s (settings saved)\n' "$chosen" >> "$target"
                                saw_auto=1
                            fi;;
                     esac
