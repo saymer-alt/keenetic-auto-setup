@@ -232,7 +232,7 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		filterError(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
-	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
 		filterError(w, 403, "REQUEST_BLOCKED")
 		return
 	}
