@@ -1,13 +1,23 @@
 #!/bin/sh
 
-# kas-exposure-check.sh v0.1.0
+# kas-exposure-check.sh v0.2.0
 #
 # Read-only local exposure audit (issue #159). It reports which TCP ports are
 # actually LISTENING on this router (from /proc/net/tcp and /proc/net/tcp6,
 # so it works even without ss/netstat), how each is bound (loopback / wildcard
 # / specific address), and cross-checks the Mihomo config (allow-lan,
-# bind-address, external-controller, secret presence — never the secret
+# bind-address, external-controller, secret state — never the secret
 # value) and the Controller authentication state.
+#
+# Owner contract (issue #159, 2026-11-01): a Mihomo Controller with no usable
+# secret and non-loopback accessibility is an accepted KAS deployment
+# contract. The audit therefore reports FACTS and never treats an open
+# binding, allow-lan, a missing/empty/YAML-null secret or an unauthenticated
+# HTTP 200 as a violation. Three distinct concepts are kept apart:
+#   1. the socket listens on an address (fact from /proc);
+#   2. a local unauthenticated API request is answered (fact from the probe);
+#   3. the API is reachable from outside (NOT verified here; firewall/NAT is
+#      not parsed).
 #
 # Hard limits of the evidence (stated in the verdict, not hidden):
 #   - a LISTENING socket is NOT proof of reachability from WAN or any other
@@ -19,13 +29,16 @@
 #
 # The tool changes nothing. It never prints subscriptions, secrets, passwords
 # or full running-config; only filtered, non-sensitive lines are shown.
-# Exit codes: 0 = no unauthenticated non-loopback wildcard listener found;
-# 1 = at least one risky listener; 2 = usage error.
+# Exit codes: 0 = audit completed with socket evidence and no declared-vs-
+# observed authentication contradiction; 1 = the declared Controller
+# authentication state contradicts the live probe (e.g. a secret is
+# configured but the API still answers HTTP 200 without Authorization);
+# 2 = usage error; 3 = no listening-socket evidence was available at all.
 
 set -u
 
 PROG_NAME="kas-exposure-check.sh"
-PROG_VERSION="0.1.0"
+PROG_VERSION="0.2.0"
 PROC_ROOT="${KAS_EXPOSURE_PROC_ROOT:-/proc}"
 CONFIG_PATH="${KAS_EXPOSURE_CONFIG:-/opt/etc/mihomo/config.yaml}"
 CONTROLLER_URL="${KAS_EXPOSURE_CONTROLLER_URL:-}"
@@ -66,9 +79,12 @@ Environment overrides (tests / special layouts):
   KAS_EXPOSURE_CONFIG           default /opt/etc/mihomo/config.yaml
   KAS_EXPOSURE_CONTROLLER_URL   default: derived from external-controller
 
-Statuses: PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED
-Exit codes: 0 no unauthenticated non-loopback wildcard listener found;
-            1 at least one risky listener; 2 usage error;
+Statuses: PASS / FAIL / UNKNOWN / NOT TESTED / UNSUPPORTED.
+[INFO] lines are observed facts (open bindings and unauthenticated answers
+are the accepted KAS deployment contract, not violations).
+Exit codes: 0 audit facts collected, declared vs observed Controller
+            authentication consistent; 1 contradiction between the declared
+            authentication state and the live probe; 2 usage error;
             3 no listening-socket evidence was available at all.
 USAGE
 }
@@ -133,8 +149,41 @@ parse_listeners() {
     awk '$4 == "0A" { split($2, a, ":"); print a[1], a[2] }' "$1" 2>/dev/null | sort -u > "$2"
 }
 
-RISKY=0
+# classify_secret_value <text after the "secret:" colon>
+# Prints ENABLED, DISABLED or UNKNOWN. The value itself is never echoed.
+# YAML semantics: an empty value, an unquoted null/Null/NULL/~ or empty
+# quotes mean NO secret (DISABLED); any quoted non-empty string — including
+# quoted "null" — is a real password (ENABLED); an unbalanced quote cannot
+# be classified honestly (UNKNOWN). A '#' starts a comment only outside
+# quotes, so quoted values keep their '#'.
+classify_secret_value() {
+    _sv=$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    if [ -z "$_sv" ]; then
+        printf 'DISABLED'
+        return 0
+    fi
+    _first=$(printf '%s' "$_sv" | cut -c1)
+    if [ "$_first" = "'" ] || [ "$_first" = '"' ]; then
+        _len=${#_sv}
+        if [ "$_len" -ge 2 ] && [ "$(printf '%s' "$_sv" | cut -c"$_len")" = "$_first" ]; then
+            _inner=$(printf '%s' "$_sv" | cut -c2-"$((_len - 1))")
+            if [ -n "$_inner" ]; then printf 'ENABLED'; else printf 'DISABLED'; fi
+        else
+            printf 'UNKNOWN'
+        fi
+        return 0
+    fi
+    _unquoted=$(printf '%s' "$_sv" | sed 's/#.*$//' | sed -e 's/[[:space:]]*$//')
+    case "$_unquoted" in
+        ''|null|Null|NULL|'~') printf 'DISABLED' ;;
+        *) printf 'ENABLED' ;;
+    esac
+}
+
 LISTEN_SEEN=0
+AUTH_STATE="UNKNOWN"     # ENABLED | DISABLED | UNKNOWN (declared, from config)
+ACCESS_STATE="UNKNOWN"   # CONFIRMED | REJECTED | UNKNOWN (observed, from probe)
+CONTRADICTION=0          # declared vs observed authentication disagreement
 
 report_listener() {
     # $1=family $2=hexaddr $3=hexport
@@ -178,8 +227,7 @@ report_listener() {
             pass_out "$_fam port $_port bound to $_cls${_what:+ — $_what}"
             ;;
         wildcard*)
-            fail_out "$_fam port $_port bound to $_cls${_what:+ — $_what}; reachability depends on firewall/NAT (not verified here)"
-            RISKY=$((RISKY+1))
+            info_out "$_fam port $_port bound to $_cls${_what:+ — $_what}; a listening socket is a fact, not a vulnerability — external reachability depends on firewall/NAT and is NOT verified here"
             ;;
         *)
             unknown_out "$_fam port $_port bound to a specific address ($_cls)${_what:+ — $_what}; clients of other routed subnets may still reach it"
@@ -216,7 +264,7 @@ if [ "$HAVE_CONFIG" -eq 1 ]; then
     if [ -n "$_al" ]; then
         info_out "config: $_al"
         case "$_al" in
-            *true*) fail_out "allow-lan is enabled: Mihomo ports are intended to serve LAN clients, not only loopback"; RISKY=$((RISKY+1)) ;;
+            *true*) info_out "allow-lan is enabled: Mihomo serves LAN clients by design (owner-confirmed KAS deployment contract); actual reachability is still governed by firewall/NAT, which is not parsed here" ;;
         esac
     else
         info_out "config: allow-lan not set (Mihomo defaults to loopback binding)"
@@ -226,27 +274,37 @@ if [ "$HAVE_CONFIG" -eq 1 ]; then
         info_out "config: $_ec"
         case "$_ec" in
             *127.0.0.1*|*localhost*) pass_out "external-controller bound to loopback" ;;
-            *) fail_out "external-controller bound to a non-loopback address"; RISKY=$((RISKY+1)) ;;
+            *) info_out "external-controller bound to a non-loopback address (accepted KAS deployment contract); external reachability depends on firewall/NAT and is NOT verified here" ;;
         esac
     else
         info_out "config: external-controller not set"
     fi
-    # Classify presence only. The secret value is masked before any use.
+    # Classify the declared authentication state. The secret value is never
+    # echoed: only ENABLED / DISABLED / UNKNOWN is reported.
     _sec=$(grep -E "^secret:" "$CONFIG_PATH" 2>/dev/null | head -n 1 | tr -d '\r')
     if [ -n "$_sec" ]; then
-        _sec=${_sec#secret:}
-        _sec=${_sec%%#*}                 # drop trailing comment
-        _sec_masked=$(printf '%s' "$_sec" | tr -d "'\"" | tr -d ' \t')
-        if [ -n "$_sec_masked" ]; then
-            pass_out "Controller secret: SET (value intentionally not shown)"
-        else
-            fail_out "Controller secret: present but empty (unauthenticated API if the controller is not loopback-only)"
-            RISKY=$((RISKY+1))
-        fi
+        _sec_class=$(classify_secret_value "${_sec#secret:}")
+        case "$_sec_class" in
+            ENABLED)
+                AUTH_STATE="ENABLED"
+                info_out "Controller secret: ENABLED (value intentionally not shown)"
+                ;;
+            DISABLED)
+                AUTH_STATE="DISABLED"
+                info_out "Controller secret: DISABLED (empty value or YAML null; accepted KAS deployment contract — value intentionally not shown)"
+                ;;
+            *)
+                AUTH_STATE="UNKNOWN"
+                unknown_out "Controller secret: UNKNOWN (unbalanced quoting; value intentionally not shown)"
+                ;;
+        esac
     else
-        fail_out "Controller secret: not found in config (unauthenticated API if the controller is not loopback-only)"
-        RISKY=$((RISKY+1))
+        AUTH_STATE="DISABLED"
+        info_out "Controller secret: DISABLED (no top-level secret line; accepted KAS deployment contract)"
     fi
+else
+    AUTH_STATE="UNKNOWN"
+    nt_out "Controller authentication state UNKNOWN (config not readable)"
 fi
 
 section "Controller authentication probe (read-only GET /version)"
@@ -267,16 +325,41 @@ if [ "$HAVE_CURL" -eq 1 ] && [ -n "$_PROBE_URL" ]; then
     case "$_rc" in
         0)
             case "$_code" in
-                401|403) pass_out "Controller answered HTTP $_code: authentication enforced at $_PROBE_URL" ;;
-                200) fail_out "Controller answered HTTP 200 WITHOUT authentication at $_PROBE_URL"; RISKY=$((RISKY+1)) ;;
-                *) unknown_out "Controller answered HTTP $_code at $_PROBE_URL" ;;
+                401|403)
+                    ACCESS_STATE="REJECTED (HTTP $_code, localhost vantage)"
+                    case "$AUTH_STATE" in
+                        ENABLED) pass_out "Controller answered HTTP $_code: authentication enforced, consistent with declared ENABLED" ;;
+                        DISABLED)
+                            fail_out "Contradiction: declared authentication DISABLED but Controller answered HTTP $_code; the running instance may use a different config than $CONFIG_PATH"
+                            CONTRADICTION=1
+                            ;;
+                        *) unknown_out "Controller answered HTTP $_code: authentication enforced; declared authentication state UNKNOWN" ;;
+                    esac
+                    ;;
+                200)
+                    ACCESS_STATE="CONFIRMED (HTTP 200 without Authorization, localhost vantage)"
+                    case "$AUTH_STATE" in
+                        DISABLED) info_out "Controller answered HTTP 200 without Authorization: confirmed local unauthenticated access, consistent with declared DISABLED authentication (accepted KAS deployment contract; external reachability NOT verified)" ;;
+                        ENABLED)
+                            fail_out "Contradiction: declared authentication ENABLED but Controller answered HTTP 200 without Authorization; the configured secret is not being enforced (value intentionally not shown)"
+                            CONTRADICTION=1
+                            ;;
+                        *) unknown_out "Controller answered HTTP 200 without Authorization; declared authentication state UNKNOWN" ;;
+                    esac
+                    ;;
+                *)
+                    ACCESS_STATE="UNKNOWN"
+                    unknown_out "Controller answered HTTP $_code at $_PROBE_URL"
+                    ;;
             esac
             ;;
         *)
+            ACCESS_STATE="UNKNOWN"
             unknown_out "Controller probe could not connect (curl exit $_rc) at $_PROBE_URL"
             ;;
     esac
 else
+    ACCESS_STATE="UNKNOWN"
     nt_out "Controller authentication NOT TESTED (no curl or no external-controller address known)"
 fi
 
@@ -298,14 +381,16 @@ else
 fi
 
 section "Verdict"
-info_out "Reminder: LISTENING does not equal reachable. Keenetic firewall/NAT rules are not read; WAN exposure must be judged from router firewall and port-forwarding settings. Multi-network routers (home/dacha/work/VPN) may expose non-loopback listeners to several subnets; binding to br0 alone does not prevent that."
-if [ "$RISKY" -eq 0 ]; then
-    if [ "$HAVE_TCP" -eq 0 ] && [ "$HAVE_TCP6" -eq 0 ]; then
-        unknown_out "No listening-socket evidence was available at all; the audit is inconclusive, not clean."
-        exit 3
-    fi
-    pass_out "No unauthenticated non-loopback wildcard listener detected in the checked evidence."
-    exit 0
+info_out "Controller authentication: $AUTH_STATE"
+info_out "Local unauthenticated API access: $ACCESS_STATE"
+info_out "Reminder: LISTENING does not equal reachable, and localhost-vantage answers do not prove external reachability. Keenetic firewall/NAT rules are not read; WAN exposure must be judged from router firewall and port-forwarding settings. Multi-network routers (home/dacha/work/VPN) may expose non-loopback listeners to several subnets; binding to br0 alone does not prevent that."
+if [ "$HAVE_TCP" -eq 0 ] && [ "$HAVE_TCP6" -eq 0 ]; then
+    unknown_out "No listening-socket evidence was available at all; the audit is inconclusive, not clean."
+    exit 3
 fi
-fail_out "$RISKY risky binding(s)/finding(s) above; review firewall/NAT for the listed ports and consider loopback-only bindings or authentication."
-exit 1
+if [ "$CONTRADICTION" -eq 1 ]; then
+    fail_out "Declared Controller authentication state and the live unauthenticated probe disagree; review the [FAIL] line above (read-only audit; nothing was changed)."
+    exit 1
+fi
+pass_out "Audit complete: the lines above are observed facts and clearly marked UNKNOWN items; wildcard and non-loopback bindings are facts, not counted as vulnerabilities."
+exit 0

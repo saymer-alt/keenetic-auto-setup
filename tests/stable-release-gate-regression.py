@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 WORKFLOW = Path(__file__).parent.parent / '.github/workflows/stable-release-gate.yml'
-PINNED_EMULATOR = '95518d8b307b6748d4f6780dc73aa7859eeee7a3'
+PINNED_EMULATOR = 'c095a7f31378a2f0ceefed983633a07707ad2847'
 
 # The only GH-expression forms the gate may use for scenario-dependent
 # inputs: scenario comparisons combined with quoted literals through
