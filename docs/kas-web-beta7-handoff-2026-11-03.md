@@ -24,6 +24,10 @@
 
 ### P0. FIELD beta.6: браузерные кнопки массово не реагируют (NC-4210)
 
+> **FIELD confirm 03.11.2026:** На NC-4210 реальный GET `/api/updates/panel/operation` вернул `State:FAIL, Phase:recovery_required, ErrorCode:PANEL_START_FAILED, Gate:true`, так что блокировка кнопок durable self-update gate подтверждена, а не просто гипотеза. Оператор выполнил штатную `/opt/bin/kas-control-center -recover-panel-update` без сообщения об ошибке; затем `S98kas-control-center status` → `RUNNING / PANEL_ADDRESS:192.168.1.1:18080`. **Повторный Gate:false и интерактивные клики ещё не присланы**; аппаратный UI PASS пока не объявлять. Документация/UX beta.7 должны объяснять и безопасно завершать recovery после port-migration #377, не удаляя gate вручную.
+
+
+
 > **Уточнение после изучения отображаемой страницы и исходников:** клиентский UI всё же получает динамические данные по API: Mihomo 1.19.33, MT 0.8.2-1, footer beta.6 и состояние watchdog. Карточка `«Обновление панели прервалось. Новая версия панели не запустилась»` указывает на активный **durable self-update gate** после `PANEL_START_FAILED` (сохранён при ошибке запуска на legacy 8081). В `panel-update.js` при `FAIL + Gate` вызывается `occupy(true)`, а `main.go` блокирует mutating HTTP во время `panelUpdate.gate()`. Это высокая по достоверности гипотеза первопричины «неактивных кнопок»; подтвердить GET `/api/updates/panel/operation` на реальном NC-4210. **Не удалять gate руками.** Штатное восстановление: `/opt/bin/kas-control-center -recover-panel-update` после подтверждения отсутствия активного opkg/worker, c безопасным integrity/receipt verification и рестартом лишь WEB. Реальное выполнение/успех не подтверждены и не должны подменяться исходниками.
 >
 > Дополнительно есть очевидный frontend UX-дефект: `panelStageKey` ошибочно считает dotted prerelease `0.1.0.beta.6` стабильным и пишет в sidebar «Стабильная версия». Исправить парсер version/release stage тестами, отдельно от recovery.
