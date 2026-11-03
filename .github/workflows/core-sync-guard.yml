@@ -1,0 +1,76 @@
+name: Core Sync Guard (read-only)
+
+# Advisory: inspect Core drift without changing branches or blocking releases.
+# This workflow exists only in main; stable and KAS Web remain untouched.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '*.sh'
+      - 'scripts/core-sync-check.py'
+      - 'config/core-sync-baseline.json'
+      - 'tests/core-sync-guard-regression.py'
+      - '.github/workflows/core-sync-guard.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-sync:
+    name: Core runtime drift (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read production and candidate refs
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/stable:refs/remotes/origin/stable'
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags origin \
+              "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/core-sync-pr"
+          fi
+
+      - name: Checker offline regression
+        run: python3 tests/core-sync-guard-regression.py
+
+      - name: Compare Core root scripts (never modifies Git)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPORT: ${{ runner.temp }}/core-sync-report.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_REF=refs/remotes/origin/main
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            CANDIDATE_REF=refs/remotes/origin/core-sync-pr
+          fi
+          python3 scripts/core-sync-check.py \
+            --main-ref "$CANDIDATE_REF" \
+            --stable-ref refs/remotes/origin/stable \
+            --config config/core-sync-baseline.json \
+            --json-out "$REPORT"
+
+      - name: Upload machine-readable advisory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-sync-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/core-sync-report.json
+          if-no-files-found: ignore
+          retention-days: 14
