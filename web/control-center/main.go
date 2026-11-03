@@ -24,8 +24,8 @@ import (
 	"time"
 )
 
-//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh && cp ../../update-mihomo.sh scripts/update-mihomo.sh"
-//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh scripts/update-mihomo.sh
+//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh && cp ../../update-mihomo.sh scripts/update-mihomo.sh && cp ../../kas-sys-metrics.sh scripts/kas-sys-metrics.sh"
+//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh scripts/update-mihomo.sh scripts/kas-sys-metrics.sh
 var assets embed.FS
 
 type apiResult struct {
@@ -50,6 +50,7 @@ type app struct {
 	proxyOrigin        string
 	lan                *homeLAN
 	doctor             []byte
+	metrics            []byte
 	updater            []byte
 	runUpdate          func([]byte) (int, error)
 	updateDigest       func() string
@@ -264,6 +265,7 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("/api/updates/magitrickle/check", a.handleMTCheck)
 	mux.HandleFunc("/api/updates/magitrickle", a.handleMTUpdate)
 	mux.HandleFunc("/api/access", a.handleAccess)
+	mux.HandleFunc("/api/metrics", a.handleMetrics)
 	mux.HandleFunc("/api/settings", a.handleSettings)
 	mux.HandleFunc("/api/doctor", a.handleDoctor)
 	mux.HandleFunc("/api/config/import", a.handleImport)
@@ -400,6 +402,11 @@ func main() {
 	}
 	app := newApp(*listen, script)
 	app.importer = importer
+	metrics, err := assets.ReadFile("scripts/kas-sys-metrics.sh")
+	if err != nil {
+		log.Fatal(err)
+	}
+	app.metrics = metrics
 	updater, err := assets.ReadFile("scripts/update-mihomo.sh")
 	if err != nil {
 		log.Fatal(err)
