@@ -330,5 +330,12 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		a.listeners.replace(reserved)
 		reserved = nil
 	}
-	writeFilterJSON(w, 200, panelResponse(next, "http://"+address))
+	// Return a usable URL after a port change, not the wildcard listen IP.
+	displayAddress:=address
+	if a.directHost(r.Host) {
+		if clientIP,_,err:=net.SplitHostPort(r.Host);err==nil && net.ParseIP(clientIP)!=nil{
+			displayAddress=net.JoinHostPort(clientIP,strconv.Itoa(next.Port))
+		}
+	}
+	writeFilterJSON(w, 200, panelResponse(next, "http://"+displayAddress))
 }
