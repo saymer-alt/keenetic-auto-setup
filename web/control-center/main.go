@@ -410,7 +410,14 @@ func main() {
 		log.Fatal("provider secret file requires provider names export")
 	}
 	if *providerExport {
-		exporter, err := newProviderNamesExporter(*listen, *providerSecretFile)
+		// A wildcard TCP listener is not a valid upstream destination. Keep
+		// Mihomo API discovery pinned to the router's own Home IPv4.
+		providerAddress := *listen
+		if lan != nil && lan.homeIP.IsValid() {
+			_, port, _ := net.SplitHostPort(*listen)
+			providerAddress = net.JoinHostPort(lan.homeIP.String(), port)
+		}
+		exporter, err := newProviderNamesExporter(providerAddress, *providerSecretFile)
 		if err != nil {
 			log.Fatal(err)
 		}
