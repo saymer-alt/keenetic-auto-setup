@@ -27,3 +27,22 @@ separate development of new diagnostic tools.
 Later #274 work: explicit panel installation path/version/storage in Doctor and a
 more detailed supported finding vocabulary. #273 tracks the independent panel
 self-update. This change adds no rollback history or automatic updates.
+
+## beta.6: подтверждённый исходник watchdog в карточке «Версии»
+
+У `mihomo-watchdog.sh` нет самостоятельной проверяемой semver-версии.
+Раньше скриптовые установки без доверенного receipt показывали только короткий SHA256.
+Теперь Web может дополнительно **подтвердить совпадение содержимого** установленного
+`/opt/bin/mihomo_watchdog.sh` с каноническим `mihomo-watchdog.sh` внутри
+проверенной сборки Web. Сравниваются полные SHA256; если хеши равны и есть
+корректный 40-символьный source SHA сборки, отображается этот **снимок исходников**
+и короткий SHA256 watchdog. Это **не отдельная версия Watchdog**, не гарантирует
+отсутствие локального изменения/подмены при отсутствии root-owned proof и не
+доказывает, что watchdog выполняется cron.
+
+Для старого, неизвестного, локально изменённого или неузнаваемого watchdog,
+а также для development-сборок без исходного SHA, остаётся честный SHA-only
+fallback. Даже при наличии валидного bundle receipt его `bundle_version`
+нельзя выдавать за standalone semver watchdog. Полный Doctor-отчёт по задаче
+#337 требует отдельной интеграции общей модели идентичности; этот Web PR
+не заявляет, что #337 реализована.
