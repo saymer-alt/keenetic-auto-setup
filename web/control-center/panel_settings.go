@@ -23,6 +23,9 @@ type panelConfig struct {
 	Port         int    `json:"port"`
 	AuthMode     string `json:"auth_mode"`
 	PasswordHash string `json:"password_hash,omitempty"`
+	// Written only when first-launch auto fallback selected 8082..8090.
+	// Absent in beta.4/5 settings; never infer provenance from port==8081.
+	AutoPortFallback bool `json:"auto_port_fallback,omitempty"`
 	verifyMu     sync.Mutex
 	lastVerify   time.Time
 	cached       [32]byte
@@ -119,6 +122,67 @@ func savePanelConfig(path string, c *panelConfig) error {
 	}
 	return os.Rename(f.Name(), path)
 }
+// Initial automatic port persistence is create-only: an administrator's
+// settings must never be overwritten by an auto-port startup (including a
+// concurrent write or a dangling symlink at the destination).
+func saveInitialPanelConfig(path string, c *panelConfig) error {
+	if path == "" || c == nil || !c.valid() {
+		return errors.New("invalid initial panel settings")
+	}
+	if existing, err := readPanelConfig(path); err != nil {
+		return err
+	} else if existing != nil {
+		return errors.New("panel settings already exist")
+	}
+	dir := filepath.Clean(filepath.Dir(path))
+	// Reject symlinks in the entire directory chain, not just the leaf.
+	for parent := dir; ; parent = filepath.Dir(parent) {
+		st, err := os.Lstat(parent)
+		if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe panel settings directory")
+		}
+		if parent == dir && st.Mode().Perm()&0022 != 0 {
+			return errors.New("writable panel settings directory")
+		}
+		if parent == filepath.Dir(parent) {
+			break
+		}
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".kas-settings-init-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.Write(append(data, '\n')); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// A hard link provides O_EXCL-like create-only behavior, without a
+	// replacement window. The temporary file is created 0600 in the same
+	// directory/filesystem; any existing leaf makes this fail closed.
+	if err = os.Link(f.Name(), path); err != nil {
+		return err
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	_ = d.Close()
+	return err
+}
+
 func (a *app) currentHost() string {
 	if host := a.liveHost.Load(); host != nil {
 		return *host
@@ -209,15 +273,20 @@ func (p *homeLAN) credentialRoot() string {
 }
 
 type settingsResponse struct {
-	Port        int    `json:"port"`
-	AuthMode    string `json:"auth_mode"`
-	Login       string `json:"login"`
-	PasswordSet bool   `json:"password_set"`
-	URL         string `json:"url,omitempty"`
+	Port             int    `json:"port"`
+	AuthMode         string `json:"auth_mode"`
+	Login            string `json:"login"`
+	PasswordSet      bool   `json:"password_set"`
+	URL              string `json:"url,omitempty"`
+	AutoPortFallback bool   `json:"auto_port_fallback,omitempty"`
 }
 
 func panelResponse(c *panelConfig, url string) settingsResponse {
-	return settingsResponse{c.Port, c.mode(), c.login(), c.AuthMode != "none", url}
+	return settingsResponse{
+		Port: c.Port, AuthMode: c.mode(), Login: c.login(),
+		PasswordSet: c.AuthMode != "none", URL: url,
+		AutoPortFallback: c.AutoPortFallback,
+	}
 }
 func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if a.lan == nil {
@@ -225,7 +294,17 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		writeFilterJSON(w, 200, panelResponse(a.currentPanel(), ""))
+		// Only the actual direct IPv4 request Host can be advertised as an
+		// HTTP link; never turn untrusted KeenDNS Host/forwarded headers
+		// into a destination for the administrator.
+		url := ""
+		if a.directHost(r.Host) {
+			url = "http://" + r.Host
+			if !strings.HasSuffix(url, "/") {
+				url += "/"
+			}
+		}
+		writeFilterJSON(w, 200, panelResponse(a.currentPanel(), url))
 		return
 	}
 	if r.Method != http.MethodPost {
