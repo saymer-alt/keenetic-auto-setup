@@ -40,11 +40,12 @@ BETA4_PREFIX = 'kas-web-beta4'
 
 
 def pub():
-    from importlib import util as _util
-    spec = _util.spec_from_file_location('pub', HERE / 'publish-transaction-dryrun.py')
-    module = _util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Shared bash/fixture helpers; full context in tests/_publication_testkit.py.
+    import sys as _sys
+    if str(HERE) not in _sys.path:
+        _sys.path.insert(0, str(HERE))
+    import _publication_testkit
+    return _publication_testkit
 
 
 def crossbuild_run_blocks():
@@ -70,6 +71,20 @@ class Checker:
     def __call__(self, cond, msg):
         if not cond:
             self.failures.append('%s: %s' % (self.label, msg))
+
+
+def build_ipk_bytes(arch, version, sha):
+    """Real IPK bytes via the project's packaging/build-ipk.py --binary mode."""
+    with tempfile.TemporaryDirectory(prefix='kas-ipkbytes-') as td:
+        fake = pathlib.Path(td) / 'fake-kas-control-center'
+        fake.write_bytes(b'\x7fELF fake binary for packaging test ' + sha[:8].encode())
+        out = pathlib.Path(td) / 'ipk'
+        subprocess.run([sys.executable, str(BUILDER),
+                        '--arch', arch, '--version', version, '--channel', 'experimental',
+                        '--source-sha', sha, '--binary', str(fake),
+                        '--output', str(out)], check=True, capture_output=True)
+        ipk = next(out.glob('*.ipk'))
+        return ipk.read_bytes()
 
 
 def build_ipk(ws, arch, version, sha):
@@ -99,6 +114,53 @@ def run_fragment(ws, fragment, arch, version, tag):
                 'GITHUB_WORKSPACE': str(ws)})
     completed = subprocess.run([mod.BASH, '-e'], input=fragment.encode('utf-8'),
                                cwd=ipk_dir, env=env, capture_output=True)
+    return completed.returncode, (completed.stdout + completed.stderr).decode('utf-8', 'replace')
+
+
+def metadata_ladder_block():
+    d = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
+    return [s['run'] for s in d['jobs']['metadata-tests']['steps']
+            if 'run' in s and 'compare-versions' in s['run']][0]
+
+
+def resolve_metadata_env(d, dispatch_inputs):
+    """Resolve the metadata-tests job env exactly as GitHub Actions would for
+    the given workflow_dispatch inputs. {} models a push event: the inputs
+    context is empty, so every `inputs.X || 'fallback'` takes the fallback."""
+    env = {}
+    for key, expr in (d['jobs']['metadata-tests'].get('env') or {}).items():
+        m = re.fullmatch(r"\$\{\{ inputs\.(\w+) \|\| '([^']*)' \}\}", str(expr).strip())
+        if not m:
+            raise AssertionError('unexpected metadata env expression for %s: %r'
+                                 % (key, expr))
+        env[key] = dispatch_inputs.get(m.group(1)) or m.group(2)
+    return env
+
+
+def run_ladder(version, previous_version):
+    """Run the workflow's own ladder block verbatim with substituted versions.
+    Real Entware opkg, real network download with the pinned SHA; RUNNER_TEMP
+    is a fresh mktemp dir. On Windows this goes through WSL bash."""
+    block = metadata_ladder_block()
+    script = ('set -euo pipefail\n'
+              'export RUNNER_TEMP="$(mktemp -d /tmp/kas-ladder.XXXXXX)"\n'
+              'trap \'rm -rf "$RUNNER_TEMP"\' EXIT\n'
+              'export VERSION=%s PREVIOUS_VERSION=%s\n' % (version, previous_version)
+              ) + block
+    if os.name == 'posix':
+        completed = subprocess.run(['bash', '-c', script], capture_output=True, timeout=240)
+    else:
+        wsl = shutil.which('wsl') or shutil.which('wsl.exe')
+        if not wsl:
+            raise RuntimeError('WSL is required to run the real opkg ladder on Windows')
+        host = pathlib.Path(tempfile.mkdtemp(prefix='kas-ladder-script-')) / 'ladder.sh'
+        host.write_text(script, encoding='utf-8', newline='\n')
+        conv = subprocess.run([wsl, '-e', 'wslpath', '-a', str(host)],
+                              capture_output=True, timeout=60)
+        conv.check_returncode()
+        completed = subprocess.run([wsl, '-e', 'bash', conv.stdout.decode().strip()],
+                                   capture_output=True, timeout=240)
+        shutil.rmtree(host.parent, ignore_errors=True)
     return completed.returncode, (completed.stdout + completed.stderr).decode('utf-8', 'replace')
 
 
@@ -186,6 +248,82 @@ def main():
                             'PASS' if len(failures) == before else 'FAIL'))
     finally:
         shutil.rmtree(ws, ignore_errors=True)
+
+    print('== static gate: metadata ladder is env-parameterized with a valid push pair ==')
+    before = len(failures)
+    check = Checker(failures, 'metadata ladder parameterization')
+    d = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
+    on = d.get(True) or d.get('on') or {}
+    inputs = (on.get('workflow_dispatch') or {}).get('inputs', {})
+    check(inputs.get('version', {}).get('default') == '0.1.0~beta.3-1',
+          'workflow_dispatch input version keeps the beta.3 default')
+    check(inputs.get('previous_version', {}).get('default') == '0.1.0~beta.2-1',
+          'workflow_dispatch input previous_version defaults to beta.2 '
+          '(a valid predecessor of the default beta.3)')
+    env = d['jobs']['metadata-tests'].get('env', {})
+    check(env.get('VERSION') == "${{ inputs.version || '0.1.0~beta.3-1' }}",
+          'VERSION env is wired to the dispatch input')
+    check(env.get('PREVIOUS_VERSION') == "${{ inputs.previous_version || '0.1.0~beta.2-1' }}",
+          'PREVIOUS_VERSION env falls back to beta.2 so the implicit push pair is ordered')
+    ladder = metadata_ladder_block()
+    for pattern in ('0.1.0~beta.2-1', '0.1.0~beta.3-1', '0.1.0~beta.4-1', 'v0.1.0-beta'):
+        check(pattern not in ladder, 'no hardcoded %s inside the ladder block' % pattern)
+    check('$VERSION' in ladder and '$PREVIOUS_VERSION' in ladder,
+          'ladder compares the env parameters, not literals')
+    print('%-58s %s' % ('ladder is env-driven with an ordered push/default pair',
+                        'PASS' if len(failures) == before else 'FAIL'))
+
+    print('== implicit push/default env resolves to a strictly ordered pair ==')
+    before = len(failures)
+    check = Checker(failures, 'push/default resolution')
+    try:
+        push_env = resolve_metadata_env(d, {})
+        check(push_env == {'VERSION': '0.1.0~beta.3-1', 'PREVIOUS_VERSION': '0.1.0~beta.2-1'},
+              'implicit push env must resolve to the beta.3 vs beta.2 pair, got %r' % push_env)
+        check(push_env['VERSION'] != push_env['PREVIOUS_VERSION'],
+              'implicit push pair must not be equal (compare-versions fails on equality)')
+        dispatch_env = resolve_metadata_env(
+            d, {name: spec.get('default') for name, spec in inputs.items()})
+        check(dispatch_env == push_env,
+              'workflow_dispatch with declared defaults resolves identically to push')
+    except Exception as error:
+        failures.append('push/default resolution: harness error: %r' % error)
+    print('%-58s %s' % ('push and dispatch-default env resolve to beta.3/beta.2',
+                        'PASS' if len(failures) == before else 'FAIL'))
+
+    print('== real Entware opkg ladder with parameterized versions (network) ==')
+    if os.environ.get('KAS_DRYRUN_SKIP_LADDER') == '1':
+        print('%-58s SKIP (KAS_DRYRUN_SKIP_LADDER=1)' % 'opkg ladder runs')
+    else:
+        before = len(failures)
+        check = Checker(failures, 'opkg ladder')
+
+        def q(v):
+            return "'" + v + "'"
+
+        try:
+            # The ACTUAL implicit push/default env, not a simulated dispatch.
+            rc, out = run_ladder(q(push_env['VERSION']), q(push_env['PREVIOUS_VERSION']))
+            check(rc == 0, 'implicit push/default ladder (beta.3 vs beta.2) must pass: %s'
+                  % out[-400:])
+            # A dispatch that overrides only `version` still resolves a valid pair.
+            version_only = resolve_metadata_env(d, {'version': '0.1.0~beta.4-1'})
+            rc, out = run_ladder(q(version_only['VERSION']), q(version_only['PREVIOUS_VERSION']))
+            check(rc == 0, 'version-only dispatch ladder (%s vs %s) must pass: %s'
+                  % (version_only['VERSION'], version_only['PREVIOUS_VERSION'], out[-400:]))
+            # The canonical beta.4 dispatch pins the beta.3 predecessor explicitly.
+            rc, out = run_ladder('"0.1.0~beta.4-1"', '"0.1.0~beta.3-1"')
+            check(rc == 0, 'beta.3 -> beta.4 ladder must pass: %s' % out[-400:])
+            rc, out = run_ladder('"0.1.0~beta.5-1"', '"0.1.0~beta.4-1"')
+            check(rc == 0, 'hypothetical beta.4 -> beta.5 ladder must pass: %s' % out[-400:])
+            rc, out = run_ladder('"0.1.0~beta.3-1"', '"0.1.0~beta.4-1"')
+            check(rc != 0, 'an inverted dispatch (previous newer than version) must fail')
+            rc, out = run_ladder('"0.1.0~beta.3-1"', '"0.1.0~beta.3-1"')
+            check(rc != 0, 'an explicit stale dispatch (VERSION == PREVIOUS_VERSION) must fail')
+        except Exception as error:
+            failures.append('opkg ladder: harness error: %r' % error)
+        print('%-58s %s' % ('ladder: push pair, beta.4/beta.5 dispatches, negatives',
+                            'PASS' if len(failures) == before else 'FAIL'))
 
     for failure in failures:
         print('FAIL: %s' % failure)

@@ -1699,6 +1699,27 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
 fi
 
 # -----------------------------
+# 19. OPKG staleness notice (issue #320). The binary updater intentionally
+# never writes the opkg database; when a feed also provides a mihomo
+# package, a later plain `opkg upgrade` compares the stale database against
+# the feed and may replace the newer project-managed binary with an older
+# feed ELF (reproduced offline with the pinned official Entware opkg).
+# Diagnostics only: nothing is held, flagged, installed or written below.
+# -----------------------------
+# BEGIN OPKG STALENESS CHECK v1
+if [ -n "${OPKG_META:-}" ]; then
+  case "$OPKG_META" in
+    "$INSTALLED_VER"|"$INSTALLED_VER"-*)
+      log "opkg database mihomo metadata ($OPKG_META) matches the installed binary ($INSTALLED_VER)."
+      ;;
+    *)
+      warn "opkg database lists mihomo as '$OPKG_META' while the on-disk binary is $INSTALLED_VER. This updater replaces only the binary and never writes the opkg database, so a later 'opkg upgrade' may replace the newer project-managed binary with an older feed ELF (issue #320). Cross-check 'opkg list-installed | grep mihomo' against $BINARY_STATE before mass upgrades."
+      ;;
+  esac
+fi
+# END OPKG STALENESS CHECK v1
+
+# -----------------------------
 # Done (temp cleanup runs via the exit trap)
 # -----------------------------
 log "Success! Updated to $AVAILABLE_VER (from $ASSET_NAME)"
