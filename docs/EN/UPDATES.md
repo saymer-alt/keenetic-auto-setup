@@ -71,6 +71,10 @@ runtime is stopped again. If stop itself fails, a process may remain running.
 Backups in `/tmp` are volatile; subsequent updater runs do not sweep other runs'
 recovery backups. Normal same-version update/commit/start behavior has live KN-1010 acceptance. Deliberate rollback-failure or hard-power/SIGKILL injection remains regression-covered/residual rather than a production-router test.
 
+## OPKG database vs the project-managed binary (issue #320)
+
+\`update-mihomo.sh\` replaces **only** the binary and deliberately never writes the opkg database. When a feed also provides a \`mihomo\` package, the database keeps the old version, and a later plain \`opkg upgrade\` may replace the newer project-managed ELF with an older feed one (the mechanism is reproduced offline with the pinned official opkg; see \`tests/test_opkg_downgrade_repro.py\`). After an update the updater compares the opkg metadata with the installed version and prints a \`[WARN]\` on mismatch — cross-check \`opkg list-installed | grep mihomo\` before mass \`opkg upgrade\` runs. The updater sets no hold/flag and changes no repositories; the decision stays with the operator. The warning is **a diagnostic, not a protection**: a plain \`opkg upgrade\` can still downgrade the package; issue #320 is not considered fully resolved. A complete fix (opkg metadata sync or a kas-core.ipk) is separate future work.
+
 ## MagiTrickle update
 
 MagiTrickle uses its normal Entware/opkg package path:

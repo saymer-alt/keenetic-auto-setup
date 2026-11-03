@@ -425,7 +425,13 @@ esac
 sleep() { :; }
 netstat() { echo '127.0.0.1:7890 '; }
 mv() {
-  case "$*" in *config.yaml*)
+  case "$*" in *config.yaml.invalid*)
+    # The recovery-preservation rename (PR #325 final review) is not a
+    # transactional commit: it moves a stage to a persistent non-rollback
+    # artifact and is exempt from the commit event, while still running
+    # under the lifecycle lock (the owner check below is shared).
+    [ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || return 90 ;;
+  *config.yaml*)
     [ -s "$LAB/mihomo-lifecycle.lock.d/owner" ] || return 90
     [ ! -f "$LAB/running" ] || return 91
     echo commit >> "$LAB/actions" ;;
@@ -445,7 +451,13 @@ mv() {
             assert 'not found' not in p.stderr and 'SECOND-ELF' not in p.stderr, p.stderr
             if success:
                 assert p.stderr == '', p.stderr
-                expected = ['validate', 'commit', 'commit', 'validate']
+                # Sequence (PR #325 review fix): candidate validation, then
+                # the current-config validation at the backup decision point
+                # (both under the lifecycle lock — the fixture mihomo exits
+                # 90 without a lock owner), the two mv commits (backup,
+                # config), the post-install validation, and the service
+                # events for the running case.
+                expected = ['validate', 'validate', 'commit', 'commit', 'validate']
                 if case == 'running': expected = ['stop'] + expected + ['start']
                 assert events == expected, (case, events)
                 assert cfg.read_bytes() == candidate.read_bytes()
