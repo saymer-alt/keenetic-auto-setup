@@ -156,7 +156,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_prefix || 'kas-web-beta5' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix || 'kas-web-beta6' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS

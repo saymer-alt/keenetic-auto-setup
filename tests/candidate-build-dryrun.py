@@ -307,6 +307,13 @@ def main():
           'VERSION env is wired to the dispatch input')
     check(env.get('PREVIOUS_VERSION') == "${{ inputs.previous_version || '0.1.0.beta.5-1' }}",
           'PREVIOUS_VERSION env falls back to beta.5 so the implicit push pair is ordered')
+    # The uploaded candidate artifact carries the same default prefix: a push
+    # build after the merge must never be labeled with the retired beta.5.
+    for step in d['jobs']['crossbuild']['steps']:
+        if 'upload-artifact' in str(step.get('uses', '')):
+            name = (step.get('with') or {}).get('name', '')
+            check(name.startswith("${{ inputs.artifact_prefix || 'kas-web-beta6' }}-"),
+                  'crossbuild artifact name defaults to the beta.6 prefix: %s' % name)
     ladder = metadata_ladder_block()
     for pattern in ('0.1.0~beta.2-1', '0.1.0~beta.3-1', '0.1.0~beta.4-1', '0.1.0~beta.5-1', '0.1.0.beta.4-1', '0.1.0.beta.5-1', 'v0.1.0-beta'):
         check(pattern not in ladder, 'no hardcoded %s inside the ladder block' % pattern)
