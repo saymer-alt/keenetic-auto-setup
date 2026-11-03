@@ -18,10 +18,9 @@ concurrency:
 
 jobs:
   native-web-import:
-    # e1c86a0c: panel port from guest evidence + fixed smoke guard probe
-    # strings (adjacent literals must not swallow curl -w via % formatting).
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@e1c86a0df87475443d8dc11965e2e04440c4c6cc
+    # bdab4864: fixed deny categories for the managed service start.
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@bdab486499313e3b15c5092d0e5d1acf86a93c4a
     with:
-      emulator_ref: e1c86a0df87475443d8dc11965e2e04440c4c6cc
+      emulator_ref: bdab486499313e3b15c5092d0e5d1acf86a93c4a
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web
