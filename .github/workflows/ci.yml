@@ -45,6 +45,8 @@ jobs:
 
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
+      - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
+        run: python3 tests/watchdog-diagnostics-regression.py
 
       - name: Stable release gate workflow contract
         run: python3 tests/stable-release-gate-regression.py
