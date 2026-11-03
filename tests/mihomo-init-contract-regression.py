@@ -110,6 +110,12 @@ MATRIX = [
     ("S99 usable + S28 leftover dangling link -> S99 wins",
      lambda d: (_mk(d, "S99mihomo", 0o755), _mk_dangling(d, "S28mihomo")),
      0, "S99mihomo"),
+    ("S28 usable + S99 leftover dangling link -> S28 wins",
+     lambda d: (_mk(d, "S28mihomo", 0o755), _mk_dangling(d, "S99mihomo")),
+     0, "S28mihomo"),
+    ("S28 usable + S99 link to a foreign executable -> ambiguous fail closed",
+     lambda d: (_mk(d, "S28mihomo", 0o755), _mk_foreign_link(d, "S99mihomo")),
+     2, "ambiguous"),
 ]
 
 
@@ -139,6 +145,21 @@ def _mk_symlink(init_dir, name):
 def _mk_dangling(init_dir, name):
     target = os.path.join(init_dir, name)
     os.symlink(os.path.join(init_dir, ".no-such-target"), target)
+    return target
+
+
+def _mk_foreign_link(init_dir, name):
+    """A leftover *mihomo-named* link pointing at an unrelated executable:
+    boot would run it, so after dereferencing both names are usable and
+    ownership is ambiguous (fail closed, operator decides)."""
+    target = os.path.join(init_dir, name)
+    holder = tempfile.mkdtemp(prefix="kas-mir-foreign-")
+    foreign = os.path.join(holder, "foreign-service.sh")
+    with open(foreign, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\nexit 0\n")
+    os.chmod(foreign, 0o755)
+    os.symlink(foreign, target)
+    SYMLINK_TARGETS.append(holder)
     return target
 
 

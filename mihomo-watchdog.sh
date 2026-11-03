@@ -250,6 +250,61 @@ mp_pids() {
 }
 # END MIHOMO PROCESS STATE v1
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Single authoritative Mihomo init-script resolution for standalone KAS
+# tools. Upstream Entware renamed the packaged script S99mihomo ->
+# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
+# ship S99, so both names are field realities. Contract (identical block
+# in every consumer; guard-tested by
+# tests/mihomo-init-contract-regression.py):
+#   - only the two known names are candidates, never a glob;
+#   - exactly one executable regular-file candidate is authoritative
+#     (return 0, MIHOMO_INIT_RESOLVED);
+#   - two executable candidates mean ambiguous ownership: return 2 with
+#     state "ambiguous" — KAS refuses to pick one because two Mihomo
+#     launches at boot would break the one-Mihomo invariant; the operator
+#     removes the stale leftover;
+#   - classification dereferences the path exactly like the boot init:
+#     a directory or a non-executable/dangling entry is unusable (return
+#     2 carries the offending path, state notfile:/notexec:); KAS only
+#     ever executes stop/start/restart through the resolved path and
+#     never modifies it;
+#   - no known name exists: return 1, state "absent".
+# Diagnostics only: this block never creates, renames, chmods or deletes
+# package-owned init scripts (owner decision 2026-11-03).
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    _mir_found=""
+    _mir_state="absent"
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+            _mir_state=""
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        MIHOMO_INIT_STATE=""
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
+
 
 # =========================================================
 # MIHOMO WATCHDOG SCRIPT - PRODUCTION VERSION
@@ -918,7 +973,25 @@ can_restart() {
     echo "$now" > "$RESTART_STATE"
 
     log "[RESTART] ${reason}"
-    /opt/etc/init.d/S99mihomo restart
+    # Issue #355: the restart goes through the guarded S28/S99 resolution.
+    # Without a usable init script the watchdog logs and skips this attempt:
+    # a restart loop against a missing service path is pointless log spam,
+    # and picking an arbitrary *mihomo* script could launch a second Mihomo.
+    if resolve_mihomo_init; then
+        "$MIHOMO_INIT_RESOLVED" restart
+    else
+        case "$MIHOMO_INIT_STATE" in
+            ambiguous)
+                log "[SKIP] Mihomo init ownership ambiguous (S28mihomo and S99mihomo both exist) - restart skipped; remove the stale leftover"
+                ;;
+            absent)
+                log "[SKIP] No Mihomo init script found (expected S28mihomo or S99mihomo) - restart skipped"
+                ;;
+            *)
+                log "[SKIP] Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:} - restart skipped"
+                ;;
+        esac
+    fi
 
     # Same-run outcome verification (observability only): the
     # [RESTART] line above is written before the restart, so this
