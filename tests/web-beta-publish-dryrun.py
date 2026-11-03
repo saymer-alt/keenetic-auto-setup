@@ -30,8 +30,8 @@ publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
 SHA = "b" * 40
 RUN = "424242"
-VERSION = "0.1.0~beta.5-1"
-PREVIOUS = "0.1.0~beta.4-1"
+VERSION = "0.1.0.beta.5-1"
+PREVIOUS = "0.1.0.beta.4-1"
 TAG = "v0.1.0-beta.5"
 OLD_TAG = "v0.1.0-beta.4"
 PREFIX = "kas-web-beta5"
@@ -47,10 +47,14 @@ def args(**overrides):
 
 
 def opkg_comparator(left, right):
-    """Model version ordering only; real opkg binary runs in the workflow."""
+    """Model beta ordering; actual Entware opkg comparison runs in CI."""
     def version(s):
-        if s == "0.1.0-1":
-            return (2, 0)
+        if s == "0.1.1-1":
+            return (3, 0)
+        m = re.fullmatch(r"0\.1\.0\.beta\.([0-9]+)-1", s)
+        if m:
+            return (2, int(m[1]))
+        # Tilde-style beta is *older* than the published dotted beta.4.
         m = re.fullmatch(r"0\.1\.0~beta\.([0-9]+)-1", s)
         return (1, int(m[1])) if m else (0, 0)
     return version(left) > version(right)
@@ -328,7 +332,8 @@ def main():
     for label, field, value in (
         ("refuse version typo", "version", "v0.1.0-beta.5"),
         ("refuse equal version", "previous_version", VERSION),
-        ("refuse reversed version", "previous_version", "0.1.0~beta.6-1"),
+        ("refuse reversed version", "previous_version", "0.1.0.beta.6-1"),
+        ("refuse tilde downgrade", "version", "0.1.0~beta.5-1"),
         ("refuse tag mismatch", "tag", "v0.1.0-beta.6"),
         ("refuse previous tag mismatch", "previous_tag", "v0.1.0-beta.3"),
         ("refuse mismatched artifact prefix", "artifact_prefix", "kas-web-beta4"),
