@@ -40,7 +40,7 @@ WORKFLOW = REPO / '.github/workflows/updates-pages-deploy.yml'
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-_pub = __import__('publish-transaction-dryrun')  # reuses find_bash, build_ipk
+import _publication_testkit as _pub  # reuses find_bash, build_ipk
 
 SOURCE_SHA = 'b' * 40
 RUN_ID = '424242'
