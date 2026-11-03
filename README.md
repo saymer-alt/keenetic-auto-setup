@@ -4,6 +4,8 @@
 
 [English](docs/EN/README.md)
 
+> 🪞 Зеркало (только чтение): [gitlab.com/saymer-alt/keenetic-auto-setup](https://gitlab.com/saymer-alt/keenetic-auto-setup) — синхронизируется автоматически из GitHub; Releases, Issues и PR ведутся только на GitHub. Подробности: [docs/gitlab-mirror.md](docs/gitlab-mirror.md).
+
 **Быстрый переход:** [Частые команды](#частые-команды) · [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
 
 ---
@@ -40,11 +42,15 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
 ```
 
-**5. Безопасно импортировать новый YAML (предпочтительно вместо очистки)**
+**5. Заменить конфиг Mihomo новым YAML без `nano` (рекомендуется)**
+
+Команда запускает мастер импорта: сгенерируйте YAML в [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/), скопируйте его текст, выполните команду, вставьте YAML в приглашение и завершите ввод **Ctrl+D** (перед вставкой можно прервать: `s` + Enter):
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
+
+Мастер проверяет YAML, сохраняет прежний конфиг в `config.yaml.bak`, заменяет его и перезапускает Mihomo; при сбое восстанавливает прежний. Доставка и детали мастера — [docs/13-config-import.md](docs/13-config-import.md) (приватный файл с фолбэками, issue #255).
 
 **6. Проверить систему — Doctor**
 
@@ -153,6 +159,14 @@ curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saym
 ```
 
 YAML сохраняются. Настройки ProxyN, DNS, политик и Netfilter KeeneticOS не удаляются. Проверено в QEMU и на KN-1010.
+
+## KAS Control Center — WEB-панель (тестовый канал)
+
+**Необязательная** панель для уже установленного KAS: обзор и Doctor, безопасный импорт YAML, фильтры подписок, ручные обновления. Ядро KAS/Mihomo не затрагивает.
+
+**Коротко:** выберите актуальный **Web prerelease** на [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) (**Latest** — это KAS Core), сверьте ABI (`opkg print-architecture`), проверьте IPK + `SHA256SUMS` из того же выпуска, `opkg install`. Уже установленная панель обновляется **собственной кнопкой проверки обновлений** (канал «Бета»). Адрес: `http://<IPv4-адрес-br0>:8081/`; пароля и TLS по умолчанию нет — ограничьте доступ доверенными сетями.
+
+**[Полная инструкция: установка, проверка IPK, безопасность, обновление и восстановление](docs/26-kas-web-beta-install.md).**
 
 ## 8. Справочник
 

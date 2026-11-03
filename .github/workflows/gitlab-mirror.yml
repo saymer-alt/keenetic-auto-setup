@@ -1,0 +1,98 @@
+# One-way mirror sync: GitHub (source of truth) -> GitLab.
+#
+# Scope: only 'main', 'stable' and all tags are mirrored. Other branches are
+# intentionally NOT mirrored — KAS keeps pruning old experimental branches and
+# the mirror never deletes refs, so mirroring them would accumulate stale
+# branches on GitLab (see docs/gitlab-mirror.md).
+#
+# Safety rules:
+#   - never force-pushes (no "+" refspecs, no --force),
+#   - never deletes refs on GitLab (no --prune, no --mirror),
+#   - diverged history makes the push fail with explicit ref-drift diagnostics,
+#   - pushes with -o ci.skip so GitLab CI/CD never runs on mirrored refs,
+#   - uses a project-scoped deploy key stored in the GH secret
+#     GITLAB_MIRROR_SSH_KEY.
+# See docs/gitlab-mirror.md for operations (state checks, recovery, key rotation).
+name: GitLab mirror sync
+
+on:
+  push:
+    branches: [main, stable]
+    tags: ['**']
+  workflow_dispatch:
+
+concurrency:
+  group: gitlab-mirror
+  # never cancel a run mid-push; queue overlapping runs instead
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Push refs to GitLab
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITLAB_SSH_URL: git@gitlab.com:saymer-alt/keenetic-auto-setup.git
+      GITHUB_REPO_URL: https://github.com/saymer-alt/keenetic-auto-setup.git
+      GIT_SSH_COMMAND: ssh -i ~/.ssh/gitlab-mirror-ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes
+    steps:
+      - name: Checkout full history (all branches and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install deploy key
+        env:
+          GITLAB_MIRROR_SSH_KEY: ${{ secrets.GITLAB_MIRROR_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITLAB_MIRROR_SSH_KEY}" ]; then
+            echo "::error::Secret GITLAB_MIRROR_SSH_KEY is not set on this repository."
+            echo "Expected: private part of the GitLab deploy key 'github-mirror-sync' (OpenSSH format, one line per key)."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "${GITLAB_MIRROR_SSH_KEY}" > ~/.ssh/gitlab-mirror-ed25519
+          chmod 600 ~/.ssh/gitlab-mirror-ed25519
+          # pinned host keys, fingerprints verified against
+          # https://docs.gitlab.com/user/gitlab_com/#ssh-host-keys-fingerprints
+          {
+            echo 'gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf'
+            echo 'gitlab.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsj2bNKTBSpIYDEGk9KxsGh3mySTRgMtXL583qmBpzeQ+jqCMRgBqB98u3z++J1sKlXHWfM9dyhSevkMwSbhoR8XIq/U0tCNyokEi/ueaBMCvbcTHhO7FcwzY92WK4Yt0aGROY5qX2UKSeOvuP4D6TPqKF1onrSzH9bx9XUf2lEdWT/ia1NEKjunUqu1xOB/StKDHMoX4/OKyIzuS0q/T1zOATthvasJFoPrAjkohTyaDUz2LN5JoH839hViyEG82yB+MjcFV5MU3N1l1QL3cVUCh93xSaua1N85qivl+siMkPGbO5xR/En4iEY6K2XPASUEMaieWVNTRCtJ4S8H+9'
+            echo 'gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFSMqzJeV9rUzU4kWitGjeR4PWSa29SPqJ1fVkhtj3Hw9xjLVXVYrU9QlYWrOLXBpQ6KWjbjTDTdDkoohFzgbEY='
+          } > ~/.ssh/known_hosts
+
+      - name: Sync main, stable and tags to GitLab (no force, no delete)
+        run: |
+          set -euo pipefail
+          git remote add gitlab "${GITLAB_SSH_URL}"
+          git push gitlab \
+            'refs/remotes/origin/main:refs/heads/main' \
+            'refs/remotes/origin/stable:refs/heads/stable' \
+            'refs/tags/*:refs/tags/*' \
+            -o ci.skip
+
+      - name: Diagnose ref drift (only on failure)
+        if: failure()
+        run: |
+          set +e
+          echo "::error::Mirror sync failed. The mirror never force-pushes and never deletes refs,"
+          echo "so a declined (non-fast-forward) push means GitLab history has diverged from GitHub."
+          echo "Analysis and recovery: docs/gitlab-mirror.md, section 'Восстановление после сбоя'."
+          echo
+          git ls-remote "${GITHUB_REPO_URL}" 'refs/heads/*' 'refs/tags/*' | sort -k 2 > /tmp/github-refs.txt
+          git ls-remote gitlab 'refs/heads/*' 'refs/tags/*' | sort -k 2 > /tmp/gitlab-refs.txt
+          echo '--- refs only on GitHub (missing on GitLab):'
+          comm -23 <(cut -f2 /tmp/github-refs.txt | sort) <(cut -f2 /tmp/gitlab-refs.txt | sort)
+          echo '--- refs only on GitLab (stale or manually created):'
+          comm -13 <(cut -f2 /tmp/github-refs.txt | sort) <(cut -f2 /tmp/gitlab-refs.txt | sort)
+          echo '--- refs on both sides with different SHA (diverged):'
+          join -j 2 \
+            <(cut -f1-2 /tmp/github-refs.txt | sort -k 2) \
+            <(cut -f1-2 /tmp/gitlab-refs.txt | sort -k 2) 2>/dev/null \
+            | awk '{ if ($2 != $3) print $1": github="$2" gitlab="$3 }'
+          exit 1

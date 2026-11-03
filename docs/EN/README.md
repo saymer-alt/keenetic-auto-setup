@@ -43,8 +43,10 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 **5. Safely import YAML instead (recommended)**
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
+
+Downloads `config-import.sh` into a private file with raw → IPv4/X25519 → GitHub Contents API fallbacks and verifies shebang, project markers and `sh -n` before running it (issue #255).
 
 **6. Inspect the setup — Doctor**
 
@@ -151,6 +153,14 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` — normal installation sequence.
 
 **[Full script inventory and documentation](SCRIPTS.md)**
+
+## KAS Control Center — Web panel (testing channel)
+
+**Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS core remains independent.
+
+**In short:** visit [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) and select the **current KAS Control Center / KAS WEB prerelease** (GitHub's **Latest** points to **KAS Core**, not the panel). Match the Entware ABI with `opkg print-architecture`, verify the IPK against its `SHA256SUMS`, install with `opkg install`. An installed panel updates through **its own update button** (Beta channel). Default URL: `http://<br0-IPv4>:8081/`; no password or TLS by default — restrict access to trusted management networks.
+
+**[Full installation, integrity checks, security, update and recovery guide](WEB_BETA_INSTALL.md).**
 
 ## 7. Reference
 

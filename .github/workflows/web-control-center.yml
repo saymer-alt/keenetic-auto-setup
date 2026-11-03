@@ -1,0 +1,146 @@
+name: KAS Control Center prototype
+
+on:
+  pull_request:
+    paths:
+      - 'web/control-center/**'
+      - 'mihomo-doctor.sh'
+      - 'config-import.sh'
+      - 'update-mihomo.sh'
+      - 'tests/config-import-filter-gate-regression.py'
+      - 'tests/transaction-invariants.py'
+      - 'tests/doctor-package-selection-regression.py'
+      - '.github/workflows/web-control-center.yml'
+  push:
+    branches:
+      - 'feat/kas-control-center-stage1'
+    paths:
+      - 'web/control-center/**'
+      - 'mihomo-doctor.sh'
+      - 'config-import.sh'
+      - 'update-mihomo.sh'
+      - '.github/workflows/web-control-center.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web-prototype:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Snapshot canonical Doctor from current commit
+        run: |
+          cd web/control-center
+          go generate ./...
+          cmp -s ../../mihomo-doctor.sh scripts/mihomo-doctor.sh
+          cmp -s ../../config-import.sh scripts/config-import.sh
+          cmp -s ../../update-mihomo.sh scripts/update-mihomo.sh
+      - name: Test read-only adapter
+        run: |
+          cd web/control-center
+          go test ./...
+          go vet ./...
+          go test -c -o "$RUNNER_TEMP/kas-panel-inventory-tests" .
+          sudo env KAS_REQUIRE_ROOT_OWNERSHIP_TESTS=1 "$RUNNER_TEMP/kas-panel-inventory-tests" -test.run '^(TestInventory|TestPanel)' -test.v
+          go build -ldflags '-X main.panelBuildVersion=0.1.0 -X main.panelBuildSHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -o "$RUNNER_TEMP/kas-panel-version" .
+          test "$("$RUNNER_TEMP/kas-panel-version" -version -lan -settings-file "$RUNNER_TEMP/no-panel-settings")" = 'KAS Control Center 0.1.0 (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)'
+      - name: Validate offline browser sources
+        run: |
+          node --check web/control-center/web/app.js
+          node --test web/control-center/tests/*.test.cjs
+          node <<'JS'
+          const fs = require('fs');
+          const vm = require('vm');
+          const source = fs.readFileSync('web/control-center/web/app.js', 'utf8');
+          const start = source.indexOf('const words=');
+          const end = source.indexOf('\nlet lang=', start);
+          if (start < 0 || end < 0) throw Error('RU/EN dictionary missing');
+          const expression = source.slice(start + 'const words='.length, end).trim().replace(/;$/, '');
+          const dictionaries = vm.runInNewContext('(' + expression + ')');
+          const ru = Object.keys(dictionaries.ru).sort();
+          const en = Object.keys(dictionaries.en).sort();
+          if (ru.length === 0 || JSON.stringify(ru) !== JSON.stringify(en)) {
+            throw Error('Translation key mismatch: ' + JSON.stringify({ru, en}));
+          }
+          const pairBlock = source.match(/for\(const \[id,key\] of (\[[^\n]+\])\)/);
+          if (!pairBlock) throw Error('Translation bindings missing');
+          const pairKeys = vm.runInNewContext(pairBlock[1]).map(pair => pair[1]);
+          const used = new Set([
+            ...[...source.matchAll(/\bt\('([^']+)'/g)].map(x => x[1]),
+            ...pairKeys
+          ]);
+          for (const key of used) {
+            if (!(key in dictionaries.ru) || !(key in dictionaries.en)) {
+              throw Error('Missing translated key: ' + key);
+            }
+          }
+          console.log('RU/EN parity: ' + ru.length + ' full keys; referenced: ' + used.size);
+          JS
+      - name: Verify canonical filter gates on Linux and BusyBox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
+          sh -n config-import.sh
+          python3 tests/config-import-filter-gate-regression.py
+          python3 tests/transaction-invariants.py
+          python3 tests/doctor-package-selection-regression.py
+      - name: Cross compile ARM64 staging binary
+        run: |
+          cd web/control-center
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/kas-control-center-arm64 .
+          du -h /tmp/kas-control-center-arm64
+      - name: Build KN-1010 MIPSel softfloat test bundle
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p /tmp/kas-web-kn1010
+          cd web/control-center
+          CGO_ENABLED=0 GOOS=linux GOARCH=mipsle GOMIPS=softfloat go build -trimpath -o /tmp/kas-web-kn1010/kas-control-center-mipsle .
+          go version -m /tmp/kas-web-kn1010/kas-control-center-mipsle | tee /tmp/kas-web-kn1010/BUILD_INFO
+          grep -F 'GOARCH=mipsle' /tmp/kas-web-kn1010/BUILD_INFO
+          grep -F 'GOMIPS=softfloat' /tmp/kas-web-kn1010/BUILD_INFO
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'ELF32'
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'little endian'
+          readelf -h /tmp/kas-web-kn1010/kas-control-center-mipsle | grep -F 'MIPS'
+          printf '\nKAS_SOURCE_SHA=%s\n' "$SOURCE_SHA" >> /tmp/kas-web-kn1010/BUILD_INFO
+          cp kas-web-manage.sh /tmp/kas-web-kn1010/
+          cp KN1010_TEST.md /tmp/kas-web-kn1010/
+          cd /tmp/kas-web-kn1010
+          sha256sum kas-control-center-mipsle kas-web-manage.sh BUILD_INFO KN1010_TEST.md > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Upload optional KN-1010 test bundle (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kas-web-kn1010-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/kas-web-kn1010/
+          if-no-files-found: error
+          retention-days: 14
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/kas-browser" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/kas-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify real browser flows (fixture APIs, no router writes)
+        env:
+          NODE_PATH: ${{ runner.temp }}/kas-browser/node_modules
+          KAS_PREVIEW_DIR: ${{ runner.temp }}/kas-panel-previews
+        run: node web/control-center/tests/panel-browser-check.cjs

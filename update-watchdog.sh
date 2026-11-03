@@ -224,6 +224,10 @@ ml_lifecycle_release() {
 # Environment:
 #   WATCHDOG_URL - override source URL (optional)
 #   KEENETIC_AUTO_SETUP_REF - override project channel/ref (default: stable)
+# Local package input (no download):
+#   sh update-watchdog.sh --package-candidate FILE CANDIDATE_SHA INSTALLED_SHA
+# Requires a caller-recognized installed digest and canonical direct cron layout.
+# Recovery retains a private copy on failure; SIGKILL/power loss needs inspection.
 # =========================================================
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
@@ -239,6 +243,20 @@ CRON_LEGACY_BAK_OLD="/opt/etc/cron.5mins/mihomo_watchdog.legacy.bak"
 CRONTAB_FILE="/opt/etc/crontab"
 CRON_DIRECT='*/5 * * * * root /bin/sh /opt/etc/cron.5mins/mihomo_watchdog'
 URL="${WATCHDOG_URL:-$PROJECT_RAW_BASE/mihomo-watchdog.sh}"
+PACKAGE_MODE=0
+PACKAGE_COMMIT_ATTEMPTED=0
+PACKAGE_BACKUP_CREATED=0
+PACKAGE_TMP_OWNED=0
+PACKAGE_STAGE_OWNED=0
+PACKAGE_RECOVERING=0
+PACKAGE_BACKUP="/opt/bin/.mihomo_watchdog.sh.package-backup.$$"
+if [ "${1:-}" = --package-candidate ]; then
+    [ "$#" -eq 4 ] || { echo '[ERROR] package candidate requires FILE CANDIDATE_SHA INSTALLED_SHA' >&2; exit 1; }
+    PACKAGE_MODE=1
+    PACKAGE_SOURCE=$2
+    PACKAGE_CANDIDATE_SHA=$3
+    PACKAGE_INSTALLED_SHA=$4
+fi
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -367,6 +385,18 @@ wd_normalize_cron() {
 cleanup() {
     [ "$ML_LIFECYCLE_HELD" -eq 1 ] || return 0
     [ "$(cat "$MIHOMO_LIFECYCLE_LOCK/owner" 2>/dev/null)" = "$ML_ID" ] || return 0
+    if [ "$PACKAGE_MODE" -eq 1 ]; then
+        if [ "$PACKAGE_COMMIT_ATTEMPTED" -eq 1 ]; then
+            wd_package_recover || status_err "[ERROR] WATCHDOG_PACKAGE_RECOVERY_FAILED: retain $PACKAGE_BACKUP for manual recovery"
+        fi
+        if [ "$PACKAGE_BACKUP_CREATED" -eq 1 ] && [ "$PACKAGE_COMMIT_ATTEMPTED" -eq 0 ]; then
+            wd_package_remove_private "$PACKAGE_BACKUP" || status_out "$COLOR_YELLOW" "[WARN] Verified watchdog retained; could not remove $PACKAGE_BACKUP"
+        fi
+        if [ "$PACKAGE_STAGE_OWNED" -eq 1 ]; then wd_package_remove_private "$STAGE_FILE" || true; fi
+        if [ "$PACKAGE_TMP_OWNED" -eq 1 ]; then wd_package_remove_private "$TMP_FILE" || true; fi
+        ml_lifecycle_release || true
+        return 0
+    fi
     rm -f "$STAGE_FILE" "$TMP_FILE" "$WRAPPER_STAGE" "$CRONTAB_STAGE" "$BACKUP_STAGE" "$CRON_CANDIDATE" 2>/dev/null || true
     ml_lifecycle_release || true
 }
@@ -374,6 +404,13 @@ trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
+if [ "$PACKAGE_MODE" -eq 1 ]; then
+    # Ignore subsequent handled signals before entering any recovery bookkeeping.
+    trap 'trap "" HUP INT TERM; cleanup' EXIT
+    trap 'trap "" HUP INT TERM; cleanup; exit 130' INT
+    trap 'trap "" HUP INT TERM; cleanup; exit 143' TERM
+    trap 'trap "" HUP INT TERM; cleanup; exit 129' HUP
+fi
 
 file_hash() {
     sha256sum "$1" 2>/dev/null | awk '{print $1}'
@@ -408,8 +445,147 @@ is_wrapperish() { # our managed wrapper with drift (references the binary)
         && grep -q "^exec /opt/bin/mihomo_watchdog.sh" "$WATCHDOG_CRON" 2>/dev/null
 }
 
+# Local package activation is deliberately stricter than the interactive updater:
+# it accepts only an already-canonical layout and a caller-recognized baseline.
+wd_package_error() { status_err "[ERROR] WATCHDOG_PACKAGE: $*"; return 1; }
+wd_package_hash_ok() {
+    [ "${#1}" -eq 64 ] || return 1
+    case "$1" in *[!0-9a-f]*) return 1;; esac
+}
+wd_package_regular() {
+    local parent physical directory listing file
+    file=$1
+    case "$file" in /*) ;; *) return 1;; esac
+    [ -f "$file" ] && [ ! -L "$file" ] || return 1
+    parent=${file%/*}
+    physical=$(CDPATH= cd -- "$parent" 2>/dev/null && pwd -P) || return 1
+    [ "$physical" = "$parent" ] || return 1
+    directory=$parent
+    while :; do
+        [ -d "$directory" ] && [ ! -L "$directory" ] || return 1
+        listing=$(LC_ALL=C ls -ldn "$directory") || return 1
+        set -- $listing
+        [ "$3" = 0 ] && [ "$4" = 0 ] || return 1
+        case "$1" in
+            d????w????|d???????w?)
+                [ "$directory" = /tmp ] && [ "$1" = drwxrwxrwt ] || return 1;;
+        esac
+        [ "$directory" != / ] || break
+        directory=${directory%/*}; directory=${directory:-/}
+    done
+    case "$(wd_file_state "$file")" in
+        0:0:-rwxr-xr-x|0:0:-rw-r--r--|0:0:-rw-------) return 0;;
+        *) return 1;;
+    esac
+}
+wd_package_claim() {
+    [ ! -e "$1" ] && [ ! -L "$1" ] || return 1
+    (set -C; : > "$1") 2>/dev/null || return 1
+    [ "$(wd_file_state "$1")" = '0:0:-rw-------' ]
+}
+wd_package_remove_private() {
+    [ -e "$1" ] || [ -L "$1" ] || return 0
+    wd_package_regular "$1" || return 1
+    rm -f "$1"
+}
+wd_package_layout_ok() {
+    wd_package_regular "$WATCHDOG_BIN" &&
+        [ "$(wd_file_state "$WATCHDOG_BIN")" = '0:0:-rwxr-xr-x' ] &&
+        [ "$(file_hash "$WATCHDOG_BIN")" = "$PACKAGE_INSTALLED_SHA" ] || return 1
+    wd_package_regular "$WATCHDOG_CRON" && is_exact_wrapper &&
+        [ "$(wd_file_state "$WATCHDOG_CRON")" = '0:0:-rwxr-xr-x' ] || return 1
+    wd_package_regular "$CRONTAB_FILE" || return 1
+    # No normalization or cron restart in package mode. Unsupported schedules
+    # require the explicit ordinary updater/migration before retrying.
+    awk -v direct="$CRON_DIRECT" '
+      /^[[:space:]]*#/ || /^[[:space:]]*$/ {next}
+      {line=$0; gsub(/^[ \t]+|[ \t]+$/, "", line); gsub(/[ \t]+/, " ", line)
+       if (line == direct) {count++; next}
+       if (index(line,"mihomo_watchdog") || index(line,"cron.5mins")) bad=1}
+      END {exit bad || count != 1}' "$CRONTAB_FILE"
+}
+wd_package_recover() {
+    trap '' HUP INT TERM
+    [ "$PACKAGE_COMMIT_ATTEMPTED" -eq 1 ] || return 0
+    [ "$PACKAGE_RECOVERING" -eq 0 ] || return 1
+    PACKAGE_RECOVERING=1
+    wd_package_regular "$PACKAGE_BACKUP" &&
+        [ "$(file_hash "$PACKAGE_BACKUP")" = "$PACKAGE_INSTALLED_SHA" ] || return 1
+    # A failed rename may have left the original intact.
+    if wd_package_regular "$WATCHDOG_BIN" &&
+       [ "$(file_hash "$WATCHDOG_BIN")" = "$PACKAGE_INSTALLED_SHA" ] &&
+       [ "$(wd_file_state "$WATCHDOG_BIN")" = '0:0:-rwxr-xr-x' ]; then
+        PACKAGE_COMMIT_ATTEMPTED=0
+        status_out "$COLOR_YELLOW" '[WARN] WATCHDOG_PACKAGE_RECOVERED: previous canonical watchdog already intact'
+        return 0
+    fi
+    # Never clobber an unrecognized writer's output during recovery.
+    wd_package_regular "$WATCHDOG_BIN" || return 1
+    case "$(file_hash "$WATCHDOG_BIN")" in
+        "$PACKAGE_CANDIDATE_SHA"|"$PACKAGE_INSTALLED_SHA") ;;
+        *) return 1;;
+    esac
+    wd_package_claim "$STAGE_FILE" || return 1
+    PACKAGE_STAGE_OWNED=1
+    cp -p "$PACKAGE_BACKUP" "$STAGE_FILE" && wd_permissions "$STAGE_FILE" 755 &&
+        [ "$(file_hash "$STAGE_FILE")" = "$PACKAGE_INSTALLED_SHA" ] &&
+        mv -f "$STAGE_FILE" "$WATCHDOG_BIN" &&
+        [ "$(file_hash "$WATCHDOG_BIN")" = "$PACKAGE_INSTALLED_SHA" ] &&
+        [ "$(wd_file_state "$WATCHDOG_BIN")" = '0:0:-rwxr-xr-x' ] || return 1
+    PACKAGE_COMMIT_ATTEMPTED=0
+    status_out "$COLOR_YELLOW" '[WARN] WATCHDOG_PACKAGE_RECOVERED: previous canonical watchdog verified'
+    return 0
+}
+wd_package_activate() {
+    local pending
+    wd_package_hash_ok "$PACKAGE_CANDIDATE_SHA" && wd_package_hash_ok "$PACKAGE_INSTALLED_SHA" ||
+        { wd_package_error 'invalid digest'; return 1; }
+    [ -z "${WATCHDOG_URL:-}" ] || { wd_package_error 'local candidate and URL override are mutually exclusive'; return 1; }
+    wd_package_regular "$PACKAGE_SOURCE" || { wd_package_error 'unsafe local source'; return 1; }
+    wd_package_layout_ok || { wd_package_error 'baseline or canonical cron layout changed'; return 1; }
+    for pending in "${WATCHDOG_BIN%/*}"/.mihomo_watchdog.sh.package-backup.*; do
+        [ ! -e "$pending" ] && [ ! -L "$pending" ] ||
+            { wd_package_error 'pending recovery copy requires inspection'; return 1; }
+    done
+    # Snapshot the local input in RAM. No network fallback in this mode.
+    [ ! -e "$STAGE_FILE" ] && [ ! -L "$STAGE_FILE" ] ||
+        { wd_package_error 'preexisting stage refused'; return 1; }
+    wd_package_claim "$TMP_FILE" || { wd_package_error 'private input stage unavailable'; return 1; }
+    PACKAGE_TMP_OWNED=1
+    cp "$PACKAGE_SOURCE" "$TMP_FILE" &&
+        [ "$(file_hash "$TMP_FILE")" = "$PACKAGE_CANDIDATE_SHA" ] &&
+        grep -q 'MIHOMO WATCHDOG SCRIPT' "$TMP_FILE" && sh -n "$TMP_FILE" ||
+        { wd_package_error 'local candidate validation failed'; return 1; }
+    if [ "$PACKAGE_CANDIDATE_SHA" = "$PACKAGE_INSTALLED_SHA" ]; then
+        status_out "$COLOR_GREEN" '[OK] WATCHDOG_PACKAGE: already current; canonical file not rewritten'
+        return 0
+    fi
+    [ ! -e "$PACKAGE_BACKUP" ] && [ ! -L "$PACKAGE_BACKUP" ] ||
+        { wd_package_error 'recovery path already exists'; return 1; }
+    wd_package_claim "$PACKAGE_BACKUP" || return 1
+    PACKAGE_BACKUP_CREATED=1
+    cp -p "$WATCHDOG_BIN" "$PACKAGE_BACKUP" && wd_permissions "$PACKAGE_BACKUP" 600 &&
+        [ "$(file_hash "$PACKAGE_BACKUP")" = "$PACKAGE_INSTALLED_SHA" ] ||
+        { wd_package_error 'could not verify recovery copy'; return 1; }
+    wd_package_claim "$STAGE_FILE" || { wd_package_error 'private target stage unavailable'; return 1; }
+    PACKAGE_STAGE_OWNED=1
+    cp "$TMP_FILE" "$STAGE_FILE" && sh -n "$STAGE_FILE" && wd_permissions "$STAGE_FILE" 755 &&
+        [ "$(file_hash "$STAGE_FILE")" = "$PACKAGE_CANDIDATE_SHA" ] ||
+        { wd_package_error 'candidate staging failed'; return 1; }
+    wd_package_layout_ok || { wd_package_error 'baseline changed before commit'; return 1; }
+    # Mark before rename: even a reported rename error must inspect/recover.
+    PACKAGE_COMMIT_ATTEMPTED=1
+    mv -f "$STAGE_FILE" "$WATCHDOG_BIN" &&
+        [ "$(file_hash "$WATCHDOG_BIN")" = "$PACKAGE_CANDIDATE_SHA" ] &&
+        [ "$(wd_file_state "$WATCHDOG_BIN")" = '0:0:-rwxr-xr-x' ] ||
+        { wd_package_error 'commit or installed-file verification failed'; return 1; }
+    PACKAGE_COMMIT_ATTEMPTED=0
+    status_out "$COLOR_GREEN" '[OK] WATCHDOG_PACKAGE: local candidate activated and verified'
+    return 0
+}
+
 # --- DEPENDENCIES ---
-if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+if [ "$PACKAGE_MODE" -eq 0 ] && ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     status_out "$COLOR_RED" "[ERROR] curl or wget is required but neither is available"
     exit 1
 fi
@@ -488,6 +664,9 @@ download_watchdog_candidate() {
 [ "$(id -u)" -eq 0 ] || { status_err "[ERROR] Run the watchdog updater as root"; exit 1; }
 ml_lifecycle_acquire || { status_err "[ERROR] Mihomo lifecycle busy or unverifiable"; exit 1; }
 umask 077
+if [ "$PACKAGE_MODE" -eq 1 ]; then
+    if wd_package_activate; then exit 0; else exit 1; fi
+fi
 for _wd_file in "$WATCHDOG_BIN" "$WATCHDOG_CRON" "$CRON_LEGACY_BAK" "$CRON_LEGACY_BAK_OLD"; do
     [ ! -L "$_wd_file" ] || { status_err "[ERROR] Refusing symlink: $_wd_file"; exit 1; }
 done

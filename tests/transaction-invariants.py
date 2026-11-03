@@ -126,10 +126,40 @@ def test_mips_migrator() -> None:
     require(text, 'MAINT_MARKER="/tmp/mihomo.maintenance"', label)
     print("[OK] MIPS migrator read-only check, backup, validation and rollback are pinned")
 
+def test_config_importer() -> None:
+    text = load("config-import.sh")
+    label = "config-import transaction"
+    require(text, 'MAINT_MARKER="/tmp/mihomo.maintenance"', label)
+    require(text, 'BACKUP_PATH="$CONFIG_DIR/config.yaml.bak"', label)
+    # The opt-in expected-source gate (KAS_EXPECTED_SOURCE) must hold two
+    # fenced positions: after the lifecycle lock and before the atomic
+    # rename, never before the lock and never after the commit.
+    require(text, 'KAS_EXPECTED_SOURCE="${KAS_EXPECTED_SOURCE:-}"', label)
+    require(text, 'cmp -s "$KAS_EXPECTED_SOURCE" "$CONFIG_PATH"', label)
+    ordered(
+        text, label,
+        'ml_lifecycle_acquire ||',
+        'verify_expected_source "after-lock-pre-stop"',
+        'if mihomo_running; then',
+        'stop_mihomo_confirmed',
+        '"$MIHOMO_BIN" -d "$CONFIG_DIR" -f "$STAGE_CONFIG" -t',
+        'mv -f "$BACKUP_STAGE" "$BACKUP_PATH"',
+        'mp_stopped || error "Cannot prove Mihomo stopped before config commit."',
+        'verify_expected_source "pre-commit" restore',
+        'if ! mv -f "$STAGE_CONFIG" "$CONFIG_PATH"; then',
+    )
+    # Gate B restores the previous service state before failing; neither gate
+    # may claim success after the commit, and the gate must stay opt-in.
+    forbid(text, 'verify_expected_source "pre-commit" restore restore', label)
+    forbid(text, 'KAS_EXPECTED_SOURCE="${KAS_EXPECTED_SOURCE:-1}"', label)
+    print("[OK] config-import expected-source gate ordering is pinned")
+
+
 def main() -> int:
     test_updater()
     test_watchdog_updater()
     test_mips_migrator()
+    test_config_importer()
     print("[OK] High-consequence transaction invariants passed")
     return 0
 

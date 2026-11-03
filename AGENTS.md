@@ -192,6 +192,11 @@ Risk-zone specifics:
 
 ## 6. AI agent working rules
 
+**MANDATORY — KAS-AGENT-001 / anti-monkey-paw task contract (owner decision, 2026-10-30).**
+**Общая политика для всех репозиториев:** [saymer-alt/AGENT-TASK-CONTRACT.md](https://github.com/saymer-alt/saymer-alt/blob/main/AGENT-TASK-CONTRACT.md) (обязательна наряду с более строгим локальным KAS-AGENT-001).
+Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read [docs/AGENT-TASK-CONTRACT.md](docs/AGENT-TASK-CONTRACT.md) and [docs/CONSTITUTION.md](docs/CONSTITUTION.md). Tasks that affect repository history, releases, IPKs, updater, running services, network or owner settings must be written **clearly and in sufficient technical detail**, not shortened to save tokens: state the human-visible goal, current refs/SHA and already completed work, scope and non-goals, protected state, dependencies, explicit permission gates, negative cases, exact tests and Definition of Done. **A technically literal but harmful outcome is FAIL**, even if all listed steps were performed. Do not infer destructive permissions from vague verbs such as "cleanup", "merge" or "release"; when materially ambiguous, stop that risky action and continue safe authorized work. In final reports distinguish planned, implemented, CI-verified, field-tested, merged and published. Small narrow changes may use proportionally shorter specifications; never omit essential constraints.
+
+
 - Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
   bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.
 - Repository search/index results are discovery aids, not proof of current branch state. Before asserting current content, editing, or comparing evidence, fetch the exact file/blob from the intended branch/ref and verify its SHA; search indexing may lag behind recent commits.

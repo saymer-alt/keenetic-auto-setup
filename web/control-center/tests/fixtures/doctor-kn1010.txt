@@ -1,0 +1,43 @@
+=== Mihomo Doctor (read-only diagnostic) ===
+[INFO] Doctor version: 1.2.19
+[INFO] Nothing is installed, updated, removed, started or stopped; config.yaml and Keenetic settings are not touched.
+
+===== 1. System =====
+[INFO] Router: model: Giga (KN-1010)
+[INFO] KeeneticOS: 5.1.8
+[INFO] Entware /opt mount: source=/dev/sda2; mountpoint=/opt; filesystem=ext4; class=external
+[INFO] RAM total: 248 MB, available: 68 MB
+[INFO] Swap: 468 MB (free 468 MB)
+[INFO] Free space on /opt: 14115 MB of 14190 MB (99% free)
+[INFO] Free space on /tmp: 121 MB of 124 MB (97% free)
+
+===== 3. Mihomo binary =====
+[OK]   Runtime version 1.19.33 (read-only Controller GET /version at 0.0.0.0:9090 - the binary itself is NOT executed while the daemon runs)
+
+===== 5. Service =====
+[OK]   Mihomo is running (1 process(es)), managed by /opt/etc/init.d/S99mihomo
+
+===== 6b. MagiTrickle (optional component, read-only) =====
+[OK]   MagiTrickle package installed (opkg version 0.8.2-1)
+[OK]   magitrickled process is running (1 process(es))
+
+===== 8. Watchdog =====
+[OK]   Watchdog scheduled in /opt/etc/crontab
+
+===== 8b. Watchdog history (read-only log analysis) =====
+[INFO] Available history: 2026-10-29 09:10:03 -> 2026-10-29 15:40:04 (rotation keeps ~300-500 lines; tmpfs: lost on reboot)
+[INFO] Healthy heartbeats ([OK] All good) on record: 19
+[OK]   No restarts or problem detections in the available history
+
+[INFO] Doctor is read-only: no files, services or settings were changed.
+
+=== What needs attention ===
+[OK] No FAIL/WARN findings. No action is required by the current Doctor checks.
+
+=== Mihomo Doctor Summary ===
+OK:   37
+WARN: 0
+FAIL: 0
+INFO: 65
+
+[OK] Overall status: OK
