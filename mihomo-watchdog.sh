@@ -323,6 +323,44 @@ LOG_KEEP_LINES=300
 HEALTHY_LOG_INTERVAL=1200
 
 
+# --- INCIDENT DIAGNOSTICS (issue #328, observability only) ---
+#
+# Compact per-class failure accounting in tmpfs plus event-triggered,
+# bounded read-only diagnostics. These settings NEVER influence the
+# restart decision: the restart policy below is unchanged.
+#
+# Classes are accounted separately: wan_failure, proxy_tunnel_failure,
+# port_failure. WAN_UNREACHABLE is UNKNOWN for the tunnel state and never
+# touches tunnel history; a successful matching check resets consecutive
+# failures but keeps the repeat window until it expires by time.
+INCIDENT_STATE="/tmp/mihomo_watchdog.incidents"
+
+# A confirmed failure cycle must repeat within this window before the
+# incident diagnostics (L2) are allowed once. Owner guidance: ~2 separate
+# failed cron cycles within ~30 minutes.
+DIAG_WINDOW_SECS=1800
+
+# Minimum confirmed failed cycles within the window that arm L2.
+DIAG_FAIL_THRESHOLD=2
+
+# Separate diagnostic cooldown (independent from MIN_RESTART_INTERVAL):
+# at most one L2 diagnostic event per class per this interval.
+DIAG_MIN_INTERVAL=900
+
+# Hard cap on extra network requests issued by ONE diagnostic event.
+DIAG_MAX_REQUESTS=4
+
+# Independent alternate SOCKS5h target used only during a tunnel incident.
+# Never logged as a URL with credentials; only its result class is logged.
+DIAG_SOCKS_TARGET_ALT="https://www.cloudflare.com"
+
+# Optional read-only Controller evidence during a tunnel incident.
+# Empty by default: no controller request is made unless the operator
+# explicitly sets this (e.g. the real external-controller bind, which may
+# be a LAN address, not localhost). Only the result class is logged.
+MIHOMO_CONTROLLER_URL=""
+
+
 # Per-run lock prevents overlapping cron checks; lifecycle is taken only for restart.
 ml_lock_acquire "$LOCK_DIR" || exit 0
 
@@ -414,6 +452,391 @@ rotate_log() {
         fi
     fi
 }
+
+
+# =========================================================
+# INCIDENT DIAGNOSTICS BLOCK (issue #328, observability only)
+#
+# L0 healthy path: unchanged cheap checks; counters live in tmpfs.
+# L1 first confirmed failure: compact evidence line from already collected
+#    probe data, before any restart decision is acted upon.
+# L2 repeated confirmed incident: one bounded, class-aware, read-only
+#    diagnostic event with its own cooldown, request budget and dedup.
+# L3 manual deep dive: never automatic; the log points at
+#    kas-network-doctor.sh for the operator.
+#
+# This block never changes the restart decision, never mutates any
+# configuration, and degrades silently (obs data skipped) when tmpfs or
+# helper tools are unavailable. All state files live in tmpfs like the
+# existing restart/healthy markers; a reboot resets the window by design.
+# =========================================================
+
+# BEGIN WATCHDOG INCIDENT DIAGNOSTICS v1
+
+# Millisecond clock for probe latency evidence. /proc/uptime is present on
+# every supported kernel and has centisecond precision; no GNU date %N and
+# no new dependency. Empty result means "latency unknown" and is honest.
+now_ms() {
+    now_ms_result=""
+    [ -r /proc/uptime ] || return 1
+    read _nm_up _nm_idle < /proc/uptime || return 1
+    case "$_nm_up" in
+        *.*)
+            _nm_int=${_nm_up%%.*}
+            _nm_frac=${_nm_up#*.}
+            ;;
+        *)
+            _nm_int=$_nm_up
+            _nm_frac=""
+            ;;
+    esac
+    case "$_nm_int" in ''|*[!0-9]*) return 1 ;; esac
+    case "$_nm_frac" in
+        ''|*[!0-9]*) _nm_frac="0" ;;
+    esac
+    while [ "${#_nm_frac}" -lt 3 ]; do
+        _nm_frac="${_nm_frac}0"
+    done
+    _nm_frac=${_nm_frac%"${_nm_frac#???}"}
+    now_ms_result=$(( _nm_int * 1000 + _nm_frac ))
+    return 0
+}
+
+# Map a curl exit code to a short fixed category. Raw codes stay visible;
+# categories keep shareable logs free of URLs, stderr and target details.
+dg_rc_class() {
+    case "$1" in
+        0)  echo "ok" ;;
+        6)  echo "dns" ;;
+        7)  echo "connect_refused" ;;
+        28) echo "timeout" ;;
+        35) echo "tls" ;;
+        56) echo "recv_failure" ;;
+        '') echo "unknown" ;;
+        *)  echo "rc_$1" ;;
+    esac
+}
+
+# One bounded diagnostic request. Mode selects the proven production probe
+# shape (same flags as the regular checks). Sets DG_RC (curl exit code or
+# empty when skipped) and DG_MS (elapsed ms or empty). Honors the total
+# request budget: over budget means skip with unknown evidence, never an
+# unbounded or slowing probe.
+DG_REQUESTS=0
+dg_probe() {
+    DG_RC=""
+    DG_MS=""
+    [ "$DG_REQUESTS" -lt "$DIAG_MAX_REQUESTS" ] || return 1
+    _dg_mode=$1
+    _dg_url=$2
+    _dg_ms0=""
+    if now_ms; then
+        _dg_ms0=$now_ms_result
+    fi
+    case "$_dg_mode" in
+        direct)
+            curl -s --connect-timeout 3 --max-time 6 --noproxy '*' --head "$_dg_url" >/dev/null 2>&1
+            ;;
+        socks)
+            curl -x "socks5h://$PROXY" -m 5 -s "$_dg_url" >/dev/null 2>&1
+            ;;
+        controller)
+            curl -s --connect-timeout 2 --max-time 3 "$_dg_url" >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    DG_RC=$?
+    if [ -n "$_dg_ms0" ] && now_ms; then
+        DG_MS=$(( now_ms_result - _dg_ms0 ))
+    fi
+    return "$DG_RC"
+}
+
+# Safe process-state word for summaries. Uses the standalone mp_state
+# contract (0 running / 1 stopped / 2 unknown); anything else stays unknown.
+dg_mihomo_state() {
+    mp_state >/dev/null 2>&1
+    case $? in
+        0) echo "running" ;;
+        1) echo "stopped" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# Stable small hash for diagnostic summary dedup. cksum is a POSIX tool
+# present in BusyBox; when absent, dedup is disabled (hash empty) and the
+# full event is logged - degraded, never wrong.
+dg_sum_hash() {
+    dg_sum_hash_result=""
+    _dg_h=$(printf '%s' "$1" | cksum 2>/dev/null | cut -d' ' -f1)
+    case "$_dg_h" in
+        ''|*[!0-9]*) return 0 ;;
+        *) dg_sum_hash_result=$_dg_h ;;
+    esac
+    return 0
+}
+
+# Per-class diagnostic gate: repeated-incident threshold, separate cooldown
+# and maintenance/lock awareness. Returns 0 when the L2 event may run now.
+# Below the threshold the gate returns 1 silently: that is the normal quiet
+# state, not a skip worth logging.
+dg_diag_gate() {
+    _dg_g_class=$1
+    eval "_dg_g_cycles=\$INC_${_dg_g_class}_window_count"
+    case "$_dg_g_cycles" in
+        ''|*[!0-9]*) _dg_g_cycles=0 ;;
+    esac
+    [ "$_dg_g_cycles" -ge "$DIAG_FAIL_THRESHOLD" ] || return 1
+    eval "_dg_g_last=\$INC_${_dg_g_class}_diag_last"
+    case "$_dg_g_last" in
+        ''|*[!0-9]*) _dg_g_last=0 ;;
+    esac
+    if ml_marker_busy; then
+        log "[DIAG-SKIP] ${_dg_g_class} | maintenance marker busy"
+        return 1
+    fi
+    _dg_g_now=$(date +%s)
+    _dg_g_elapsed=$(( _dg_g_now - _dg_g_last ))
+    if [ "$_dg_g_last" -gt 0 ] && [ "$_dg_g_elapsed" -lt "$DIAG_MIN_INTERVAL" ]; then
+        log "[DIAG-SKIP] ${_dg_g_class} | diagnostic cooldown (${_dg_g_elapsed}s < ${DIAG_MIN_INTERVAL}s)"
+        return 1
+    fi
+    return 0
+}
+
+# Record the L2 outcome (cooldown stamp, dedup counter, summary hash) and
+# emit deduplicated [DIAG-SUMMARY] logging. Same summary inside the window
+# collapses into a single repeat line instead of a log wall.
+dg_diag_finish() {
+    _dg_f_class=$1
+    _dg_f_summary=$2
+    dg_sum_hash "$_dg_f_summary"
+    _dg_f_hash=$dg_sum_hash_result
+    eval "_dg_f_prev=\$INC_${_dg_f_class}_hash; _dg_f_occ=\$INC_${_dg_f_class}_diag_occ"
+    if [ -n "$_dg_f_hash" ] && [ -n "$_dg_f_prev" ] && [ "$_dg_f_hash" = "$_dg_f_prev" ]; then
+        eval "INC_${_dg_f_class}_diag_occ=\$(( \$INC_${_dg_f_class}_diag_occ + 1 ))"
+        eval "INC_${_dg_f_class}_diag_last=\$(date +%s)"
+        eval "_dg_f_occ=\$INC_${_dg_f_class}_diag_occ"
+        log "[DIAG] repeat ${_dg_f_class} | occurrences=$_dg_f_occ | summary unchanged"
+    else
+        eval "INC_${_dg_f_class}_hash=\"$_dg_f_hash\""
+        eval "INC_${_dg_f_class}_diag_occ=1"
+        eval "INC_${_dg_f_class}_diag_last=\$(date +%s)"
+        log "[DIAG-SUMMARY] ${_dg_f_summary}"
+        log "[INFO] Full Network Doctor: run manually for deeper evidence (kas-network-doctor.sh)"
+    fi
+    incident_save
+    return 0
+}
+
+# L2 for proxy_tunnel_failure: only when WAN and local port are already
+# proven up in this run. Two independent SOCKS5h targets plus optional
+# read-only Controller evidence. Classification stays an observation:
+# a passing alt target does not prove the user traffic path.
+run_diag_tunnel() {
+    dg_diag_gate proxy_tunnel_failure || return 0
+    eval "_rdt_cycles=\$INC_proxy_tunnel_failure_window_count"
+    log "[DIAG-TRIGGER] proxy_tunnel | confirmed_cycles=$_rdt_cycles window=${DIAG_WINDOW_SECS}s | reason=repeated_confirmed_failure"
+    DG_REQUESTS=0
+    dg_probe socks "https://www.google.com"
+    _rdt_rc1=$DG_RC
+    _rdt_c1=$(dg_rc_class "$DG_RC")
+    dg_probe socks "$DIAG_SOCKS_TARGET_ALT"
+    _rdt_rc2=$DG_RC
+    _rdt_c2=$(dg_rc_class "$DG_RC")
+    _rdt_ctl="not_configured"
+    if [ -n "$MIHOMO_CONTROLLER_URL" ]; then
+        if dg_probe controller "${MIHOMO_CONTROLLER_URL%/}/version"; then
+            _rdt_ctl="ok"
+        else
+            _rdt_ctl="unavailable"
+        fi
+    fi
+    log "[DIAG] socks_primary=${_rdt_c1}(rc=${_rdt_rc1:-unknown}) | socks_alt=${_rdt_c2}(rc=${_rdt_rc2:-unknown}) | controller=$_rdt_ctl | requests=$DG_REQUESTS"
+    _rdt_cause="upstream_or_route_unknown"
+    _rdt_conf="UNKNOWN"
+    _rdt_action="manual_network_doctor"
+    if [ "$_rdt_c1" = "ok" ] && [ "$_rdt_c2" = "ok" ]; then
+        _rdt_cause="transient_recovered_during_diag"
+        _rdt_conf="LOW"
+        _rdt_action="observe_next_cycles"
+    elif [ "$_rdt_c1" = "ok" ] || [ "$_rdt_c2" = "ok" ]; then
+        _rdt_cause="single_target_or_route_suspected"
+        _rdt_conf="LOW"
+        _rdt_action="review_rules"
+    fi
+    dg_diag_finish proxy_tunnel_failure "tunnel=FAIL | wan=$wan_path | mihomo=$(dg_mihomo_state) | port=up | socks_primary=$_rdt_c1 | socks_alt=$_rdt_c2 | cause=$_rdt_cause | confidence=$_rdt_conf | action=$_rdt_action"
+    return 0
+}
+
+# L2 for wan_failure: direct-path evidence only. The budget is not spent
+# on SOCKS probes: with WAN unconfirmed, tunnel state stays UNKNOWN and a
+# Mihomo fault must not be implied (owner rule for #328).
+run_diag_wan() {
+    dg_diag_gate wan_failure || return 0
+    eval "_rdw_cycles=\$INC_wan_failure_window_count"
+    log "[DIAG-TRIGGER] wan_failure | confirmed_cycles=$_rdw_cycles window=${DIAG_WINDOW_SECS}s | reason=repeated_confirmed_failure"
+    DG_REQUESTS=0
+    set -- $WAN_PRIMARY_TARGETS
+    _rdw_target=$1
+    if [ -z "$_rdw_target" ]; then
+        log "[DIAG] no primary target configured | scope=direct_path"
+        dg_diag_finish wan_failure "wan=FAIL | scope=direct_path | direct=unconfigured | cause=configuration | confidence=HIGH | action=check_watchdog_config"
+        return 0
+    fi
+    dg_probe direct "$_rdw_target"
+    _rdw_c=$(dg_rc_class "$DG_RC")
+    log "[DIAG] direct_primary=${_rdw_c}(rc=${DG_RC:-unknown}) | scope=direct_path | socks_probes=skipped_by_design"
+    _rdw_cause="direct_path_unreachable"
+    _rdw_conf="UNKNOWN"
+    _rdw_action="check_isp_wan_and_dns"
+    case "$_rdw_c" in
+        dns)     _rdw_cause="dns_resolution_suspected" ; _rdw_conf="LOW" ;;
+        timeout|connect_refused|tls|recv_failure)
+                 _rdw_cause="direct_connectivity_suspected" ; _rdw_conf="LOW" ;;
+        ok)      _rdw_cause="wan_flapping_or_transient" ; _rdw_conf="LOW" ; _rdw_action="observe_next_cycles" ;;
+    esac
+    dg_diag_finish wan_failure "wan=FAIL | scope=direct_path | direct_primary=$_rdw_c | cause=$_rdw_cause | confidence=$_rdw_conf | action=$_rdw_action"
+    return 0
+}
+
+# L2 for port_failure: local facts only, zero network probes (owner rule:
+# a local failure must not spend budget on external TLS/DNS targets).
+run_diag_port() {
+    dg_diag_gate port_failure || return 0
+    eval "_rdp_cycles=\$INC_port_failure_window_count"
+    log "[DIAG-TRIGGER] port_failure | confirmed_cycles=$_rdp_cycles window=${DIAG_WINDOW_SECS}s | reason=repeated_confirmed_failure"
+    _rdp_state=$(dg_mihomo_state)
+    log "[DIAG] port=down | mihomo=$_rdp_state | scope=local_only (no external probes)"
+    if [ "$_rdp_state" = "stopped" ]; then
+        dg_diag_finish port_failure "port=FAIL | mihomo=stopped | cause=process_down | confidence=HIGH | action=check_mihomo_service_logs"
+    else
+        dg_diag_finish port_failure "port=FAIL | mihomo=$_rdp_state | cause=listener_not_accepting | confidence=MEDIUM | action=check_mihomo_service_logs"
+    fi
+    return 0
+}
+
+# Bounded post-restart tunnel observation, run only after an actual
+# restart. [RESTART-OK] proves the process; this adds whether SOCKS works
+# again immediately. It is a correlation record, not proof that the restart
+# repaired the upstream, and it never triggers further actions here.
+# The probe uses dg_probe (defined above both call sites): this function is
+# reachable from the port-failure path, which executes before the tunnel
+# section of the script has defined proxy_tunnel_ok.
+wd_post_recheck() {
+    DG_REQUESTS=0
+    dg_probe socks "https://www.google.com"
+    if [ "$DG_RC" = "0" ]; then
+        log "[INFO] post-restart tunnel recheck: SOCKS recovered (correlation only; next cycle re-verifies)"
+    elif [ -z "$DG_RC" ]; then
+        log "[INFO] post-restart tunnel recheck: unknown (probe skipped or budget exhausted)"
+    else
+        log "[INFO] post-restart tunnel recheck: still failing (curl_rc=$DG_RC)"
+    fi
+    return 0
+}
+
+# --- per-class incident counters (tmpfs, all numeric fields) ---
+# One line per class:
+#   <class> <confirmed> <consecutive> <window_count> <window_start>
+#           <first_seen> <last_seen> <transient> <diag_last> <diag_occ> <hash>
+
+incident_valid_class() {
+    case "$1" in
+        wan_failure|proxy_tunnel_failure|port_failure) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+incident_load() {
+    for _il_c in wan_failure proxy_tunnel_failure port_failure; do
+        eval "INC_${_il_c}_confirmed=0 INC_${_il_c}_consecutive=0 INC_${_il_c}_window_count=0 INC_${_il_c}_window_start=0 INC_${_il_c}_first=0 INC_${_il_c}_last=0 INC_${_il_c}_transient=0 INC_${_il_c}_diag_last=0 INC_${_il_c}_diag_occ=0 INC_${_il_c}_hash=''"
+    done
+    [ -r "$INCIDENT_STATE" ] || return 0
+    while IFS= read -r _il_line; do
+        case "$_il_line" in
+            ''|'#'*) continue ;;
+        esac
+        # shellcheck disable=SC2086 # fixed 11-field numeric record
+        set -- $_il_line
+        [ "$#" -eq 11 ] || continue
+        incident_valid_class "$1" || continue
+        _il_c=$1
+        eval "INC_${_il_c}_confirmed=\$2 INC_${_il_c}_consecutive=\$3 INC_${_il_c}_window_count=\$4 INC_${_il_c}_window_start=\$5 INC_${_il_c}_first=\$6 INC_${_il_c}_last=\$7 INC_${_il_c}_transient=\$8 INC_${_il_c}_diag_last=\$9 INC_${_il_c}_diag_occ=\${10} INC_${_il_c}_hash=\${11}"
+        # "-" is the stored form of "no summary hash yet" (field must not be
+        # empty or word splitting would drop it and shift every later field).
+        eval "[ \"\$INC_${_il_c}_hash\" = '-' ] && INC_${_il_c}_hash=''"
+    done < "$INCIDENT_STATE" 2>/dev/null
+    return 0
+}
+
+incident_save() {
+    _is_tmp="${INCIDENT_STATE}.new.$$"
+    _is_ok=1
+    : > "$_is_tmp" 2>/dev/null || _is_ok=0
+    if [ "$_is_ok" -eq 1 ]; then
+        for _is_c in wan_failure proxy_tunnel_failure port_failure; do
+            eval "_is_v=\$INC_${_is_c}_confirmed; _is_v2=\$INC_${_is_c}_consecutive; _is_v3=\$INC_${_is_c}_window_count; _is_v4=\$INC_${_is_c}_window_start; _is_v5=\$INC_${_is_c}_first; _is_v6=\$INC_${_is_c}_last; _is_v7=\$INC_${_is_c}_transient; _is_v8=\$INC_${_is_c}_diag_last; _is_v9=\$INC_${_is_c}_diag_occ; _is_v10=\$INC_${_is_c}_hash"
+            [ -n "$_is_v10" ] || _is_v10="-"
+            printf '%s %s %s %s %s %s %s %s %s %s %s\n' \
+                "$_is_c" "$_is_v" "$_is_v2" "$_is_v3" "$_is_v4" \
+                "$_is_v5" "$_is_v6" "$_is_v7" "$_is_v8" "$_is_v9" "$_is_v10" >> "$_is_tmp" 2>/dev/null || _is_ok=0
+        done
+    fi
+    if [ "$_is_ok" -eq 1 ]; then
+        mv "$_is_tmp" "$INCIDENT_STATE" 2>/dev/null || _is_ok=0
+    fi
+    [ "$_is_ok" -eq 1 ] || rm -f "$_is_tmp" 2>/dev/null
+    return 0
+}
+
+# Record one confirmed failure cycle for a class. Window semantics:
+# within DIAG_WINDOW_SECS of window_start the count grows; otherwise a new
+# window starts at 1. Success later resets consecutive but keeps the
+# window until it expires (owner rule, issue #328).
+incident_confirm() {
+    [ "$#" -eq 3 ] || return 0
+    incident_valid_class "$1" || return 0
+    eval "_ic_ws=\$INC_${1}_window_start"
+    case "$_ic_ws" in ''|*[!0-9]*) _ic_ws=0 ;; esac
+    _ic_now=$(date +%s)
+    if [ "$_ic_ws" -gt 0 ] && [ $(( _ic_now - _ic_ws )) -lt "$DIAG_WINDOW_SECS" ]; then
+        eval "INC_${1}_window_count=\$(( \$INC_${1}_window_count + 1 ))"
+    else
+        eval "INC_${1}_window_count=1 INC_${1}_window_start=$_ic_now"
+    fi
+    eval "INC_${1}_confirmed=\$(( \$INC_${1}_confirmed + 1 ))"
+    eval "INC_${1}_consecutive=\$(( \$INC_${1}_consecutive + 1 ))"
+    eval "[ \"\$INC_${1}_first\" -eq 0 ] && INC_${1}_first=$_ic_now"
+    eval "INC_${1}_last=$_ic_now"
+    incident_save
+    return 0
+}
+
+# Transient observation: first probe failed, confirming retry succeeded.
+# Informational counter only; never a confirmed cycle.
+incident_transient() {
+    incident_valid_class "$1" || return 0
+    eval "INC_${1}_transient=\$(( \$INC_${1}_transient + 1 ))"
+    incident_save
+    return 0
+}
+
+# A successful matching check resets consecutive failures. The repeat
+# window is preserved until it expires by time.
+incident_recover() {
+    incident_valid_class "$1" || return 0
+    eval "[ \"\$INC_${1}_consecutive\" -eq 0 ] && return 0"
+    eval "INC_${1}_consecutive=0"
+    incident_save
+    return 0
+}
+
+incident_load
+
+# END WATCHDOG INCIDENT DIAGNOSTICS v1
 
 # NOTE: Log directory should be created during installation (install.sh).
 # If running standalone, ensure /opt/var/log exists beforehand.
@@ -544,16 +967,35 @@ can_restart() {
 wan_ok=0
 wan_target_ok=""
 wan_path="primary"
+wan_probe_rc=""
+wan_probe_ms=""
 
 # ---------------------------------------------------------
 # Primary targets
+#
+# --noproxy '*' pins the check to the direct path even when the cron
+# environment carries HTTP_PROXY/HTTPS_PROXY/ALL_PROXY variables (issue
+# #328): a router-originated WAN probe must never travel through a proxy.
+# The last failed exit code and latency are kept for the [FAIL] evidence
+# line; the pass/fail decision itself is unchanged.
 # ---------------------------------------------------------
 
 for target in $WAN_PRIMARY_TARGETS; do
-    if curl -s --connect-timeout 3 --max-time 6 --head "$target" >/dev/null 2>&1; then
+    _w_ms0=""
+    if now_ms; then
+        _w_ms0=$now_ms_result
+    fi
+    curl -s --connect-timeout 3 --max-time 6 --noproxy '*' --head "$target" >/dev/null 2>&1
+    _w_rc=$?
+    if [ "$_w_rc" -eq 0 ]; then
         wan_ok=1
         wan_target_ok="$target"
         break
+    fi
+    wan_probe_rc=$_w_rc
+    wan_probe_ms=""
+    if [ -n "$_w_ms0" ] && now_ms; then
+        wan_probe_ms=$(( now_ms_result - _w_ms0 ))
     fi
 done
 
@@ -568,10 +1010,21 @@ if [ "$wan_ok" -eq 0 ]; then
     wan_path="whitelist"
 
     for target in $WAN_WHITELIST_TARGETS; do
-        if curl -s --connect-timeout 3 --max-time 6 --head "$target" >/dev/null 2>&1; then
+        _w_ms0=""
+        if now_ms; then
+            _w_ms0=$now_ms_result
+        fi
+        curl -s --connect-timeout 3 --max-time 6 --noproxy '*' --head "$target" >/dev/null 2>&1
+        _w_rc=$?
+        if [ "$_w_rc" -eq 0 ]; then
             wan_ok=1
             wan_target_ok="$target"
             break
+        fi
+        wan_probe_rc=$_w_rc
+        wan_probe_ms=""
+        if [ -n "$_w_ms0" ] && now_ms; then
+            wan_probe_ms=$(( now_ms_result - _w_ms0 ))
         fi
     done
 fi
@@ -583,9 +1036,15 @@ fi
 
 if [ "$wan_ok" -eq 0 ]; then
     reset_healthy_heartbeat
+    incident_confirm wan_failure "$wan_probe_rc" "$wan_probe_ms"
     log "[WARN] WAN unreachable (primary + whitelist targets failed)"
+    eval "_w_cycles=\$INC_wan_failure_window_count"
+    log "[FAIL] wan confirmed | cycles=$_w_cycles | curl_rc=${wan_probe_rc:-unknown} | elapsed_ms=${wan_probe_ms:-unknown}"
+    run_diag_wan
     exit 0
 fi
+
+incident_recover wan_failure
 
 
 # =========================================================
@@ -597,10 +1056,28 @@ fi
 # If port is closed, Mihomo is likely crashed or not started.
 # =========================================================
 
-if ! curl -s --connect-timeout 3 --max-time 5 "http://$PROXY" >/dev/null 2>&1; then
-    can_restart "Mihomo port unreachable"
+_p_ms0=""
+if now_ms; then
+    _p_ms0=$now_ms_result
+fi
+curl -s --connect-timeout 3 --max-time 5 --noproxy '*' "http://$PROXY" >/dev/null 2>&1
+_p_rc=$?
+if [ "$_p_rc" -ne 0 ]; then
+    _p_ms=""
+    if [ -n "$_p_ms0" ] && now_ms; then
+        _p_ms=$(( now_ms_result - _p_ms0 ))
+    fi
+    incident_confirm port_failure "$_p_rc" "$_p_ms"
+    eval "_p_cycles=\$INC_port_failure_window_count"
+    log "[FAIL] port confirmed | cycles=$_p_cycles | curl_rc=$_p_rc | elapsed_ms=${_p_ms:-unknown}"
+    run_diag_port
+    if can_restart "Mihomo port unreachable"; then
+        wd_post_recheck
+    fi
     exit 0
 fi
+
+incident_recover port_failure
 
 
 # =========================================================
@@ -619,20 +1096,41 @@ fi
 # still restarts Mihomo within the same watchdog run.
 # =========================================================
 
+# The probe keeps its original contract (return code only); it now also
+# records the curl exit code and latency for the [FAIL] evidence line.
 proxy_tunnel_ok() {
+    _t_ms0=""
+    if now_ms; then
+        _t_ms0=$now_ms_result
+    fi
     curl -x "socks5h://$PROXY" -m 5 -s https://www.google.com >/dev/null 2>&1
+    PT_RC=$?
+    PT_MS=""
+    if [ -n "$_t_ms0" ] && now_ms; then
+        PT_MS=$(( now_ms_result - _t_ms0 ))
+    fi
+    return "$PT_RC"
 }
 
 if ! proxy_tunnel_ok; then
     sleep "$PROXY_RETRY_DELAY"
 
     if ! proxy_tunnel_ok; then
-        can_restart "Proxy tunnel check failed"
+        incident_confirm proxy_tunnel_failure "$PT_RC" "$PT_MS"
+        eval "_t_cycles=\$INC_proxy_tunnel_failure_window_count"
+        log "[FAIL] proxy_tunnel confirmed | cycles=$_t_cycles | curl_rc=${PT_RC:-unknown} | elapsed_ms=${PT_MS:-unknown}"
+        run_diag_tunnel
+        if can_restart "Proxy tunnel check failed"; then
+            wd_post_recheck
+        fi
         exit 0
     fi
 
-    log "[INFO] Proxy tunnel first probe failed; retry succeeded - no restart"
+    incident_transient proxy_tunnel_failure
+    log "[INFO] Proxy tunnel first probe failed; retry succeeded - no restart (transient_cycles=$(eval "echo \$INC_proxy_tunnel_failure_transient"))"
 fi
+
+incident_recover proxy_tunnel_failure
 
 
 # =========================================================
