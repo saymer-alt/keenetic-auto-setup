@@ -333,6 +333,9 @@ func main() {
 	if *initialPort < 1 || *initialPort > 65535 {
 		log.Fatal("invalid initial port")
 	}
+	// Only the untouched IPK/automatic default may select a different port.
+	// A saved config (including 8081) or explicit -listen never auto-hops.
+	autoStartupPort := *lanMode && (*listen == "" || *listen == "auto") && *initialPort == 8081
 	var config *panelConfig
 	if *lanMode {
 		var err error
@@ -340,6 +343,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		autoStartupPort = autoStartupPort && config == nil
 	}
 	var lan *homeLAN
 	if *lanMode {
@@ -432,9 +436,29 @@ func main() {
 		app.proxyOrigin = *proxyOrigin
 		app.proxyHost = host
 	}
-	listener, err := net.Listen("tcp", *listen)
+	listener, selectedPort, moved, err := selectStartupListener(*listen, autoStartupPort, func(port int, fallback bool) error {
+		// Create the first settings file without replacing an existing file,
+		// even if another process wrote it between read and bind.
+		if config == nil {
+			return errors.New("automatic panel settings unavailable")
+		}
+		return saveInitialPanelConfig(*settingsFile, &panelConfig{
+			Version: 1, Port: port, AuthMode: config.AuthMode,
+			PasswordHash: config.PasswordHash, AutoPortFallback: fallback,
+		})
+	}, net.Listen)
 	if err != nil {
-		log.Fatalf("PORT_BIND_FAILED: panel address %s is unavailable; choose another panel port (other services unchanged)", *listen)
+		log.Fatal(err)
+	}
+	if moved {
+		host, _, _ := net.SplitHostPort(*listen)
+		*listen = net.JoinHostPort(host, fmt.Sprint(selectedPort))
+		lan.address = *listen
+		app.host = *listen
+		config.Port = selectedPort
+		config.AutoPortFallback = true
+		lan.panel.Store(config)
+		fmt.Printf("AUTO_PORT_SELECTED: default 8081 occupied; selected %d\n", selectedPort)
 	}
 	app.listeners = newPanelListeners(app)
 	app.listeners.replace(listener)
