@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Offline dry-run of the KAS WEB candidate-build workflow dispatched for a
-NON-beta.3 version (web-beta3-build.yml with version=0.1.0~beta.4-1,
-tag=v0.1.0-beta.4, artifact_prefix=kas-web-beta4).
+"""Offline dry-run of the beta.5 candidate workflow with a historical
+beta.4 override (workflow filename remains web-beta3-build.yml).
 
 Executes the workflow's manifest-and-assert script against REAL IPKs built by
 the project's own packaging/build-ipk.py in its supported --binary test mode,
@@ -255,18 +254,29 @@ def main():
     d = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
     on = d.get(True) or d.get('on') or {}
     inputs = (on.get('workflow_dispatch') or {}).get('inputs', {})
-    check(inputs.get('version', {}).get('default') == '0.1.0~beta.3-1',
-          'workflow_dispatch input version keeps the beta.3 default')
-    check(inputs.get('previous_version', {}).get('default') == '0.1.0~beta.2-1',
-          'workflow_dispatch input previous_version defaults to beta.2 '
-          '(a valid predecessor of the default beta.3)')
+    check(inputs.get('version', {}).get('default') == '0.1.0~beta.5-1',
+          'workflow_dispatch version defaults to beta.5')
+    check(inputs.get('previous_version', {}).get('default') == '0.1.0~beta.4-1',
+          'workflow_dispatch predecessor defaults to published beta.4 '
+          '(a valid predecessor of the default beta.5)')
+    check(inputs.get('tag', {}).get('default') == 'v0.1.0-beta.5',
+          'dispatch tag defaults to beta.5')
+    check(inputs.get('artifact_prefix', {}).get('default') == 'kas-web-beta5',
+          'dispatch artifact prefix defaults to beta.5')
+    paths = (on.get('push') or {}).get('paths', [])
+    check(paths == ['.github/workflows/web-beta3-build.yml',
+                    'web/control-center/**',
+                    '!web/control-center/**/*.md'],
+          'doc-only changes excluded after code-positive pattern')
+    check((on.get('push') or {}).get('branches') == ['main'],
+          'only main push may build a release candidate')
     env = d['jobs']['metadata-tests'].get('env', {})
-    check(env.get('VERSION') == "${{ inputs.version || '0.1.0~beta.3-1' }}",
+    check(env.get('VERSION') == "${{ inputs.version || '0.1.0~beta.5-1' }}",
           'VERSION env is wired to the dispatch input')
-    check(env.get('PREVIOUS_VERSION') == "${{ inputs.previous_version || '0.1.0~beta.2-1' }}",
-          'PREVIOUS_VERSION env falls back to beta.2 so the implicit push pair is ordered')
+    check(env.get('PREVIOUS_VERSION') == "${{ inputs.previous_version || '0.1.0~beta.4-1' }}",
+          'PREVIOUS_VERSION env falls back to beta.4 so the implicit push pair is ordered')
     ladder = metadata_ladder_block()
-    for pattern in ('0.1.0~beta.2-1', '0.1.0~beta.3-1', '0.1.0~beta.4-1', 'v0.1.0-beta'):
+    for pattern in ('0.1.0~beta.2-1', '0.1.0~beta.3-1', '0.1.0~beta.4-1', '0.1.0~beta.5-1', 'v0.1.0-beta'):
         check(pattern not in ladder, 'no hardcoded %s inside the ladder block' % pattern)
     check('$VERSION' in ladder and '$PREVIOUS_VERSION' in ladder,
           'ladder compares the env parameters, not literals')
@@ -278,8 +288,8 @@ def main():
     check = Checker(failures, 'push/default resolution')
     try:
         push_env = resolve_metadata_env(d, {})
-        check(push_env == {'VERSION': '0.1.0~beta.3-1', 'PREVIOUS_VERSION': '0.1.0~beta.2-1'},
-              'implicit push env must resolve to the beta.3 vs beta.2 pair, got %r' % push_env)
+        check(push_env == {'VERSION': '0.1.0~beta.5-1', 'PREVIOUS_VERSION': '0.1.0~beta.4-1'},
+              'implicit push env must resolve to beta.5 vs beta.4, got %r' % push_env)
         check(push_env['VERSION'] != push_env['PREVIOUS_VERSION'],
               'implicit push pair must not be equal (compare-versions fails on equality)')
         dispatch_env = resolve_metadata_env(
@@ -288,7 +298,7 @@ def main():
               'workflow_dispatch with declared defaults resolves identically to push')
     except Exception as error:
         failures.append('push/default resolution: harness error: %r' % error)
-    print('%-58s %s' % ('push and dispatch-default env resolve to beta.3/beta.2',
+    print('%-58s %s' % ('push and dispatch-default env resolve to beta.5/beta.4',
                         'PASS' if len(failures) == before else 'FAIL'))
 
     print('== real Entware opkg ladder with parameterized versions (network) ==')
@@ -304,10 +314,10 @@ def main():
         try:
             # The ACTUAL implicit push/default env, not a simulated dispatch.
             rc, out = run_ladder(q(push_env['VERSION']), q(push_env['PREVIOUS_VERSION']))
-            check(rc == 0, 'implicit push/default ladder (beta.3 vs beta.2) must pass: %s'
+            check(rc == 0, 'implicit push/default ladder (beta.5 vs beta.4) must pass: %s'
                   % out[-400:])
             # A dispatch that overrides only `version` still resolves a valid pair.
-            version_only = resolve_metadata_env(d, {'version': '0.1.0~beta.4-1'})
+            version_only = resolve_metadata_env(d, {'version': '0.1.0~beta.6-1'})
             rc, out = run_ladder(q(version_only['VERSION']), q(version_only['PREVIOUS_VERSION']))
             check(rc == 0, 'version-only dispatch ladder (%s vs %s) must pass: %s'
                   % (version_only['VERSION'], version_only['PREVIOUS_VERSION'], out[-400:]))

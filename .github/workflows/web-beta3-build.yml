@@ -3,36 +3,36 @@ name: KAS Web candidate IPKs (no publication)
 on:
   push:
     branches:
-      - feat/kas-web-beta3-sidebar-theme-20261030 # candidate builds in the reviewed beta3 PR; never publishes
       - main # after merge: the release candidate must be rebuilt from the real merge commit before any publish
     paths:
       - '.github/workflows/web-beta3-build.yml'
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
   workflow_dispatch:
-    # Candidate builds for a NEW release (e.g. beta.4) are dispatched on the
-    # merge commit with explicit version/tag inputs; the push triggers above
-    # keep building beta.3-named candidates for the historical branches.
+    # Candidate builds from the selected commit; no publication or Pages writes.
+    # This workflow keeps its historical filename for downstream compatibility.
+    # Push builds use beta.5 test inputs, dispatch may override all four values.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0~beta.4-1'
+        description: 'Internal IPK version, e.g. 0.1.0~beta.5-1'
         required: false
         type: string
-        default: '0.1.0~beta.3-1'
+        default: '0.1.0~beta.5-1'
       tag:
-        description: 'Canonical release tag, e.g. v0.1.0-beta.4'
+        description: 'Canonical release tag, e.g. v0.1.0-beta.5'
         required: false
         type: string
-        default: 'v0.1.0-beta.3'
+        default: 'v0.1.0-beta.5'
       artifact_prefix:
-        description: 'Uploaded artifact name prefix, e.g. kas-web-beta4'
+        description: 'Uploaded artifact name prefix, e.g. kas-web-beta5'
         required: false
         type: string
-        default: 'kas-web-beta3'
+        default: 'kas-web-beta5'
       previous_version:
-        description: 'Internal version of the release the current one upgrades from, e.g. 0.1.0~beta.2-1 for a beta.3 build'
+        description: 'Previous published Web IPK version, e.g. 0.1.0~beta.4-1 for beta.5'
         required: false
         type: string
-        default: '0.1.0~beta.2-1'
+        default: '0.1.0~beta.4-1'
 
 permissions:
   contents: read
@@ -42,11 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      # Push events have no inputs context, so the fallbacks ARE the push
-      # configuration: VERSION=beta.3 vs PREVIOUS_VERSION=beta.2 must stay a
-      # strictly ordered pair (compare-versions fails on equality under set -e).
-      VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.2-1' }}
+      # Push has no inputs context. Keep the beta.5 candidate above the
+      # currently published beta.4. compare-versions rejects equal versions.
+      VERSION: ${{ inputs.version || '0.1.0~beta.5-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.4-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,8 +90,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.3' }}
+      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.5-1' }}
+      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.5' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +149,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_prefix || 'kas-web-beta3' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix || 'kas-web-beta5' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS
