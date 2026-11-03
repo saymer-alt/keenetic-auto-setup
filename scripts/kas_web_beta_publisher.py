@@ -170,6 +170,16 @@ class Publisher:
                 record.get("head_branch") == "main" and
                 str(record.get("path", "")).split("@", 1)[0] == ".github/workflows/web-beta3-build.yml",
                 "candidate run must be an explicitly dispatched WEB build on main")
+        # An infra/docs-only merge with explicitly relabelled old IPKs must not
+        # masquerade as a new WEB source release. Require real WEB changes since
+        # the previous published beta, not just publisher/workflow/doc updates.
+        comparison = gh.api("repos/%s/compare/%s...%s" %
+                            (EXPECTED_REPO, a.previous_tag, a.source_sha))
+        require(comparison.get("status") == "ahead" and
+                any(item.get("filename", "").startswith("web/control-center/") and
+                    not item["filename"].endswith(".md")
+                    for item in comparison.get("files", [])),
+                "source_sha has no WEB executable/packaging changes since the previous beta")
         previous = gh.release(a.previous_tag)
         require(previous and previous.get("tag_name") == a.previous_tag and
                 previous.get("prerelease") is True and previous.get("draft") is False,
