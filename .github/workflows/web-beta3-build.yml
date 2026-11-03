@@ -11,28 +11,28 @@ on:
   workflow_dispatch:
     # Candidate builds from the selected commit; no publication or Pages writes.
     # This workflow keeps its historical filename for downstream compatibility.
-    # Push builds use beta.5 test inputs, dispatch may override all four values.
+    # Push builds use beta.6 test inputs, dispatch may override all four values.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0.beta.5-1'
+        description: 'Internal IPK version, e.g. 0.1.0.beta.6-1'
+        required: false
+        type: string
+        default: '0.1.0.beta.6-1'
+      tag:
+        description: 'Canonical release tag, e.g. v0.1.0-beta.6'
+        required: false
+        type: string
+        default: 'v0.1.0-beta.6'
+      artifact_prefix:
+        description: 'Uploaded artifact name prefix, e.g. kas-web-beta6'
+        required: false
+        type: string
+        default: 'kas-web-beta6'
+      previous_version:
+        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.5-1 for beta.6'
         required: false
         type: string
         default: '0.1.0.beta.5-1'
-      tag:
-        description: 'Canonical release tag, e.g. v0.1.0-beta.5'
-        required: false
-        type: string
-        default: 'v0.1.0-beta.5'
-      artifact_prefix:
-        description: 'Uploaded artifact name prefix, e.g. kas-web-beta5'
-        required: false
-        type: string
-        default: 'kas-web-beta5'
-      previous_version:
-        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.4-1 for beta.5'
-        required: false
-        type: string
-        default: '0.1.0.beta.4-1'
 
 permissions:
   contents: read
@@ -42,13 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      # Push has no inputs context. Keep the beta.5 candidate above the
-      # currently published beta.4 uses the DOTTED version 0.1.0.beta.4-1.
-      # Do NOT use 0.1.0~beta.5-1: it sorts OLDER than published beta.4.
+      # Push has no inputs context. Keep the beta.6 candidate above the
+      # currently published beta.5, which uses the DOTTED version 0.1.0.beta.5-1.
+      # Do NOT use 0.1.0~beta.6-1: it sorts OLDER than published beta.5.
       # The eventual stable must sort above the dotted prereleases (e.g. 0.1.1-1).
       # compare-versions rejects equal versions.
-      VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.4-1' }}
+      VERSION: ${{ inputs.version || '0.1.0.beta.6-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.5-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,10 +63,14 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg ladder (published beta.4 → beta.5 → future stable)
+      - name: Real Entware opkg ladder (published beta.5 → beta.6 → future stable)
         run: |
           set -euo pipefail
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          # Shared Entware mirror can be slow from CI (observed ~13 KB/s);
+          # a timed-out download is an infra failure, not a version-ladder
+          # failure, so budget a bounded retry instead of a bare 60s cap.
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
@@ -93,8 +97,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0.beta.5-1' }}
-      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.5' }}
+      BETA_VERSION: ${{ inputs.version || '0.1.0.beta.6-1' }}
+      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.6' }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4

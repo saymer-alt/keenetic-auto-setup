@@ -4,3 +4,6 @@
 /scripts/config-import.sh
 
 /scripts/update-mihomo.sh
+
+/scripts/kas-sys-metrics.sh
+/scripts/mihomo-watchdog.sh

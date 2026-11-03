@@ -472,6 +472,26 @@ exit 0
     assert "[FAIL]" not in log
 
 
+def test_now_ms_padded_fraction(fx, shell):
+    # POSIX sh/dash/ash arithmetic reads a leading 0 as octal: an uptime
+    # fraction like .09 pads to "090" and used to abort the whole watchdog
+    # run with "Illegal number: 090" (~9% of real runs, purely by clock).
+    fx.write_uptime("12345.09 0")
+    body = r"""
+now_ms || exit 30
+[ "$now_ms_result" = "12345090" ] || exit 31
+exit 0
+"""
+    fx.clean_run_state()
+    run(fx, fx.redirect(unit_script(fx, body)), [], shell)
+    for value, expect in (("12345.9 0", "12345900"), ("12345.00 0", "12345000"),
+                          ("7 0", "7000"), ("0.09 0", "90")):
+        fx.write_uptime(value)
+        body = "now_ms || exit 30\n[ \"$now_ms_result\" = \"%s\" ] || exit 31\nexit 0\n" % expect
+        fx.clean_run_state()
+        run(fx, fx.redirect(unit_script(fx, body)), [], shell)
+
+
 def test_state_file_shape(fx, shell):
     fx.clean_run_state()
     fx.write_uptime()
@@ -510,6 +530,7 @@ CASES = [
     test_wan_diag_direct_only,
     test_port_diag_local_only,
     test_unit_semantics,
+    test_now_ms_padded_fraction,
     test_state_file_shape,
     test_full_smoke_wan_outage,
 ]
