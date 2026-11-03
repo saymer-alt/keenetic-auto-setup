@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDoctorSummaryRequiresCompleteConsistentFooter(t *testing.T) {
@@ -66,6 +67,18 @@ func TestRuntimeVersionBoundedLocalResponse(t *testing.T) {
 		}
 	}
 }
+func TestRuntimeVersionTimeoutFailsClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	client := srv.Client()
+	client.Timeout = 50 * time.Millisecond
+	if version := readMihomoVersion(context.Background(), client, srv.URL+"/version", ""); version != "" {
+		t.Fatal("accepted an unresponsive Mihomo API", version)
+	}
+}
+
 // Mihomo-only normalization must not weaken the validation used by package
 // metadata and build/core/watchdog identities.
 func TestMihomoPrefixDoesNotBroadenComponentVersionPattern(t *testing.T) {
