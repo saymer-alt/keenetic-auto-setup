@@ -128,12 +128,19 @@ func (a *app) currentHost() string {
 
 // Browsers omit the default HTTP port in Host/Origin even for a :80 URL.
 func (a *app) directHost(host string) bool {
-	current := a.currentHost()
-	if host == current {
-		return true
-	}
-	ip, port, err := net.SplitHostPort(current)
-	return err == nil && port == "80" && host == ip
+ current:=a.currentHost()
+ if host==current{return true}
+ listenIP,listenPort,err:=net.SplitHostPort(current)
+ if err!=nil{return false}
+ if a.lan==nil { return listenPort=="80" && host==listenIP }
+ ip,port,err:=net.SplitHostPort(host)
+ if err!=nil {
+  if listenPort!="80"{return false}
+  ip=host;port="80"
+ }
+ if port!=listenPort {return false}
+ candidate:=net.ParseIP(ip)
+ return candidate!=nil && candidate.To4()!=nil
 }
 func (a *app) currentPanel() *panelConfig {
 	if a.lan == nil {
