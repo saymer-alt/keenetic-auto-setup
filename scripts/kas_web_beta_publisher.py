@@ -20,7 +20,9 @@ import urllib.request
 ARCHES = ("aarch64-3.10", "armv7-3.2", "mipsel-3.4", "mips-3.4")
 EXPECTED_REPO = "saymer-alt/keenetic-auto-setup"
 PAGES_BASE = "https://saymer-alt.github.io/keenetic-auto-setup"
-VERSION_RE = re.compile(r"0\.1\.0~beta\.([1-9][0-9]*)-1\Z")
+# Published beta.4 uses the dotted opkg version 0.1.0.beta.4-1.
+# A tilde beta.5 would sort OLDER than published beta.4.
+VERSION_RE = re.compile(r"0\.1\.0\.beta\.([1-9][0-9]*)-1\Z")
 TAG_RE = re.compile(r"v0\.1\.0-beta\.([1-9][0-9]*)\Z")
 PREFIX_RE = re.compile(r"kas-web-beta([1-9][0-9]*)\Z")
 SHA_RE = re.compile(r"[a-f0-9]{40}\Z")
@@ -153,8 +155,10 @@ class Publisher:
             self.compare = real_compare
         require(self.compare(a.version, a.previous_version),
                 "real Entware ordering failed: current must be newer")
-        require(self.compare("0.1.0-1", a.version),
-                "real Entware ordering failed: stable must remain newer")
+        # Dotted 0.1.0.beta.N prereleases are newer than 0.1.0-1.
+        # A future stable WEB series must be greater (e.g. 0.1.1-1).
+        require(self.compare("0.1.1-1", a.version),
+                "real Entware ordering failed: future stable 0.1.1-1 must remain newer")
         require(not self.compare(a.previous_version, a.version),
                 "reverse-order Entware check failed")
 
