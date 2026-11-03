@@ -89,13 +89,23 @@ LOG_KEEP_LINES=300
 HEALTHY_LOG_INTERVAL=1200
 LOCK_DIR="/tmp/mihomo_watchdog.lock.d"
 HEALTHY_STATE="/tmp/mihomo_watchdog.healthy"
+INCIDENT_STATE="/tmp/mihomo_watchdog.incidents"
+DIAG_WINDOW_SECS=1800
+DIAG_FAIL_THRESHOLD=2
+DIAG_MIN_INTERVAL=900
+DIAG_MAX_REQUESTS=4
+DIAG_SOCKS_TARGET_ALT="https://www.cloudflare.com"
+MIHOMO_CONTROLLER_URL=""
 ```
 
 ---
 
 ## Что именно проверяется
 
-Все WAN-проверки идут напрямую, без Mihomo.
+Все WAN-проверки идут напрямую, без Mihomo: у каждой прямой проверки явно
+указан `--noproxy '*'`, поэтому переменные
+окружения `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` не могут перенаправить
+роутерный WAN-зонд через прокси (уточнение #328).
 
 ### 1. WAN (двухступенчатая проверка)
 
@@ -267,6 +277,13 @@ BusyBox:
 [RESTART] Proxy tunnel check failed
 [RESTART-OK] process is running after restart
 [RESTART-FAIL] process did not come up within 10s after restart
+[FAIL] proxy_tunnel confirmed | cycles=2 | curl_rc=28 | elapsed_ms=5000
+[DIAG-TRIGGER] proxy_tunnel | confirmed_cycles=2 window=1800s | reason=repeated_confirmed_failure
+[DIAG] socks_primary=timeout(rc=28) | socks_alt=ok(rc=0) | controller=not_configured | requests=2
+[DIAG-SKIP] proxy_tunnel_failure | diagnostic cooldown (640s < 900s)
+[DIAG-SUMMARY] tunnel=FAIL | wan=primary | mihomo=running | port=up | socks_primary=timeout | socks_alt=ok | cause=single_target_or_route_suspected | confidence=LOW | action=review_rules
+[INFO] Full Network Doctor: run manually for deeper evidence (kas-network-doctor.sh)
+[INFO] post-restart tunnel recheck: SOCKS recovered (correlation only; next cycle re-verifies)
 ```
 
 Watchdog по-прежнему выполняет проверки каждые 5 минут, но штатный healthy-heartbeat
@@ -278,6 +295,73 @@ Watchdog по-прежнему выполняет проверки каждые 
 Следующий успешный `[OK] All good ...` остаётся маркером восстановления для Doctor.
 Старые строки `[WAN] Connectivity OK ...` и
 `[WAN] Primary targets unavailable ...` Doctor продолжает понимать.
+
+---
+
+## Инцидентная диагностика (Watchdog 2.0, только наблюдаемость)
+
+Добавлена в рамках [#328](https://github.com/saymer-alt/keenetic-auto-setup/issues/328).
+**Политика рестартов не изменилась**: решения о рестарте принимаются там же и по тем же
+условиям, что и раньше. Изменение recovery-политики — отдельный этап после owner GO.
+
+### Уровни
+
+* **L0 HEALTHY** — прежние дешёвые проверки, без новых фоновых процессов. Счётчики в tmpfs.
+* **L1 FIRST CONFIRMED FAIL** — при каждом подтверждённом сбое (порт не отвечает; две
+  подряд неудачи SOCKS-пробы; полное отсутствие WAN) перед рестартом пишется короткая
+  строка `[FAIL] <класс> confirmed | cycles=N | curl_rc=.. | elapsed_ms=..` из уже
+  собранных данных запросов. Никаких дополнительных запросов на этом уровне.
+* **L2 REPEATED INCIDENT** — только при повторении подтверждённых сбоев
+  (`DIAG_FAIL_THRESHOLD=2` циклов в окне `DIAG_WINDOW_SECS=1800`) и при активном сбое
+  сейчас: одно ограниченное read-only диагностическое событие по классу ошибки с
+  собственным cooldown `DIAG_MIN_INTERVAL=900`, бюджетом `DIAG_MAX_REQUESTS=4` запросов
+  и дедупликацией одинаковых выводов. Маркеры: `[DIAG-TRIGGER]`, `[DIAG]`,
+  `[DIAG-SKIP]`, `[DIAG-SUMMARY]`.
+* **L3 MANUAL DEEP DIVE** — полный `kas-network-doctor.sh` запускается только вручную;
+  Watchdog лишь подсказывает это в логе, когда L2 не дал ответа.
+
+### Классы ошибок (учёт раздельный)
+
+`wan_failure`, `proxy_tunnel_failure`, `port_failure` — по строке на класс в
+`/tmp/mihomo_watchdog.incidents` (tmpfs; перезагрузка = новое окно по дизайну):
+
+* два FAIL curl в одном cron-цикле = **один** подтверждённый `proxy_tunnel_failure`;
+* transient (первая проба FAIL, retry PASS) — отдельный информационный счётчик,
+  подтверждённым циклом не считается;
+* `WAN_UNREACHABLE` не трогает историю туннеля: состояние туннеля в этот момент
+  UNKNOWN, а не «сломан»;
+* успешная соответствующая проверка сбрасывает счётчик подряд идущих сбоев, но окно
+  повторов сохраняется до истечения времени.
+
+### Чего диагностика НЕ делает
+
+* не меняет решения о рестарте, cooldown и locks;
+* не запускает полный Network Doctor автоматически и не создаёт второго демона;
+* при локальном сбое (процесс/порт) не тратит запросы на внешние DNS/TLS-цели;
+  при отсутствующем WAN не тратит бюджет на SOCKS-пробы и не выдаёт ложную гипотезу
+  о неисправности Mihomo;
+* не печатает URL, stderr curl, адреса серверов, ключи и выбранные узлы: в логе только
+  фиксированные категории (`dns`/`connect_refused`/`timeout`/`tls`/...), коды curl и
+  латентности; `curl_rc` сам по себе не объявляется доказанной причиной;
+* Controller API опрашивается только если оператор явно задал `MIHOMO_CONTROLLER_URL`
+  (bind может быть на LAN-адрес, а не localhost); по умолчанию — `not_configured`;
+* успешный `socks_alt=ok` не доказывает работоспособность пользовательского трафика:
+  цели могут иметь разные Mihomo rules/DIRECT; в `cause` используется честная степень
+  уверенности (`LOW`/`UNKNOWN`), а `CONFIRMED` не проставляется без независимого
+  подтверждения;
+* `[RESTART-OK]` подтверждает процесс; строка `post-restart tunnel recheck` отдельно
+  фиксирует `SOCKS recovered / still failing / unknown` — это корреляция, а не
+  доказательство, что рестарт починил upstream.
+
+### Расход ресурсов
+
+* L0: без изменений (те же запросы, что и раньше); строки состояния пишутся в tmpfs.
+* L1: ноль дополнительных запросов.
+* L2: максимум `DIAG_MAX_REQUESTS` запросов на событие, не чаще одного события на
+  класс в `DIAG_MIN_INTERVAL`, одинаковые выводы дедуплицируются; при нехватке бюджета
+  пишется честный `unknown`, а не догадка.
+* Новых обязательных зависимостей нет: латентность берётся из `/proc/uptime`, при
+  его недоступности — `elapsed_ms=unknown`.
 
 ---
 
