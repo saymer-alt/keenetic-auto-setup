@@ -198,10 +198,10 @@ function publicVersion(raw){
 // stays conservative (the beta label); development builds are labeled as such.
 function panelStageKey(version){
  if(version==='development')return 'buildDevelopment';
- if(typeof version==='string'){
-  const withoutRevision=version.replace(/-\d+$/,'');
-  if(/^[0-9][A-Za-z0-9.+~]*$/.test(withoutRevision)&&!withoutRevision.includes('~'))return 'experimentStable';
- }
+ // Only a plain major.minor.patch (with an optional numeric package revision)
+ // is stable. Entware prereleases may use ~beta or .beta; absence of '~'
+ // is not evidence of a stable release.
+ if(typeof version==='string'&&/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?$/.test(version.trim()))return 'experimentStable';
  return 'experiment';
 }
 function drawComponents(){
