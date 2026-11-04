@@ -5,9 +5,10 @@
 > `git log --oneline stable..main -- <file>` + `git log -S` для атрибуции коммитов.
 > Read-only анализ. Этот документ не является разрешением на backport или изменение baseline.
 
-## 1. Полная матрица (8 REVIEW-находок)
+## 1. Полная матрица (9 REVIEW-находок)
 
-Guard run 41818637702 показал 7 находок; восьмая (`uninstall.sh`) добавлена merge #403 после написания issue.
+Guard run 41818637702 показал 7 находок; восьмая (`uninstall.sh`) добавлена merge #403,
+девятая (`kas-update.sh`) — merge #411/#404 (2026-11-05). Обновлено по `main=57e5d67`.
 
 | # | Файл | stable blob | main blob | Диф | Источник (коммит → PR) | Классификация |
 |---|---|---|---|---|---|---|
@@ -19,6 +20,7 @@ Guard run 41818637702 показал 7 находок; восьмая (`uninstal
 | 6 | `kas-download-check.sh` | отсутствует | `e6d21c5ccaf9` | +437 | `5ea5453` → #306, `b6530ef` → #378 | **MAIN_ONLY_BY_DESIGN** (решение владельца) |
 | 7 | `kas-entware-preflight.sh` | отсутствует | `b6ca6f467298` | +234 | `487a9bc` → #400 | **NEEDS_FIELD_EVIDENCE** (#356/#408 активны) |
 | 8 | `uninstall.sh` | отсутствует | `f534cc7144ee` | +284 (файл целиком main-only) | `2ae4a29` → #403 (+ история #300+) | **MAIN_ONLY_BY_DESIGN** (осознанно вне stable) |
+| 9 | `kas-update.sh` | отсутствует | `ad4c6b6a24d9` | новый файл | #404, merge `57e5d67` (#411) | **MAIN_ONLY_BY_DESIGN** (v0.1.0, активная разработка; решение владельца после стабилизации) |
 
 Каждый диф проверен по содержимому, не только по списку коммитов.
 
@@ -56,14 +58,37 @@ S99 как валидный второй кандидат.
 
 ## 4. Предлагаемая последовательность выборочного backport
 
-**Фаза 1 — один селективный PR от `stable` (S28-совместимость production):**
-файлы 1–4 (`config-import.sh`, `install.sh`, `mihomo-watchdog.sh`, `update-mihomo.sh`) —
-единый атомарный срез `MIHOMO INIT RESOLUTION v1` + точки вызова, плюс
-`tests/mihomo-init-contract-regression.py` и хуки в `tests/lifecycle-regression.py`/`tests/contracts.sh`,
-плюс минимальные CI-правки (dash/ash + native E2E release gate).
+**Фаза 1 — один селективный PR от `stable` (S28-совместимость production) — полный dependency slice, 15 файлов:**
 
-Обоснование атомарности: четыре файла несут один и тот же контракт; половинный срез
-(например importer без watchdog) оставит production с mixed-поведением при рестартах.
+Runtime (4): `config-import.sh`, `install.sh`, `mihomo-watchdog.sh`, `update-mihomo.sh` —
+единый атомарный срез `MIHOMO INIT RESOLUTION v1` + точки вызова.
+
+Тесты (11): `tests/mihomo_init_fixture.py` (новый общий fixture-модуль),
+`tests/mihomo-init-contract-regression.py` и `tests/mihomo-init-safety-regression.py` (новые),
+адаптированные под digest-верификацию резолвера `tests/lifecycle-regression.py`,
+`tests/config-import-pty-regression.py`, `tests/config-import-filter-gate-regression.py`,
+`tests/watchdog-diagnostics-regression.py`, `tests/process-regression.py`,
+`tests/test_panel_user_night.sh`, хуки в `tests/contracts.sh`,
+CI-правки `.github/workflows/ci.yml` (dash/ash + native E2E release gate).
+
+Почему fixture-модуль и адаптации обязательны (проверено воспроизведением): резолвер #366
+проверяет SHA-256 packaged init-скрипта (`06ba8f6a…`); синтетические init-скрипты старых
+fixtures отличаются байтами и классифицируются как `unverified:` до выполнения сценариев.
+Эксперимент: старый stable-тест `tests/watchdog-diagnostics-regression.py` против нового
+резолвера падает (`AssertionError: restart policy changed?` — restart заменяется
+RESTART-SKIPPED), адаптированная версия проходит. Механизм адаптации — `pin_fixture_init()`:
+тест подменяет digest-константу в копии скрипта под тестом, доверяя синтетическому fixture.
+Контроль на чистом `main`: идентичные environment-отказы Windows-хоста (`/bin/sh`-пути,
+`os.killpg`, rc-семантика Git Bash sh) — срез-специфичных отказов нет; полная проверка
+сьюта остаётся за CI PR backport.
+
+Вне среза: `web/control-center/updates_transaction_test.go` (в stable нет
+`web/control-center`), `tests/doctor-init-regression.py` (импортирует fixture, приходит с
+Фазой 2 — Doctor #402).
+
+Обоснование атомарности: четыре runtime-файла несут один и тот же контракт; половинный срез
+оставит production с mixed-поведением при рестартах; урезанный тестовый срез оставит
+регрессии сломанными (см. эксперимент выше).
 
 Watchdog-замечание: диф включает identity-верифицированный рестарт (усиление из того же
 коммита #366). Он строго консервативнее (больше путей RESTART-SKIPPED, ни одного нового
