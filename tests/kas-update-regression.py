@@ -109,8 +109,11 @@ sleep() { :; }
 # still runs and the Python-level stat assertions verify real modes.
 chown() { :; }
 chmod() {
-  _ch_mode=$1; shift
+  # Real chmod runs with the full argument list; the sidecar only covers
+  # hosts where the real chmod is a no-op (MSYS/NTFS).
   command chmod "$@" 2>/dev/null
+  _ch_mode=$1
+  shift
   for _ch_f in "$@"; do
     printf '%s\n' "$_ch_mode" > "$_ch_f.kas-mode" 2>/dev/null
   done
