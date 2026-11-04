@@ -2356,9 +2356,9 @@ else
         _v=$(awk '/^    upstream:/{f=1;next} /^    [^[:space:]#]/{f=0} f&&/^      port:/{print $2; exit}' "$MT_CFG")
         is_num "$_v" && MT_UPSTREAM_PORT=$_v
         _v=$(awk '/^      chainPrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^        tablePrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
         [ -n "$_v" ] && MT_REMAP=$(printf '%s' "$_v" | tr -d '\r')
         # BEGIN DOCTOR MT LINK PARSE v1
