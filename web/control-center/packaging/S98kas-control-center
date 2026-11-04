@@ -84,13 +84,14 @@ stop_service() {
     rm -f "$PID"
 }
 # Consume daemon output without persisting arbitrary errors, paths or secrets.
-# At most two fixed records are written, independent of log volume.
+# At most three fixed records are written, independent of log volume.
 filter_startup_log() {
     target=$1
     saw_bind=0
     saw_address=0
     saw_settings=0
     saw_auto=0
+    saw_legacy=0
     while IFS= read -r line; do
         case "$line" in
             *PORT_BIND_FAILED:*)
@@ -102,6 +103,17 @@ filter_startup_log() {
                 if [ "$saw_settings" -eq 0 ]; then
                     printf '%s\n' 'PANEL_SETTINGS_SAVE_FAILED: cannot safely persist selected panel port; startup refused' >> "$target"
                     saw_settings=1
+                fi;;
+            'LEGACY_PORT_MIGRATED: 8081 -> '*)
+                if [ "$saw_legacy" -eq 0 ]; then
+                    chosen=${line##* }
+                    case "$chosen" in
+                        ''|*[!0-9]*) ;;
+                        *) if [ "$chosen" -ge 18080 ] && [ "$chosen" -le 18090 ]; then
+                               printf 'LEGACY_PORT_MIGRATED: 8081 -> %s; new URL is PANEL_ADDRESS; settings backed up\n' "$chosen" >> "$target"
+                               saw_legacy=1
+                           fi;;
+                    esac
                 fi;;
             'AUTO_PORT_SELECTED: default 18080 occupied; selected '*)
                 if [ "$saw_auto" -eq 0 ]; then
@@ -190,6 +202,7 @@ start_service() {
     fi
     echo RUNNING
     grep '^AUTO_PORT_SELECTED: ' "$STARTUP" || :
+    grep '^LEGACY_PORT_MIGRATED: ' "$STARTUP" || :
     grep '^PANEL_ADDRESS: ' "$STARTUP" || :
 }
 check_dirs
@@ -208,6 +221,7 @@ case "${1:-}" in
         alive "$service_pid" && identity "$service_pid" || { echo UNKNOWN; exit 1; }
         echo RUNNING
         grep '^AUTO_PORT_SELECTED: ' "$STARTUP" 2>/dev/null || :
+        grep '^LEGACY_PORT_MIGRATED: ' "$STARTUP" 2>/dev/null || :
         grep '^PANEL_ADDRESS: ' "$STARTUP" 2>/dev/null || :;;
     *) deny 'usage: S98kas-control-center start|stop|restart|status';;
 esac
