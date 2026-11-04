@@ -8,6 +8,89 @@ This is the short user-facing path for updating Mihomo, MagiTrickle and the watc
 plus migrating the TUN stack. Deeper implementation details remain in the
 [full HOWTO](../HOWTO.md).
 
+## Unified entry point: kas-update
+
+`kas-update.sh` is the single maintenance command for an installed KAS Core:
+inspect first, apply explicitly (issue #390). `--apply` does not reimplement
+replacement logic; it delegates the transaction to the stock
+`update-watchdog.sh` from the channel: candidate validation, backup hygiene,
+atomic rename and cron normalization stay there.
+
+For older installations without a local `kas-update`, the initial run goes
+through GitHub:
+
+```bash
+curl -fSsL -o /tmp/kas-update.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-update.sh && sh -n /tmp/kas-update.sh && sh /tmp/kas-update.sh --check
+```
+
+Then apply explicitly:
+
+```bash
+sh /tmp/kas-update.sh --apply
+```
+
+`--check` (strictly read-only) reports the installed watchdog pair
+(`/opt/bin/mihomo_watchdog.sh` + `/opt/etc/cron.5mins/mihomo_watchdog`),
+compares SHA-256 against the channel (`KEENETIC_AUTO_SETUP_REF`, default
+`stable`; script-installed KAS Core keeps no version number on the device),
+recognizes the installed baseline against a catalogue of known managed
+release bodies (v1.8.x tag watchdogs plus the updater's legacy hashes; the
+`MIHOMO WATCHDOG SCRIPT` marker alone is not ownership proof — a locally
+edited file can keep it, so such a base is flagged UNRECOGNIZED),
+checks executability of the canonical/wrapper files (the `ls -ldn`
+primitive, same as the updater) and the active cron routes (a mirror of the
+`wd_normalize_cron` grammar): broken permissions or a missing/duplicate
+recognized route go into a repair plan, unrecognized active routes are
+`REVIEW REQUIRED` (foreign scheduling is never deleted), and a content-only
+no-op never declares broken permissions or scheduling healthy,
+inventories the other components without touching them, and marks anything
+it cannot positively identify as `UNKNOWN`; a cron slot with unrecognized
+content is a separate `REVIEW REQUIRED` status. `--apply` re-assesses,
+prints the plan, asks for confirmation on a TTY (`--yes` for non-interactive
+use), updates only recognized KAS-managed parts through the transactional
+updater, and is idempotent on reruns. Three hard stops: an unrecognized cron
+slot blocks apply entirely (the file is preserved; to update the canonical
+binary while keeping a deliberate custom wrapper, run `update-watchdog.sh`
+directly, then re-run `--check`); overwriting an installed baseline that
+matches no known managed release requires explicit approval
+(`--allow-unrecognized-base`, or a per-hash interactive confirmation); and
+any post-apply SHA-256 mismatch — including channel drift between the two
+downloads — is an **unverified apply** and exits non-zero, never green.
+Permission/schedule repair (`PLAN_REPAIR`) runs the stock updater without
+rewriting recognized content. Downloaded shell scripts (the watchdog
+candidate, the updater itself, the kas-update self-check copy) must start
+with `#!/bin/sh`: valid shell code with a marker but without the shebang
+line is refused before anything runs.
+
+Legacy layouts stay supported: a full old watchdog sitting directly at
+`/opt/etc/cron.5mins/mihomo_watchdog` (with or without the canonical binary)
+whose SHA-256 **exactly matches** the known legacy bodies (a mirror of
+`LEGACY_HASHES` from `update-watchdog.sh`; both lists are pinned together by
+the regression) is recognized as a migration: apply runs the stock updater,
+which installs the canonical binary, turns the cron copy into the managed
+wrapper and keeps one bounded backup outside cron.5mins. Bodies outside that
+exact catalogue — even with the marker — remain `REVIEW REQUIRED` and are
+never overwritten. A managed wrapper scheduling a MISSING canonical file is
+a broken layout: kas-update refuses with an explicit reason instead of
+disguising the repair (install.sh or a direct `update-watchdog.sh` run) as
+an update.
+
+`kas-update` never touches the Mihomo binary, `config.yaml`, MagiTrickle,
+netfilter, routing policies, WAN/VPN, Entware packages or KAS Web. Mihomo and
+MagiTrickle remain separate explicit updates (below). Doctor and
+`config-import.sh` keep no installed copy — they run from GitHub on every
+invocation, so there is nothing installed to update.
+
+Exit codes `--check`: `0` current or not installed, `1` update plan exists,
+`2` UNKNOWN or REVIEW REQUIRED. Exit codes `--apply`: `0` applied and
+verified or nothing to do, `1` refusal, error, or unverified updater result.
+
+Status: the documented `stable` URL becomes user-facing only after the slice
+is promoted to `stable` per the branch policy (issue #369); until then the
+separate commands below remain the supported path. A future `kas-core.ipk`
+(issue #295, [plan](../kas-core-ipk-plan-20261030.md)) becomes the delivery
+vehicle; `kas-update` remains the check/activation CLI.
+
 ## Mihomo update
 
 Supported path:
