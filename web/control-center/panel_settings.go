@@ -18,6 +18,64 @@ import (
 
 const panelSettingsPath = "/opt/etc/kas-control-center.settings.json"
 
+const legacyPortBackupSuffix = ".pre-beta7-8081.bak"
+
+// The beta.4/5/6 settings format has no explicit default-port provenance.
+// Only the exact legacy 8081 may migrate; all other saved ports stay fixed.
+func legacyPanelPortEligible(c *panelConfig) bool {
+	return c != nil && c.Version == 1 && c.Port == 8081 && !c.AutoPortFallback
+}
+func samePersistedPanelConfig(a, b *panelConfig) bool {
+	return a != nil && b != nil && a.Version == b.Version && a.Port == b.Port &&
+		a.AuthMode == b.AuthMode && a.PasswordHash == b.PasswordHash &&
+		a.AutoPortFallback == b.AutoPortFallback
+}
+
+// Called only after successfully binding the candidate listener.
+// The original private settings are backed up durably before atomic replacement.
+// Existing mismatched backups or concurrent settings changes refuse startup.
+func migrateLegacyPanelPort(path string, original *panelConfig, port int, fallback bool) error {
+	if !legacyPanelPortEligible(original) || port < autoPanelStartPort || port > autoPanelLastPort ||
+		fallback != (port != autoPanelStartPort) {
+		return errors.New("unsafe legacy port migration")
+	}
+	current, err := readPanelConfig(path)
+	if err != nil || !samePersistedPanelConfig(current, original) {
+		return errors.New("legacy settings changed before migration")
+	}
+	backupPath := path + legacyPortBackupSuffix
+	backup, err := readPanelConfig(backupPath)
+	if err != nil {
+		return errors.New("legacy settings backup unsafe")
+	}
+	if backup == nil {
+		if err := saveInitialPanelConfig(backupPath, original); err != nil {
+			return errors.New("legacy settings backup failed")
+		}
+	} else if !samePersistedPanelConfig(backup, original) {
+		return errors.New("legacy settings backup differs")
+	}
+	current, err = readPanelConfig(path)
+	if err != nil || !samePersistedPanelConfig(current, original) {
+		return errors.New("legacy settings changed after backup")
+	}
+	next := &panelConfig{Version: original.Version, Port: port, AuthMode: original.AuthMode,
+		PasswordHash: original.PasswordHash, AutoPortFallback: fallback}
+	if err := savePanelConfig(path, next); err != nil {
+		return errors.New("legacy settings migration failed")
+	}
+	return nil
+}
+func legacyPanelBackupMatches(path string, current *panelConfig) bool {
+	if current == nil || current.Port < autoPanelStartPort || current.Port > autoPanelLastPort {
+		return false
+	}
+	old, err := readPanelConfig(path + legacyPortBackupSuffix)
+	return err == nil && legacyPanelPortEligible(old) &&
+		old.AuthMode == current.AuthMode && old.PasswordHash == current.PasswordHash
+}
+
+
 type panelConfig struct {
 	Version      int    `json:"version"`
 	Port         int    `json:"port"`
@@ -282,6 +340,7 @@ type settingsResponse struct {
 	PasswordSet      bool   `json:"password_set"`
 	URL              string `json:"url,omitempty"`
 	AutoPortFallback bool   `json:"auto_port_fallback,omitempty"`
+	LegacyPortMigrated bool `json:"legacy_port_migrated,omitempty"`
 }
 
 func panelResponse(c *panelConfig, url string) settingsResponse {
@@ -307,7 +366,9 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 				url += "/"
 			}
 		}
-		writeFilterJSON(w, 200, panelResponse(a.currentPanel(), url))
+		response := panelResponse(a.currentPanel(), url)
+		response.LegacyPortMigrated = legacyPanelBackupMatches(a.settingsPath, a.currentPanel())
+		writeFilterJSON(w, 200, response)
 		return
 	}
 	if r.Method != http.MethodPost {
