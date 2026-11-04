@@ -433,3 +433,27 @@ test('without sessionStorage a verified success never reloads (no loop protectio
   assert.match(nodes['panel-update-state'].textContent,/Запущена новая версия: v0\.1\.0-beta\.4/);
  }finally{Object.assign(global,original);}
 });
+
+
+test('verified CLI recovery is a historical failure with a friendly RU/EN notice and unlocked controls',async()=>{
+ const original={document:global.document,sessionStorage:global.sessionStorage,fetch:global.fetch,setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
+ try{
+  for(const [language,expected] of [['ru',/Работа панели восстановлена/],['en',/panel is running again after recovery/]]){
+   const nodes={};
+   global.document={getElementById:id=>nodes[id]||(nodes[id]={textContent:'',value:'',hidden:false,disabled:false,listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}),activeElement:null};
+   global.sessionStorage={getItem:()=>'',setItem(){},removeItem(){}};
+   global.setTimeout=()=>1;global.clearTimeout=()=>{};
+   global.fetch=async path=>({ok:true,json:async()=>path==='/api/updates/panel/channel'?{channel:'experimental',allowed:['experimental','stable']}:{ID:'a'.repeat(24),State:'FAIL',Phase:'recovered',Gate:false,ErrorCode:'PANEL_RECOVERED_CHECK_VERSION'}});
+   let blocked=false;
+   api.mount({getLang:()=>language,isBusy:()=>false,onBusy(value){blocked=value;}});
+   await new Promise(setImmediate);await new Promise(setImmediate);
+   assert.match(nodes['panel-update-state'].textContent,expected);
+   assert.doesNotMatch(nodes['panel-update-state'].textContent,/PANEL_RECOVERED_CHECK_VERSION/);
+   assert.equal(nodes['panel-update-details'].hidden,false);
+   assert.equal(nodes['panel-update-error-code'].textContent,'PANEL_RECOVERED_CHECK_VERSION');
+   assert.equal(nodes['panel-update-check'].disabled,false);
+   assert.equal(nodes['panel-update-apply'].disabled,true);
+   assert.equal(blocked,false,'successful recovery removes the durable gate without auto-installing');
+  }
+ }finally{Object.assign(global,original);}
+});
