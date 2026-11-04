@@ -81,6 +81,17 @@ MagiTrickle remain separate explicit updates (below). Doctor and
 `config-import.sh` keep no installed copy — they run from GitHub on every
 invocation, so there is nothing installed to update.
 
+The advisory MagiTrickle inventory parses the Entware `opkg list-installed`
+format (`magitrickle - 0.8.2-1`) as well as a two-field variant; the
+separator `-` is never reported as a version. An unparseable package entry
+is shown as UNKNOWN without modifying the package.
+
+The optional kas-update self-check is skipped for historical immutable Core
+tags `v1.8.0`–`v1.8.7`, which predate `kas-update.sh`. This avoids
+pointless retries and 404 warnings. The watchdog candidate is **still**
+downloaded and SHA-256-checked against the selected tag; self-check continues
+normally on other refs.
+
 Exit codes `--check`: `0` current or not installed, `1` update plan exists,
 `2` UNKNOWN or REVIEW REQUIRED. Exit codes `--apply`: `0` applied and
 verified or nothing to do, `1` refusal, error, or unverified updater result.
