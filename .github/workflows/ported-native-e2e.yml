@@ -2,11 +2,17 @@ name: Keenetic Ported native KAS E2E
 
 on:
   pull_request:
-    # Native E2E is expensive. Ignore only documentation/issue-template-only PRs;
-    # any change to scripts, tests, fixtures or workflow CI still runs it.
+    # Native E2E is expensive. Ignore only PRs whose every changed file is
+    # documentation, issue templates, or the advisory Core Sync Guard metadata
+    # blob; any change to scripts, tests, fixtures or workflow CI still runs it.
+    # config/core-sync-baseline.json is consumed only by the dedicated
+    # core-sync-guard workflow (offline regression + live blob comparison);
+    # the router lifecycle E2E never reads it (issue #214, observed on #389:
+    # a single-JSON metadata PR paid a 14m48s native-kas run for no signal).
     paths-ignore:
       - '**/*.md'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'config/core-sync-baseline.json'
   workflow_dispatch:
     inputs:
       kas_ref:
@@ -31,9 +37,9 @@ concurrency:
 
 jobs:
   native-kas:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@94d447d3a9309469a05ee5bec3a78959e78e7c22
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@8b7d6e10cf2d9e8e49c1a246bd91871c3cc8f463
     with:
-      emulator_ref: 94d447d3a9309469a05ee5bec3a78959e78e7c22
+      emulator_ref: 8b7d6e10cf2d9e8e49c1a246bd91871c3cc8f463
       kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       # PRs keep the established full lifecycle; only manual dispatch opts into removal.
       stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'kas' }}

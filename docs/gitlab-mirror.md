@@ -76,6 +76,36 @@ git push git@gitlab.com:saymer-alt/keenetic-auto-setup.git \
   refs/remotes/origin/<branch>:refs/heads/<branch> -o ci.skip
 ```
 
+## Повторная публикация prerelease-тега и зеркало
+
+Легитимный сценарий: prerelease (например, KAS Web beta.N) публикуется повторно
+с более нового коммита `main`, и релизный тег перемещается **вперёд по истории
+`main`** (старый таргет остаётся предком нового — никакой history rewrite). GitHub
+при этом источник истины, но зеркало начнёт падать при каждой синхронизации:
+пуш тега без force не может обновить уже существующий на GitLab тег
+(`! [rejected] <tag> -> <tag> (already exists)`).
+
+Это ожидаемое поведение, а не сбой зеркала. Восстановление — только по owner GO:
+
+1. Убедиться, что тег на GitHub перемещён строго вперёд (старый SHA — предок
+   нового) и release provenance подтверждён owner-GO запуском
+   `Publish KAS WEB beta.N Release` с явным `source_sha`.
+2. Проверить отсутствие потребителей старого тега на GitLab: релизы на GitLab
+   не публикуются (список релизов пустой), CI отключён (`-o ci.skip`).
+   Сохранить старый SHA в issue как архивную точку.
+3. Удалить вручную один устаревший тег на GitLab (Settings → Repository → Tags),
+   затем **Actions → GitLab mirror sync → Run workflow** — тег будет создан
+   заново обычным push (создание, не force). GitHub-тег и релиз не трогать.
+4. Проверить `MIRROR-IN-SYNC` (см. «Как проверить состояние зеркала»).
+
+Исторический пример: `v0.1.0-beta.6` перепубликован
+`b7d97c297a70c90980d932bf571cd0ff6ee52ad9` →
+`070faa90e15855ae6076d8738c5dcec931059a36` 2026-11-03 (issue #388).
+
+Примечание: шаг **Diagnose ref drift** перечисляет все ref-ы GitLab, включая
+архивные рабочие ветки вне охвата синхронизации; их расхождение —
+информационный шум, блокирует пуш только расхождение `main`, `stable` или тега.
+
 ## Ротация и отзыв ключа
 
 Ключ — Deploy Key `github-mirror-sync` в проекте GitLab + secret `GITLAB_MIRROR_SSH_KEY`

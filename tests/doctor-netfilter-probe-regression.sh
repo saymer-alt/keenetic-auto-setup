@@ -39,6 +39,7 @@ MOCK_CHAIN='-N _CUST_BYPASS_WA_
 -A _CUST_BYPASS_WA_ -p udp -m multiport --dports 1400,3478,3482 -j RETURN'
 BUSY_ERR="iptables: Resource temporarily unavailable."
 ABSENT_ERR="iptables: No chain/target/match by that name."
+ABSENT_PREFIXED_ERR="iptables v1.8.9: chain does not exist"
 
 PRE_BUSY_FLAG="$TMP/pre-busy-once"
 MOCK_PRE_BUSY_MODE=never
@@ -71,6 +72,10 @@ iptables() {
             case "$MOCK_CHAIN_MODE" in
                 absent)
                     printf '%s\n' "$ABSENT_ERR" >&2
+                    return 1
+                    ;;
+                absent_prefixed)
+                    printf '%s\n' "$ABSENT_PREFIXED_ERR" >&2
                     return 1
                     ;;
                 busy)
@@ -143,7 +148,37 @@ run_case "persistent PREROUTING busy is a classified FAIL" always ok "PREROUTING
 #    transiently busy: the first round already has a definitive answer.
 run_case "absent chain answers definitively without retries" once absent "chain absent" 0
 
-# 5) Persistent chain busy keeps the existing classified chain failure.
+# 5) Prefixed lowercase absence text is definitive, must not be retried or
+# misclassified as a generic read error (a regression in main 1.2.19).
+run_case "prefixed chain-does-not-exist is classified as absent" never absent_prefixed "chain absent" 0
+
+# 6) Persistent chain busy keeps the existing classified chain failure.
 run_case "persistent chain busy keeps the classified chain failure" never busy "chain unreadable.*busy" 2
 
-pass "Doctor Netfilter pair-probe regression passed"
+# Test the real human-action mapper, not just the Netfilter failure severity.
+awk '
+    /^finding_action\(\) \{/ {copy=1}
+    copy {print}
+    copy && /^\}$/ {exit}
+' "$DOCTOR" > "$TMP/finding-action.sh"
+[ -s "$TMP/finding-action.sh" ] || fail_test "could not extract finding_action"
+sh -n "$TMP/finding-action.sh" || fail_test "finding_action is not valid shell"
+. "$TMP/finding-action.sh"
+
+_action=$(finding_action "bypass_wa Netfilter chain absent: _CUST_BYPASS_WA_")
+case "$_action" in
+    *"wait about 10 minutes"*) pass "absent-chain guidance avoids unnecessary package reinstall" ;;
+    *) fail_test "missing specific absent-chain guidance: $_action" ;;
+esac
+_action=$(finding_action "bypass_wa Netfilter rules incomplete: PREROUTING unreadable (iptables busy)")
+case "$_action" in
+    *"do not assume the rules are missing"*) pass "unreadable PREROUTING remains inconclusive" ;;
+    *) fail_test "unreadable PREROUTING must not suggest reinstall: $_action" ;;
+esac
+_action=$(finding_action "bypass_wa Netfilter chain unreadable: iptables busy")
+case "$_action" in
+    *"xtables lock"*) pass "unreadable chain guidance identifies transient lock" ;;
+    *) fail_test "unreadable chain guidance is missing: $_action" ;;
+esac
+
+pass "Doctor Netfilter pair-probe and findings regression passed"
