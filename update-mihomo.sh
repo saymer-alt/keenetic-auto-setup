@@ -405,32 +405,17 @@ warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
 error() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
 # BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
-# Single authoritative Mihomo init-script resolution for standalone KAS
-# tools. Upstream Entware renamed the packaged script S99mihomo ->
-# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
-# ship S99, so both names are field realities. Contract (identical block
-# in every consumer; guard-tested by
-# tests/mihomo-init-contract-regression.py):
-#   - only the two known names are candidates, never a glob;
-#   - exactly one executable regular-file candidate is authoritative
-#     (return 0, MIHOMO_INIT_RESOLVED);
-#   - two executable candidates mean ambiguous ownership: return 2 with
-#     state "ambiguous" — KAS refuses to pick one because two Mihomo
-#     launches at boot would break the one-Mihomo invariant; the operator
-#     removes the stale leftover;
-#   - classification dereferences the path exactly like the boot init:
-#     a directory or a non-executable/dangling entry is unusable (return
-#     2 carries the offending path, state notfile:/notexec:); KAS only
-#     ever executes stop/start/restart through the resolved path and
-#     never modifies it;
-#   - no known name exists: return 1, state "absent".
-# Diagnostics only: this block never creates, renames, chmods or deletes
-# package-owned init scripts (owner decision 2026-11-03).
+# Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
+# saymer-alt/entware-go e573954 installs S99mihomo the same way.
+# Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
+# Neither recipe installs an alias. Unknown bytes and executable symlinks
+# require operator review. Never execute a candidate to identify it.
 MIHOMO_INIT_RESOLVED=""
 MIHOMO_INIT_STATE=""
 resolve_mihomo_init() {
-    _mir_found=""
-    _mir_state="absent"
+    local _mir_found="" _mir_state=absent _mir_path _mir_digest
+    MIHOMO_INIT_RESOLVED=""
+    MIHOMO_INIT_STATE=""
     for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
         if [ -d "$_mir_path" ]; then
             _mir_state="notfile:$_mir_path"
@@ -440,14 +425,23 @@ resolve_mihomo_init() {
                 return 2
             fi
             _mir_found="$_mir_path"
-            _mir_state=""
         elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
             _mir_state="notexec:$_mir_path"
         fi
     done
     if [ -n "$_mir_found" ]; then
+        if [ -L "$_mir_found" ] ||
+           ! _mir_digest=$(sha256sum < "$_mir_found") ||
+           [ "${_mir_digest%% *}" != "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9" ]; then
+            MIHOMO_INIT_STATE="unverified:$_mir_found"
+            return 2
+        fi
+        if [ ! -f /bin/sh ] || [ ! -x /bin/sh ] ||
+           [ ! -f /opt/etc/init.d/rc.func ] || [ ! -r /opt/etc/init.d/rc.func ]; then
+            MIHOMO_INIT_STATE="runtime:$_mir_found"
+            return 2
+        fi
         MIHOMO_INIT_RESOLVED="$_mir_found"
-        MIHOMO_INIT_STATE=""
         return 0
     fi
     MIHOMO_INIT_STATE="$_mir_state"
@@ -1389,7 +1383,7 @@ else
       log "WARNING: No Mihomo init script found in /opt/etc/init.d (expected S28mihomo or S99mihomo)"
       ;;
     *)
-      log "WARNING: Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}; treated as no init script"
+      error "Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}. Verify the Entware package before updating."
       ;;
   esac
 fi

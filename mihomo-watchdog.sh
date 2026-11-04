@@ -251,32 +251,17 @@ mp_pids() {
 # END MIHOMO PROCESS STATE v1
 
 # BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
-# Single authoritative Mihomo init-script resolution for standalone KAS
-# tools. Upstream Entware renamed the packaged script S99mihomo ->
-# S28mihomo (ee4b689) while earlier feeds and the entware-go fork still
-# ship S99, so both names are field realities. Contract (identical block
-# in every consumer; guard-tested by
-# tests/mihomo-init-contract-regression.py):
-#   - only the two known names are candidates, never a glob;
-#   - exactly one executable regular-file candidate is authoritative
-#     (return 0, MIHOMO_INIT_RESOLVED);
-#   - two executable candidates mean ambiguous ownership: return 2 with
-#     state "ambiguous" — KAS refuses to pick one because two Mihomo
-#     launches at boot would break the one-Mihomo invariant; the operator
-#     removes the stale leftover;
-#   - classification dereferences the path exactly like the boot init:
-#     a directory or a non-executable/dangling entry is unusable (return
-#     2 carries the offending path, state notfile:/notexec:); KAS only
-#     ever executes stop/start/restart through the resolved path and
-#     never modifies it;
-#   - no known name exists: return 1, state "absent".
-# Diagnostics only: this block never creates, renames, chmods or deletes
-# package-owned init scripts (owner decision 2026-11-03).
+# Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
+# saymer-alt/entware-go e573954 installs S99mihomo the same way.
+# Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
+# Neither recipe installs an alias. Unknown bytes and executable symlinks
+# require operator review. Never execute a candidate to identify it.
 MIHOMO_INIT_RESOLVED=""
 MIHOMO_INIT_STATE=""
 resolve_mihomo_init() {
-    _mir_found=""
-    _mir_state="absent"
+    local _mir_found="" _mir_state=absent _mir_path _mir_digest
+    MIHOMO_INIT_RESOLVED=""
+    MIHOMO_INIT_STATE=""
     for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
         if [ -d "$_mir_path" ]; then
             _mir_state="notfile:$_mir_path"
@@ -286,14 +271,23 @@ resolve_mihomo_init() {
                 return 2
             fi
             _mir_found="$_mir_path"
-            _mir_state=""
         elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
             _mir_state="notexec:$_mir_path"
         fi
     done
     if [ -n "$_mir_found" ]; then
+        if [ -L "$_mir_found" ] ||
+           ! _mir_digest=$(sha256sum < "$_mir_found") ||
+           [ "${_mir_digest%% *}" != "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9" ]; then
+            MIHOMO_INIT_STATE="unverified:$_mir_found"
+            return 2
+        fi
+        if [ ! -f /bin/sh ] || [ ! -x /bin/sh ] ||
+           [ ! -f /opt/etc/init.d/rc.func ] || [ ! -r /opt/etc/init.d/rc.func ]; then
+            MIHOMO_INIT_STATE="runtime:$_mir_found"
+            return 2
+        fi
         MIHOMO_INIT_RESOLVED="$_mir_found"
-        MIHOMO_INIT_STATE=""
         return 0
     fi
     MIHOMO_INIT_STATE="$_mir_state"
@@ -780,7 +774,7 @@ run_diag_port() {
 }
 
 # Bounded post-restart tunnel observation, run only after an actual
-# restart. [RESTART-OK] proves the process; this adds whether SOCKS works
+# restart. [RESTART-VERIFIED] records process identity; this adds whether SOCKS works
 # again immediately. It is a correlation record, not proof that the restart
 # repaired the upstream, and it never triggers further actions here.
 # The probe uses dg_probe (defined above both call sites): this function is
@@ -936,6 +930,40 @@ fi
 # 1 if rate-limited
 # =========================================================
 
+# Observe exactly one canonical process, with a stable PID/start-time pair.
+# A proven stopped state is a valid baseline for the first service start.
+wd_restart_identity() {
+    local rc pid start exe
+    if mp_state; then
+        set -- $MP_PIDS
+        [ "$#" -eq 1 ] || return 2
+        pid="$1"
+        start=$(ml_starttime "$pid") || return 2
+        exe=$(readlink "/proc/$pid/exe") || return 2
+        case "$exe" in
+            /opt/bin/mihomo|/opt/sbin/mihomo) ;;
+            *) return 2 ;;
+        esac
+        [ "$(ml_starttime "$pid")" = "$start" ] || return 2
+        printf '%s %s\n' "$pid" "$start"
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+        printf '%s\n' stopped
+    fi
+}
+
+wd_old_identity_gone() {
+    local pid start
+    [ "$1" = stopped ] && return 0
+    pid=${1%% *}
+    if start=$(ml_starttime "$pid"); then
+        [ "$start" != "${1#* }" ]
+    else
+        [ ! -d "/proc/$pid" ]
+    fi
+}
+
 can_restart() {
     local reason="$1"
     local now
@@ -959,68 +987,55 @@ can_restart() {
         elapsed=$(( now - last ))
 
         if [ "$elapsed" -lt "$MIN_RESTART_INTERVAL" ]; then
-            log "[RATE-LIMIT] Restart blocked (${elapsed}s < ${MIN_RESTART_INTERVAL}s) | ${reason}"
+            log "[RATE-LIMIT] [RESTART-SKIPPED] Restart blocked (${elapsed}s < ${MIN_RESTART_INTERVAL}s) | ${reason}"
             return 1
         fi
     fi
 
     if ! ml_lifecycle_acquire; then
-        log "[SKIP] Mihomo lifecycle busy or unverifiable - restart skipped"
+        log "[RESTART-SKIPPED] Mihomo lifecycle busy or unverifiable"
         return 1
     fi
 
-    if ! mp_known; then
-        log "[SKIP] Mihomo runtime UNKNOWN - restart skipped"
+    if ! resolve_mihomo_init; then
+        log "[RESTART-SKIPPED] Mihomo init ${MIHOMO_INIT_STATE}; verify the Entware package"
         ml_lifecycle_release || true
         return 1
     fi
 
-    # Record restart timestamp and proceed
-    echo "$now" > "$RESTART_STATE"
+    local before after i
+    if ! before=$(wd_restart_identity); then
+        log "[RESTART-SKIPPED] Mihomo process identity is unknown before restart"
+        ml_lifecycle_release || true
+        return 1
+    fi
 
+    # Consume cooldown for every attempted command, including failures.
+    if ! printf '%s\n' "$now" > "$RESTART_STATE"; then
+        log "[RESTART-SKIPPED] Cannot record restart cooldown"
+        ml_lifecycle_release || true
+        return 1
+    fi
     log "[RESTART] ${reason}"
-    # Issue #355: the restart goes through the guarded S28/S99 resolution.
-    # Without a usable init script the watchdog logs and skips this attempt:
-    # a restart loop against a missing service path is pointless log spam,
-    # and picking an arbitrary *mihomo* script could launch a second Mihomo.
-    if resolve_mihomo_init; then
-        "$MIHOMO_INIT_RESOLVED" restart
-    else
-        case "$MIHOMO_INIT_STATE" in
-            ambiguous)
-                log "[SKIP] Mihomo init ownership ambiguous (S28mihomo and S99mihomo both exist) - restart skipped; remove the stale leftover"
-                ;;
-            absent)
-                log "[SKIP] No Mihomo init script found (expected S28mihomo or S99mihomo) - restart skipped"
-                ;;
-            *)
-                log "[SKIP] Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:} - restart skipped"
-                ;;
-        esac
-    fi
-
-    # Same-run outcome verification (observability only): the
-    # [RESTART] line above is written before the restart, so this
-    # bounded check records whether the process came back without
-    # waiting for the next cron run. No further action is taken
-    # here - the next run repeats the full health checks.
-    if mp_known; then
-        _i=0
-        while [ "$_i" -lt 10 ]; do
-            mp_running && break
+    if "$MIHOMO_INIT_RESOLVED" restart; then
+        i=0
+        while [ "$i" -lt 10 ]; do
+            if after=$(wd_restart_identity) && [ "$after" != stopped ] &&
+               [ "$after" != "$before" ] && wd_old_identity_gone "$before"; then
+                log "[RESTART-VERIFIED] New Mihomo process identity observed"
+                return 0
+            fi
             sleep 1
-            _i=$((_i + 1))
+            i=$((i + 1))
         done
-        if mp_running; then
-            log "[RESTART-OK] process is running after restart"
-        else
-            log "[RESTART-FAIL] process did not come up within 10s after restart"
-        fi
+        log "[RESTART-UNKNOWN] Command returned success without evidence of a new Mihomo process"
+        # The caller may still recheck the tunnel. Its result is separate
+        # from process restart evidence.
+        return 0
     else
-        log "[RESTART-FAIL] runtime UNKNOWN after restart"
+        log "[RESTART-FAILED] Mihomo init returned exit $?"
+        return 1
     fi
-
-    return 0
 }
 
 

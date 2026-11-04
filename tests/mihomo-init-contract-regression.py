@@ -15,16 +15,14 @@ every consumer):
   1. the block is byte-identical in every consumer (single contract, no
      drift) and every consumer calls it;
   2. only the two known names are candidates — no glob is used;
-  3. exactly one executable regular-file candidate resolves
+  3. exactly one executable candidate with verified package bytes resolves
      (S28-only and S99-only both work);
   4. two usable candidates fail CLOSED with state "ambiguous": KAS never
      picks one, because two Mihomo launches at boot would break the
      one-Mihomo invariant;
-  5. classification dereferences the path exactly like the boot init
-     does: a directory or a non-executable/dangling entry is unusable
-     (notfile:/notexec: state with the offending path); KAS only
-     executes stop/start/restart through the resolved path and never
-     modifies it, so a link to an executable file resolves normally;
+  5. a directory or a non-executable/dangling entry is unusable
+     (notfile:/notexec: state with the offending path). Executable aliases
+     count toward boot ambiguity and cannot be the trusted candidate;
   6. one usable candidate plus a leftover in another state still
      resolves the usable script (executable evidence wins);
   7. no known name exists -> state "absent", callers report the classic
@@ -45,6 +43,8 @@ import os
 import re
 import shutil
 import subprocess
+
+from mihomo_init_fixture import INIT, write_package_init
 import sys
 import tempfile
 
@@ -97,8 +97,8 @@ MATRIX = [
      2, "ambiguous"),
     ("S99 non-executable -> notexec",
      lambda d: _mk(d, "S99mihomo", 0o644), 2, "notexec:/opt/etc/init.d/S99mihomo"),
-    ("S99 symlink to executable file -> resolved (boot semantics)",
-     lambda d: _mk_symlink(d, "S99mihomo"), 0, "S99mihomo"),
+    ("S99 symlink to executable file -> unverified",
+     lambda d: _mk_symlink(d, "S99mihomo"), 2, "unverified:/opt/etc/init.d/S99mihomo"),
     ("S99 dangling symlink -> notexec",
      lambda d: _mk_dangling(d, "S99mihomo"), 2, "notexec:/opt/etc/init.d/S99mihomo"),
     ("S99 directory -> notfile",
@@ -122,7 +122,7 @@ MATRIX = [
 def _mk(init_dir, name, mode):
     path = os.path.join(init_dir, name)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+        fh.write(INIT)
     os.chmod(path, mode)
     return path
 
@@ -202,7 +202,7 @@ def run_resolver_block(shell_argv, block, init_dir):
 def fixture_guard():
     """E2E/unit fixtures need /opt free of a real Mihomo installation."""
     problems = []
-    for name in ("S28mihomo", "S99mihomo"):
+    for name in ("S28mihomo", "S99mihomo", "rc.func"):
         path = "/opt/etc/init.d/" + name
         if os.path.lexists(path):
             problems.append("%s already exists (real install?)" % path)
@@ -241,6 +241,7 @@ def test_unit_contract():
 
     try:
         os.makedirs("/opt/etc/init.d", exist_ok=True)
+        open("/opt/etc/init.d/rc.func", "w").close()
         for shell in shells():
             for name, prepare, want_rc, want_state in MATRIX:
                 # Clean both candidate names between cases.
@@ -271,6 +272,8 @@ def test_unit_contract():
                 os.remove(path)
             elif os.path.isdir(path):
                 shutil.rmtree(path)
+        if os.path.exists("/opt/etc/init.d/rc.func"):
+            os.unlink("/opt/etc/init.d/rc.func")
         for holder in SYMLINK_TARGETS:
             shutil.rmtree(holder, ignore_errors=True)
         del SYMLINK_TARGETS[:]
@@ -298,10 +301,7 @@ def test_e2e_import_s28():
         with open("/opt/sbin/mihomo", "w", encoding="utf-8", newline="\n") as fh:
             fh.write("#!/bin/sh\nexit 0\n")
         os.chmod("/opt/sbin/mihomo", 0o755)
-        with open("/opt/etc/init.d/S28mihomo", "w", encoding="utf-8",
-                  newline="\n") as fh:
-            fh.write("#!/bin/sh\nexit 0\n")
-        os.chmod("/opt/etc/init.d/S28mihomo", 0o755)
+        write_package_init("/opt/etc/init.d/S28mihomo", "exit 0\n")
 
         config_path = "/opt/etc/mihomo/config.yaml"
         backup_path = "/opt/etc/mihomo/config.yaml.bak"
@@ -324,10 +324,7 @@ def test_e2e_import_s28():
 
         # Both names: ambiguous, fail closed, nothing changed. The leftover
         # S99 makes the pre-import resolution fail BEFORE any mutation.
-        with open("/opt/etc/init.d/S99mihomo", "w", encoding="utf-8",
-                  newline="\n") as fh:
-            fh.write("#!/bin/sh\nexit 0\n")
-        os.chmod("/opt/etc/init.d/S99mihomo", 0o755)
+        write_package_init("/opt/etc/init.d/S99mihomo", "exit 0\n")
         with open(config_path, "wb") as fh:
             fh.write(b"")  # empty current config (recovery context)
         rc, out = run_import(candidate)
@@ -342,7 +339,8 @@ def test_e2e_import_s28():
             path = "/opt/etc/init.d/" + cand
             if os.path.lexists(path):
                 os.remove(path)
-        for path in ("/opt/etc/mihomo/config.yaml",
+        for path in ("/opt/etc/init.d/rc.func",
+                     "/opt/etc/mihomo/config.yaml",
                      "/opt/etc/mihomo/config.yaml.bak",
                      "/opt/sbin/mihomo"):
             try:

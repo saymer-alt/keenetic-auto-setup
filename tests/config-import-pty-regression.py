@@ -70,6 +70,8 @@ import re
 import select
 import shutil
 import subprocess
+
+from mihomo_init_fixture import write_package_init
 import sys
 import tempfile
 import termios
@@ -318,6 +320,9 @@ def e2e_possible():
         return False, "no euid"
     if os.path.exists("/opt/etc/mihomo/config.yaml"):
         return False, "existing /opt/etc/mihomo/config.yaml (real install?)"
+    if any(os.path.lexists("/opt/etc/init.d/" + name)
+           for name in ("S28mihomo", "S99mihomo", "rc.func")):
+        return False, "existing Mihomo init or Entware rc.func"
     return True, ""
 
 
@@ -343,12 +348,11 @@ def test_e2e_full_script():
     calls_log = "/opt/etc/init.d/.fake-mihomo-calls"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("#!/bin/sh\nexit 0\n")
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + calls_log
+    write_package_init(fake_init, '#!/bin/sh\nprintf "%s\\n" "$*" >> ' + calls_log
                  + "\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
@@ -516,7 +520,7 @@ def test_e2e_recovery_cases():
     fake_init = "/opt/etc/init.d/S99mihomo"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     # Content-aware validator: rejects any -t target containing the marker,
     # so the tests can distinguish a valid config from a corrupt one.
@@ -533,8 +537,7 @@ def test_e2e_recovery_cases():
                  "  exit 1\n"
                  "fi\n"
                  "exit 0\n")
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+    write_package_init(fake_init, "#!/bin/sh\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
@@ -745,12 +748,11 @@ def test_e2e_rollback_contracts():
     fake_init = "/opt/etc/init.d/S99mihomo"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(FAKE_MIHOMO_TWO_RULES)
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(FAKE_INIT_DAEMON)
+    write_package_init(fake_init, FAKE_INIT_DAEMON)
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
@@ -938,12 +940,11 @@ def test_e2e_invalid_preservation_cases():
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
     recovery_base = "/opt/etc/mihomo/config.yaml.invalid"
     outside = "/tmp/.kas-test-outside-target"
-    created.extend([fake_bin, fake_init, outside])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func", outside])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(FAKE_MIHOMO_TWO_RULES)
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+    write_package_init(fake_init, "#!/bin/sh\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 

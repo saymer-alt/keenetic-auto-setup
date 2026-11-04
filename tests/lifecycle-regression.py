@@ -11,6 +11,8 @@ import re
 import shlex
 import signal
 import subprocess
+
+from mihomo_init_fixture import pin_fixture_init
 import tempfile
 import time
 
@@ -67,7 +69,9 @@ echo "$1" >> "$LAB/actions"
 case "$1" in stop) rm -f "$LAB/running" ;; start|restart) touch "$LAB/running" ;; esac
 ''')
         init.chmod(0o700)
-        (self.path / "opt/etc/init.d/S99mihomo").symlink_to(init)
+        package_init = self.path / "opt/etc/init.d/S99mihomo"
+        os.link(init, package_init)
+        package_init.with_name("rc.func").touch()
 
     def __enter__(self):
         return self
@@ -80,6 +84,7 @@ case "$1" in stop) rm -f "$LAB/running" ;; start|restart) touch "$LAB/running" ;
         self.tmp.cleanup()
 
     def redirect(self, text):
+        text = pin_fixture_init(text, self.path / "opt/etc/init.d/S99mihomo")
         return text.replace("/tmp/", str(self.path) + "/").replace("/opt/", str(self.path / "opt") + "/")
 
     def script(self, name, body):
@@ -325,6 +330,7 @@ def watchdog_functions():
         + function(FILES[4], "can_restart") + '''
 RESTART_STATE="$LAB/restart-state"; MIN_RESTART_INTERVAL=300
 reset_healthy_heartbeat() { :; }
+wd_restart_identity() { echo stopped; }
 '''
 
 
