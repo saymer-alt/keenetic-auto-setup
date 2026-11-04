@@ -67,7 +67,7 @@ function describe(report,language){
 // Version-gated identification of canonical Doctor warnings, not a root-cause diagnosis.
 // Unknown evidence remains untouched and receives no fabricated recommendation.
 function classifyWatchdogFinding(report,finding){
- if(!report?.supported||report.version!=='1.2.19'||finding?.section!=='8b'||finding.severity!=='WARN')return null;
+ if(!report?.supported||(report.version!=='1.2.19'&&report.version!=='1.2.20'&&report.version!=='1.2.21'&&report.version!=='1.2.22')||finding?.section!=='8b'||finding.severity!=='WARN')return null;
  const evidence=finding.evidence;
  if(/^Repeated failures: [1-9][0-9]{0,5} problem events within the same clock hour \([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:00\)$/.test(evidence))return {key:'watchdogHour',help:'watchdogHourHelp'};
  if(/^Watchdog interventions in the last 24h: [1-9][0-9]{0,5} problem event\(s\)(?:, including [1-9][0-9]{0,5} rate-limited detection\(s\) during restart cooldown| - repeated recent interventions exceed the project INFO threshold of one)$/.test(evidence))return {key:'watchdogDay',help:'watchdogDayHelp'};
