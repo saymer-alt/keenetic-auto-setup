@@ -1004,7 +1004,8 @@ detect_fresh_entware_stack() {
         return 1
     fi
     for _fs_path in /opt/bin/mihomo /opt/sbin/mihomo \
-        /opt/bin/magitrickled /opt/etc/init.d/S28mihomo \n        /opt/etc/init.d/S99mihomo \
+        /opt/bin/magitrickled /opt/etc/init.d/S28mihomo \
+        /opt/etc/init.d/S99mihomo \
         /opt/etc/init.d/S99magitrickle \
         /opt/bin/mihomo_watchdog.sh \
         /opt/etc/cron.5mins/mihomo_watchdog \
