@@ -26,6 +26,7 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 | [`kas-sys-metrics.sh`](../../kas-sys-metrics.sh) | [Read-only router metrics: SoC temperature, load average, uptime, memory (#309)](SYS_METRICS.md) |
 | [`update-mihomo.sh`](../../update-mihomo.sh) | [Update the Mihomo core with validation and rollback](UPDATES.md#mihomo-update) |
 | [`update-watchdog.sh`](../../update-watchdog.sh) | [Update the watchdog mechanism](UPDATES.md#watchdog-update) |
+| [`kas-update.sh`](../../kas-update.sh) | [Unified maintenance entry point for an installed KAS Core: read-only `--check`, explicit `--apply` on top of the transactional update-watchdog](UPDATES.md#unified-entry-point-kas-update) |
 | [`mihomo-watchdog.sh`](../../mihomo-watchdog.sh) | [Check Mihomo and restart it only on a confirmed failure](../04-watchdog.md) |
 | [`020-bypass-wa.sh`](../../020-bypass-wa.sh) | [Intercept VoIP traffic and send it to the separate `bypass_wa` policy](../05-bypass-wa.md) |
 | [`S00ubifs`](../../S00ubifs) | [Move Entware runtime directories to RAM and reduce flash writes](../06-s00ubifs.md) |
