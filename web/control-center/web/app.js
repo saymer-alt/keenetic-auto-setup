@@ -68,8 +68,8 @@ function draw(){
  el('filter-search').placeholder=t('searchPlaceholder');
  set('mihomo-file',serviceText('mihomo',statusData?.mihomo_binary));
  set('magitrickle-file',serviceText('magitrickle',statusData?.magitrickle_binary));
-  el('mihomo-file').dataset.state=serviceTone('mihomo');
-  el('magitrickle-file').dataset.state=serviceTone('magitrickle');
+  if(el('mihomo-file').dataset)el('mihomo-file').dataset.state=serviceTone('mihomo');
+  if(el('magitrickle-file').dataset)el('magitrickle-file').dataset.state=serviceTone('magitrickle');
  if(el('filter-empty'))set('filter-empty',t('filterEmpty'));
  updateFilterSearch();
  set('access-state',accessBusy?t('accessLoading'):accessStatus||(accessData?t(accessData.home_only?'accessOn':'accessOff'):''));
