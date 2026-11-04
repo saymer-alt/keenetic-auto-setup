@@ -387,6 +387,15 @@ test('sidebar stage badge follows the running build identity',async()=>{
  const beta=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0~beta.3-1',source_sha:'a'.repeat(40)},...base}});
  await beta.run('refreshComponents()');
  assert.equal(beta.el('experiment').textContent,'Бета-версия');
+ // Official beta.6 uses dotted prerelease notation in its Entware version.
+ // Every non-plain-semver identity remains conservative, not "stable".
+ for(const candidate of ['0.1.0.beta.6-1','0.1.0~beta.6-1','0.1.0-rc.1','0.0.1.test44.9c715283d525-1']){
+  const prerelease=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:candidate,source_sha:'a'.repeat(40)},...base}});
+  await prerelease.run('refreshComponents()');
+  assert.equal(prerelease.el('experiment').textContent,'Бета-версия',candidate);
+  prerelease.run("lang='en';draw();");
+  assert.equal(prerelease.el('experiment').textContent,'Beta version',candidate);
+ }
  const stable=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0-1',source_sha:'a'.repeat(40)},...base}});
  await stable.run('refreshComponents()');
  assert.equal(stable.el('experiment').textContent,'Стабильная версия');
