@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -96,6 +95,13 @@ func validateMetrics(m *systemMetrics) bool {
 }
 
 func runMetricsCollector(ctx context.Context, script []byte, sysRoot, procRoot string) (*systemMetrics, error) {
+	return runMetricsCollectorWithShell(ctx, "/bin/sh", script, sysRoot, procRoot)
+}
+
+// Keenetic BusyBox ash does not support "sh -s". Write our trusted embedded
+// script to a private temporary file and pass it as a positional script name.
+// Shell path injection is reserved for testing the BusyBox-incompatible case.
+func runMetricsCollectorWithShell(ctx context.Context, shell string, script []byte, sysRoot, procRoot string) (*systemMetrics, error) {
 	if len(script) == 0 || len(script) > 32768 {
 		return nil, errors.New("metrics collector unavailable")
 	}
@@ -103,8 +109,11 @@ func runMetricsCollector(ctx context.Context, script []byte, sysRoot, procRoot s
 	if err != nil { return nil, err }
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "result.json")
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-s", "--", "--json", path)
-	cmd.Stdin = strings.NewReader(string(script))
+	scriptPath := filepath.Join(dir, "collector.sh")
+	if err := os.WriteFile(scriptPath, script, 0600); err != nil {
+		return nil, errors.New("metrics collector unavailable")
+	}
+	cmd := exec.CommandContext(ctx, shell, scriptPath, "--json", path)
 	cmd.Env = []string{"PATH=/opt/bin:/usr/bin:/bin", "NO_COLOR=1", "TERM=dumb", "LC_ALL=C",
 		"KAS_SYSFS_ROOT="+sysRoot, "KAS_PROC_ROOT="+procRoot}
 	// Collector prints a verbose report; do not persist or expose it.
