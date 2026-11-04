@@ -274,7 +274,7 @@ func (a *app) validUpdateRequest(w http.ResponseWriter, r *http.Request, confirm
 		updateJSON(w, 405, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "METHOD_NOT_ALLOWED"})
 		return false
 	}
-	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != confirm {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != confirm {
 		updateJSON(w, 403, updateOperation{State: "UNKNOWN", Time: now(), ErrorCode: "REQUEST_BLOCKED"})
 		return false
 	}

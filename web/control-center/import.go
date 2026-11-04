@@ -79,7 +79,7 @@ func (a *app)handleImportStatus(w http.ResponseWriter,r *http.Request){
 }
 func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodPost{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
- if r.Header.Get("Origin")!=a.expectedOrigin(r.Host) ||
+ if !a.requestOriginAllowed(r) ||
   r.Header.Get("Content-Type")!="application/x-yaml" ||
   r.Header.Get("X-KAS-Confirm")!="apply"{
   respondImport(w,http.StatusForbidden,importStatus{State:"UNKNOWN",Time:now(),ErrorCode:"REQUEST_BLOCKED"});return
@@ -151,4 +151,25 @@ func (a *app)handleImport(w http.ResponseWriter,r *http.Request){
   a.mu.Unlock()
  }(entry)
  respondImport(w,http.StatusAccepted,entry)
+}
+
+// handleDownloadConfig returns the exact current on-disk Mihomo YAML.
+// It uses the same bounded config source as the existing provider editor.
+// No config mutation, backup job, password prompt or extra service is needed.
+func (a *app) handleDownloadConfig(w http.ResponseWriter, r *http.Request) {
+ if r.Method != http.MethodGet {
+  filterError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+  return
+ }
+ content, err := a.filterConfig()
+ if err != nil {
+  filterError(w, http.StatusServiceUnavailable, "CONFIG_UNAVAILABLE")
+  return
+ }
+ w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
+ w.Header().Set("Content-Disposition", `attachment; filename="config.yaml"`)
+ w.Header().Set("Cache-Control", "no-store")
+ w.Header().Set("X-Content-Type-Options", "nosniff")
+ w.WriteHeader(http.StatusOK)
+ _, _ = w.Write(content)
 }

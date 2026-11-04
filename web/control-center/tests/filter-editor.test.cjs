@@ -271,6 +271,21 @@ test('observed import completion stays in its view and can be dismissed without 
 
 const settingsFixture=async fixture=>{const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);return app;};
 const settingsPosts=app=>app.requests.filter(r=>r.url==='/api/settings'&&r.options.method==='POST');
+test('legacy 8081 migration warns in RU and shows only safe new URL',async()=>{
+ const app=await settingsFixture({href:'http://router.test:18080/',settings:{
+  port:18080,auth_mode:'panel',login:'kas',password_set:true,
+  legacy_port_migrated:true,url:'http://router.test:18080/'}});
+ assert.equal(app.el('settings-port').value,'18080');
+ assert.match(app.el('settings-state').textContent,/8081.*18080/);
+ assert.equal(app.el('settings-address').href,'http://router.test:18080/');
+ assert.equal(app.el('settings-address').hidden,false);
+ assert.equal(settingsPosts(app).length,0,'read-only migration notice must not POST');
+});
+test('other saved ports do not announce an 8081 migration',async()=>{
+ const app=await settingsFixture({settings:{port:19000,auth_mode:'none',login:'',password_set:false}});
+ assert.doesNotMatch(app.el('settings-state').textContent,/8081/);
+});
+
 test('settings read uses actual existing port and read failure disables mutation',async()=>{
  const app=await settingsFixture({});assert.equal(app.el('settings-port').value,'18081');assert.equal(app.el('settings-save').disabled,false);
  const failed=await settingsFixture({settingsFail:true});assert.equal(failed.el('settings-save').disabled,true);assert.match(failed.el('settings-state').textContent,/SETTINGS_READ_FAILED/);
@@ -387,6 +402,15 @@ test('sidebar stage badge follows the running build identity',async()=>{
  const beta=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0~beta.3-1',source_sha:'a'.repeat(40)},...base}});
  await beta.run('refreshComponents()');
  assert.equal(beta.el('experiment').textContent,'Бета-версия');
+ // Official beta.6 uses dotted prerelease notation in its Entware version.
+ // Every non-plain-semver identity remains conservative, not "stable".
+ for(const candidate of ['0.1.0.beta.6-1','0.1.0~beta.6-1','0.1.0-rc.1','0.0.1.test44.9c715283d525-1']){
+  const prerelease=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:candidate,source_sha:'a'.repeat(40)},...base}});
+  await prerelease.run('refreshComponents()');
+  assert.equal(prerelease.el('experiment').textContent,'Бета-версия',candidate);
+  prerelease.run("lang='en';draw();");
+  assert.equal(prerelease.el('experiment').textContent,'Beta version',candidate);
+ }
  const stable=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0-1',source_sha:'a'.repeat(40)},...base}});
  await stable.run('refreshComponents()');
  assert.equal(stable.el('experiment').textContent,'Стабильная версия');
@@ -423,7 +447,7 @@ test('Doctor warnings are findings rather than command failure',async()=>{
 test('script-installed watchdog shows its actual digest without a fictitious version',async()=>{
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{components:{panel:{version:'0.1.0',source_sha:'a'.repeat(40)},core:{state:'absent'},watchdog:{state:'unrecorded',installed_sha256:'b'.repeat(64)}}});
  await app.run('refreshComponents()');
- assert.match(app.el('watchdog-version').textContent,/Установлен.*bbbbbbbbbbbb/);
+ assert.match(app.el('watchdog-version').textContent,/Версия\/ревизия watchdog не подтверждена.*bbbbbbbbbbbb/);
 });
 
 test('updates check is manual and confirmation cancellation never starts updater',async()=>{

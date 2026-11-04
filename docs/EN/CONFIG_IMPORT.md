@@ -18,6 +18,8 @@ The launcher stages `config-import.sh` privately and verifies shebang, stable pr
 
 Interactive input is read from \`/dev/tty\`, so this still works when the importer itself is delivered through \`curl | sh\`.
 
+When you run the importer manually with `curl | sh`, curl exit 23 means a local write error. For example, `sh` may close the pipe after the importer finishes. Check the importer's output for the result. If it printed no result, use the verified download command above before retrying.
+
 ## Transaction
 
 - the candidate is staged beside \`config.yaml\`;

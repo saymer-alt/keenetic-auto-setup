@@ -296,7 +296,6 @@ MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
 CONFIG="$CONFIG_DIR/config.yaml"
 BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"
-INIT_EXPECTED="$OPT_ROOT/etc/init.d/S99mihomo"
 WATCHDOG_BIN="$OPT_ROOT/bin/mihomo_watchdog.sh"
 WATCHDOG_CRON="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog"
 WATCHDOG_LEGACY_BAK_OLD="$OPT_ROOT/etc/cron.5mins/mihomo_watchdog.legacy.bak"
@@ -490,6 +489,12 @@ finding_action() {
             ;;
         *"bypass_wa hook missing"*|*"bypass_wa hook is not executable"*)
             printf '%s' "Restore the project 020-bypass_wa.sh hook with install.sh, then rebuild firewall or reboot and run Doctor again."
+            ;;
+        *"bypass_wa Netfilter chain absent"*)
+            printf '%s' "If KAS was just installed, wait about 10 minutes and re-run Doctor, or rebuild the firewall once. Do not add Netfilter rules manually."
+            ;;
+        *"PREROUTING unreadable"*|*"bypass_wa Netfilter chain unreadable"*|*"bypass_wa Netfilter chain cannot be inspected"*)
+            printf '%s' "Netfilter state could not be read reliably. Re-run Doctor after a firewall rebuild or xtables lock settles; do not assume the rules are missing or edit iptables manually."
             ;;
         *"bypass_wa Netfilter verification unavailable"*|*"bypass_wa Netfilter chain missing"*|*"bypass_wa Netfilter rules incomplete"*)
             printf '%s' "Ensure KeeneticOS opkg-kmod-netfilter is installed, then rebuild firewall or reboot. Doctor expects PREROUTING -> _CUST_BYPASS_WA_ plus UDP multiport MARK/CONNMARK/RETURN rules."
@@ -2111,20 +2116,60 @@ fi
 hdr "5. Service"
 # =========================================================
 
-INIT_SCRIPT=""
-if [ -x "$INIT_EXPECTED" ]; then
-    INIT_SCRIPT="$INIT_EXPECTED"
-    ok "Mihomo init script present ($INIT_SCRIPT)"
-elif [ -f "$INIT_EXPECTED" ]; then
-    INIT_SCRIPT="$INIT_EXPECTED"
-    warn "Mihomo init script exists but is not executable ($INIT_SCRIPT)"
-else
-    INIT_SCRIPT=$(find "$OPT_ROOT/etc/init.d" -name '*mihomo*' -type f 2>/dev/null | head -n 1)
-    if [ -n "$INIT_SCRIPT" ]; then
-        info "Init script found (non-standard name): $INIT_SCRIPT"
-    else
-        info "No Mihomo init script in $OPT_ROOT/etc/init.d (expected $INIT_EXPECTED)"
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
+# saymer-alt/entware-go e573954 installs S99mihomo the same way.
+# Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
+# Neither recipe installs an alias. Unknown bytes and executable symlinks
+# require operator review. Never execute a candidate to identify it.
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    local _mir_found="" _mir_state=absent _mir_path _mir_digest
+    MIHOMO_INIT_RESOLVED=""
+    MIHOMO_INIT_STATE=""
+    for _mir_path in "$OPT_ROOT/etc/init.d/S28mihomo" "$OPT_ROOT/etc/init.d/S99mihomo"; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        if [ -L "$_mir_found" ] ||
+           ! _mir_digest=$(sha256sum < "$_mir_found") ||
+           [ "${_mir_digest%% *}" != "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9" ]; then
+            MIHOMO_INIT_STATE="unverified:$_mir_found"
+            return 2
+        fi
+        if [ ! -f /bin/sh ] || [ ! -x /bin/sh ] ||
+           [ ! -f "$OPT_ROOT/etc/init.d/rc.func" ] || [ ! -r "$OPT_ROOT/etc/init.d/rc.func" ]; then
+            MIHOMO_INIT_STATE="runtime:$_mir_found"
+            return 2
+        fi
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        return 0
     fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
+if resolve_mihomo_init; then
+    ok "Verified Mihomo init ($MIHOMO_INIT_RESOLVED)"
+elif [ "$MIHOMO_INIT_STATE" = absent ]; then
+    info "Mihomo init absent in $OPT_ROOT/etc/init.d (expected S28mihomo or S99mihomo)"
+else
+    warn "Mihomo init UNVERIFIED ($MIHOMO_INIT_STATE). Verify the Entware package and runtime."
 fi
 
 # Process state was observed once at the top of section 3 and is
@@ -2132,19 +2177,19 @@ fi
 if [ "$MIHOMO_PROCS" -lt 0 ]; then
     warn "Mihomo runtime UNKNOWN: process visibility is incomplete; no executable probe is allowed."
 elif [ "$MIHOMO_PROCS" -gt 0 ]; then
-    if [ -n "$INIT_SCRIPT" ]; then
-        ok "Mihomo is running ($MIHOMO_PROCS process(es)), managed by $INIT_SCRIPT"
+    if [ -n "$MIHOMO_INIT_RESOLVED" ]; then
+        ok "Mihomo is running ($MIHOMO_PROCS process(es)); verified init available"
     else
-        warn "Mihomo is running ($MIHOMO_PROCS process(es)) but no init script found - not managed, not started on boot"
+        warn "Mihomo is running ($MIHOMO_PROCS process(es)); init UNVERIFIED ($MIHOMO_INIT_STATE)"
     fi
     if [ "$MIHOMO_PROCS" -gt 1 ]; then
         warn "Multiple mihomo processes ($MIHOMO_PROCS) - expected 1, possible stale leftovers"
     fi
 else
-    if [ -n "$INIT_SCRIPT" ]; then
-        warn "Mihomo service is stopped (init script present). If you stopped it yourself, this is expected - the doctor never starts services"
+    if [ -n "$MIHOMO_INIT_RESOLVED" ]; then
+        warn "Mihomo service is stopped (verified init present). If you stopped it yourself, this is expected - the doctor never starts services"
     else
-        fail "Mihomo is not running and no init script exists - nothing will start it on boot ($INIT_EXPECTED missing)"
+        fail "Mihomo is stopped and init is UNVERIFIED ($MIHOMO_INIT_STATE)"
     fi
 fi
 if ! command -v pidof >/dev/null 2>&1; then
@@ -2664,7 +2709,7 @@ else
     if [ "$_bypass_chain_rc" -ne 0 ]; then
         BYPASS_NETFILTER_RUNTIME=failed
         case "$_bypass_chain" in
-            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|"chain does not exist"*)
+            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|*"chain does not exist"*)
                 fail "bypass_wa Netfilter chain absent: _CUST_BYPASS_WA_ (hook has not applied yet; if KAS was just installed, wait about 10 minutes and re-run Doctor, or rebuild the firewall once; a single reboot also rebuilds it)$_bypass_component_hint"
                 ;;
             *"Resource temporarily unavailable"*|*"Resource busy"*|*"xtables.lock"*)
