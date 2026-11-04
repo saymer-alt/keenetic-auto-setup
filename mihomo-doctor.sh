@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.19 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.20 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.19"
+DOCTOR_VERSION="1.2.20"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -2361,12 +2361,82 @@ else
         [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
         [ -n "$_v" ] && MT_REMAP=$_v
-        MT_LINK=$(awk '/^  link:/{l=1;next} /^  [^[:space:]#]/{l=0} l&&/^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,"");print}' "$MT_CFG" | tr '\n' ' ')
+        # BEGIN DOCTOR MT LINK PARSE v1
+        # YAML "- br0" is a sequence item, not a sibling key.
+        MT_LINK=$(awk '
+            /^  link:/ { l=1; next }
+            l && /^  -[[:space:]]+/ { sub(/^  -[[:space:]]+/, ""); sub(/\r$/, ""); print; next }
+            l && /^  [^[:space:]#-]/ { l=0 }
+        ' "$MT_CFG" | tr '\n' ' ')
+        # END DOCTOR MT LINK PARSE v1
     fi
     info "MT config source: $MT_CFG_SRC"
     info "DNS proxy: port $MT_DNS_PORT -> upstream $MT_UPSTREAM_ADDR:$MT_UPSTREAM_PORT"
     info "Web UI: port $MT_WEB_PORT (enabled: $MT_WEB_ENABLED)"
     info "Link interfaces: ${MT_LINK:-<none>}; iptables chain prefix: $MT_CHAIN; ipset prefix: $MT_IPSET_PREFIX; remap53 disabled: $MT_REMAP"
+    # BEGIN DOCTOR MT ROUTING SCOPE v1
+    # app.link selects DNS-substitution interfaces; it is not a global
+    # forwarding switch. Do not reveal user-defined rules or endpoints.
+    if [ -r "$MT_CFG" ]; then
+        MT_LINK_BR0=no
+        MT_LINK_BR1=no
+        MT_CLEAN_LINK=$(printf '%s' "$MT_LINK" | tr -d '\r')
+        case " $MT_CLEAN_LINK " in *" br0 "*) MT_LINK_BR0=yes ;; esac
+        case " $MT_CLEAN_LINK " in *" br1 "*) MT_LINK_BR1=yes ;; esac
+        info "MT app.link DNS substitution interfaces: br0=$MT_LINK_BR0, br1=$MT_LINK_BR1 (not a global traffic-routing policy)"
+
+        MT_IPV4_OFF=$(awk '/^    disableIPv4:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_IPV6_OFF=$(awk '/^    disableIPv6:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_CONFIG_VERSION=$(awk '/^configVersion:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        [ -n "$MT_IPV4_OFF" ] || MT_IPV4_OFF=unknown
+        [ -n "$MT_IPV6_OFF" ] || MT_IPV6_OFF=unknown
+        [ -n "$MT_CONFIG_VERSION" ] || MT_CONFIG_VERSION=unknown
+        info "MT routing controls: configVersion=$MT_CONFIG_VERSION, disableIPv4=$MT_IPV4_OFF, disableIPv6=$MT_IPV6_OFF"
+
+        MT_RULE_SUMMARY=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            function close_rule() {
+                if (!have_rule) return
+                if (enabled == "true" && rule_enabled == "true") {
+                    active_rules++
+                    if (iface == "mitun0" && (rule_type == "namespace" || rule_type == "domain")) {
+                        if (rule == "2ip.io") ip_test = 1
+                        if (rule == "speedtest.net") speed_test = 1
+                    }
+                }
+                have_rule = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
+            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_rule(); printf "%d %d %d %d %d\n", groups, enabled_groups, active_rules, ip_test, speed_test }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_RULE_SUMMARY
+        if [ "$#" -eq 5 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5"; then
+            info "MT route groups: $2 enabled / $1 total; enabled rules in enabled groups: $3 (configured targets, not observed traffic)"
+            if [ "$4" -eq 1 ] || [ "$5" -eq 1 ]; then
+                info "MT proxy-routed network tests: 2ip.io=$( [ "$4" -eq 1 ] && printf mitun0 || printf 'not detected' ), speedtest.net=$( [ "$5" -eq 1 ] && printf mitun0 || printf 'not detected' ); geo-IP/speedtest results may represent Mihomo rather than the segment default route"
+            fi
+        else
+            info "MT route group inventory unavailable (unsupported config structure or parser error)"
+        fi
+    else
+        info "MT route scope and group inventory unavailable: config is not readable"
+    fi
+    # END DOCTOR MT ROUTING SCOPE v1
 
         # Layer 2: listeners (only meaningful when the process runs)
         _dns_listening=0

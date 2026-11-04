@@ -27,6 +27,7 @@ on:
         options:
           - kas
           - uninstall-packages
+          - kas-update
 
 permissions:
   contents: read
@@ -37,9 +38,9 @@ concurrency:
 
 jobs:
   native-kas:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@8b7d6e10cf2d9e8e49c1a246bd91871c3cc8f463
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@fc1199ff39b6d6ec0e441b470c7c69f6a97fe9d2
     with:
-      emulator_ref: 8b7d6e10cf2d9e8e49c1a246bd91871c3cc8f463
+      emulator_ref: fc1199ff39b6d6ec0e441b470c7c69f6a97fe9d2
       kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       # PRs keep the established full lifecycle; only manual dispatch opts into removal.
       stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'kas' }}
