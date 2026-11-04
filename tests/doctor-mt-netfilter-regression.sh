@@ -191,6 +191,29 @@ printf '%s\n' "$out" | grep -Fq 'enabled rules 2 (subnet 1) in enabled groups 2/
 printf '%s\n' "$out" | grep -Fq 'pattern withheld' || fail_test 'withholding note missing'
 printf '%s\n' "$out" | grep -F '.com' && fail_test 'raw regex leaked into report'
 
+
+# --- B2: retained real-world arbitrary-label .com regex must WARN ---
+cat > "$TMP/retained-broad.yaml" <<'YAML'
+configVersion: 7
+groups:
+- id: 1
+  name: mixed routing
+  interface: mitun0
+  enable: true
+  rules:
+  - id: 11
+    type: regex
+    rule: ^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.com$
+    enable: true
+YAML
+out=$(run_mode "$TMP/retained-broad.yaml" 1 false clean)
+printf '%s\n' "$out" | grep -Fq 'broad catch-all regex rule present' || fail_test 'retained broad .com rule not detected'
+
+# --- B3: narrow concrete domain regex must NOT be a catch-all ---
+sed 's@^[[:space:]]*rule: .*@    rule: ^api\\.example\\.com$@' "$TMP/retained-broad.yaml" > "$TMP/narrow-regex.yaml"
+out=$(run_mode "$TMP/narrow-regex.yaml" 1 false clean)
+printf '%s\n' "$out" | grep -Fq 'broad catch-all regex rule present' && fail_test 'concrete domain regex incorrectly broad'
+
 # --- C: residual chains while daemon stopped ---
 out=$(run_mode "$TMP/se.yaml" 0 false clean)
 printf '%s\n' "$out" | grep -Fq 'residual MT_* mangle chains while magitrickled is not running' || fail_test 'residual rules not detected'
