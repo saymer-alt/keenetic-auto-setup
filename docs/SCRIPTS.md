@@ -26,6 +26,7 @@
 | [`kas-sys-metrics.sh`](../kas-sys-metrics.sh) | [Read-only метрики роутера: температура SoC, load average, uptime, память (#309)](30-sys-metrics.md) |
 | [`update-mihomo.sh`](../update-mihomo.sh) | [Обновить ядро Mihomo с проверкой и откатом](12-updates.md#обновление-mihomo) |
 | [`update-watchdog.sh`](../update-watchdog.sh) | [Обновить механизм watchdog](12-updates.md#обновление-watchdog) |
+| [`kas-update.sh`](../kas-update.sh) | [Единая точка входа обслуживания установленного KAS Core: read-only `--check`, явное `--apply` поверх транзакционного update-watchdog](12-updates.md#единая-точка-входа-kas-update) |
 | [`mihomo-watchdog.sh`](../mihomo-watchdog.sh) | [Проверять Mihomo и перезапускать его при подтверждённом сбое](04-watchdog.md) |
 | [`020-bypass-wa.sh`](../020-bypass-wa.sh) | [Перехватывать VoIP-трафик и передавать его в отдельную политику `bypass_wa`](05-bypass-wa.md) |
 | [`S00ubifs`](../S00ubifs) | [Перенести временные каталоги Entware в RAM и снизить запись во флешку](06-s00ubifs.md) |
