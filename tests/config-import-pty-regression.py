@@ -70,6 +70,8 @@ import re
 import select
 import shutil
 import subprocess
+
+from mihomo_init_fixture import write_package_init
 import sys
 import tempfile
 import termios
@@ -318,6 +320,9 @@ def e2e_possible():
         return False, "no euid"
     if os.path.exists("/opt/etc/mihomo/config.yaml"):
         return False, "existing /opt/etc/mihomo/config.yaml (real install?)"
+    if any(os.path.lexists("/opt/etc/init.d/" + name)
+           for name in ("S28mihomo", "S99mihomo", "rc.func")):
+        return False, "existing Mihomo init or Entware rc.func"
     return True, ""
 
 
@@ -343,12 +348,11 @@ def test_e2e_full_script():
     calls_log = "/opt/etc/init.d/.fake-mihomo-calls"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("#!/bin/sh\nexit 0\n")
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + calls_log
+    write_package_init(fake_init, '#!/bin/sh\nprintf "%s\\n" "$*" >> ' + calls_log
                  + "\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
@@ -516,7 +520,7 @@ def test_e2e_recovery_cases():
     fake_init = "/opt/etc/init.d/S99mihomo"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     # Content-aware validator: rejects any -t target containing the marker,
     # so the tests can distinguish a valid config from a corrupt one.
@@ -533,8 +537,7 @@ def test_e2e_recovery_cases():
                  "  exit 1\n"
                  "fi\n"
                  "exit 0\n")
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+    write_package_init(fake_init, "#!/bin/sh\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
@@ -694,6 +697,15 @@ def daemon_running():
     return result.returncode == 0 and result.stdout.strip() != ""
 
 
+def wait_for_daemon():
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if daemon_running():
+            return True
+        time.sleep(0.05)
+    return daemon_running()
+
+
 def daemon_hard_stop(fake_init):
     subprocess.run([fake_init, "stop"], capture_output=True)
     subprocess.run(["pkill", "-x", "mihomo"], capture_output=True)
@@ -745,12 +757,11 @@ def test_e2e_rollback_contracts():
     fake_init = "/opt/etc/init.d/S99mihomo"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func"])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(FAKE_MIHOMO_TWO_RULES)
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(FAKE_INIT_DAEMON)
+    write_package_init(fake_init, FAKE_INIT_DAEMON)
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
@@ -813,7 +824,7 @@ def test_e2e_rollback_contracts():
             # restores the known-good config and restarts the service.
             reset(VALID_PREV, None)
             subprocess.run([fake_init, "start"], capture_output=True)
-            check("R8 daemon preconditions (%s)" % shell_name, daemon_running())
+            check("R8 daemon preconditions (%s)" % shell_name, wait_for_daemon())
             rc, out, _master = paste(argv, FAIL_CANDIDATE)
             after = read_file(config_path)
             bak = read_file(backup_path)
@@ -869,7 +880,7 @@ def test_e2e_rollback_contracts():
             # for the import, started again afterwards, backup untouched.
             reset(b"", b"mixed-port: 7890\nmode: rule\nsecret: real-old\n")
             subprocess.run([fake_init, "start"], capture_output=True)
-            check("R12 daemon preconditions (%s)" % shell_name, daemon_running())
+            check("R12 daemon preconditions (%s)" % shell_name, wait_for_daemon())
             rc, out, _master = paste(argv, CANDIDATE)
             check("R12 recovery with running service (%s)" % shell_name,
                   rc == 0 and read_file(config_path) == CANDIDATE
@@ -938,12 +949,11 @@ def test_e2e_invalid_preservation_cases():
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
     recovery_base = "/opt/etc/mihomo/config.yaml.invalid"
     outside = "/tmp/.kas-test-outside-target"
-    created.extend([fake_bin, fake_init, outside])
+    created.extend([fake_bin, fake_init, "/opt/etc/init.d/rc.func", outside])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(FAKE_MIHOMO_TWO_RULES)
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+    write_package_init(fake_init, "#!/bin/sh\nexit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
