@@ -84,7 +84,8 @@ invocation, so there is nothing installed to update.
 The advisory MagiTrickle inventory parses the Entware `opkg list-installed`
 format (`magitrickle - 0.8.2-1`) as well as a two-field variant; the
 separator `-` is never reported as a version. An unparseable package entry
-is shown as UNKNOWN without modifying the package.
+is shown as UNKNOWN without modifying the package. A failing
+`opkg list-installed` invocation is also UNKNOWN, never "package not found".
 
 The optional kas-update self-check is skipped for historical immutable Core
 tags `v1.8.0`–`v1.8.7`, which predate `kas-update.sh`. This avoids
