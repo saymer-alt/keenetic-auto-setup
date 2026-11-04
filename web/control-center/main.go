@@ -336,16 +336,19 @@ func main() {
 		log.Fatal("invalid initial port")
 	}
 	// Only the untouched IPK/automatic default may select a different port.
-	// A saved config (including previous 8081) or explicit -listen never auto-hops.
+	// Nonlegacy saved ports and explicit listeners never auto-hop; the default
+	// IPK listener may migrate the exact legacy 8081 only.
 	autoStartupPort := *lanMode && (*listen == "" || *listen == "auto") && *initialPort == 18080
 	var config *panelConfig
+	legacyPortMigration := false
 	if *lanMode {
 		var err error
 		config, err = readPanelConfig(*settingsFile)
 		if err != nil {
 			log.Fatal(err)
 		}
-		autoStartupPort = autoStartupPort && config == nil
+		legacyPortMigration = autoStartupPort && legacyPanelPortEligible(config)
+		autoStartupPort = autoStartupPort && (config == nil || legacyPortMigration)
 	}
 	var lan *homeLAN
 	if *lanMode {
@@ -360,7 +363,7 @@ func main() {
 		host, _, _ := net.SplitHostPort(lan.address)
 		if *listen == "" || *listen == "auto" {
 			port := *initialPort
-			if config != nil {
+			if config != nil && !legacyPortMigration {
 				port = config.Port
 			}
 			lan.address = net.JoinHostPort(host, fmt.Sprint(port))
@@ -449,6 +452,9 @@ func main() {
 		if config == nil {
 			return errors.New("automatic panel settings unavailable")
 		}
+		if legacyPortMigration {
+			return migrateLegacyPanelPort(*settingsFile, config, port, fallback)
+		}
 		return saveInitialPanelConfig(*settingsFile, &panelConfig{
 			Version: 1, Port: port, AuthMode: config.AuthMode,
 			PasswordHash: config.PasswordHash, AutoPortFallback: fallback,
@@ -457,15 +463,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if moved {
+	if moved || legacyPortMigration {
 		host, _, _ := net.SplitHostPort(*listen)
 		*listen = net.JoinHostPort(host, fmt.Sprint(selectedPort))
 		lan.address = *listen
 		app.host = *listen
 		config.Port = selectedPort
-		config.AutoPortFallback = true
+		config.AutoPortFallback = moved
 		lan.panel.Store(config)
-		fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", selectedPort)
+		if legacyPortMigration {
+			fmt.Printf("LEGACY_PORT_MIGRATED: 8081 -> %d\n", selectedPort)
+		} else if moved {
+			fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", selectedPort)
+		}
 	} else if config != nil && config.AutoPortFallback {
 		// A saved first-start fallback is retained across reboot. Repeat the
 		// fixed, nonsecret reason in init/status for operator visibility.

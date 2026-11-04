@@ -271,6 +271,21 @@ test('observed import completion stays in its view and can be dismissed without 
 
 const settingsFixture=async fixture=>{const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);await new Promise(setImmediate);return app;};
 const settingsPosts=app=>app.requests.filter(r=>r.url==='/api/settings'&&r.options.method==='POST');
+test('legacy 8081 migration warns in RU and shows only safe new URL',async()=>{
+ const app=await settingsFixture({href:'http://router.test:18080/',settings:{
+  port:18080,auth_mode:'panel',login:'kas',password_set:true,
+  legacy_port_migrated:true,url:'http://router.test:18080/'}});
+ assert.equal(app.el('settings-port').value,'18080');
+ assert.match(app.el('settings-state').textContent,/8081.*18080/);
+ assert.equal(app.el('settings-address').href,'http://router.test:18080/');
+ assert.equal(app.el('settings-address').hidden,false);
+ assert.equal(settingsPosts(app).length,0,'read-only migration notice must not POST');
+});
+test('other saved ports do not announce an 8081 migration',async()=>{
+ const app=await settingsFixture({settings:{port:19000,auth_mode:'none',login:'',password_set:false}});
+ assert.doesNotMatch(app.el('settings-state').textContent,/8081/);
+});
+
 test('settings read uses actual existing port and read failure disables mutation',async()=>{
  const app=await settingsFixture({});assert.equal(app.el('settings-port').value,'18081');assert.equal(app.el('settings-save').disabled,false);
  const failed=await settingsFixture({settingsFail:true});assert.equal(failed.el('settings-save').disabled,true);assert.match(failed.el('settings-state').textContent,/SETTINGS_READ_FAILED/);

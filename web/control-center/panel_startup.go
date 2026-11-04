@@ -14,8 +14,9 @@ const (
 )
 
 // Bind first; do not use a separate port availability probe (TOCTOU).
-// Automatic fallback is permitted only for the initial, absent-settings
-// wildcard LAN default. Explicit and saved ports are strictly immutable.
+// Automatic fallback is permitted for the default wildcard LAN listener:
+// initial settings, or a separately guarded one-time legacy-8081 migration.
+// Explicit and all other saved ports are immutable.
 func selectStartupListener(
 	address string,
 	automatic bool,
