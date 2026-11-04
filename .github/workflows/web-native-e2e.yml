@@ -18,8 +18,9 @@ concurrency:
 
 jobs:
   native-web-import:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@6bd90b0af0d83ab689f4dc075ffe3ef7aff577e0
+    # bdab4864: fixed deny categories for the managed service start.
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@bdab486499313e3b15c5092d0e5d1acf86a93c4a
     with:
-      emulator_ref: 6bd90b0af0d83ab689f4dc075ffe3ef7aff577e0
+      emulator_ref: bdab486499313e3b15c5092d0e5d1acf86a93c4a
       kas_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       stage: web

@@ -55,7 +55,7 @@ func(a *app)handleAccess(w http.ResponseWriter,r *http.Request){
  respond:=func(){writeFilterJSON(w,200,struct{HomeOnly bool `json:"home_only"`}{a.lan.homeOnly.Load()})}
  if r.Method==http.MethodGet{respond();return}
  if r.Method!=http.MethodPost{filterError(w,405,"METHOD_NOT_ALLOWED");return}
- if r.Header.Get("Origin")!=a.expectedOrigin(r.Host)||r.Header.Get("Content-Type")!="application/json"||r.Header.Get("X-KAS-Confirm")!="access"{
+ if !a.requestOriginAllowed(r)||r.Header.Get("Content-Type")!="application/json"||r.Header.Get("X-KAS-Confirm")!="access"{
   filterError(w,403,"REQUEST_BLOCKED");return
  }
  if site:=r.Header.Get("Sec-Fetch-Site");site!=""&&site!="same-origin"{filterError(w,403,"REQUEST_BLOCKED");return}

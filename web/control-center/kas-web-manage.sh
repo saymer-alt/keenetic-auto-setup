@@ -131,7 +131,7 @@ start_ui() {
     proxy_file="$ROOT/etc/kas-control-center.proxy-origin"
     names_export_file="$ROOT/etc/kas-control-center.export-names"
     api_secret_file="$ROOT/etc/kas-control-center.mihomo-api-secret"
-    set -- -lan -listen auto -lan-interface br0 -initial-port 18081 -settings-file "$ROOT/etc/kas-control-center.settings.json"
+    set -- -lan -listen auto -lan-interface br0 -initial-port 18080 -settings-file "$ROOT/etc/kas-control-center.settings.json"
     if [ -e "$password_file" ] || [ -L "$password_file" ]; then
         set -- "$@" -password-file "$password_file"
     fi

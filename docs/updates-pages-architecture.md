@@ -82,7 +82,8 @@ IPK по-прежнему скачиваются **только** из обыч�
 One-shot workflow `updates-pages-deploy.yml` (только `workflow_dispatch`,
 входы: channel, release tag, verified CI-run — явные пины, никаких авто-запусков):
 
-1. IPK собраны на конкретном Source SHA (`web-beta3-build`-аналог).
+1. IPK собраны на конкретном Source SHA (официальный candidate-run
+   `kas-web-candidate-build.yml`, явный workflow_dispatch).
 2. Ассеты выгружаются из verified run и проверяются по `SHA256SUMS`.
 3. Релиз уже опубликован в GitHub Releases (workflow проверяет).
 4. Индекс строится `update-manifest.py` и сверяется с манифестами CI.
@@ -192,4 +193,4 @@ opkg). Никаких изменений на роутере не произво
   эксплуатации 2026-11-02 вместе со своими dry-run наборами; общие тестовые
   фикстуры сохранены в `tests/_publication_testkit.py`. Действующие
   механизмы — `updates-pages-deploy.yml` (канальный деплой) и candidate-build
-  (`web-beta3-build.yml`) — не изменены.
+  (`kas-web-candidate-build.yml`) — не изменены.

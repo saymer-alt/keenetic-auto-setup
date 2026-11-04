@@ -24,8 +24,8 @@ import (
 	"time"
 )
 
-//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh && cp ../../update-mihomo.sh scripts/update-mihomo.sh"
-//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh scripts/update-mihomo.sh
+//go:generate sh -c "mkdir -p scripts && cp ../../mihomo-doctor.sh scripts/mihomo-doctor.sh && cp ../../config-import.sh scripts/config-import.sh && cp ../../update-mihomo.sh scripts/update-mihomo.sh && cp ../../kas-sys-metrics.sh scripts/kas-sys-metrics.sh && cp ../../mihomo-watchdog.sh scripts/mihomo-watchdog.sh"
+//go:embed web/* scripts/mihomo-doctor.sh scripts/config-import.sh scripts/update-mihomo.sh scripts/kas-sys-metrics.sh scripts/mihomo-watchdog.sh
 var assets embed.FS
 
 type apiResult struct {
@@ -50,6 +50,7 @@ type app struct {
 	proxyOrigin        string
 	lan                *homeLAN
 	doctor             []byte
+	metrics            []byte
 	updater            []byte
 	runUpdate          func([]byte) (int, error)
 	updateDigest       func() string
@@ -126,8 +127,7 @@ func (a *app) handleDoctor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	origin := r.Header.Get("Origin")
-	if origin != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" {
 		writeJSON(w, http.StatusForbidden, apiResult{State: "UNKNOWN", Time: now(), ErrorCode: "REQUEST_BLOCKED"})
 		return
 	}
@@ -265,20 +265,25 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("/api/updates/magitrickle/check", a.handleMTCheck)
 	mux.HandleFunc("/api/updates/magitrickle", a.handleMTUpdate)
 	mux.HandleFunc("/api/access", a.handleAccess)
+	mux.HandleFunc("/api/metrics", a.handleMetrics)
 	mux.HandleFunc("/api/settings", a.handleSettings)
 	mux.HandleFunc("/api/doctor", a.handleDoctor)
 	mux.HandleFunc("/api/config/import", a.handleImport)
+	mux.HandleFunc("/api/config/download", a.handleDownloadConfig)
 	mux.HandleFunc("/api/config/operation", a.handleImportStatus)
 	mux.HandleFunc("/api/providers/names", a.handleProviderNames)
 	mux.HandleFunc("/api/filter/providers", a.handleFilterInspect)
 	mux.HandleFunc("/api/filter/preview", a.handleFilterPreview)
 	mux.HandleFunc("/api/filter/apply", a.handleFilterApply)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.directHost(r.Host) && (a.proxyHost == "" || r.Host != a.proxyHost) {
+		automaticProxy:=a.automaticProxyHost(r)
+		if !a.directHost(r.Host) && (a.proxyHost == "" || r.Host != a.proxyHost) && !automaticProxy {
 			http.Error(w, "invalid host", http.StatusForbidden)
 			return
 		}
-		if a.lan != nil && !a.lan.allowed(w, r, a.proxyHost) {
+		proxyHost:=a.proxyHost
+		if automaticProxy{proxyHost=r.Host}
+		if a.lan != nil && !a.lan.allowed(w, r, proxyHost) {
 			return
 		}
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -295,15 +300,15 @@ func main() {
 	workerOnly := flag.Bool("panel-update-worker", false, "internal fixed panel updater job")
 	recoverUpdate := flag.Bool("recover-panel-update", false, "explicit recovery of interrupted panel update")
 	versionOnly := flag.Bool("version", false, "print compiled panel version and source, then exit")
-	listen := flag.String("listen", "", "IP:port; default loopback without -lan, Home br0 with -lan")
-	lanMode := flag.Bool("lan", false, "listen on private Home br0 IPv4, HTTP, no password by default")
+	listen := flag.String("listen", "", "IP:port; default loopback without -lan, all router IPv4 with -lan")
+	lanMode := flag.Bool("lan", false, "listen on all router IPv4 via KeeneticOS firewall, no password by default")
 	lanInterface := flag.String("lan-interface", "br0", "Home LAN bridge (currently br0 only)")
 	passwordFile := flag.String("password-file", "", "optional private file with KAS panel password")
 	proxyOrigin := flag.String("proxy-origin", "", "optional existing KeenDNS HTTPS URL allowed via router reverse proxy")
 	providerExport := flag.Bool("provider-names-export", false, "enable explicit read-only local Mihomo names export")
 	providerSecretFile := flag.String("provider-secret-file", "", "optional 0600 file with local Mihomo API secret; requires export")
 	settingsFile := flag.String("settings-file", panelSettingsPath, "private persistent panel settings")
-	initialPort := flag.Int("initial-port", 8081, "default port when no settings exist")
+	initialPort := flag.Int("initial-port", 18080, "default port when no settings exist")
 	flag.Parse()
 	if *workerOnly || *recoverUpdate {
 		p := newPanelUpdater("/opt")
@@ -330,13 +335,20 @@ func main() {
 	if *initialPort < 1 || *initialPort > 65535 {
 		log.Fatal("invalid initial port")
 	}
+	// Only the untouched IPK/automatic default may select a different port.
+	// Nonlegacy saved ports and explicit listeners never auto-hop; the default
+	// IPK listener may migrate the exact legacy 8081 only.
+	autoStartupPort := *lanMode && (*listen == "" || *listen == "auto") && *initialPort == 18080
 	var config *panelConfig
+	legacyPortMigration := false
 	if *lanMode {
 		var err error
 		config, err = readPanelConfig(*settingsFile)
 		if err != nil {
 			log.Fatal(err)
 		}
+		legacyPortMigration = autoStartupPort && legacyPanelPortEligible(config)
+		autoStartupPort = autoStartupPort && (config == nil || legacyPortMigration)
 	}
 	var lan *homeLAN
 	if *lanMode {
@@ -351,7 +363,7 @@ func main() {
 		host, _, _ := net.SplitHostPort(lan.address)
 		if *listen == "" || *listen == "auto" {
 			port := *initialPort
-			if config != nil {
+			if config != nil && !legacyPortMigration {
 				port = config.Port
 			}
 			lan.address = net.JoinHostPort(host, fmt.Sprint(port))
@@ -397,6 +409,11 @@ func main() {
 	}
 	app := newApp(*listen, script)
 	app.importer = importer
+	metrics, err := assets.ReadFile("scripts/kas-sys-metrics.sh")
+	if err != nil {
+		log.Fatal(err)
+	}
+	app.metrics = metrics
 	updater, err := assets.ReadFile("scripts/update-mihomo.sh")
 	if err != nil {
 		log.Fatal(err)
@@ -408,7 +425,14 @@ func main() {
 		log.Fatal("provider secret file requires provider names export")
 	}
 	if *providerExport {
-		exporter, err := newProviderNamesExporter(*listen, *providerSecretFile)
+		// A wildcard TCP listener is not a valid upstream destination. Keep
+		// Mihomo API discovery pinned to the router's own Home IPv4.
+		providerAddress := *listen
+		if lan != nil && lan.homeIP.IsValid() {
+			_, port, _ := net.SplitHostPort(*listen)
+			providerAddress = net.JoinHostPort(lan.homeIP.String(), port)
+		}
+		exporter, err := newProviderNamesExporter(providerAddress, *providerSecretFile)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -422,9 +446,40 @@ func main() {
 		app.proxyOrigin = *proxyOrigin
 		app.proxyHost = host
 	}
-	listener, err := net.Listen("tcp", *listen)
+	listener, selectedPort, moved, err := selectStartupListener(*listen, autoStartupPort, func(port int, fallback bool) error {
+		// Create the first settings file without replacing an existing file,
+		// even if another process wrote it between read and bind.
+		if config == nil {
+			return errors.New("automatic panel settings unavailable")
+		}
+		if legacyPortMigration {
+			return migrateLegacyPanelPort(*settingsFile, config, port, fallback)
+		}
+		return saveInitialPanelConfig(*settingsFile, &panelConfig{
+			Version: 1, Port: port, AuthMode: config.AuthMode,
+			PasswordHash: config.PasswordHash, AutoPortFallback: fallback,
+		})
+	}, net.Listen)
 	if err != nil {
-		log.Fatalf("PORT_BIND_FAILED: panel address %s is unavailable; choose another panel port (other services unchanged)", *listen)
+		log.Fatal(err)
+	}
+	if moved || legacyPortMigration {
+		host, _, _ := net.SplitHostPort(*listen)
+		*listen = net.JoinHostPort(host, fmt.Sprint(selectedPort))
+		lan.address = *listen
+		app.host = *listen
+		config.Port = selectedPort
+		config.AutoPortFallback = moved
+		lan.panel.Store(config)
+		if legacyPortMigration {
+			fmt.Printf("LEGACY_PORT_MIGRATED: 8081 -> %d\n", selectedPort)
+		} else if moved {
+			fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", selectedPort)
+		}
+	} else if config != nil && config.AutoPortFallback {
+		// A saved first-start fallback is retained across reboot. Repeat the
+		// fixed, nonsecret reason in init/status for operator visibility.
+		fmt.Printf("AUTO_PORT_SELECTED: default 18080 occupied; selected %d\n", config.Port)
 	}
 	app.listeners = newPanelListeners(app)
 	app.listeners.replace(listener)

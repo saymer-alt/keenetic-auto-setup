@@ -9,6 +9,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -69,6 +70,7 @@ esac
 `, lab, lab, lab, scenario, lab, lab)
 			init = strings.ReplaceAll(init, "echo start >>", "echo \"start:$(tail -1 '"+lab+"/opt/bin/mihomo')\" >>")
 			write("opt/etc/init.d/S99mihomo", init, 0755)
+			write("opt/etc/init.d/rc.func", "", 0644)
 			payload := transactionArchive("opt/bin/mihomo", []byte(candidate))
 			packageBytes := transactionArchive("data.tar.gz", payload)
 			if err := os.WriteFile(filepath.Join(lab, "package.ipk"), packageBytes, 0600); err != nil {
@@ -97,6 +99,12 @@ test(){ if [ "$2" = -ef ] && [ "$3" = /proc/4242/exe ];then [ -f '%[1]s/running'
 			sourceText := strings.ReplaceAll(string(script), "$_wd/opt/", "$_wd/__archive_opt__/")
 			text := strings.NewReplacer("/opt/", lab+"/opt/", "/tmp/", lab+"/tmp/", `TMP_DIR="/tmp"`, `TMP_DIR="`+lab+`/tmp"`).Replace(sourceText)
 			text = strings.ReplaceAll(text, "$_wd/__archive_opt__/", "$_wd/opt/")
+			// Pin the synthetic init bytes in this private copy of the updater.
+			const packageInitSHA = "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9"
+			if strings.Count(text, packageInitSHA) != 1 {
+				t.Fatal("canonical init digest seam moved")
+			}
+			text = strings.Replace(text, packageInitSHA, fmt.Sprintf("%x", sha256.Sum256([]byte(init))), 1)
 			// Lock ownership is local to the synthetic process model. Native identity is
 			// tested independently by existing lifecycle CI, never claimed by this case.
 			marker := "\nacquire_lock\n"

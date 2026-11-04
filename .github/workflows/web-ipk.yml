@@ -33,7 +33,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Inspect actual archives and isolated maintainer hooks
         run: |
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
@@ -61,7 +62,8 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           (cd web/control-center && go generate ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/kas-control-center-native" .)
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
@@ -101,7 +103,8 @@ jobs:
             && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod=readonly -trimpath \
                  -ldflags "-X main.panelBuildVersion=0.0.1-1 -X main.panelBuildSHA=$SOURCE_SHA -X main.panelBuildChannel=stable" \
                  -o "$RUNNER_TEMP/kas-panel-stable" .)
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/aarch64-k3.10/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 1c59274bd25080b869f376788795f5319d0d22e91f325f74ce98a7d596f68015 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
