@@ -105,4 +105,15 @@ YAML
 out=$(sh "$TMP/runner.sh" "$TMP/comments.yaml" "$TMP/link.sh" "$TMP/scope.sh")
 printf '%s
 ' "$out" | grep -Fq 'br0=yes, br1=yes' || fail_test 'commented items mis-parsed'
+
+# Inline flow list with trailing comment and CRLF must parse both bridges.
+cat > "$TMP/flow-comment.yaml" <<'YAML'
+app:
+  link: [br0, br1] # selected bridges
+groups: []
+YAML
+sed 's/$/\r/' "$TMP/flow-comment.yaml" > "$TMP/flow-comment-crlf.yaml"
+out=$(sh "$TMP/runner.sh" "$TMP/flow-comment-crlf.yaml" "$TMP/link.sh" "$TMP/scope.sh")
+printf '%s\n' "$out" | grep -Fq 'br0=yes, br1=yes' || fail_test 'commented CRLF inline list retains closing bracket'
+
 echo '[OK] Doctor MT link/rule inventory regression passed'

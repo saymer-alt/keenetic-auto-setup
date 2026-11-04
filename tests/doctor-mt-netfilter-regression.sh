@@ -18,6 +18,12 @@ grep -q '^ *MT_GROUP_ANALYSIS=' "$TMP/groups.sh" || fail_test 'missing group ana
 grep -q '^ *MT_EFF_READY=' "$TMP/effective.sh" || fail_test 'missing effective netfilter block'
 sh -n "$TMP/groups.sh"; sh -n "$TMP/effective.sh"
 
+# Exercise the production disableRemap53 scalar reader, not a test literal.
+awk '/_v=\$\(awk.*disableRemap53:/ {print; getline; print; exit}' "$DOCTOR" > "$TMP/remap-reader.sh"
+grep -q 'MT_REMAP=' "$TMP/remap-reader.sh" || fail_test 'production remap reader not extracted'
+sh -n "$TMP/remap-reader.sh"
+
+
 cat > "$TMP/runner.sh" <<'SH'
 #!/bin/sh
 set -eu
@@ -60,6 +66,10 @@ absent)
     command() { return 1; }
     ;;
 esac
+if [ "$MT_REMAP" = "from-config" ]; then
+    MT_REMAP=false
+    . "$TMP_DIR/remap-reader.sh"
+fi
 . "$TMP_DIR/groups.sh"
 . "$TMP_DIR/effective.sh"
 SH
@@ -243,6 +253,18 @@ printf '%s\n' "$out" | grep -Fq 'no effective MT_* mangle chains exist' || fail_
 # --- E: configured disableRemap53=true with effective DNAT ---
 out=$(run_mode "$TMP/se.yaml" 1 true clean)
 printf '%s\n' "$out" | grep -Fq 'CONFIGURED/EFFECTIVE mismatch for DNS interception' || fail_test 'remap53 mismatch not detected'
+
+
+# --- E2: CRLF scalar through actual production config reader ---
+cat > "$TMP/remap-source.yaml" <<'YAML'
+app:
+  netfilter:
+    disableRemap53: true
+YAML
+sed 's/$/\r/' "$TMP/remap-source.yaml" > "$TMP/remap-source-crlf.yaml"
+out=$(run_mode "$TMP/remap-source-crlf.yaml" 1 from-config clean)
+printf '%s\n' "$out" | grep -Fq 'CONFIGURED/EFFECTIVE mismatch for DNS interception' || fail_test 'CRLF remap=true was not normalized in production reader'
+printf '%s\n' "$out" | grep -Fq 'clients may be bypassing MagiTrickle DNS' && fail_test 'disabled remap produced a false bypass warning'
 
 # --- F: interception configured but no DNAT while running ---
 cat > "$TMP/runner-nodnat.sh" <<'SH'
