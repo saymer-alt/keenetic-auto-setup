@@ -35,6 +35,7 @@ function ui(namesResult,inspectStatus=200,operationState='UNKNOWN',fixture={}){
    if(url==='/api/updates/magitrickle'&&fixture.mtPostError)throw Error('response lost');
    if(url==='/api/updates/magitrickle')return response(202,{id:'mt-op',component:'magitrickle',state:'RUNNING'});
    if(url==='/api/updates/operation')return response(200,fixture.updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'});
+   if(url==='/api/status'&&fixture.statusFetch)return fixture.statusFetch();
    if(url==='/api/components')return response(200,fixture.components||{panel:{version:'development',source_sha:''},core:{state:'absent'},watchdog:{state:'unrecorded'}});
    if(url==='/api/settings'){
     if(fixture.settingsFail)return response(503,{error_code:'SETTINGS_READ_FAILED'});
@@ -429,10 +430,35 @@ test('overview shows process evidence and explicitly sourced versions',async()=>
  const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
  app.run(`statusData={timestamp:'test',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'stopped',version:'0.8.2-1',version_source:'package'}}};draw();`);
  assert.match(app.el('mihomo-file').textContent,/Процесс запущен.*1\.19\.33.*API/);
- assert.match(app.el('magitrickle-file').textContent,/Процесс не найден.*0\.8\.2-1.*пакет/);
+ assert.match(app.el('magitrickle-file').textContent,/Процесс остановлен.*0\.8\.2-1.*пакет/);
  app.run(`statusData.runtime.mihomo={state:'unknown',version:'<SECRET>',version_source:'api'};draw();`);
  assert.match(app.el('mihomo-file').textContent,/Не удалось определить/);
  assert.doesNotMatch(app.el('mihomo-file').textContent,/SECRET/);
+});
+test('simultaneous status refreshes ignore old successful responses and delayed errors',async()=>{
+ const pending=[],fixture={statusFetch:()=>new Promise(resolve=>pending.push(resolve))};
+ const app=ui(response(200,{providers:{}}),200,'UNKNOWN',fixture);
+ const status=state=>({timestamp:new Date().toISOString(),runtime:{mihomo:{state},magitrickle:{state}}});
+ assert.equal(pending.length,1,'initial status refresh is pending');
+ pending[0](response(200,status('running')));
+ await new Promise(setImmediate);
+ assert.match(app.el('mihomo-file').textContent,/Процесс запущен/);
+ const old=app.run('refresh()'),newer=app.run('refresh()');
+ assert.equal(pending.length,3);
+ pending[2](response(200,status('stopped')));
+ await newer;
+ assert.match(app.el('mihomo-file').textContent,/Процесс остановлен/);
+ pending[1](response(200,status('running')));
+ await old;
+ assert.match(app.el('mihomo-file').textContent,/Процесс остановлен/,'old successful response must not replace newer state');
+ const oldError=app.run('refresh()'),latest=app.run('refresh()');
+ assert.equal(pending.length,5);
+ pending[4](response(200,status('running')));
+ await latest;
+ pending[3](response(503,{error_code:'SERVICE_UNAVAILABLE'}));
+ await oldError;
+ assert.match(app.el('mihomo-file').textContent,/Процесс запущен/,'an earlier error must not hide newer state');
+ assert.doesNotMatch(app.el('status-text').textContent,/HTTP_503/);
 });
 test('Doctor warnings are findings rather than command failure',async()=>{
  const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
@@ -513,9 +539,9 @@ test('matching Mihomo version distinguishes opkg provenance and disables unneces
  const app=ui(response(200,{providers:{}}),200,'UNKNOWN',{updateCheck:{state:'AVAILABLE',current_version:'1.19.33',available_version:'1.19.33',package_release:2,installed_package_version:'1.19.32-1',relation:'same_runtime'}});await new Promise(setImmediate);
  await app.el('update-check').click();
  assert.equal(app.el('update-mihomo').disabled,true);
- assert.match(app.el('updates-state').textContent,/Версия запущенного Mihomo: 1\.19\.33/);
+ assert.match(app.el('updates-state').textContent,/Запущенный Mihomo \(runtime\): 1\.19\.33/);
  assert.match(app.el('updates-state').textContent,/opkg.*1\.19\.32-1/);
- assert.match(app.el('updates-state').textContent,/подтвердить не удалось/);
+ assert.match(app.el('updates-state').textContent,/не подтверждён/);
  app.run("updateCheckData.relation='newer_package';draw();");assert.equal(app.el('update-mihomo').disabled,false);
 });
 test('MT check is manual, confirmation cancels and one named update blocks mutations',async()=>{
