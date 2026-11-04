@@ -2507,30 +2507,55 @@ else
                 if (eff) {
                     active_rules++
                     if (rule_type == "subnet") active_subnet++
+                    g_eff_rules++
+                    if (rule_type == "subnet") g_eff_subnet++
                     if (iface == "mitun0") {
                         if (rule_type == "regex" && broad_regex(rule)) broad_catchall = 1
                     }
                 }
                 if (tolower(rule) ~ /telegram/) {
-                    tg_present = 1
-                    if (enabled == "true") tg_group_enabled = 1
+                    g_tg_rule_seen = 1
                     if (eff) {
-                        tg_eff_rules++
-                        if (rule_type == "subnet") tg_eff_subnet++
+                        g_tg_matched_rules++
+                        if (rule_type == "subnet") g_tg_matched_subnet++
                     }
                 }
                 have_rule = 0
             }
+            # A Telegram-labeled group owns its enabled subnet routes even
+            # when their CIDR values cannot contain the word "telegram".
+            # For unlabeled groups count only explicit Telegram rule matches;
+            # do not attribute unrelated subnets to that service.
+            function close_group() {
+                close_rule()
+                if (!have_group) return
+                if (g_tg_named || g_tg_rule_seen) {
+                    tg_present = 1
+                    if (enabled == "true") tg_group_enabled = 1
+                    tg_eff_rules += g_tg_named ? g_eff_rules : g_tg_matched_rules
+                    tg_eff_subnet += g_tg_named ? g_eff_subnet : g_tg_matched_subnet
+                }
+                have_group = 0
+            }
             /^groups:[[:space:]]*$/ { in_groups = 1; next }
-            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
-            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^[[:alpha:]]/ { close_group(); in_groups = 0 }
+            in_groups && /^- id:/ {
+                close_group()
+                groups++; have_group = 1
+                enabled = "false"; iface = ""
+                g_tg_named = 0; g_tg_rule_seen = 0
+                g_eff_rules = 0; g_eff_subnet = 0
+                g_tg_matched_rules = 0; g_tg_matched_subnet = 0
+                next
+            }
+            in_groups && /^  name:/ { if (tolower(val($0)) ~ /telegram/) g_tg_named = 1; next }
             in_groups && /^  interface:/ { iface = val($0); next }
             in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
             in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
             in_groups && /^    type:/ { rule_type = val($0); next }
             in_groups && /^    rule:/ { rule = val($0); next }
             in_groups && /^    enable:/ { rule_enabled = val($0); next }
-            END { close_rule(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
+            END { close_group(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
         ' "$MT_CFG" 2>/dev/null)
         set -- $MT_GROUP_ANALYSIS
         if [ "$#" -eq 9 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5" && is_num "$6" && is_num "$7" && is_num "$8" && is_num "$9"; then
