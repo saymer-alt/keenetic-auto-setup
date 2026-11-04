@@ -291,3 +291,62 @@ func TestAutoPortWildcardConflictsWithDifferentLoopbackIPv4(t *testing.T) {
 		t.Fatal("unexpected bind error", err)
 	}
 }
+
+func TestLegacyPanelMigrationAndBackup(t *testing.T) {
+	for _, busy := range []bool{false, true} {
+		t.Run(fmt.Sprint("occupied-", busy), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			before := &panelConfig{Version: 1, Port: 8081, AuthMode: "entware"}
+			if err := saveInitialPanelConfig(path, before); err != nil { t.Fatal(err) }
+			var probes []string
+			listener, port, fallback, err := selectStartupListener("0.0.0.0:18080", true,
+				func(p int, fb bool) error { return migrateLegacyPanelPort(path, before, p, fb) },
+				func(_, address string) (net.Listener, error) {
+					probes = append(probes, address)
+					if busy && strings.HasSuffix(address, ":18080") { return nil, syscall.EADDRINUSE }
+					return fakePortListener(t), nil
+				})
+			if err != nil { t.Fatal(err) }
+			listener.Close()
+			want := 18080; if busy { want = 18081 }
+			if port != want || fallback != busy || len(probes) != 1+map[bool]int{true:1,false:0}[busy] { t.Fatal(port, fallback, probes) }
+			current, err := readPanelConfig(path)
+			if err != nil || current.Port != want || current.AuthMode != "entware" ||
+				current.AutoPortFallback != busy { t.Fatal(current, err) }
+			backup, err := readPanelConfig(path+legacyPortBackupSuffix)
+			if err != nil || !samePersistedPanelConfig(backup, before) { t.Fatal(backup, err) }
+			st, err := os.Stat(path+legacyPortBackupSuffix)
+			if err != nil || st.Mode().Perm()&0077 != 0 { t.Fatal("backup must be private", err) }
+			if !legacyPanelBackupMatches(path, current) || legacyPanelPortEligible(current) { t.Fatal("migration marker invalid") }
+		})
+	}
+}
+func TestLegacyPanelMigrationSafety(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	for _, port := range []int{8080, 18080, 18081, 19000, 443} {
+		if legacyPanelPortEligible(&panelConfig{Version:1, Port:port, AuthMode:"none"}) { t.Fatal("custom port mutated", port) }
+	}
+	original := &panelConfig{Version:1, Port:8081, AuthMode:"none"}
+	if err := saveInitialPanelConfig(path, original); err != nil { t.Fatal(err) }
+	if err := migrateLegacyPanelPort(path, original, 18091, false); err == nil { t.Fatal("range bypass") }
+	if err := migrateLegacyPanelPort(path, original, 18080, true); err == nil { t.Fatal("fallback mismatch") }
+	if err := saveInitialPanelConfig(path+legacyPortBackupSuffix, &panelConfig{Version:1, Port:8081, AuthMode:"entware"}); err != nil { t.Fatal(err) }
+	if err := migrateLegacyPanelPort(path, original, 18080, false); err == nil { t.Fatal("mismatched backup overwritten") }
+	if err := os.Remove(path+legacyPortBackupSuffix); err != nil { t.Fatal(err) }
+	if err := os.Symlink("elsewhere", path+legacyPortBackupSuffix); err != nil { t.Fatal(err) }
+	if err := migrateLegacyPanelPort(path, original, 18080, false); err == nil { t.Fatal("symlink backup accepted") }
+	c, err := readPanelConfig(path); if err != nil || c.Port!=8081 { t.Fatal(c,err) }
+}
+func TestLegacyPanelExhaustionKeepsOriginal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := &panelConfig{Version:1,Port:8081,AuthMode:"entware"}
+	if err := saveInitialPanelConfig(path, original); err != nil { t.Fatal(err) }
+	calls := 0
+	l, _, _, err := selectStartupListener("0.0.0.0:18080", true,
+		func(int,bool) error { t.Fatal("persist without listener"); return nil },
+		func(_, _ string)(net.Listener,error){ calls++; return nil,syscall.EADDRINUSE })
+	if l!=nil || err==nil || calls!=11 { t.Fatal(err,calls) }
+	after,err:=readPanelConfig(path)
+	if err!=nil || !samePersistedPanelConfig(after,original) { t.Fatal("settings changed",after,err) }
+	if _,err:=os.Lstat(path+legacyPortBackupSuffix);!os.IsNotExist(err) { t.Fatal("backup before bind",err) }
+}
