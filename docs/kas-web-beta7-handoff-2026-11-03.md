@@ -2,6 +2,40 @@
 
 > **Статус: ROADMAP / DESIGN, не реализованный релиз.** Это закреплённый план следующего цикла, а не разрешение на merge, Release, Pages, `stable` или доступ к физическим роутерам. Проверять актуальные HEAD/CI/GitHub issues перед началом работ. Приоритет: сначала завершить и испытать beta.6.
 
+## Актуализация 04.11.2026 — ревизия GitHub и новые независимые Draft PR
+
+> Приоритетные данные от 04.11 имеют преимущество над историческим начальным порядком работ внизу файла. Здесь перечислен **фактический статус подготовки**, не разрешение на merge, установку, Release или Pages.
+
+- **main:** `5fa32fc1d9a2db03212fe3fb848e3342e3b4cd95` (после информационного Core Sync Guard PR #373). **Официальная beta.6:** tag/source `070faa90e15855ae6076d8738c5dcec931059a36`, четыре IPK и SHA256SUMS; канонический builder `.github/workflows/kas-web-candidate-build.yml` после merged #375. Переименование workflow **закрыто**.
+- **Pages:** deployment run #41712854453 `completed/success` на `070faa90…`, но независимый HTTP GET `channels.json` и `experimental/panel-update.json` в этой ревизии не прошёл: **HTTP content UNVERIFIED**, не объявлять подтверждённым.
+- **Metrics #380:** standalone `kas-sys-metrics.sh` на NC-4210/ash 1.37 PASS; исправленный Web launcher остаётся только [Draft PR #381](https://github.com/saymer-alt/keenetic-auto-setup/pull/381), 17/17 CI success на `5330bace…`. 04.11 проведено code review COMMENT: changes limited to `router_metrics.go` + test; нет конфликтов с #373; настоящий исправленный `POST /api/metrics` / новый IPK на железе **не испытывался**.
+- **P0 saved 8081 #377:** отдельный [Draft PR #387](https://github.com/saymer-alt/keenetic-auto-setup/pull/387): после фактического bind — одноразовая миграция при штатном `-lan -listen auto`, EADDRINUSE-only `18080…18090`, приватная backup-копия `.pre-beta7-8081.bak`, сохранение `auth_mode/password_hash` и Home-only, предупреждение/адрес в init status + Web. Есть [операторский runbook](kas-web-beta7-port-migration-runbook.md) в ветке PR. **Требуются CI, code review, hardware**. Ограничение: старые JSON не фиксируют, выбирал ли владелец 8081 вручную, поэтому историческое происхождение порта нельзя доказывать.
+- **P0 update recovery #379:** отдельный [Draft PR #384](https://github.com/saymer-alt/keenetic-auto-setup/pull/384) изменяет **только** текст/отображение recovery sentinel `State:FAIL, Phase:recovered, Gate:false` и RU/EN regression. Gate/worker не ослаблены, новый check обязателен. **Требуются CI и hardware UX**.
+- **P1 prerelease label:** отдельный [Draft PR #385](https://github.com/saymer-alt/keenetic-auto-setup/pull/385): строка `0.1.0.beta.6-1` и другие prerelease больше не называются «Стабильная версия»; тесты RU/EN. **Требуются CI и визуальная проверка**.
+- **Network Doctor #323:** [#376](https://github.com/saymer-alt/keenetic-auto-setup/pull/376) — CLI stage A/B, 3 CI success, без hardware WAN/VPN proof; [#382](https://github.com/saymer-alt/keenetic-auto-setup/pull/382) — только draft WEB-contract; [#383](https://github.com/saymer-alt/keenetic-auto-setup/pull/383) — карта инструментов, docs-only. Review COMMENT в #382: **pre-resolve SSRF недостаточен против DNS rebinding/remote SOCKS5h lookup**; требуются IP pinning / equivalent effective-address enforcement и точное отображение `default` / `mihomo` без несуществующих CLI flags. Не начинать опасную Web-реализацию по контракту как есть.
+- **MagiTrickle #327:** [#326](https://github.com/saymer-alt/keenetic-auto-setup/pull/326) и stacked [#338](https://github.com/saymer-alt/keenetic-auto-setup/pull/338), по 18 CI success, но ни один не merged; review/diff #338 после #326, тесты на поле отдельно. Никакого изменения маршрутизации.
+
+### Приоритет и порядок безопасной интеграции beta.7
+
+1. **FIELD regression blockers P0:** review/owner GO на независимый #381 (не переписывать), #387 (миграция), #384 (recovery), #385 (semver label); устранить все CI red до интеграции. Эти PR изолированы и **не merged**.
+2. **Сформировать один beta.7 integration candidate только после отдельного GO на merge.** Проверить совместимость PR друг с другом, в т.ч. применение #381 поверх текущего main; не трогать beta.6 tag/source, рабочую stable/Core, не запускать IPK на живых роутерах.
+3. **Network Doctor minimal:** использовать единственный CLI `kas-network-doctor.sh` и существующие JSON-контракты, Web default+Mihomo только после исправления SSRF/DoS/budget/cancel контракта; один ручной запуск. `if:DEV/all` из #376 после CLI review и доказуемого route proof, **не release-blocker** базового режима; ProxyN без netdev — UNSUPPORTED.
+4. **Read-only MagiTrickle:** review #326 → #338 (проверка effective netfilter и group semantics, никаких автоисправлений). Watchdog #335/#337 — только подтверждённый source/identity + SHA и честный UNKNOWN при отсутствии evidence. Использовать уже имеющиеся механизмы, не размножать Doctor.
+5. **Критерии выпуска:** отдельный владелец GO; Web Go/Node shell/BusyBox, QEMU, 4 ABI/IPK, upgrade beta.4/5/6→beta.7, rollback settings, auth/Home-only, -recover-panel-update, KeenDNS GET/POST, Health metrics 503 regression, user-visible beta tag; NC-4210 и KN-1012 SE аппаратная test matrix. По завершении — штатный candidate-builder, publisher и Pages *только по отдельным GO*.
+
+### Аппаратная test matrix (перед Release)
+
+| Device / scenario | Expected | Proof |
+| --- | --- | --- |
+| NC-4210 (текущая первая beta.6 `b7d97c2…`) | отличать установленную сборку от опубликованной `070faa90…` при равном IPK version | installed binary/source checksum + receipt, не вывод по одному opkg |
+| NC-4210, saved 8081 | bind 18080 или fallback 18081–18090, 0600 backup, UI/status сообщает новый URL | startup output, read-only settings/backup inspection, HTTP GET |
+| NC-4210, existing custom port / auth / Home-only | порт/пароль/firewall policy не меняются; EADDRINUSE/EACCES честно fail-closed | reboot & settings comparator |
+| NC-4210, manual self-update recovery | `Gate:true` блокирует; после штатного explicit recover → `Gate:false`, `State:FAIL/Phase:recovered`, понятный UX и повторная проверка версии | verified receipt/GET operation/JS |
+| NC-4210 BusyBox ash 1.37 | `POST /api/metrics` HTTP 200 valid `router-metrics/v1`; UNKNOWN temperature не ломает load/RAM/uptime | actual candidate IPK API, independently read-only collector |
+| NC-4210 / KN-1012 SE | beta prerelease label корректен; no background probes, no accidental KAS Core changes | screenshots, browser tests |
+| KN-1012 SE clean/new/upgrade | auto default 18080, saved port persistence, LAN + explicitly permitted WAN & KeenDNS GET/POST with Host/Origin/auth intact | browser+curl, existing router firewall policy, no auto-rule |
+| Both routers, Network Doctor after owner GO | default and Mihomo separately reported; no SSRF or private-target probes; WAN/VPN UNKNOWN/UNSUPPORTED where route not proven | bounded JSON+text, no route/firewall mutation |
+
 ## Обновление статуса после выпуска beta.6 (03.11.2026, подтверждено GitHub)
 
 - **beta.6 ОПУБЛИКОВАНА И ОФИЦИАЛЬНО ПЕРЕИЗДАНА 03.11.2026:** [Release v0.1.0-beta.6](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.6), пакет `0.1.0.beta.6-1`, GitHub prerelease, четыре IPK + SHA256SUMS. **Текущий release/tag SHA `070faa90e15855ae6076d8738c5dcec931059a36`** (после [PR #375](https://github.com/saymer-alt/keenetic-auto-setup/pull/375), универсальный candidate-builder). Изначальная публикация была собрана с `b7d97c297a70c90980d932bf571cd0ff6ee52ad9`; это теперь исторический, а не действующий release SHA.
