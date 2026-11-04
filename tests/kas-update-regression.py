@@ -23,6 +23,7 @@ sh/dash/BusyBox ash dialects, plus the post-review safety contracts:
 """
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -53,6 +54,23 @@ DOCUMENTED_COMMAND = ('curl -fSsL -o /tmp/kas-update.sh '
 
 BODY_CACHE = {}
 
+# The five known legacy watchdog bodies are pinned by kas-update's
+# KNOWN_LEGACY_HASHES (= update-watchdog.sh LEGACY_HASHES). For fixtures we
+# recover the exact historical bytes: local git history first, then the
+# immutable raw URL of the historical commit (works on depth-1 CI checkouts).
+LEGACY_COMMITS = {
+    'a660e191909664b79f3d6d5fa0211ea85ad5609ab20e090e7309ee89d122d9ff':
+        'f6ac99aec95d8b00a2297eef6ffb49b1a4895cf5',
+    '7c8b6969fd4474e355d51801d6379d06281525140e74c8ca2d85e02dca5a8715':
+        '69acc361091fa356cdb0b00c979557b553891bbf',
+    '39c5a07ff74d9bc922678e06ecb7def97c0c5ab66641b2d41aedba741b9fbee6':
+        '2e08ce18e7da08e26fe9f5daf2c969a20fbb87d2',
+    'a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a':
+        'c273a6acc0ac057f61b24b816b012b5276928ca8',
+    '122d17d8fa40cc9d6a4c1879094cdcf299c5e6e5a4e00c83a8bb807a7749bd80':
+        '66959c0d23ec452fe7094808b5f8987b7fdbf822',
+}
+
 
 def release_body(tag):
     """Bytes of mihomo-watchdog.sh at a release tag; its sha256 must be in
@@ -74,6 +92,29 @@ def release_body(tag):
         with urllib.request.urlopen(url, timeout=30) as response:
             data = response.read()
     BODY_CACHE[tag] = data
+    return data
+
+
+def legacy_body(digest):
+    """Exact historical bytes of one known legacy watchdog body."""
+    key = 'legacy:%s' % digest
+    if key in BODY_CACHE:
+        return BODY_CACHE[key]
+    commit = LEGACY_COMMITS[digest]
+    data = None
+    try:
+        out = subprocess.run(['git', '-C', str(REPO), 'show', '%s:mihomo_watchdog.sh' % commit],
+                             capture_output=True)
+        if out.returncode == 0 and out.stdout:
+            data = out.stdout
+    except OSError:
+        pass
+    if data is None:
+        url = 'https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/%s/mihomo_watchdog.sh' % commit
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = response.read()
+    assert sha(data) == digest, 'legacy fixture bytes mismatch for %s' % digest[:12]
+    BODY_CACHE[key] = data
     return data
 
 
@@ -560,6 +601,118 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertEqual(self.wrapper.read_text(), foreign_body)
         self.assertEqual(self.updater_hits(), [])
 
+    def install_legacy_cron(self, body):
+        """Legacy layout fixture: NO canonical binary; the full watchdog
+        body sits directly at the cron path with the managed direct route."""
+        self.wrapper.write_bytes(body)
+        self.wrapper.chmod(0o755)
+        wrapper_exec = str(self.wrapper).replace('\\', '/')
+        write_lf(self.crontab, '*/5 * * * * root /bin/sh ' + wrapper_exec + '\n')
+        self.crontab.chmod(0o644)
+
+    def test_legacy_cron_full_body_migrates_when_canonical_absent(self):
+        # canonical absent + recognized legacy full watchdog at the cron
+        # path: kas-update plans the migration and the unchanged transactional
+        # updater performs it (canonical + wrapper + one bounded backup).
+        body = legacy_body('a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a')
+        self.install_legacy_cron(body)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('recognized legacy full watchdog', check.stdout)
+        self.assertNotIn('REVIEW REQUIRED', check.stdout)
+        self.assertIn('apply plan', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('apply verified', result.stdout)
+        # Canonical installed from the channel; cron slot became the wrapper.
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        self.assertIn('exec ' + str(self.binary).replace('\\', '/'), self.wrapper.read_text())
+        # One bounded legacy backup kept outside cron.5mins (updater contract).
+        bak = self.lab / 'opt/etc/mihomo_watchdog.legacy.bak'
+        self.assertTrue(bak.is_file())
+        self.assertEqual(bak.read_bytes(), body)
+        if POSIX_MODES:
+            self.assertEqual(bak.stat().st_mode & 0o7777, 0o600)
+        # Idempotent follow-up: everything recognized and current.
+        follow = self.run_kas_update(['--check'])
+        self.assertEqual(follow.returncode, 0, follow.stdout + follow.stderr)
+        self.assertIn('already current', follow.stdout)
+
+    def test_legacy_cron_with_canonical_binary_migrates(self):
+        # Current canonical binary + a known legacy full watchdog at the
+        # cron path: the updater converts the cron copy into the managed
+        # wrapper with one bounded backup; the current binary is not rewritten.
+        body = legacy_body('122d17d8fa40cc9d6a4c1879094cdcf299c5e6e5a4e00c83a8bb807a7749bd80')
+        self.install_watchdog(NEW_BODY)
+        self.wrapper.write_bytes(body)
+        self.wrapper.chmod(0o755)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('recognized legacy full watchdog', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        self.assertIn('exec ' + str(self.binary).replace('\\', '/'), self.wrapper.read_text())
+        bak = self.lab / 'opt/etc/mihomo_watchdog.legacy.bak'
+        self.assertTrue(bak.is_file())
+        self.assertEqual(bak.read_bytes(), body)
+
+    def test_legacy_cron_unknown_body_requires_review_when_canonical_absent(self):
+        # canonical absent + full watchdog body with the sanity marker but
+        # an unknown hash: REVIEW, no writes, no updater invocation.
+        self.install_legacy_cron(DRIFT_BODY)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('REVIEW REQUIRED', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('REVIEW REQUIRED', result.stdout + result.stderr)
+        self.assertFalse(self.binary.exists())
+        self.assertEqual(self.wrapper.read_text(), DRIFT_BODY.decode())
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_canonical_absent_exact_wrapper_requires_repair_not_update(self):
+        # canonical missing while an exact managed wrapper schedules it:
+        # a broken layout. kas-update must not disguise the repair
+        # (canonical installation) as an update: REVIEW with an explicit
+        # reason, no writes, no updater invocation.
+        self.install_watchdog(NEW_BODY)
+        self.binary.unlink()
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('REVIEW REQUIRED', check.stdout)
+        self.assertIn('canonical file is missing', check.stdout)
+        self.assertIn('install.sh', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('canonical file is missing', result.stdout + result.stderr)
+        self.assertFalse(self.binary.exists())
+        self.assertTrue(self.wrapper.is_file())
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_legacy_hash_catalogue_matches_updater(self):
+        # kas-update may only plan migrations the updater itself recognizes:
+        # its KNOWN_LEGACY_HASHES must equal update-watchdog.sh LEGACY_HASHES.
+        kas = (REPO / 'kas-update.sh').read_text(encoding='utf-8')
+        upd = (REPO / 'update-watchdog.sh').read_text(encoding='utf-8')
+        kas_list = re.search(r'KNOWN_LEGACY_HASHES="(.*?)"', kas, re.S).group(1)
+        upd_list = re.search(r'LEGACY_HASHES="(.*?)"', upd, re.S).group(1)
+        digest = lambda tokens: sorted(t for t in tokens.split()
+                                       if re.fullmatch(r'[0-9a-f]{64}', t))
+        self.assertEqual(digest(kas_list), digest(upd_list))
+
     def test_apply_requires_confirmation_without_tty(self):
         self.install_watchdog(release_body('v1.8.7'))
         self.prepare_updater_payload()
@@ -692,6 +845,8 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('--apply', updates)
         self.assertIn('--allow-unrecognized-base', updates)
         self.assertIn('REVIEW', updates)
+        self.assertIn('legacy', updates.lower())
+        self.assertIn('bounded backup', updates)
         self.assertIn(DOCUMENTED_COMMAND, updates)
         self.assertIn('read-only', updates.lower())
         scripts_ru = (REPO / 'docs' / 'SCRIPTS.md').read_text(encoding='utf-8')

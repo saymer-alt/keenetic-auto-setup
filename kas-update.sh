@@ -31,7 +31,14 @@
 #     явного разрешения: --allow-unrecognized-base (неинтерактивно) или
 #     отдельного подтверждения с показом хэша (интерактивно);
 #   - cron slot с нераспознанным содержимым — REVIEW: apply отказывается,
-#     файл сохраняется, ничего не «чинится молча»;
+#     файл сохраняется, ничего не «чинится молча». Исключение — точное
+#     совпадение с KNOWN_LEGACY_HASHES (зеркало LEGACY_HASHES updater'а):
+#     распознанный полный старый watchdog в cron.5mins (canonical
+#     отсутствует или присутствует) планируется к миграции через штатный
+#     update-watchdog.sh (canonical + wrapper + один bounded backup);
+#   - canonical отсутствует, но cron slot содержит managed wrapper — это
+#     сломанный layout: kas-update не выдаёт такой repair за update и
+#     отказывается (ремонт — install.sh или прямой запуск updater'а);
 #   - скачивает с канала штатный update-watchdog.sh, проверяет его
 #     (маркер, sh -n) и запускает его для транзакции. ВСЯ логика замены,
 #     backup, atomic rename и cron-нормализации остаётся в существующем
@@ -151,6 +158,26 @@ a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a \
 is_known_release_hash() {
     for _krh in $KNOWN_RELEASE_HASHES; do
         [ "$_krh" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Exact SHA-256 bodies of the known historical managed watchdogs that the
+# transactional updater migrates (full script living at the cron path with
+# no canonical binary). MUST stay identical to LEGACY_HASHES inside
+# update-watchdog.sh: kas-update only plans a migration the updater itself
+# will recognize; anything else at the cron path is unverified content.
+# tests/kas-update-regression.py pins both lists together.
+KNOWN_LEGACY_HASHES=" \
+a660e191909664b79f3d6d5fa0211ea85ad5609ab20e090e7309ee89d122d9ff \
+7c8b6969fd4474e355d51801d6379d06281525140e74c8ca2d85e02dca5a8715 \
+39c5a07ff74d9bc922678e06ecb7def97c0c5ab66641b2d41aedba741b9fbee6 \
+a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a \
+122d17d8fa40cc9d6a4c1879094cdcf299c5e6e5a4e00c83a8bb807a7749bd80"
+
+is_known_legacy_hash() {
+    for _klh in $KNOWN_LEGACY_HASHES; do
+        [ "$_klh" = "$1" ] && return 0
     done
     return 1
 }
@@ -355,6 +382,7 @@ assess_watchdog() {
     PLAN_WRAPPER=0
     MANAGED_UNKNOWN=1
     REVIEW_NEEDED=0
+    REVIEW_REASON=""
     CANDIDATE_FILE="$WORK_DIR/candidate.sh"
 
     if ! has_hash_tool; then
@@ -400,10 +428,20 @@ assess_watchdog() {
         WRAPPER_STATE="exact"
     elif is_wrapperish; then
         WRAPPER_STATE="wrapperish"
+    elif [ -f "$WATCHDOG_CRON" ] && has_hash_tool; then
+        # A full historical watchdog body at the cron path is migratable
+        # ONLY at an exact match with the legacy bodies the transactional
+        # updater itself recognizes (is_known_legacy / LEGACY_HASHES).
+        _wc_hash=$(file_hash "$WATCHDOG_CRON")
+        if [ -n "$_wc_hash" ] && is_known_legacy_hash "$_wc_hash"; then
+            WRAPPER_STATE="legacy"
+        else
+            # Full watchdog bodies with the marker and everything else at
+            # the cron path are unverified content: preserved by the
+            # transactional updater, review-required for kas-update.
+            WRAPPER_STATE="foreign"
+        fi
     else
-        # Full watchdog bodies with the marker and everything else at the
-        # cron path are unverified content: preserved by the transactional
-        # updater, and kas-update treats them as review-required.
         WRAPPER_STATE="foreign"
     fi
 
@@ -422,18 +460,22 @@ assess_watchdog() {
 
     if [ ! -f "$WATCHDOG_BIN" ]; then
         # Absent canonical binary. An empty slot is NOT an update target:
-        # primary installation belongs to bootstrap.sh/install.sh. A file at
-        # the cron path alone is a legacy layout the transactional updater
-        # recognizes (exact known bodies migrate; unknown ones are preserved
-        # and reviewed).
+        # primary installation belongs to bootstrap.sh/install.sh. A known
+        # legacy full watchdog at the cron path is the one exception: the
+        # transactional updater migrates it explicitly (canonical + wrapper
+        # + one bounded backup). Anything else at the cron path is review;
+        # an exact wrapper scheduling a MISSING canonical file is a broken
+        # layout, and kas-update does not disguise that repair as an update.
         W_STATE="absent"
         W_REASON="watchdog is not installed; primary installation is bootstrap.sh/install.sh"
-        if [ "$AVAIL_STATE" = "ok" ] \
-            && [ "$WRAPPER_STATE" != "missing" ] && [ "$WRAPPER_STATE" != "unknown" ]; then
-            if [ "$WRAPPER_STATE" = "foreign" ]; then
-                REVIEW_NEEDED=1
-            else
+        if [ "$AVAIL_STATE" = "ok" ]; then
+            if [ "$WRAPPER_STATE" = "legacy" ]; then
                 PLAN_WRAPPER=1
+            elif [ "$WRAPPER_STATE" = "exact" ] || [ "$WRAPPER_STATE" = "wrapperish" ]; then
+                REVIEW_NEEDED=1
+                REVIEW_REASON="the cron slot schedules $WATCHDOG_BIN but the canonical file is missing; repair it with install.sh or a direct update-watchdog.sh run - kas-update does not install"
+            elif [ "$WRAPPER_STATE" = "foreign" ]; then
+                REVIEW_NEEDED=1
             fi
         fi
     elif [ "$AVAIL_STATE" = "ok" ]; then
@@ -453,11 +495,13 @@ assess_watchdog() {
     fi
 
     # A missing wrapper next to a recognized canonical binary is a real
-    # repair target (the updater creates it in the empty slot). Without the
-    # canonical binary an empty slot is NOT a kas-update task. A foreign
-    # cron slot is never a plan item: it needs explicit review first.
+    # repair target (the updater creates it in the empty slot). A known
+    # legacy full watchdog at the cron path is migratable by the updater.
+    # A foreign cron slot is never a plan item: it needs explicit review.
     if [ "$W_STATE" = "current" ] || [ "$W_STATE" = "update" ]; then
         if [ "$WRAPPER_STATE" = "missing" ]; then
+            PLAN_WRAPPER=1
+        elif [ "$WRAPPER_STATE" = "legacy" ]; then
             PLAN_WRAPPER=1
         elif [ "$WRAPPER_STATE" = "foreign" ]; then
             REVIEW_NEEDED=1
@@ -510,6 +554,7 @@ print_watchdog_state() {
     case "$WRAPPER_STATE" in
         exact) info_out "cron wrapper: exact managed wrapper" ;;
         wrapperish) info_out "cron wrapper: managed wrapper with local drift (works; the updater keeps it)" ;;
+        legacy) info_out "cron slot: recognized legacy full watchdog (exact managed release body); apply migrates it via the updater (canonical binary + wrapper + one bounded backup)" ;;
         missing) warn_out "cron wrapper missing: $WATCHDOG_CRON (apply lets the updater create it)" ;;
         foreign) warn_out "cron wrapper content is unrecognized (REVIEW REQUIRED); it is preserved, never deleted or replaced by kas-update" ;;
         anomaly) unknown_out "cron wrapper is a symlink or not a regular file" ;;
@@ -573,6 +618,7 @@ print_plan() {
     fi
     if [ "$REVIEW_NEEDED" -eq 1 ]; then
         warn_out "  - cron slot requires REVIEW before any apply; kas-update will not run while it is unresolved"
+        [ -n "${REVIEW_REASON:-}" ] && warn_out "  - reason: $REVIEW_REASON"
     fi
     info_out "  - never touched: Mihomo binary, $MIHOMO_CONFIG, MagiTrickle, netfilter, routing policies, WAN/VPN, Entware packages, KAS Web"
 }
@@ -635,7 +681,8 @@ do_check() {
         return 2
     fi
     if [ "$REVIEW_NEEDED" -eq 1 ]; then
-        warn_out "check result: REVIEW REQUIRED - the cron slot holds unrecognized content; kas-update preserves it and will not apply anything until it is reviewed"
+        warn_out "check result: REVIEW REQUIRED - kas-update preserves the cron slot and will not apply anything until it is reviewed"
+        [ -n "${REVIEW_REASON:-}" ] && warn_out "review reason: $REVIEW_REASON"
         print_plan
         return 2
     fi
@@ -699,12 +746,14 @@ do_apply() {
         return 1
     fi
 
-    # An unrecognized cron slot is never worked around: the transactional
-    # updater would update the binary yet report an incomplete layout, and
-    # kas-update does not drive a transaction whose schedule is unreviewed.
+    # An unresolved cron slot is never worked around: kas-update does not
+    # drive a transaction whose schedule is unreviewed (or whose exact
+    # wrapper schedules a missing canonical file - that repair belongs to
+    # install.sh / a direct updater run).
     if [ "$REVIEW_NEEDED" -eq 1 ]; then
-        err_out "refusing to apply: $WATCHDOG_CRON holds unrecognized content (REVIEW REQUIRED)"
-        err_out "kas-update preserves it unchanged. Review the file manually; if it is a deliberate custom wrapper, keep it and use update-watchdog.sh directly for the canonical binary, then re-run kas-update --check"
+        err_out "refusing to apply: the cron slot is REVIEW REQUIRED before any apply"
+        [ -n "${REVIEW_REASON:-}" ] && err_out "review reason: $REVIEW_REASON"
+        err_out "kas-update preserves the cron slot unchanged. Review the file manually; if it is a deliberate custom wrapper, keep it and use update-watchdog.sh directly for the canonical binary, then re-run kas-update --check"
         return 1
     fi
 

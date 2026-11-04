@@ -51,6 +51,19 @@ matches no known managed release requires explicit approval
 any post-apply SHA-256 mismatch — including channel drift between the two
 downloads — is an **unverified apply** and exits non-zero, never green.
 
+Legacy layouts stay supported: a full old watchdog sitting directly at
+`/opt/etc/cron.5mins/mihomo_watchdog` (with or without the canonical binary)
+whose SHA-256 **exactly matches** the known legacy bodies (a mirror of
+`LEGACY_HASHES` from `update-watchdog.sh`; both lists are pinned together by
+the regression) is recognized as a migration: apply runs the stock updater,
+which installs the canonical binary, turns the cron copy into the managed
+wrapper and keeps one bounded backup outside cron.5mins. Bodies outside that
+exact catalogue — even with the marker — remain `REVIEW REQUIRED` and are
+never overwritten. A managed wrapper scheduling a MISSING canonical file is
+a broken layout: kas-update refuses with an explicit reason instead of
+disguising the repair (install.sh or a direct `update-watchdog.sh` run) as
+an update.
+
 `kas-update` never touches the Mihomo binary, `config.yaml`, MagiTrickle,
 netfilter, routing policies, WAN/VPN, Entware packages or KAS Web. Mihomo and
 MagiTrickle remain separate explicit updates (below). Doctor and

@@ -64,6 +64,18 @@ sh /tmp/kas-update.sh --apply
   файл сохраняется без изменений, транзакция не запускается; для обновления
   canonical binary при сохранении такого wrapper используйте штатный
   `update-watchdog.sh` напрямую, затем повторите `--check`;
+- **legacy layout поддержан**: полный старый watchdog непосредственно в
+  `/opt/etc/cron.5mins/mihomo_watchdog` (canonical отсутствует или
+  присутствует), чей SHA-256 **точно совпадает** с известными legacy-версиями
+  (зеркало `LEGACY_HASHES` из `update-watchdog.sh`; обе версии сверяются
+  регрессией), распознаётся как миграция: apply запускает штатный updater,
+  который ставит canonical binary, превращает cron-копию в managed wrapper
+  и сохраняет один bounded backup вне cron.5mins. Тела вне точного каталога
+  (даже с маркером) остаются `REVIEW REQUIRED` — перезаписи не будет;
+- canonical отсутствует, но cron slot содержит managed wrapper — сломанный
+  layout (расписание указывает на несуществующий файл): kas-update не
+  выдаёт такой repair за update и отказывается с явной причиной; ремонт —
+  `install.sh` или прямой запуск `update-watchdog.sh`;
 - перезапись установленной базы, не совпадающей ни с одним известным
   managed-релизом (например, локальная кастомизация с сохранённым маркером),
   требует отдельного явного разрешения: `--allow-unrecognized-base` при
