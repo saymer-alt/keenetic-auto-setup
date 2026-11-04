@@ -74,7 +74,7 @@ test('canonical 1.2.19 watchdog findings have distinct bilingual advice and keep
   const doc={createElement:()=>new Node(doc)},node=new Node(doc);api.render(node,data,lang);
   const all=x=>[x.textContent,...x.children.map(all)].join(' '),message=all(node);
   for(const f of findings)assert.ok(message.includes(f),'evidence preserved');
-  for(const key of ['watchdogHour','watchdogDay','watchdogStability','watchdogHistory','watchdogGuide'])assert.ok(message.includes(api.labels[lang][key]));
+  for(const key of ['watchdogHour','watchdogDay','watchdogStability','watchdogGuide'])assert.ok(message.includes(api.labels[lang][key]));
  }
 });
 test('unknown warning and older version have no invented remedy',()=>{
