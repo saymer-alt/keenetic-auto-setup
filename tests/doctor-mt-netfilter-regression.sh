@@ -22,6 +22,13 @@ sh -n "$TMP/groups.sh"; sh -n "$TMP/effective.sh"
 awk '/_v=\$\(awk.*disableRemap53:/ {print; getline; print; exit}' "$DOCTOR" > "$TMP/remap-reader.sh"
 grep -q 'MT_REMAP=' "$TMP/remap-reader.sh" || fail_test 'production remap reader not extracted'
 sh -n "$TMP/remap-reader.sh"
+# Also exercise the real CRLF-sensitive prefix readers.
+awk '/_v=\$\(awk.*chainPrefix:/ {print; getline; print; exit}' "$DOCTOR" > "$TMP/chain-reader.sh"
+awk '/_v=\$\(awk.*tablePrefix:/ {print; getline; print; exit}' "$DOCTOR" > "$TMP/ipset-reader.sh"
+grep -q 'MT_CHAIN=' "$TMP/chain-reader.sh" || fail_test 'production chain prefix reader missing'
+grep -q 'MT_IPSET_PREFIX=' "$TMP/ipset-reader.sh" || fail_test 'production ipset prefix reader missing'
+sh -n "$TMP/chain-reader.sh"
+sh -n "$TMP/ipset-reader.sh"
 
 
 cat > "$TMP/runner.sh" <<'SH'
@@ -68,6 +75,8 @@ absent)
 esac
 if [ "$MT_REMAP" = "from-config" ]; then
     MT_REMAP=false
+    . "$TMP_DIR/chain-reader.sh"
+    . "$TMP_DIR/ipset-reader.sh"
     . "$TMP_DIR/remap-reader.sh"
 fi
 . "$TMP_DIR/groups.sh"
@@ -259,11 +268,16 @@ printf '%s\n' "$out" | grep -Fq 'CONFIGURED/EFFECTIVE mismatch for DNS intercept
 cat > "$TMP/remap-source.yaml" <<'YAML'
 app:
   netfilter:
-    disableRemap53: true
+      chainPrefix: MT_
+      ipset:
+        tablePrefix: mt_
+      disableRemap53: true
 YAML
 sed 's/$/\r/' "$TMP/remap-source.yaml" > "$TMP/remap-source-crlf.yaml"
 out=$(run_mode "$TMP/remap-source-crlf.yaml" 1 from-config clean)
 printf '%s\n' "$out" | grep -Fq 'CONFIGURED/EFFECTIVE mismatch for DNS interception' || fail_test 'CRLF remap=true was not normalized in production reader'
+printf '%s\n' "$out" | grep -Fq 'chains=2' || fail_test 'CRLF chain prefix was not normalized in production reader'
+printf '%s\n' "$out" | grep -Fq 'ipsets=2' || fail_test 'CRLF ipset prefix was not normalized in production reader'
 printf '%s\n' "$out" | grep -Fq 'clients may be bypassing MagiTrickle DNS' && fail_test 'disabled remap produced a false bypass warning'
 
 # --- F: interception configured but no DNAT while running ---
