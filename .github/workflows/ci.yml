@@ -146,6 +146,11 @@ jobs:
           python3 tests/process-regression.py
           python3 tests/swap-regression.py
 
+      - name: Doctor MagiTrickle scope (dash and BusyBox ash)
+        run: |
+          sh tests/doctor-mt-scope-regression.sh .
+          busybox ash tests/doctor-mt-scope-regression.sh .
+
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 
