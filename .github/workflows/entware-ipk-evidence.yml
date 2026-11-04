@@ -1,0 +1,27 @@
+name: Entware BusyBox IPK static provenance (research, non-release)
+
+on:
+  pull_request:
+    paths:
+      - 'tests/entware-ipk-evidence.py'
+      - '.github/workflows/entware-ipk-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Static IPK evidence (no install or execute)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Offline IPK parser selftest
+        run: python3 tests/entware-ipk-evidence.py --selftest
+      - name: Read official Entware 1.37 and test 1.38 IPK package metadata
+        run: |
+          # Two fixed HTTPS origins and explicit versions; never execute raw IPKs.
+          python3 tests/entware-ipk-evidence.py --probe
