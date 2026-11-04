@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.19 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.20 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.19"
+DOCTOR_VERSION="1.2.22"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -2385,12 +2385,257 @@ else
         [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
         [ -n "$_v" ] && MT_REMAP=$_v
-        MT_LINK=$(awk '/^  link:/{l=1;next} /^  [^[:space:]#]/{l=0} l&&/^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,"");print}' "$MT_CFG" | tr '\n' ' ')
+        # BEGIN DOCTOR MT LINK PARSE v1
+        # YAML "- br0" is a sequence item, not a sibling key. Two shapes
+        # are handled: block sequences (items may sit at the key indent or
+        # deeper) and flow-style inline lists (`link: [br0, br1]`).
+        MT_LINK=$(awk '
+            function emit(v) {
+                sub(/\r$/, "", v)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                gsub(/"/, "", v)
+                if (v != "") print v
+            }
+            /^  link:/ {
+                l=1
+                # flow-style inline list on the key line itself
+                _v=$0
+                sub(/^  link:[[:space:]]*/, "", _v)
+                sub(/#.*$/, "", _v)
+                if (_v ~ /^\[/) {
+                    sub(/^\[/, "", _v); sub(/\]$/, "", _v)
+                    _n=split(_v, _a, ",")
+                    for (_i=1; _i<=_n; _i++) emit(_a[_i])
+                    l=0
+                }
+                next
+            }
+            l && /^[[:space:]]+-[[:space:]]+/ {
+                _v=$0
+                sub(/^[[:space:]]+-[[:space:]]+/, "", _v)
+                sub(/[[:space:]]*#.*$/, "", _v)
+                emit(_v)
+                next
+            }
+            # the next 2-space sibling key ends the sequence; deeper lines
+            # stay inside it
+            l && /^  [^[:space:]#-]/ { l=0 }
+        ' "$MT_CFG" | tr '\n' ' ')
+        # END DOCTOR MT LINK PARSE v1
     fi
     info "MT config source: $MT_CFG_SRC"
     info "DNS proxy: port $MT_DNS_PORT -> upstream $MT_UPSTREAM_ADDR:$MT_UPSTREAM_PORT"
     info "Web UI: port $MT_WEB_PORT (enabled: $MT_WEB_ENABLED)"
     info "Link interfaces: ${MT_LINK:-<none>}; iptables chain prefix: $MT_CHAIN; ipset prefix: $MT_IPSET_PREFIX; remap53 disabled: $MT_REMAP"
+    # BEGIN DOCTOR MT ROUTING SCOPE v1
+    # app.link selects DNS-substitution interfaces; it is not a global
+    # forwarding switch. Do not reveal user-defined rules or endpoints.
+    if [ -r "$MT_CFG" ]; then
+        MT_LINK_BR0=no
+        MT_LINK_BR1=no
+        MT_CLEAN_LINK=$(printf '%s' "$MT_LINK" | tr -d '\r')
+        case " $MT_CLEAN_LINK " in *" br0 "*) MT_LINK_BR0=yes ;; esac
+        case " $MT_CLEAN_LINK " in *" br1 "*) MT_LINK_BR1=yes ;; esac
+        info "MT app.link DNS substitution interfaces: br0=$MT_LINK_BR0, br1=$MT_LINK_BR1 (not a global traffic-routing policy)"
+
+        MT_IPV4_OFF=$(awk '/^    disableIPv4:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_IPV6_OFF=$(awk '/^    disableIPv6:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_CONFIG_VERSION=$(awk '/^configVersion:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        [ -n "$MT_IPV4_OFF" ] || MT_IPV4_OFF=unknown
+        [ -n "$MT_IPV6_OFF" ] || MT_IPV6_OFF=unknown
+        [ -n "$MT_CONFIG_VERSION" ] || MT_CONFIG_VERSION=unknown
+        info "MT routing controls: configVersion=$MT_CONFIG_VERSION, disableIPv4=$MT_IPV4_OFF, disableIPv6=$MT_IPV6_OFF"
+
+        MT_RULE_SUMMARY=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            function close_rule() {
+                if (!have_rule) return
+                if (enabled == "true" && rule_enabled == "true") {
+                    active_rules++
+                    if (iface == "mitun0" && (rule_type == "namespace" || rule_type == "domain")) {
+                        if (rule == "2ip.io") ip_test = 1
+                        if (rule == "speedtest.net") speed_test = 1
+                    }
+                }
+                have_rule = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
+            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_rule(); printf "%d %d %d %d %d\n", groups, enabled_groups, active_rules, ip_test, speed_test }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_RULE_SUMMARY
+        if [ "$#" -eq 5 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5"; then
+            info "MT route groups: $2 enabled / $1 total; enabled rules in enabled groups: $3 (configured targets, not observed traffic)"
+            if [ "$4" -eq 1 ] || [ "$5" -eq 1 ]; then
+                info "MT proxy-routed network tests: 2ip.io=$( [ "$4" -eq 1 ] && printf mitun0 || printf 'not detected' ), speedtest.net=$( [ "$5" -eq 1 ] && printf mitun0 || printf 'not detected' ); geo-IP/speedtest results may represent Mihomo rather than the segment default route"
+            fi
+        else
+            info "MT route group inventory unavailable (unsupported config structure or parser error)"
+        fi
+    else
+        info "MT route scope and group inventory unavailable: config is not readable"
+    fi
+    # END DOCTOR MT ROUTING SCOPE v1
+
+    # BEGIN DOCTOR MT GROUP ANALYSIS v1
+    # Group-level semantics beyond aggregate counts (issue #327 SE/279 case):
+    # a group can be "enabled" while routing nothing, and a broad catch-all
+    # regex can silently proxy unrelated traffic. Rule values, group names
+    # and subnets are classified but never printed.
+    if [ -r "$MT_CFG" ]; then
+        MT_GROUP_ANALYSIS=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            # One alternative counts as a broad TLD catch-all when it
+            # reduces to a bare top-level domain after stripping common
+            # anchors and wildcard prefixes (e.g. .*\\.com). The literal
+            # pattern itself is never reported.
+            function broad_alt(t) {
+                gsub(/^\^/, "", t)
+                gsub(/\$$/, "", t)
+                gsub(/^\.\*/, "", t)
+                gsub(/^\.\+/, "", t)
+                gsub(/^\\\./, "", t)
+                gsub(/^\*/, "", t)
+                gsub(/\$$/, "", t)
+                return (t ~ /^[a-z][a-z0-9]{1,9}$/)
+            }
+            function broad_regex(p,   a, n, i) {
+                n = split(p, a, "|")
+                for (i = 1; i <= n; i++) if (broad_alt(a[i])) return 1
+                return 0
+            }
+            function close_rule() {
+                if (!have_rule) return
+                eff = (enabled == "true" && rule_enabled == "true")
+                if (eff) {
+                    active_rules++
+                    if (rule_type == "subnet") active_subnet++
+                    if (iface == "mitun0") {
+                        if (rule_type == "regex" && broad_regex(rule)) broad_catchall = 1
+                    }
+                }
+                if (tolower(rule) ~ /telegram/) {
+                    tg_present = 1
+                    if (enabled == "true") tg_group_enabled = 1
+                    if (eff) {
+                        tg_eff_rules++
+                        if (rule_type == "subnet") tg_eff_subnet++
+                    }
+                }
+                have_rule = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
+            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_rule(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_GROUP_ANALYSIS
+        if [ "$#" -eq 9 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5" && is_num "$6" && is_num "$7" && is_num "$8" && is_num "$9"; then
+            info "MT group semantics: enabled rules $3 (subnet $4) in enabled groups $2/$1; effective subnet routes populate ipsets, enabled counts alone do not prove routing"
+            if [ "$5" -eq 1 ]; then
+                warn "MT broad catch-all regex rule present (enabled group routes a bare-TLD pattern to mitun0; pattern withheld): games, APIs and unrelated sites may be proxied unintentionally; treat as intentional-policy INFO if configured on purpose"
+            fi
+            if [ "$6" -eq 1 ]; then
+                info "MT telegram-related rules detected: telegram group enabled=$([ "$7" -eq 1 ] && printf yes || printf no), effective telegram rules=$8 (subnet $9); a disabled group with zero effective subnet routes must not be diagnosed as a universal Telegram failure"
+            else
+                info "MT telegram-related rules: none detected (observation, not a failure verdict)"
+            fi
+        else
+            info "MT group semantics unavailable (unsupported config structure or parser error)"
+        fi
+    fi
+    # END DOCTOR MT GROUP ANALYSIS v1
+
+    # BEGIN DOCTOR MT NETFILTER EFFECTIVE v1
+    # CONFIGURED (config.yaml) vs LOADED (magitrickled running) vs EFFECTIVE
+    # (actual iptables/ipset/ip state), issue #327. Strictly read-only:
+    # iptables -S listings, ipset name list, ip rule/route listing. A busy
+    # xtables lock or an absent tool is reported as UNKNOWN, never silently
+    # as zero, and never auto-fixed.
+    MT_EFF_CHAINS=unknown
+    MT_EFF_SET_RULES=unknown
+    MT_EFF_DNAT53=unknown
+    MT_EFF_IPSETS=unknown
+    MT_EFF_FWMARK=unknown
+    MT_EFF_MITUN0_ROUTES=unknown
+    MT_EFF_READY=0
+    _eff_note=""
+    if command -v iptables >/dev/null 2>&1; then
+        # "VAR=$(cmd) && rc=0 || rc=$?" keeps the capture set -e-safe while
+        # preserving the producer's exit status for the honest UNKNOWN path.
+        MT_MANGLE_DUMP=$(iptables -t mangle -S 2>/dev/null) && _eff_mangle_rc=0 || _eff_mangle_rc=$?
+        MT_NAT_DUMP=$(iptables -t nat -S 2>/dev/null) && _eff_nat_rc=0 || _eff_nat_rc=$?
+        if [ "$_eff_mangle_rc" -eq 0 ] && [ "$_eff_nat_rc" -eq 0 ]; then
+            MT_EFF_READY=1
+            MT_EFF_CHAINS=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c "^-N $MT_CHAIN") || MT_EFF_CHAINS=0
+            MT_EFF_SET_RULES=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c -- "--match-set $MT_IPSET_PREFIX") || MT_EFF_SET_RULES=0
+            MT_EFF_DNAT53=$(printf '%s\n' "$MT_NAT_DUMP" | grep "dport 53" | grep -c "DNAT.*:$MT_DNS_PORT\b") || MT_EFF_DNAT53=0
+        else
+            _eff_note="iptables busy or unreadable (firewall rebuild in progress); re-run Doctor in a few minutes"
+        fi
+    else
+        _eff_note="iptables not available"
+    fi
+    if command -v ipset >/dev/null 2>&1; then
+        MT_IPSET_DUMP=$(ipset -n list 2>/dev/null) && _eff_ipset_rc=0 || _eff_ipset_rc=$?
+        if [ "$_eff_ipset_rc" -eq 0 ]; then
+            MT_EFF_IPSETS=$(printf '%s\n' "$MT_IPSET_DUMP" | grep -c "^$MT_IPSET_PREFIX") || MT_EFF_IPSETS=0
+        fi
+    fi
+    if command -v ip >/dev/null 2>&1; then
+        MT_IPRULE_DUMP=$(ip rule show 2>/dev/null) && _eff_rule_rc=0 || _eff_rule_rc=$?
+        if [ "$_eff_rule_rc" -eq 0 ]; then
+            MT_EFF_FWMARK=$(printf '%s\n' "$MT_IPRULE_DUMP" | grep -ci "fwmark") || MT_EFF_FWMARK=0
+        fi
+        MT_IPROUTE_DUMP=$(ip route show table all 2>/dev/null) && _eff_route_rc=0 || _eff_route_rc=$?
+        if [ "$_eff_route_rc" -eq 0 ]; then
+            MT_EFF_MITUN0_ROUTES=$(printf '%s\n' "$MT_IPROUTE_DUMP" | grep -c "mitun0") || MT_EFF_MITUN0_ROUTES=0
+        fi
+    fi
+    info "MT effective netfilter (observed): mangle ${MT_CHAIN}chains=$MT_EFF_CHAINS, ipset-match rules=$MT_EFF_SET_RULES, nat dport53-DNAT:$MT_DNS_PORT=$MT_EFF_DNAT53, ipsets=$MT_EFF_IPSETS, fwmark rules=$MT_EFF_FWMARK, mitun0 routes=$MT_EFF_MITUN0_ROUTES"
+    [ -n "$_eff_note" ] && info "MT effective netfilter limited: $_eff_note"
+    if [ "$MT_EFF_READY" -eq 1 ]; then
+        if [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_CHAINS" = "0" ]; then
+            warn "magitrickled is running but no effective MT_* mangle chains exist: rules were not applied, failed, or were overwritten; DNS endpoint scope alone does not prove routing (issue #327)"
+        fi
+        if [ "$MT_PROCS" -eq 0 ] && [ "$MT_EFF_CHAINS" != "0" ] && [ "$MT_EFF_CHAINS" != "unknown" ]; then
+            warn "residual MT_* mangle chains while magitrickled is not running: stale netfilter state may still reroute traffic after OPKG-off or daemon stop; review manually, Doctor does not modify rules"
+        fi
+        if [ "$MT_REMAP" = "true" ] && [ "$MT_EFF_DNAT53" != "0" ] && [ "$MT_EFF_DNAT53" != "unknown" ]; then
+            warn "configured disableRemap53=true but effective DNAT to port $MT_DNS_PORT exists: CONFIGURED/EFFECTIVE mismatch for DNS interception"
+        fi
+        if [ "$MT_REMAP" != "true" ] && [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_DNAT53" = "0" ]; then
+            warn "DNS interception configured but no effective DNAT to port $MT_DNS_PORT: clients may be bypassing MagiTrickle DNS despite a running daemon"
+        fi
+    fi
+    # END DOCTOR MT NETFILTER EFFECTIVE v1
 
         # Layer 2: listeners (only meaningful when the process runs)
         _dns_listening=0
@@ -2484,6 +2729,33 @@ else
         info "mitun0 interface is not present"
     fi
     info "No causal link between Mihomo state (incl. TUN stack) and MagiTrickle state is claimed by this report."
+
+    # BEGIN DOCTOR NATIVE OPKG TUN v1
+    # KeeneticOS 5.0+ recognizes opkg-created TUN devices as NDMS objects
+    # (OpkgTunN, NDM-3846). KAS standard configs keep device mitun0. This
+    # block only OBSERVES a native-named opkg tun device and its relation
+    # to the Mihomo config reference. Read-only: no settings, routes,
+    # policies or services are touched. NDM attach/boot-order behavior and
+    # traffic counters for app-created devices are field-reported as
+    # inconsistent and stay UNVERIFIED (issue #242 native-first research,
+    # 03.11.2026) - no native topology is claimed to be supported.
+    _sys_net="${KAS_SYS_NET:-/sys/class/net}"
+    _nt_devs=""
+    if [ -d "$_sys_net" ]; then
+        _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
+    fi
+    _nt_cfg_native=0
+    if grep -Eq '^[[:space:]]*device:[[:space:]]*"?opkgtun[0-9]"?([[:space:]#].*)?$' "$CONFIG" 2>/dev/null; then
+        _nt_cfg_native=1
+    fi
+    if [ "$_nt_cfg_native" -eq 1 ] && [ -n "$_nt_devs" ]; then
+        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_devs% }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
+    elif [ "$_nt_cfg_native" -eq 1 ]; then
+        info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
+    elif [ -n "$_nt_devs" ]; then
+        info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
+    fi
+    # END DOCTOR NATIVE OPKG TUN v1
 
     # Logs: MagiTrickle writes zerolog output to stdout, which is
     # lost at daemonization - there is no log file by default.

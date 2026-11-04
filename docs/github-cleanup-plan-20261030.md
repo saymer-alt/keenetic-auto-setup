@@ -130,6 +130,8 @@ KAS/Mihomo/MagiTrickle не затрагиваются; ничего не уда
   (run 41492190833), Stage B — Pages experimental → beta.4 (run 41496358204),
   Stage C — legacy Release переключён на beta.4 (run 41498019338). Оба канала
   обслуживают идентичный индекс `a9914512872eb08d1f9b3ae752a3fec679f2016c4c51601e276ce87ed64710ac`.
+  *(retired 04.11.2026: GitHub Release `v0.1.0-beta.4` удалён, тег сохранён, assets в архиве —
+  [docs/release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md](release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md).)*
 - Аппаратное подтверждение: NC-4210 обновлён beta.3 → beta.4 через WEB-панель
   (`kas-control-center 0.1.0~beta.4-1`, aarch64-3.10).
 

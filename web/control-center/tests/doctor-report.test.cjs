@@ -26,6 +26,9 @@ test('missing or conflicting facts stay unknown rather than selecting a convenie
 test('CRLF/ANSI and supported older Doctor remain parseable',()=>{
  assert.equal(parse(report.replace(/\n/g,'\r\n').replace('[INFO] Doctor version:','\x1b[36m[INFO]\x1b[0m Doctor version:')).facts.os,'5.1.8');
  assert.equal(parse(report.replace('1.2.19','1.2.18')).supported,true);
+ assert.equal(parse(report.replace('1.2.19','1.2.20')).supported,true);
+  assert.equal(parse(report.replace('1.2.19','1.2.21')).supported,true);
+  assert.equal(parse(report.replace('1.2.19','1.2.22')).supported,true);
 });
 test('warning evidence and unknown text survive without fabricating a provider diagnosis',()=>{
  const details=report.replace('===== 5. Service =====','===== 5. Service =====\n[WARN] Unknown future condition <img src=x onerror=alert(1)>').replace('WARN: 0','WARN: 1').replace('[OK] Overall status: OK','[WARN] Overall status: WARN');

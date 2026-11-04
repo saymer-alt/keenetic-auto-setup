@@ -101,6 +101,8 @@ git push git@gitlab.com:saymer-alt/keenetic-auto-setup.git \
 Исторический пример: `v0.1.0-beta.6` перепубликован
 `b7d97c297a70c90980d932bf571cd0ff6ee52ad9` →
 `070faa90e15855ae6076d8738c5dcec931059a36` 2026-11-03 (issue #388).
+*(retired 04.11.2026: GitHub Release object beta.6 удалён; GitHub-тег и GitLab-тег сохранены —
+[docs/release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md](release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md).)*
 
 Примечание: шаг **Diagnose ref drift** перечисляет все ref-ы GitLab, включая
 архивные рабочие ветки вне охвата синхронизации; их расхождение —

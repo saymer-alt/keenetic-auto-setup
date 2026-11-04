@@ -142,7 +142,6 @@ fi
 pass "Doctor IPv6 runtime report regression passed"
 
 
-
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
 PROFILE_CONTRACT=20261012_1
@@ -156,7 +155,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
-grep -Fq 'DOCTOR_VERSION="1.2.19"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
+grep -Fq 'DOCTOR_VERSION="1.2.22"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
