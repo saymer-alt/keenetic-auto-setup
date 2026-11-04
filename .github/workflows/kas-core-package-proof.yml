@@ -33,7 +33,8 @@ jobs:
           sudo apt-get install -y busybox jq
       - name: Verify official Entware opkg
         run: |
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"

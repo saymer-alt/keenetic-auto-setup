@@ -404,6 +404,54 @@ log() { status_out "$COLOR_GREEN" "[updater] $1"; }
 warn() { status_out "$COLOR_YELLOW" "[WARN] $1"; }
 error() { status_out "$COLOR_RED" "[ERROR] $1"; exit 1; }
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
+# saymer-alt/entware-go e573954 installs S99mihomo the same way.
+# Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
+# Neither recipe installs an alias. Unknown bytes and executable symlinks
+# require operator review. Never execute a candidate to identify it.
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    local _mir_found="" _mir_state=absent _mir_path _mir_digest
+    MIHOMO_INIT_RESOLVED=""
+    MIHOMO_INIT_STATE=""
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        if [ -L "$_mir_found" ] ||
+           ! _mir_digest=$(sha256sum < "$_mir_found") ||
+           [ "${_mir_digest%% *}" != "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9" ]; then
+            MIHOMO_INIT_STATE="unverified:$_mir_found"
+            return 2
+        fi
+        if [ ! -f /bin/sh ] || [ ! -x /bin/sh ] ||
+           [ ! -f /opt/etc/init.d/rc.func ] || [ ! -r /opt/etc/init.d/rc.func ]; then
+            MIHOMO_INIT_STATE="runtime:$_mir_found"
+            return 2
+        fi
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
 # Retry wrapper: attempts a command up to 3 times with 2s delay
 retry() {
   for i in 1 2 3; do
@@ -1318,12 +1366,26 @@ fi
 # -----------------------------
 # 8. Find init script (needed for the one-instance stop and the service steps)
 # -----------------------------
-INIT_SCRIPT=$(find /opt/etc/init.d -name '*mihomo*' -type f 2>/dev/null | head -1)
-
-if [ -n "$INIT_SCRIPT" ]; then
+# Issue #355: a bare `find -name '*mihomo*' | head -1` could pick an
+# arbitrary script when a feed upgrade leaves both S28mihomo and S99mihomo
+# behind. The guarded resolver returns exactly one authoritative script,
+# fails closed on ambiguity and never follows symlinks.
+if resolve_mihomo_init; then
+  INIT_SCRIPT="$MIHOMO_INIT_RESOLVED"
   log "Found init script: $INIT_SCRIPT"
 else
-  log "WARNING: No init script found in /opt/etc/init.d"
+  INIT_SCRIPT=""
+  case "$MIHOMO_INIT_STATE" in
+    ambiguous)
+      error "Both /opt/etc/init.d/S28mihomo and /opt/etc/init.d/S99mihomo exist; ownership is ambiguous and the updater will not pick one (a second Mihomo instance must not be started). Remove the stale leftover so exactly one Mihomo init script remains, then re-run."
+      ;;
+    absent)
+      log "WARNING: No Mihomo init script found in /opt/etc/init.d (expected S28mihomo or S99mihomo)"
+      ;;
+    *)
+      error "Mihomo init script unusable (${MIHOMO_INIT_STATE%%:*}): ${MIHOMO_INIT_STATE#*:}. Verify the Entware package before updating."
+      ;;
+  esac
 fi
 
 # -----------------------------

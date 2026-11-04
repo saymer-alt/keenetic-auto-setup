@@ -1,38 +1,36 @@
-name: KAS Web candidate IPKs (no publication)
+name: KAS Web official candidate IPKs (no publication)
 
 on:
   push:
     branches:
-      - feat/kas-web-beta3-sidebar-theme-20261030 # candidate builds in the reviewed beta3 PR; never publishes
-      - main # after merge: the release candidate must be rebuilt from the real merge commit before any publish
+      - main # after merge: automatic verification only; official candidates are explicitly dispatched
     paths:
-      - '.github/workflows/web-beta3-build.yml'
+      - '.github/workflows/kas-web-candidate-build.yml'
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
   workflow_dispatch:
-    # Candidate builds for a NEW release (e.g. beta.4) are dispatched on the
-    # merge commit with explicit version/tag inputs; the push triggers above
-    # keep building beta.3-named candidates for the historical branches.
+    # The single reusable beta-agnostic candidate builder. A release
+    # candidate is produced ONLY by this explicit dispatch with all four
+    # confirmed parameters; the publisher accepts nothing else. Push events
+    # run the verification suite but build no artifacts, so an automatic
+    # run can never masquerade as an official release candidate.
     inputs:
       version:
-        description: 'Internal IPK version, e.g. 0.1.0~beta.4-1'
-        required: false
+        description: 'Internal IPK version, e.g. 0.1.0.beta.6-1 (dotted, no tilde)'
+        required: true
         type: string
-        default: '0.1.0~beta.3-1'
       tag:
-        description: 'Canonical release tag, e.g. v0.1.0-beta.4'
-        required: false
+        description: 'Canonical release tag, e.g. v0.1.0-beta.6'
+        required: true
         type: string
-        default: 'v0.1.0-beta.3'
       artifact_prefix:
-        description: 'Uploaded artifact name prefix, e.g. kas-web-beta4'
-        required: false
+        description: 'Uploaded artifact name prefix, e.g. kas-web-beta6'
+        required: true
         type: string
-        default: 'kas-web-beta3'
       previous_version:
-        description: 'Internal version of the release the current one upgrades from, e.g. 0.1.0~beta.2-1 for a beta.3 build'
-        required: false
+        description: 'Previous published Web IPK version, e.g. 0.1.0.beta.5-1'
+        required: true
         type: string
-        default: '0.1.0~beta.2-1'
 
 permissions:
   contents: read
@@ -42,11 +40,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      # Push events have no inputs context, so the fallbacks ARE the push
-      # configuration: VERSION=beta.3 vs PREVIOUS_VERSION=beta.2 must stay a
-      # strictly ordered pair (compare-versions fails on equality under set -e).
-      VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0~beta.2-1' }}
+      # Dispatch: the explicitly confirmed release pair. Push has no inputs
+      # context, so the ladder runs on an EVERGREEN placeholder pair: a pure
+      # compare-versions semantics regression that stays valid regardless of
+      # what is published and never claims a release. Do NOT use tilde forms:
+      # 0.1.0~beta.N-1 sorts OLDER than the dotted prereleases.
+      # The eventual stable must sort above the dotted prereleases (0.1.1-1).
+      # compare-versions rejects equal versions.
+      VERSION: ${{ inputs.version || '0.1.0.beta.9-1' }}
+      PREVIOUS_VERSION: ${{ inputs.previous_version || '0.1.0.beta.8-1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,10 +63,14 @@ jobs:
           python3 tests/test_ipk.py -v
           python3 tests/test_panel_manifest.py -v
           (cd web/control-center && go generate ./... && go test -count=1 ./...)
-      - name: Real Entware opkg strict version ladder (previous → current → stable)
+      - name: Real Entware opkg ladder (release pair → future stable)
         run: |
           set -euo pipefail
-          curl --fail --location --connect-timeout 15 --max-time 60 \
+          # Shared Entware mirror can be slow from CI (observed ~13 KB/s);
+          # a timed-out download is an infra failure, not a version-ladder
+          # failure, so budget a bounded retry instead of a bare 60s cap.
+          curl --fail --location --connect-timeout 15 --max-time 120 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
           printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
@@ -73,16 +79,20 @@ jobs:
           opkg="$RUNNER_TEMP/entware-opkg"
           args=(-f "$RUNNER_TEMP/offline/opkg.conf" --offline-root "$RUNNER_TEMP/offline" --tmp-dir "$RUNNER_TEMP/offline/opt/tmp" compare-versions)
           "$opkg" "${args[@]}" "$VERSION" '>>' "$PREVIOUS_VERSION"
-          "$opkg" "${args[@]}" '0.1.0-1' '>>' "$VERSION"
+          "$opkg" "${args[@]}" '0.1.1-1' '>>' "$VERSION"
           if "$opkg" "${args[@]}" "$PREVIOUS_VERSION" '>>' "$VERSION"; then
             echo "ERROR: $PREVIOUS_VERSION is not older than $VERSION" >&2; exit 1
           fi
-          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.0-1'; then
-            echo "ERROR: $VERSION is not older than stable" >&2; exit 1
+          if "$opkg" "${args[@]}" "$VERSION" '>>' '0.1.1-1'; then
+            echo "ERROR: $VERSION is not older than future stable 0.1.1-1" >&2; exit 1
           fi
 
   crossbuild:
     needs: metadata-tests
+    # Artifacts exist only for an explicitly dispatched candidate. A push run
+    # must never upload packages that could be mistaken for a release
+    # candidate without the confirmed version/tag/prefix parameters.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -91,8 +101,8 @@ jobs:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
       SOURCE_SHA: ${{ github.sha }}
-      BETA_VERSION: ${{ inputs.version || '0.1.0~beta.3-1' }}
-      RELEASE_TAG: ${{ inputs.tag || 'v0.1.0-beta.3' }}
+      BETA_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.tag }}
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +160,7 @@ jobs:
           esac
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact_prefix || 'kas-web-beta3' }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.arch }}-${{ env.SOURCE_SHA }}
           path: |
             ${{ runner.temp }}/ipk/*.ipk
             ${{ runner.temp }}/ipk/SHA256SUMS

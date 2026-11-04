@@ -227,6 +227,8 @@ classify_curl_rc() {
         35) printf 'TLS handshake failed (observed field case #255)' ;;
         47) printf 'too many redirects' ;;
         18) printf 'connection dropped mid-transfer (partial file)' ;;
+        23) printf 'local write error: the receiver stopped consuming the transfer (piped reader gone, stage file unwritable); not a network fault' ;;
+        56) printf 'network receive error (for example, a connection reset)' ;;
         22) printf 'HTTP error status (see http_code)' ;;
         60) printf 'TLS certificate verification failed (check device date and ca-bundle)' ;;
         *)  printf 'curl reported an error; see exit code' ;;

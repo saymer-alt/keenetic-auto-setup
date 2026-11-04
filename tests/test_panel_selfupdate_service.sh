@@ -216,7 +216,7 @@ def reset_update_state():
         run(['rm', '-rf', update_dir])
 
 def operation():
-    return api(8081, 'GET', '/api/updates/panel/operation')
+    return api(18080, 'GET', '/api/updates/panel/operation')
 
 def integrity_replica():
     import stat as stat_module
@@ -287,7 +287,7 @@ def write_asset(corrupt):
 
 def start_old_daemon():
     run(['sh', init, 'start'])
-    wait_port(8081, 1)
+    wait_port(18080, 1)
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -389,7 +389,7 @@ try:
     # Old daemon: real opkg install, explicit start, panel password.
     pkg('install', lab / 'kas-control-center_0.0.0~selftest-1_aarch64-3.10.ipk')
     require(not settings.exists(), 'install unexpectedly created settings')
-    wait_port(8081, 0, timeout=5)
+    wait_port(18080, 0, timeout=5)
     info = Path('/opt/lib/opkg/info')
     listing = sorted(entry.name for entry in info.iterdir()) if info.is_dir() else 'MISSING'
     print('INFO-DIR:', listing, flush=True)
@@ -400,10 +400,10 @@ try:
               f'gid={stat_result.st_gid} size={stat_result.st_size}', flush=True)
     ok('old version installed by real opkg and stays stopped until explicit start')
     start_old_daemon()
-    api(8081, 'POST', '/api/settings', body={'port': 8081, 'auth_mode': 'panel', 'password': password},
+    api(18080, 'POST', '/api/settings', body={'port': 18080, 'auth_mode': 'panel', 'password': password},
         confirm='settings')
-    api(8081, 'GET', '/api/settings', creds=None, expected=401)
-    require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'settings port mismatch')
+    api(18080, 'GET', '/api/settings', creds=None, expected=401)
+    require(api(18080, 'GET', '/api/settings')['port'] == 18080, 'settings port mismatch')
     settings_before = settings.read_bytes()
     require(password.encode() not in settings_before, 'plaintext panel password stored')
     sentinel = Path('/opt/etc/mihomo/config.yaml')
@@ -414,7 +414,7 @@ try:
     sentinel.chmod(0o600)
     sentinel_before = sentinel.read_bytes()
     old_pid = int(Path('/opt/var/run/kas-control-center.ipk.pid').read_text())
-    ok('old daemon authenticated on port 8081; credentials live outside the package')
+    ok('old daemon authenticated on port 18080; credentials live outside the package')
 
     # Network fixture probe: name resolution and TLS must reach the lab server
     # exactly as the Go client will; print evidence for a cheap CI bisect.
@@ -429,20 +429,20 @@ try:
 
     # A. Space shortage before download must fail safe on the touched filesystem.
     run(['mount', '-t', 'tmpfs', '-o', 'size=8M', 'tmpfs', '/opt/tmp'])
-    api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-    result = api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=503)
+    api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    result = api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=503)
     require(result.get('error_code') == 'PANEL_INSUFFICIENT_SPACE', f'unexpected space result: {result}')
-    api(8081, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings')
     require(not (update_dir / 'gate').exists(), 'space failure retained the gate')
     ok('space shortage refuses apply before download and keeps the old daemon')
     run(['umount', '/opt/tmp'])
 
     # B. Asset download failure inside the worker fails safe without a gate.
     (serve / asset).unlink()
-    check = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    check = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
     require(check.get('relation') == 'newer' and check.get('available_version') == '0.0.0~selftest-2',
             f'unexpected check: {check}')
-    api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+    api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL')
     integrity_replica()
     probe = run(['go', 'test', '-count=1', '-run', '^TestPanelLabInventoryProbe$', '-v', '.'],
@@ -452,7 +452,7 @@ try:
             print('LAB-PROBE', line.strip(), flush=True)
     require(final.get('ErrorCode') == 'PANEL_DOWNLOAD_FAILED', f'expected download failure, got {final}')
     require(final.get('Gate') is False, 'download failure retained the gate')
-    api(8081, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings')
     ok('download failure reports FAIL, releases the gate and keeps the old daemon')
     write_asset(False)
 
@@ -462,10 +462,10 @@ try:
     first = tampered['packages'][0]['sha256'][0]
     tampered['packages'][0]['sha256'] = ('0' if first != '0' else '1') + tampered['packages'][0]['sha256'][1:]
     write_index(tampered['packages'])
-    error = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
+    error = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
     require(error.get('error_code') == 'PANEL_METADATA_INVALID', f'unexpected tamper result: {error}')
     require(not update_dir.exists(), 'tampered index created private state')
-    api(8081, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings')
     ok('index/manifest mismatch refuses the check without touching the service')
     restore_good_index()
 
@@ -474,7 +474,7 @@ try:
     wrong_abi['packages'][0]['architecture'] = 'mipsel-3.4'
     wrong_abi['packages'][0]['name'] = wrong_abi['packages'][0]['name'].replace('aarch64-3.10', 'mipsel-3.4')
     write_index(wrong_abi['packages'])
-    error = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
+    error = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
     require(error.get('error_code') == 'PANEL_PACKAGE_INVALID', f'unexpected ABI result: {error}')
     restore_good_index()
     ok('foreign ABI index is refused on this runtime')
@@ -484,12 +484,12 @@ try:
     data[len(data) // 2] ^= 0xFF
     (serve / 'candidate.corrupt.ipk').write_bytes(bytes(data))
     write_asset(True)
-    api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-    api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+    api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL')
     require(final.get('ErrorCode') == 'PANEL_PACKAGE_INVALID', f'expected corrupt asset failure, got {final}')
     require(final.get('Gate') is False, 'corrupt asset retained the gate')
-    api(8081, 'GET', '/api/settings')
+    api(18080, 'GET', '/api/settings')
     control = Path('/opt/lib/opkg/info/kas-control-center.control').read_text()
     require('Version: 0.0.0~selftest-1' in control, 'tampered asset mutated the package')
     ok('corrupt asset fails validation inside the worker; installed package untouched')
@@ -502,8 +502,8 @@ try:
         'import fcntl,time\nf=open("/opt/tmp/opkg.lock","a+")\nfcntl.lockf(f,fcntl.LOCK_EX)\ntime.sleep(120)\n'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(0.5)
-    api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-    api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+    api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL', timeout=90)
     try:
         served = hashlib.sha256((serve / asset).read_bytes()).hexdigest()
@@ -520,10 +520,10 @@ try:
     require(final.get('Phase') == 'recovery_required', f'busy opkg must require recovery: {final}')
     require(final.get('Gate') is True, 'failed install must retain the gate')
     require(Path('/opt/tmp/opkg.lock').exists(), 'worker deleted the opkg lock file')
-    busy = api(8081, 'POST', '/api/settings', confirm='settings',
-               body={'port': 8081, 'auth_mode': 'panel', 'current_password': password}, expected=409)
+    busy = api(18080, 'POST', '/api/settings', confirm='settings',
+               body={'port': 18080, 'auth_mode': 'panel', 'current_password': password}, expected=409)
     require(busy.get('error_code') == 'PANEL_UPDATE_BUSY', f'mutation allowed during failed update: {busy}')
-    require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'old daemon lost during busy-opkg failure')
+    require(api(18080, 'GET', '/api/settings')['port'] == 18080, 'old daemon lost during busy-opkg failure')
     ok('busy opkg lock fails the install without OK, keeps gate and foreign lock')
     holder.terminate()
     holder.wait(timeout=10)
@@ -558,9 +558,9 @@ try:
     final = operation()
     require(final.get('State') == 'FAIL' and final.get('Phase') == 'recovered' and final.get('Gate') is False,
             f'recovery did not complete cleanly: {final}')
-    require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'recovered daemon not serving')
-    api(8081, 'POST', '/api/settings', confirm='settings',
-        body={'port': 8081, 'auth_mode': 'panel', 'current_password': password})
+    require(api(18080, 'GET', '/api/settings')['port'] == 18080, 'recovered daemon not serving')
+    api(18080, 'POST', '/api/settings', confirm='settings',
+        body={'port': 18080, 'auth_mode': 'panel', 'current_password': password})
     require('Version: 0.0.0~selftest-1' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
             'recovery changed the installed payload')
     ok('explicit recovery restarts the verified payload and releases the gate only after receipt')
@@ -573,8 +573,8 @@ try:
     startup = Path('/opt/var/run/kas-control-center.ipk.startup')
     startup.unlink()
     startup.mkdir()
-    api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-    api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+    api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     final = poll_operation('FAIL', timeout=150)
     if final.get('ErrorCode') != 'PANEL_START_FAILED':
         ctl = Path('/opt/lib/opkg/info/kas-control-center.control')
@@ -608,32 +608,32 @@ try:
     require(final.get('Gate') is True, 'start failure must retain the gate')
     require('Version: 0.0.0~selftest-2' in Path('/opt/lib/opkg/info/kas-control-center.control').read_text(),
             'start failure scenario did not actually install the new payload')
-    wait_port(8081, 0, timeout=10)
+    wait_port(18080, 0, timeout=10)
     ok('start failure after real install reports START_FAILED and keeps the gate')
     run(['rm', '-rf', startup])
     run(['/opt/bin/kas-control-center', '-recover-panel-update'])
-    wait_port(8081, 1, timeout=60)
+    wait_port(18080, 1, timeout=60)
     final = operation()
     require(final.get('Phase') == 'recovered' and final.get('Gate') is False,
             f'recovery after start failure: {final}')
-    require(api(8081, 'GET', '/api/components')['panel']['version'] == '0.0.0~selftest-2',
+    require(api(18080, 'GET', '/api/components')['panel']['version'] == '0.0.0~selftest-2',
             'recovery did not boot the installed payload')
     reset_update_state()
     ok('recovery after start failure boots the installed payload under receipt')
 
     # Back to the old version for the final full cycle (settings survive).
     pkg('remove', 'kas-control-center')
-    wait_port(8081, 0, timeout=10)
+    wait_port(18080, 0, timeout=10)
     pkg('install', lab / 'kas-control-center_0.0.0~selftest-1_aarch64-3.10.ipk')
     start_old_daemon()
-    require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'settings did not survive the package cycle')
+    require(api(18080, 'GET', '/api/settings')['port'] == 18080, 'settings did not survive the package cycle')
     require(settings.read_bytes() == settings_before, 'settings changed across remove/reinstall')
     ok('user settings survive opkg remove/reinstall while returning to the old version')
 
     # H. The full cycle with a lost browser: apply, stop polling, reconnect.
     old_pid = int(Path('/opt/var/run/kas-control-center.ipk.pid').read_text())
-    api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-    accepted = api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+    api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    accepted = api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
     operation_id = accepted.get('id')
     require(operation_id, 'apply did not return an operation id')
     # While the browser is "gone": observe the detached session worker, the
@@ -660,7 +660,7 @@ try:
                 worker_seen = {'pid': int(entry), 'session': int(tail[3])}
                 break
         try:
-            with socket.create_connection((address, 8081), timeout=0.3):
+            with socket.create_connection((address, 18080), timeout=0.3):
                 opened = True
         except OSError:
             opened = False
@@ -682,11 +682,11 @@ try:
     new_pid = int(Path('/opt/var/run/kas-control-center.ipk.pid').read_text())
     require(new_pid != old_pid, 'pid file was not renewed by the new daemon')
     # Fresh authenticated browser identity with the exact target version/SHA.
-    components = api(8081, 'GET', '/api/components')
+    components = api(18080, 'GET', '/api/components')
     require(components['panel']['version'] == '0.0.0~selftest-2',
             f'installed version mismatch: {components.get("panel")}')
     require(components['panel']['source_sha'] == sha, 'installed source SHA mismatch')
-    check = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+    check = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
     require(check.get('runtime_version') == '0.0.0~selftest-2' and check.get('installed_version') == '0.0.0~selftest-2',
             f'fresh runtime identity mismatch: {check}')
     require(check.get('relation') == 'not_newer', 'recheck still offers the same version as newer')
@@ -702,7 +702,7 @@ try:
     require(not list(Path('/opt/tmp').glob('.kas-panel-update-*')), 'worker stage survived a successful update')
     require(settings.read_bytes() == settings_before, 'update changed panel settings')
     require(sentinel.read_bytes() == sentinel_before, 'update changed core YAML config')
-    require(api(8081, 'GET', '/api/settings')['port'] == 8081, 'port setting lost')
+    require(api(18080, 'GET', '/api/settings')['port'] == 18080, 'port setting lost')
     ok('runtime receipt binds the new process; settings, port and YAML preserved byte-for-byte')
 
     if stable_binary:
@@ -713,7 +713,7 @@ try:
         require(run(['/opt/bin/opkg', '-f', lab / 'opkg.conf', '--tmp-dir', lab / 'opkg-tmp',
                      'compare-versions', '0.0.1-1', '>>', '0.0.0~selftest-2'],
                     expected=0).returncode == 0, 'stable candidate is not strictly newer')
-        selected = api(8081, 'POST', '/api/updates/panel/channel',
+        selected = api(18080, 'POST', '/api/updates/panel/channel',
                        body={'channel': 'stable'}, confirm='set-panel-channel')
         require(selected.get('channel') == 'stable' and selected.get('build_channel') == 'experimental',
                 f'unexpected selection result: {selected}')
@@ -723,14 +723,14 @@ try:
         require(oct(os.stat(channel_path).st_mode & 0o777) == '0o600', 'channel selection is not private 0600')
         require(not (update_dir / 'gate').exists(), 'channel switch created an update gate')
         require(not list(Path('/opt/tmp').glob('.kas-panel-update-*')), 'channel switch created a worker stage')
-        state = api(8081, 'GET', '/api/updates/panel/channel')
+        state = api(18080, 'GET', '/api/updates/panel/channel')
         require(state.get('channel') == 'stable' and state.get('build_channel') == 'experimental'
                 and sorted(state.get('allowed', [])) == ['experimental', 'stable'],
                 f'unexpected channel state: {state}')
-        check = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        check = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
         require(check.get('channel') == 'stable' and check.get('relation') == 'newer'
                 and check.get('available_version') == '0.0.1-1', f'unexpected stable check: {check}')
-        accepted = api(8081, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
+        accepted = api(18080, 'POST', '/api/updates/panel/apply', confirm='update-panel', expected=202)
         final = poll_operation('OK', timeout=180)
         require(final.get('Version') == '0.0.1-1' and final.get('Gate') is False,
                 f'unexpected migration result: {final}')
@@ -741,7 +741,7 @@ try:
         build_info = dict(line.partition('=')[::2] for line in
                           Path('/opt/share/kas-control-center/BUILD_INFO').read_text().splitlines() if '=' in line)
         require(build_info.get('Channel') == 'stable', f'stable payload carries wrong channel: {build_info}')
-        components = api(8081, 'GET', '/api/components')
+        components = api(18080, 'GET', '/api/components')
         require(components['panel']['version'] == '0.0.1-1', 'running panel is not the stable payload')
         require(settings.read_bytes() == settings_before, 'migration changed panel settings')
         require(sentinel.read_bytes() == sentinel_before, 'migration changed core YAML config')
@@ -754,19 +754,19 @@ try:
         tampered_stable['packages'][0]['sha256'] = ('0' if first != '0' else '1') + tampered_stable['packages'][0]['sha256'][1:]
         (serve / 'index-stable.json').write_text(json.dumps(
             {'schema': 1, 'channel': 'stable', 'tag': stable_tag, 'packages': tampered_stable['packages']}, indent=2))
-        error = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
+        error = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel', expected=502)
         require(error.get('error_code') == 'PANEL_METADATA_INVALID', f'unexpected stable tamper result: {error}')
         (serve / 'index-stable.json').write_bytes((serve / 'index-stable.good.json').read_bytes())
-        api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
-        back = api(8081, 'POST', '/api/updates/panel/channel',
+        api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        back = api(18080, 'POST', '/api/updates/panel/channel',
                    body={'channel': 'experimental'}, confirm='set-panel-channel')
         require(back.get('channel') == 'experimental' and back.get('build_channel') == 'stable',
                 f'unexpected opt-in back result: {back}')
         require((update_dir / 'channel').read_text() == 'experimental\n', 'backward selection not persisted')
-        stale = api(8081, 'POST', '/api/updates/panel/check', confirm='check-panel')
+        stale = api(18080, 'POST', '/api/updates/panel/check', confirm='check-panel')
         require(stale.get('channel') == 'experimental' and stale.get('relation') == 'not_newer',
                 f'experimental recheck must refuse the older beta: {stale}')
-        api(8081, 'POST', '/api/updates/panel/channel', body={'channel': 'stable'}, confirm='set-panel-channel')
+        api(18080, 'POST', '/api/updates/panel/channel', body={'channel': 'stable'}, confirm='set-panel-channel')
         ok('stable build re-selects experimental only as opt-in; opkg refuses the older beta candidate')
 finally:
     if holder is not None and holder.poll() is None:

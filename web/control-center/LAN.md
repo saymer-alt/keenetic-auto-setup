@@ -1,5 +1,7 @@
 # KAS Control Center — Home-address HTTP and optional Home-only access (experimental)
 
+> **Beta.6 migration note:** By owner decision 03.11.2026 (#349), the installed IPK beta.6 fresh default listener is `0.0.0.0:18080` (auto fallback 18081–18090 on EADDRINUSE only); beta.5 used `0.0.0.0:8081` (all router IPv4, including loopback). The existing KeeneticOS firewall remains authoritative; KAS WEB creates no WAN allowance. Standard authenticated KeenDNS routing to `127.0.0.1:18080` should work without a private proxy-origin file or upstream edits. Source-subnet Home-only and KAS password remain opt-in. Below is the historical beta.4/Stage 4 design; statements restricting the listener to `br0` describe that old release, **not** this beta.5 candidate. A real-router KeenDNS acceptance test is still required before publication.
+
 ## Decision and why
 Owner decision 2026-10-28: routed administrative access (including SSTP/L2TP) must work by default. Source-subnet restriction is an explicit optional panel setting, not a mandatory gate. Users already administer MT/Mihomo Web UI via local HTTP or an existing KeeneticOS KeenDNS HTTPS proxy with optional router-level authentication. KAS must NOT duplicate Keenetic TLS certificates, create a second PKI, or require an additional account. Our new experimental Stage 4 replaces the abandoned TLS-by-default design.
 

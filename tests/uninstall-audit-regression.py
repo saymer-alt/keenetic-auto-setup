@@ -24,7 +24,7 @@ def fingerprint(root):
             snap[key] = ("dir",)
     return snap
 
-def scenario(shell, mode, malformed=False, ledger_mode='missing'):
+def scenario(shell, mode, malformed=False, ledger_mode='missing', init_entries=()):
     with tempfile.TemporaryDirectory(prefix="kas-uninstall-preflight-") as temp:
         home = Path(temp)
         fixture = home / "root"
@@ -37,6 +37,17 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         cron = fixture / "opt/etc/crontab"
         cron.parent.mkdir(parents=True, exist_ok=True)
         cron.write_text("0 1 * * * root echo foreign\n")
+        init_dir = fixture / "opt/etc/init.d"
+        init_dir.mkdir()
+        for name, kind in init_entries:
+            entry = init_dir / name
+            if kind == "file":
+                entry.write_text("#!/bin/sh\nexit 79\n")
+                entry.chmod(0o755)
+            elif kind == "directory":
+                entry.mkdir()
+            else:
+                entry.symlink_to(cron if kind == "link" else init_dir / "missing")
         ledger = fixture / 'opt/etc/keenetic-auto-setup/ownership.v1'
         ledger.parent.mkdir(parents=True, exist_ok=True)
         if ledger_mode == 'valid':
@@ -109,6 +120,11 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
         assert "DO_NOT_LEAK_ME" not in p.stdout
         assert "[SHARED_OR_FOREIGN] /opt/etc/mihomo/config.yaml" in p.stdout
         assert "[UNKNOWN] /opt/bin/mihomo_watchdog.sh" in p.stdout
+        entries = dict(init_entries)
+        for name in ("S28mihomo", "S99mihomo"):
+            kind = entries.get(name)
+            status = "ABSENT" if kind is None else "SHARED_OR_FOREIGN" if kind == "file" else "UNKNOWN"
+            assert f"[{status}] /opt/etc/init.d/{name}" in p.stdout, p.stdout
         if malformed:
             assert "[UNKNOWN] ProxyN" in p.stdout
             assert "[UNKNOWN] policy/bypass_wa" in p.stdout
@@ -120,6 +136,14 @@ def scenario(shell, mode, malformed=False, ledger_mode='missing'):
                          "iptables -t mangle -S _CUST_BYPASS_WA_"], calls
 
 for shell in SHELLS:
+    for entries in (
+        (("S28mihomo", "file"),),
+        (("S99mihomo", "file"),),
+        (("S28mihomo", "file"), ("S99mihomo", "file")),
+        (("S28mihomo", "link"), ("S99mihomo", "dangling")),
+        (("S28mihomo", "directory"),),
+    ):
+        scenario(shell, "--check", init_entries=entries)
     for ledger_mode in ('missing','valid','corrupt','link'):
         scenario(shell, '--check', ledger_mode=ledger_mode)
         print('[PASS]', ' '.join(shell), '--check', ledger_mode)
