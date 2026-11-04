@@ -113,7 +113,7 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
    'Historical stability: WARN - Mihomo is running now, but there was repeated watchdog interventions in the last 24h; the current running state does not by itself prove stability'
   ];
   const doctorBase=fs.readFileSync(path.join(root,'web/control-center/tests/fixtures/doctor-kn1010.txt'),'utf8');
-  const details=doctorBase.replace('[OK]   No restarts or problem detections in the available history',doctorWarnings.map(x=>'[WARN] '+x).join('\\n')).replace('WARN: 0','WARN: 3').replace('[OK] Overall status: OK','[WARN] Overall status: WARN');
+  const details=doctorBase.replace('[OK]   No restarts or problem detections in the available history',doctorWarnings.map(x=>'[WARN] '+x).join('\n')).replace('WARN: 0','WARN: 3').replace('[OK] Overall status: OK','[WARN] Overall status: WARN');
   doctorScenario={timestamp:new Date().toISOString(),exit_code:1,details,summary:{verdict:'WARN',ok:37,warn:3,fail:0,info:65}};
   await page.locator('#run').click();await page.waitForFunction(()=>document.querySelectorAll('.doctor-finding').length===3);
   for(const heading of ['Повторные сбои в течение часа','Вмешательства watchdog за 24 часа','Предупреждение об истории стабильности'])assert.match(await page.locator('#doctor-summary').innerText(),new RegExp(heading));
