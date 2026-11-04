@@ -26,3 +26,18 @@
 .theme-quick select{min-height:36px;padding:6px 9px;font-size:13px}
 .visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:680px){.sidebar-footer{max-width:132px}.theme-quick{margin-top:7px}.theme-quick label{font-size:11px}.theme-quick select{min-height:34px;padding:5px 4px;font-size:11px}}
+
+/* beta.8: accessible process-state colors. Icon and text are emitted in JS. */
+:root{--runtime-ok:#17683b;--runtime-fail:#a32032;--runtime-warn:#875600}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--runtime-ok:#82dfac;--runtime-fail:#ff909a;--runtime-warn:#f5c46b}}
+:root[data-theme=dark]{--runtime-ok:#82dfac;--runtime-fail:#ff909a;--runtime-warn:#f5c46b}
+.component p[data-state=running]{color:var(--runtime-ok)}
+.component p[data-state=stopped],.component p[data-state=absent]{color:var(--runtime-fail)}
+.component p[data-state=unknown]{color:var(--runtime-warn)}
+.component p[data-state=unverified]{color:var(--muted)}
+.component p[data-state]{font-weight:650;overflow-wrap:anywhere}
+/* beta.8 panel identity: source SHA is still retained in page footer. */
+.brand-copy{min-width:0}.brand-version{display:block;margin-top:5px;font-size:11px;font-weight:550;letter-spacing:0;line-height:1.35;color:var(--muted);overflow-wrap:anywhere}
+@media(max-width:680px){.brand-version{font-size:10px;margin-top:3px}.brand-copy{max-width:min(100%,190px)}}
+/* beta.8: readable known Doctor findings, expandable original evidence. */
+.doctor-finding-title{font-weight:650;margin:0 0 5px}.doctor-finding>.caption{margin:0 0 5px}.doctor-finding>a{display:inline-block;font-size:12px;margin:4px 0 8px}.doctor-finding details summary{min-height:44px}.doctor-finding details p{white-space:pre-wrap;overflow-wrap:anywhere}
