@@ -27,6 +27,7 @@ on:
         options:
           - kas
           - uninstall-packages
+          - kas-update
 
 permissions:
   contents: read
