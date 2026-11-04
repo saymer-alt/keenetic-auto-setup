@@ -114,6 +114,48 @@ printf '%s\n' "$out" | grep -Fq 'fwmark rules=1' || fail_test 'effective fwmark 
 printf '%s\n' "$out" | grep -Fq 'mitun0 routes=1' || fail_test 'effective routes wrong'
 printf '%s\n' "$out" | grep -Eq '^\[WARN\]' && fail_test 'clean healthy state must not warn'
 
+
+# --- A2: a named Telegram group owns its enabled subnet routes ---
+# The subnet CIDR strings never contain "telegram"; classification must use
+# the containing group, while unrelated/disabled subnets are excluded.
+cat > "$TMP/telegram-group.yaml" <<'YAML'
+configVersion: 7
+groups:
+- id: 1
+  name: Telegram
+  interface: mitun0
+  enable: true
+  rules:
+  - id: 11
+    type: subnet
+    rule: 149.154.160.0/20
+    enable: true
+  - id: 12
+    type: subnet
+    rule: 91.108.4.0/22
+    enable: true
+  - id: 13
+    type: subnet
+    rule: 10.10.0.0/16
+    enable: false
+  - id: 14
+    type: domain
+    rule: web.telegram.org
+    enable: true
+- id: 2
+  name: Unrelated
+  interface: mitun0
+  enable: true
+  rules:
+  - id: 21
+    type: subnet
+    rule: 192.0.2.0/24
+    enable: true
+YAML
+out=$(run_mode "$TMP/telegram-group.yaml" 1 false clean)
+printf '%s\n' "$out" | grep -Fq 'telegram group enabled=yes, effective telegram rules=3 (subnet 2)' || fail_test 'Telegram group subnet ownership miscounted'
+printf '%s\n' "$out" | grep -Fq 'enabled rules 4 (subnet 3) in enabled groups 2/2' || fail_test 'Telegram aggregate rule counters changed'
+
 # --- B: 279-like fixture (CRLF): broad catch-all active, telegram off ---
 sed 's/$/\r/' "$TMP/se.yaml" > "$TMP/crlf.yaml"
 cat > "$TMP/t279.yaml" <<'YAML'
