@@ -4,6 +4,9 @@
 опубликована; единственный действующий источник индексов — GitHub Pages
 experimental, обслуживающий `v0.1.0-beta.4`
 (SHA256 `a9914512872eb08d1f9b3ae752a3fec679f2016c4c51601e276ce87ed64710ac`).
+*(retired 04.11.2026: Release `v0.1.0-beta.4` удалён, тег сохранён, assets в
+архиве — [docs/release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md](release-hygiene/2026-11-04-kas-web-beta4-beta6-retired.md);
+live-канал — `v0.1.0-beta.8`.)*
 Аппаратное обновление NC-4210 beta.3 → beta.4 через WEB-панель подтверждено
 владельцем (`0.1.0~beta.4-1`, aarch64-3.10). Этапы A–G раздела 4 выполнены:
 служебный Release `kas-web-channel-experimental` удалён 02.11.2026 отдельным
