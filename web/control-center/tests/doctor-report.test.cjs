@@ -56,3 +56,34 @@ test('real pre-section process warning keeps its evidence in the readable report
  const d=api.parse({details,exit_code:1,summary:{verdict:'WARN',ok:37,warn:1,fail:0,info:65}});
  assert.equal(d.supported,true);assert.equal(d.findings.length,1);assert.equal(d.findings[0].evidence,evidence);
 });
+
+function withWarnings(findings){
+ const details=report.replace('[OK]   No restarts or problem detections in the available history',findings.map(x=>'[WARN] '+x).join('\\n')).replace('WARN: 0','WARN: '+findings.length).replace('[OK] Overall status: OK','[WARN] Overall status: WARN');
+ return {details,exit_code:1,summary:{verdict:'WARN',ok:37,warn:findings.length,fail:0,info:65}};
+}
+test('canonical 1.2.19 watchdog findings have distinct bilingual advice and keep evidence',()=>{
+ const findings=[
+  'Repeated failures: 4 problem events within the same clock hour (2026-11-04 10:00)',
+  'Watchdog interventions in the last 24h: 11 problem event(s), including 3 rate-limited detection(s) during restart cooldown',
+  'Historical stability: WARN - Mihomo is running now, but there was repeated watchdog interventions in the last 24h; the current running state does not by itself prove stability'
+ ];
+ const data=withWarnings(findings),parsed=api.parse(data);assert.equal(parsed.supported,true);
+ assert.deepEqual(parsed.findings.map(f=>api.classifyWatchdogFinding(parsed,f)?.key),['watchdogHour','watchdogDay','watchdogStability']);
+ for(const lang of ['ru','en']){
+  class Node{constructor(doc){this.ownerDocument=doc;this.children=[];this.textContent='';}replaceChildren(){this.children=[];}appendChild(n){this.children.push(n);}set innerHTML(_){throw Error('untrusted HTML');}}
+  const doc={createElement:()=>new Node(doc)},node=new Node(doc);api.render(node,data,lang);
+  const all=x=>[x.textContent,...x.children.map(all)].join(' '),message=all(node);
+  for(const f of findings)assert.ok(message.includes(f),'evidence preserved');
+  for(const key of ['watchdogHour','watchdogDay','watchdogStability','watchdogHistory','watchdogGuide'])assert.ok(message.includes(api.labels[lang][key]));
+ }
+});
+test('unknown warning and older version have no invented remedy',()=>{
+ const data=withWarnings(['Unrecognized <img src=x onerror=alert(1)>']),parsed=api.parse(data);
+ assert.equal(parsed.supported,true);assert.equal(api.classifyWatchdogFinding(parsed,parsed.findings[0]),null);
+ assert.equal(api.classifyWatchdogFinding({...parsed,version:'1.2.18'},parsed.findings[0]),null);
+ class Node{constructor(doc){this.ownerDocument=doc;this.children=[];this.textContent='';}replaceChildren(){this.children=[];}appendChild(n){this.children.push(n);}set innerHTML(_){throw Error('unsafe HTML');}}
+ const doc={createElement:()=>new Node(doc)},container=new Node(doc);api.render(container,data,'ru');
+ const all=x=>[x.textContent,...x.children.map(all)].join(' '),message=all(container);
+ assert.match(message,/История и стабильность watchdog/);assert.match(message,/<img src=x onerror=alert\(1\)>/);
+ assert.doesNotMatch(message,/Сравните новые события|Сопоставьте время|Сейчас процесс может работать/);
+});
