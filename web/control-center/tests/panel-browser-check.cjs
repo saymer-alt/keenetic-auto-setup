@@ -13,7 +13,7 @@ let browser;
 // sticky sidebar and the skip-link render at the current scroll offset.
 const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();});await page.screenshot({path:path.join(previews,name),fullPage:true});};
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];
+ let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];let statusScenario=null;
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
@@ -38,7 +38,10 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
   if(url.pathname==='/api/updates/magitrickle'){updateOperation={id:'mt-fixture',component:'magitrickle',state:'OK',outcome:'CHANGED'};data={...updateOperation,state:'RUNNING'};status=202;}
   if(url.pathname==='/api/updates/operation')data=updateOperation||{state:'UNKNOWN',error_code:'NO_OPERATION'};
   if(url.pathname==='/api/components')data={panel:{version:panelTarget?'0.1.1':'0.1.0~beta.3-1',source_sha:(panelTarget?'d':'a').repeat(40)},core:{state:'present',version:'0.0.0~proof2-1',source_sha:'b'.repeat(40)},watchdog:{state:'current',recorded_version:'0.0.0~proof2-1'}};
-  if(url.pathname==='/api/status')data={timestamp:'2026-10-28T14:00:00Z',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
+  if(url.pathname==='/api/status'){
+    if(statusScenario==='HTTP_ERROR'){status=503;data={error_code:'SERVICE_UNAVAILABLE'};}
+    else data=statusScenario||{timestamp:new Date().toISOString(),mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
+   }
   if(url.pathname==='/api/doctor')data={timestamp:'2026-10-29T07:00:00Z',exit_code:0,details:fs.readFileSync(path.join(root,'web/control-center/tests/fixtures/doctor-kn1010.txt'),'utf8'),summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}};
   if(url.pathname==='/api/access')data={home_only:false};
   if(url.pathname==='/api/settings'){
@@ -57,6 +60,23 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
   return route.fulfill({status,json:data});
  });
  await page.goto('http://kas.test/');await page.locator('#mihomo-file').filter({hasText:'Процесс запущен'}).waitFor();
+  assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'running');
+  assert.match(await page.locator('#status-text').innerText(),/Состояние процессов обновлено/);
+  const greenColor=await page.locator('#mihomo-file').evaluate(node=>getComputedStyle(node).color);
+  for(const [state,label] of [['stopped','Процесс остановлен'],['absent','Не установлен'],['unknown','Не удалось определить']]){
+   statusScenario={timestamp:new Date().toISOString(),runtime:{mihomo:{state},magitrickle:{state}}};
+   await page.locator('#refresh').click();await page.waitForFunction(expected=>document.getElementById('mihomo-file').dataset.state===expected,state);
+   assert.match(await page.locator('#mihomo-file').innerText(),new RegExp(label));
+  }
+  assert.notEqual(await page.locator('#mihomo-file').evaluate(node=>getComputedStyle(node).color),greenColor);
+  statusScenario='HTTP_ERROR';await page.locator('#refresh').click();
+  await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('HTTP_503'));
+  assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
+  statusScenario={timestamp:'2020-01-01T00:00:00Z',runtime:{mihomo:{state:'running'}}};await page.locator('#refresh').click();
+  await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('INVALID_OR_STALE_RESPONSE'));
+  assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
+  statusScenario=null;await page.locator('#refresh').click();
+  await page.waitForFunction(()=>document.getElementById('mihomo-file').dataset.state==='running');
  await page.waitForFunction(()=>document.getElementById('panel-build').textContent.includes('0.1.0'));
  assert.match(await page.locator('#core-version').innerText(),/v0\.0\.0-proof2/);assert.match(await page.locator('#watchdog-version').innerText(),/v0\.0\.0-proof2.*соответствует/);
  assert.equal(await page.locator('#project-link').getAttribute('href'),'https://github.com/saymer-alt/keenetic-auto-setup');
