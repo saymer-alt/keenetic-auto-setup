@@ -350,3 +350,16 @@ func TestLegacyPanelExhaustionKeepsOriginal(t *testing.T) {
 	if err!=nil || !samePersistedPanelConfig(after,original) { t.Fatal("settings changed",after,err) }
 	if _,err:=os.Lstat(path+legacyPortBackupSuffix);!os.IsNotExist(err) { t.Fatal("backup before bind",err) }
 }
+
+func TestLegacyMigrationPreservesPanelPasswordHash(t *testing.T) {
+	hash, err := newPanelPassword("valid-long-test-password-2026")
+	if err != nil { t.Fatal(err) }
+	path := filepath.Join(t.TempDir(), "settings.json")
+	old := &panelConfig{Version:1,Port:8081,AuthMode:"panel",PasswordHash:hash}
+	if err:=saveInitialPanelConfig(path,old);err!=nil {t.Fatal(err)}
+	if err:=migrateLegacyPanelPort(path,old,18082,true);err!=nil{t.Fatal(err)}
+	current,err:=readPanelConfig(path)
+	if err!=nil || current.AuthMode!="panel" || current.PasswordHash!=hash || current.Port!=18082 || !current.AutoPortFallback {t.Fatal(current,err)}
+	backup,err:=readPanelConfig(path+legacyPortBackupSuffix)
+	if err!=nil || !samePersistedPanelConfig(backup,old){t.Fatal(backup,err)}
+}
