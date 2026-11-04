@@ -81,8 +81,9 @@ type panelConfig struct {
 	Port         int    `json:"port"`
 	AuthMode     string `json:"auth_mode"`
 	PasswordHash string `json:"password_hash,omitempty"`
-	// Written only when first-launch auto fallback selected 8082..8090.
-	// Absent in beta.4/5 settings; never infer provenance from port==8081.
+	// Set only after a bound automatic port fallback to 18081..18090,
+	// on initial launch or during the guarded legacy-8081 migration.
+	// Old settings do not record whether 8081 was manually chosen.
 	AutoPortFallback bool `json:"auto_port_fallback,omitempty"`
 	verifyMu     sync.Mutex
 	lastVerify   time.Time
