@@ -82,4 +82,21 @@ out=$(run_case "$TMP/notnative.yaml" "$TMP/sys-native")
 printf '%s\n' "$out" | grep -Fq 'references an opkg-native TUN device' && fail_test 'mitun0 misclassified as native'
 printf '%s\n' "$out" | grep -Fq 'foreign or unrelated opkg tun' || fail_test 'foreign path lost for mitun0 config'
 
+
+# H: exact configured device must match sysfs; a foreign native name is NOT
+# proof of an attached native topology.
+mkdir -p "$TMP/sys-other/opkgtun1"
+out=$(run_case "$TMP/native.yaml" "$TMP/sys-other")
+printf '%s\n' "$out" | grep -Fq 'configured device(s) absent (opkgtun0)' || fail_test 'wrong native device accepted as matching config'
+printf '%s\n' "$out" | grep -Fq 'other observed opkgtunN (opkgtun1) may be unrelated' || fail_test 'foreign native device not distinguished'
+printf '%s\n' "$out" | grep -Fq 'native topology observed' && fail_test 'false native topology claim on mismatched device'
+
+# I: native TUN observation is outside the optional MT-installed branch.
+# The preceding nonblank line must be the close of the MT branch.
+awk '
+    /# BEGIN DOCTOR NATIVE OPKG TUN v1/ {if (previous != "fi") exit 1; found=1}
+    NF {previous=$0}
+    END {if (!found) exit 1}
+' "$DOCTOR" || fail_test 'native TUN observation depends on optional MagiTrickle'
+
 echo '[OK] Doctor native OpkgTunN observation regression passed'

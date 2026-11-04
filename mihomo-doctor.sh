@@ -2488,12 +2488,12 @@ else
             # pattern itself is never reported.
             function broad_alt(t) {
                 gsub(/^\^/, "", t)
-                gsub(/\$$/, "", t)
+                gsub(/\$/, "", t)
                 gsub(/^\.\*/, "", t)
                 gsub(/^\.\+/, "", t)
                 gsub(/^\\\./, "", t)
                 gsub(/^\*/, "", t)
-                gsub(/\$$/, "", t)
+                gsub(/\$/, "", t)
                 return (t ~ /^[a-z][a-z0-9]{1,9}$/)
             }
             function broad_regex(p,   a, n, i) {
@@ -2507,30 +2507,55 @@ else
                 if (eff) {
                     active_rules++
                     if (rule_type == "subnet") active_subnet++
+                    g_eff_rules++
+                    if (rule_type == "subnet") g_eff_subnet++
                     if (iface == "mitun0") {
                         if (rule_type == "regex" && broad_regex(rule)) broad_catchall = 1
                     }
                 }
                 if (tolower(rule) ~ /telegram/) {
-                    tg_present = 1
-                    if (enabled == "true") tg_group_enabled = 1
+                    g_tg_rule_seen = 1
                     if (eff) {
-                        tg_eff_rules++
-                        if (rule_type == "subnet") tg_eff_subnet++
+                        g_tg_matched_rules++
+                        if (rule_type == "subnet") g_tg_matched_subnet++
                     }
                 }
                 have_rule = 0
             }
+            # A Telegram-labeled group owns its enabled subnet routes even
+            # when their CIDR values cannot contain the word "telegram".
+            # For unlabeled groups count only explicit Telegram rule matches;
+            # do not attribute unrelated subnets to that service.
+            function close_group() {
+                close_rule()
+                if (!have_group) return
+                if (g_tg_named || g_tg_rule_seen) {
+                    tg_present = 1
+                    if (enabled == "true") tg_group_enabled = 1
+                    tg_eff_rules += g_tg_named ? g_eff_rules : g_tg_matched_rules
+                    tg_eff_subnet += g_tg_named ? g_eff_subnet : g_tg_matched_subnet
+                }
+                have_group = 0
+            }
             /^groups:[[:space:]]*$/ { in_groups = 1; next }
-            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
-            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^[[:alpha:]]/ { close_group(); in_groups = 0 }
+            in_groups && /^- id:/ {
+                close_group()
+                groups++; have_group = 1
+                enabled = "false"; iface = ""
+                g_tg_named = 0; g_tg_rule_seen = 0
+                g_eff_rules = 0; g_eff_subnet = 0
+                g_tg_matched_rules = 0; g_tg_matched_subnet = 0
+                next
+            }
+            in_groups && /^  name:/ { if (tolower(val($0)) ~ /telegram/) g_tg_named = 1; next }
             in_groups && /^  interface:/ { iface = val($0); next }
             in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
             in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
             in_groups && /^    type:/ { rule_type = val($0); next }
             in_groups && /^    rule:/ { rule = val($0); next }
             in_groups && /^    enable:/ { rule_enabled = val($0); next }
-            END { close_rule(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
+            END { close_group(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
         ' "$MT_CFG" 2>/dev/null)
         set -- $MT_GROUP_ANALYSIS
         if [ "$#" -eq 9 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5" && is_num "$6" && is_num "$7" && is_num "$8" && is_num "$9"; then
@@ -2706,33 +2731,6 @@ else
     fi
     info "No causal link between Mihomo state (incl. TUN stack) and MagiTrickle state is claimed by this report."
 
-    # BEGIN DOCTOR NATIVE OPKG TUN v1
-    # KeeneticOS 5.0+ recognizes opkg-created TUN devices as NDMS objects
-    # (OpkgTunN, NDM-3846). KAS standard configs keep device mitun0. This
-    # block only OBSERVES a native-named opkg tun device and its relation
-    # to the Mihomo config reference. Read-only: no settings, routes,
-    # policies or services are touched. NDM attach/boot-order behavior and
-    # traffic counters for app-created devices are field-reported as
-    # inconsistent and stay UNVERIFIED (issue #242 native-first research,
-    # 03.11.2026) - no native topology is claimed to be supported.
-    _sys_net="${KAS_SYS_NET:-/sys/class/net}"
-    _nt_devs=""
-    if [ -d "$_sys_net" ]; then
-        _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
-    fi
-    _nt_cfg_native=0
-    if grep -Eq '^[[:space:]]*device:[[:space:]]*"?opkgtun[0-9]"?([[:space:]#].*)?$' "$CONFIG" 2>/dev/null; then
-        _nt_cfg_native=1
-    fi
-    if [ "$_nt_cfg_native" -eq 1 ] && [ -n "$_nt_devs" ]; then
-        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_devs% }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
-    elif [ "$_nt_cfg_native" -eq 1 ]; then
-        info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
-    elif [ -n "$_nt_devs" ]; then
-        info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
-    fi
-    # END DOCTOR NATIVE OPKG TUN v1
-
     # Logs: MagiTrickle writes zerolog output to stdout, which is
     # lost at daemonization - there is no log file by default.
     MT_LOG_FOUND=0
@@ -2750,6 +2748,54 @@ else
         info "MagiTrickle logs are not persisted to a file (zerolog writes to stdout, lost at daemonization) - nothing to analyze"
     fi
 fi
+
+# BEGIN DOCTOR NATIVE OPKG TUN v1
+# KeeneticOS 5.0+ can represent opkg-created TUN interfaces as OpkgTunN.
+# Independent of optional MagiTrickle; only read Mihomo config and sysfs.
+# Preserve honest UNVERIFIED status for NDM attach and traffic counters.
+_sys_net="${KAS_SYS_NET:-/sys/class/net}"
+_nt_devs=""
+if [ -d "$_sys_net" ]; then
+    _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
+fi
+_nt_cfg_devs=""
+if [ -r "$CONFIG" ]; then
+    _nt_cfg_devs=$(awk '
+        /^[[:space:]]*device:[[:space:]]*/ {
+            v=$0
+            sub(/^[[:space:]]*device:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*$/, "", v)
+            gsub(/"/, "", v)
+            gsub(sprintf("%c",39), "", v)
+            sub(/^[[:space:]]+/, "", v)
+            sub(/[[:space:]]+$/, "", v)
+            if (v ~ /^opkgtun[0-9]+$/) print v
+        }
+    ' "$CONFIG" 2>/dev/null | sort -u | head -n 4)
+fi
+_nt_present=""
+_nt_missing=""
+if [ -n "$_nt_cfg_devs" ]; then
+    for _nt_config in $_nt_cfg_devs; do
+        if [ -d "$_sys_net/$_nt_config" ]; then
+            _nt_present="$_nt_present $_nt_config"
+        else
+            _nt_missing="$_nt_missing $_nt_config"
+        fi
+    done
+    if [ -n "$_nt_missing" ]; then
+        if [ -n "$_nt_devs" ]; then
+            info "Mihomo config references opkg-native TUN device(s) but configured device(s) absent (${_nt_missing# }); other observed opkgtunN (${_nt_devs% }) may be unrelated; native topology is NOT confirmed (NDM attach/boot order UNVERIFIED)"
+        else
+            info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
+        fi
+    else
+        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_present# }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
+    fi
+elif [ -n "$_nt_devs" ]; then
+    info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
+fi
+# END DOCTOR NATIVE OPKG TUN v1
 
 # =========================================================
 hdr "7. Keenetic proxy bridge (ProxyN)"
