@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -39,24 +40,33 @@ func migrateLegacyPanelPort(path string, original *panelConfig, port int, fallba
 		fallback != (port != autoPanelStartPort) {
 		return errors.New("unsafe legacy port migration")
 	}
-	current, err := readPanelConfig(path)
+	if err := validateInitialPanelDirectory(filepath.Clean(filepath.Dir(path))); err != nil {
+		return err
+	}
+	raw, err := privateFile(path, 4096)
+	if err != nil {
+		return errors.New("legacy settings unavailable")
+	}
+	current, err := decodePanelConfig(raw)
 	if err != nil || !samePersistedPanelConfig(current, original) {
 		return errors.New("legacy settings changed before migration")
 	}
 	backupPath := path + legacyPortBackupSuffix
-	backup, err := readPanelConfig(backupPath)
-	if err != nil {
-		return errors.New("legacy settings backup unsafe")
-	}
-	if backup == nil {
-		if err := saveInitialPanelConfig(backupPath, original); err != nil {
+	backup, err := privateFile(backupPath, 4096)
+	if os.IsNotExist(err) {
+		if err := createInitialPanelFile(backupPath, raw); err != nil {
 			return errors.New("legacy settings backup failed")
 		}
-	} else if !samePersistedPanelConfig(backup, original) {
-		return errors.New("legacy settings backup differs")
+	} else {
+		if err != nil || !bytes.Equal(backup, raw) {
+			return errors.New("legacy settings backup unsafe or different")
+		}
+		if err := syncPanelDir(filepath.Dir(path)); err != nil {
+			return errors.New("legacy settings backup sync failed")
+		}
 	}
-	current, err = readPanelConfig(path)
-	if err != nil || !samePersistedPanelConfig(current, original) {
+	unchanged, err := privateFile(path, 4096)
+	if err != nil || !bytes.Equal(unchanged, raw) {
 		return errors.New("legacy settings changed after backup")
 	}
 	next := &panelConfig{Version: original.Version, Port: port, AuthMode: original.AuthMode,
@@ -139,7 +149,11 @@ func readPanelConfig(path string) (*panelConfig, error) {
 	if err != nil {
 		return nil, errors.New("settings unavailable")
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	return decodePanelConfig(data)
+}
+
+func decodePanelConfig(data []byte) (*panelConfig, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var c panelConfig
 	if decoder.Decode(&c) != nil || !c.valid() {
@@ -196,7 +210,14 @@ func saveInitialPanelConfig(path string, c *panelConfig) error {
 	} else if existing != nil {
 		return errors.New("panel settings already exist")
 	}
-	dir := filepath.Clean(filepath.Dir(path))
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return createInitialPanelFile(path, append(data, '\n'))
+}
+
+func validateInitialPanelDirectory(dir string) error {
 	// Reject symlinks in the entire directory chain, not just the leaf.
 	for parent := dir; ; parent = filepath.Dir(parent) {
 		st, err := os.Lstat(parent)
@@ -210,8 +231,12 @@ func saveInitialPanelConfig(path string, c *panelConfig) error {
 			break
 		}
 	}
-	data, err := json.Marshal(c)
-	if err != nil {
+	return nil
+}
+
+func createInitialPanelFile(path string, data []byte) error {
+	dir := filepath.Clean(filepath.Dir(path))
+	if err := validateInitialPanelDirectory(dir); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(dir, ".kas-settings-init-*")
@@ -219,7 +244,7 @@ func saveInitialPanelConfig(path string, c *panelConfig) error {
 		return err
 	}
 	defer os.Remove(f.Name())
-	if _, err = f.Write(append(data, '\n')); err != nil {
+	if _, err = f.Write(data); err != nil {
 		_ = f.Close()
 		return err
 	}
@@ -236,13 +261,7 @@ func saveInitialPanelConfig(path string, c *panelConfig) error {
 	if err = os.Link(f.Name(), path); err != nil {
 		return err
 	}
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	err = d.Sync()
-	_ = d.Close()
-	return err
+	return syncPanelDir(dir)
 }
 
 func (a *app) currentHost() string {

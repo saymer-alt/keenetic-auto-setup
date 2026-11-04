@@ -297,7 +297,8 @@ func TestLegacyPanelMigrationAndBackup(t *testing.T) {
 		t.Run(fmt.Sprint("occupied-", busy), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "settings.json")
 			before := &panelConfig{Version: 1, Port: 8081, AuthMode: "entware"}
-			if err := saveInitialPanelConfig(path, before); err != nil { t.Fatal(err) }
+			raw := []byte("{ \"auth_mode\": \"entware\", \"port\": 8081, \"version\": 1 }\n")
+			if err := os.WriteFile(path, raw, 0600); err != nil { t.Fatal(err) }
 			var probes []string
 			listener, port, fallback, err := selectStartupListener("0.0.0.0:18080", true,
 				func(p int, fb bool) error { return migrateLegacyPanelPort(path, before, p, fb) },
@@ -313,6 +314,8 @@ func TestLegacyPanelMigrationAndBackup(t *testing.T) {
 			current, err := readPanelConfig(path)
 			if err != nil || current.Port != want || current.AuthMode != "entware" ||
 				current.AutoPortFallback != busy { t.Fatal(current, err) }
+			saved, err := os.ReadFile(path+legacyPortBackupSuffix)
+			if err != nil || string(saved) != string(raw) { t.Fatal("backup must preserve original JSON", err) }
 			backup, err := readPanelConfig(path+legacyPortBackupSuffix)
 			if err != nil || !samePersistedPanelConfig(backup, before) { t.Fatal(backup, err) }
 			st, err := os.Stat(path+legacyPortBackupSuffix)
