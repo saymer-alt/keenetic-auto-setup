@@ -104,6 +104,9 @@ jobs:
       - name: Mihomo init S28/S99 resolution contract regression (issue #355)
         run: sudo python3 tests/mihomo-init-contract-regression.py
 
+      - name: Entware/BusyBox preflight regression (issue #356, read-only)
+        run: sudo python3 tests/busybox-preflight-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
