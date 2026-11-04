@@ -3,7 +3,8 @@
 
 All network targets are fixed official Entware endpoints. The downloaded package
 bytes are validated against HTTPS Packages index metadata when possible.
-This is *not* a pinned hash in source and is not evidence of a working opkg upgrade.
+The exact previously inspected package digests are pinned to prevent feed drift.
+This is not evidence of a working opkg upgrade.
 """
 import argparse
 import hashlib
@@ -20,6 +21,26 @@ TARGETS = (
     ("stable-1.37", "https://bin.entware.net/aarch64-k3.10/archive/busybox_1.37.0-6_aarch64-3.10.ipk", "https://bin.entware.net/aarch64-k3.10/Packages", "1.37.0-6"),
     ("test-1.38", "https://test.entware.net/aarch64-k3.10/busybox_1.38.0-3_aarch64-3.10.ipk", "https://test.entware.net/aarch64-k3.10/Packages", "1.38.0-3"),
 )
+# Immutable observed bytes from successful GitHub research run 41864277796,
+# HEAD 9e4d21999a0b6970da89e9efc4794afb2aa0e775 (2026-11-04).
+# Source indexes were SHA256-VERIFIED at that time; independent code signing
+# was not established.
+PINNED = {
+    "stable-1.37": {
+        "file": "881b06cecc1c8c6b4a0658d551c2230034ea0a21354fab89ddbce744f3d51e24",
+        "postinst": "cb8c496360d70ac7581941cc397cfb059cc1e683e521e8b63360b2fe9f3671c7",
+        "prerm": "d9d1c4e7d81a5b46c39f22cded480c75e8b8d2849744a4cb84ca494b1dd407e4",
+        "manifest_count": 172,
+        "shebang": "#!/opt/bin/busybox sh",
+    },
+    "test-1.38": {
+        "file": "4d69a41404abd5df0aaf55633331d43e28b90b4446ca5b53ae987a9f04b5a381",
+        "postinst": "479b2ad3cc2256e1ab537b85d6435282d658d3efdc9813253acafffad6647541",
+        "prerm": "ab335ff80d823c95cce43ef4929731b2350343f1e9c94076933cba3bd69db3e2",
+        "manifest_count": 172,
+        "shebang": "#!/bin/sh",
+    },
+}
 MAX_INDEX = 6_000_000
 MAX_IPK = 1_500_000
 
@@ -136,6 +157,20 @@ def inspect_ipk(blob, expected_version):
             "manifest_sha256": sha("\n".join(manifest).encode()) if manifest else None}
 
 
+def validate_observed(label, observed_sha, archive=None):
+    expected = PINNED[label]
+    if observed_sha != expected["file"]:
+        raise ValueError("PINNED-IPK-SHA256-MISMATCH (unexpected package bytes)")
+    if archive is not None:
+        if archive["manifest_count"] != expected["manifest_count"]:
+            raise ValueError("PINNED-MANIFEST-COUNT-MISMATCH")
+        for name in ("postinst", "prerm"):
+            part = archive["scripts"].get(name)
+            if not part or part["sha256"] != expected[name] or part["shebang"] != expected["shebang"]:
+                raise ValueError("PINNED-MAINTAINER-SCRIPT-MISMATCH")
+    return True
+
+
 def probe():
     report = {"schema": "entware-busybox-ipk-evidence/v1", "scope": "static-package-inspection-only", "packages": []}
     errors = 0
@@ -144,8 +179,11 @@ def probe():
         try:
             raw = limited_fetch(url, MAX_IPK)
             entry["file_sha256"] = sha(raw)
+            validate_observed(label, entry["file_sha256"])
             entry["size"] = len(raw)
             entry["archive"] = inspect_ipk(raw, ver)
+            validate_observed(label, entry["file_sha256"], entry["archive"])
+            entry["pin_match"] = "PINNED-SHA256-VERIFIED"
             index = limited_fetch(index_url, MAX_INDEX)
             entry["index_sha256"] = sha(index)
             fields, digest = parse_index(index, url.rsplit("/", 1)[-1], ver)
@@ -163,7 +201,7 @@ def probe():
     if errors:
         print("[BLOCKED] Missing verified source bytes. No install executed.", file=sys.stderr)
         return 2
-    print("[PASS] Both package files matched current HTTPS index digests; this is not an immutable pin or opkg upgrade.")
+    print("[PASS] Immutable package pins and current HTTPS index digests matched; no opkg upgrade was executed.")
     return 0
 
 
@@ -195,7 +233,15 @@ def selftest():
         pass
     else:
         raise AssertionError("version mismatch not rejected")
-    print("[PASS] Synthetic IPK archive inspection, checksum metadata and identity rejection; no network/opkg or host /opt access")
+    assert len(PINNED) == len(TARGETS)
+    assert all(len(PINNED[x[0]]["file"]) == 64 for x in TARGETS)
+    try:
+        validate_observed("test-1.38", "0" * 64)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("mismatched byte SHA must fail closed")
+    print("[PASS] Synthetic IPK parser, immutable pin-mismatch rejection, checksum metadata and identity; no network/opkg or host /opt access")
     return 0
 
 
