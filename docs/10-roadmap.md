@@ -115,14 +115,24 @@ Doctor + watchdog + MetaCubeXD закрывают локальную экспл�
 
 ---
 
-### 7. Web-интерфейс
+### 7. KAS Web Control Center — отдельный опциональный компонент
 
-Отдельный проектный GUI не строим: для управления Mihomo уже используется MetaCubeXD.
+**Актуализация на 03.11.2026.** Прежний текст «отдельный GUI не строим» был историческим
+решением до появления KAS Web и больше не описывает фактическое состояние проекта.
+KAS Web уже существует как самостоятельный необязательный Entware IPK; MetaCubeXD
+остаётся отдельным средством управления Mihomo, KAS Web не дублирует весь его функционал.
 
-Документационная часть закрыта энциклопедией: интерфейс MetaCubeXD, Controller/API и
-безопасность, proxy-providers, GEO-данные и логи. Если понадобится project-specific
-status endpoint или кнопка обслуживания — это должна быть маленькая задача с реальным
-кейсом, а не начало нового GUI.
+- **Beta.6 — опубликована и переиздана 03.11.2026:** [v0.1.0-beta.6](https://github.com/saymer-alt/keenetic-auto-setup/releases/tag/v0.1.0-beta.6) на `070faa90…`, [PR #363](https://github.com/saymer-alt/keenetic-auto-setup/pull/363) merged; default TCP 18080 с безопасным fallback, версия Mihomo API, системные метрики, идентификация watchdog. NC-4210 FIELD PARTIAL: self-update legacy 8081/recovery [#377](https://github.com/saymer-alt/keenetic-auto-setup/issues/377), [#379](https://github.com/saymer-alt/keenetic-auto-setup/issues/379), метрики HTTP 503 из-за BusyBox `sh -s` [#380](https://github.com/saymer-alt/keenetic-auto-setup/issues/380) (исправление только [Draft PR #381](https://github.com/saymer-alt/keenetic-auto-setup/pull/381)); остальные аппаратные field-проверки продолжаются.
+- **Beta.7 — P0 обязательное исправление:** автоматическая однократная миграция старого сохранённого TCP 8081 при upgrade beta.4/5/6 → beta.7, сохранение auth/настроек/backup, корректный новый URL; [#377](https://github.com/saymer-alt/keenetic-auto-setup/issues/377) после FIELD NC-4210, где beta.6 без ручного исправления порта не запустилась.
+- **Beta.7 — стабилизация панели:** миграция порта, восстановление self-update, системные метрики на BusyBox ash и маркировка prerelease. Проверки KeenDNS и YAML входят в регрессионную матрицу.
+- **Beta.8 — Network Doctor WEB:** ручной запуск существующего CLI по default route и через Mihomo после проверки фактического адреса назначения, в том числе при удалённом DNS SOCKS5h, и согласования селекторов с реальными CLI-флагами. Расширение CLI [#376](https://github.com/saymer-alt/keenetic-auto-setup/pull/376) и аудит MagiTrickle/Netfilter [#326](https://github.com/saymer-alt/keenetic-auto-setup/pull/326) → [#338](https://github.com/saymer-alt/keenetic-auto-setup/pull/338) рассматриваются отдельно.
+- **Обязательный подробный план и перенос в новый чат:** [KAS Web beta.7 handoff](kas-web-beta7-handoff-2026-11-03.md).
+- **Workflow P0 выполнен:** [PR #375](https://github.com/saymer-alt/keenetic-auto-setup/pull/375) merged в `main` (`070faa90…`): исторический `web-beta3-build.yml` удалён, действующий `kas-web-candidate-build.yml` — один универсальный candidate-builder с явными dispatch-параметрами. **Beta.6 переиздана** из нового workflow: [candidate 41709977498](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41709977498) → [publisher 41711796790](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41711796790) → [Pages 41712854453](https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/41712854453), GitHub API SUCCESS; текущий тег/release указывает на `070faa90…`, не исторический `b7d97c2…`. Установленные ранее IPK с прежним SHA и тем же номером версии требуют отдельного учёта при обновлении/identity-check.
+- **Не дублировать готовое:** кнопка скачивания актуального YAML уже присутствует в `main` по состоянию на 03.11.2026; beta.7 только проверяет её работу.
+- **Принцип:** CLI/read-only и фикстуры сначала, затем тонкий Web-адаптер, никакого второго тяжёлого monitoring stack, автоисправлений, изменения маршрутов или опросов внешних сайтов при открытии панели.
+
+Публикация новых beta, изменения `main`/`stable`, GitHub Pages и аппаратные действия
+выполняются по отдельным проверенным релизным воротам; roadmap сам по себе не даёт GO.
 
 ---
 

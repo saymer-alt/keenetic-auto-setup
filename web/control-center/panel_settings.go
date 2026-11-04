@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -18,11 +19,82 @@ import (
 
 const panelSettingsPath = "/opt/etc/kas-control-center.settings.json"
 
+const legacyPortBackupSuffix = ".pre-beta7-8081.bak"
+
+// The beta.4/5/6 settings format has no explicit default-port provenance.
+// Only the exact legacy 8081 may migrate; all other saved ports stay fixed.
+func legacyPanelPortEligible(c *panelConfig) bool {
+	return c != nil && c.Version == 1 && c.Port == 8081 && !c.AutoPortFallback
+}
+func samePersistedPanelConfig(a, b *panelConfig) bool {
+	return a != nil && b != nil && a.Version == b.Version && a.Port == b.Port &&
+		a.AuthMode == b.AuthMode && a.PasswordHash == b.PasswordHash &&
+		a.AutoPortFallback == b.AutoPortFallback
+}
+
+// Called only after successfully binding the candidate listener.
+// The original private settings are backed up durably before atomic replacement.
+// Existing mismatched backups or concurrent settings changes refuse startup.
+func migrateLegacyPanelPort(path string, original *panelConfig, port int, fallback bool) error {
+	if !legacyPanelPortEligible(original) || port < autoPanelStartPort || port > autoPanelLastPort ||
+		fallback != (port != autoPanelStartPort) {
+		return errors.New("unsafe legacy port migration")
+	}
+	if err := validateInitialPanelDirectory(filepath.Clean(filepath.Dir(path))); err != nil {
+		return err
+	}
+	raw, err := privateFile(path, 4096)
+	if err != nil {
+		return errors.New("legacy settings unavailable")
+	}
+	current, err := decodePanelConfig(raw)
+	if err != nil || !samePersistedPanelConfig(current, original) {
+		return errors.New("legacy settings changed before migration")
+	}
+	backupPath := path + legacyPortBackupSuffix
+	backup, err := privateFile(backupPath, 4096)
+	if os.IsNotExist(err) {
+		if err := createInitialPanelFile(backupPath, raw); err != nil {
+			return errors.New("legacy settings backup failed")
+		}
+	} else {
+		if err != nil || !bytes.Equal(backup, raw) {
+			return errors.New("legacy settings backup unsafe or different")
+		}
+		if err := syncPanelDir(filepath.Dir(path)); err != nil {
+			return errors.New("legacy settings backup sync failed")
+		}
+	}
+	unchanged, err := privateFile(path, 4096)
+	if err != nil || !bytes.Equal(unchanged, raw) {
+		return errors.New("legacy settings changed after backup")
+	}
+	next := &panelConfig{Version: original.Version, Port: port, AuthMode: original.AuthMode,
+		PasswordHash: original.PasswordHash, AutoPortFallback: fallback}
+	if err := savePanelConfig(path, next); err != nil {
+		return errors.New("legacy settings migration failed")
+	}
+	return nil
+}
+func legacyPanelBackupMatches(path string, current *panelConfig) bool {
+	if current == nil || current.Port < autoPanelStartPort || current.Port > autoPanelLastPort {
+		return false
+	}
+	old, err := readPanelConfig(path + legacyPortBackupSuffix)
+	return err == nil && legacyPanelPortEligible(old) &&
+		old.AuthMode == current.AuthMode && old.PasswordHash == current.PasswordHash
+}
+
+
 type panelConfig struct {
 	Version      int    `json:"version"`
 	Port         int    `json:"port"`
 	AuthMode     string `json:"auth_mode"`
 	PasswordHash string `json:"password_hash,omitempty"`
+	// Set only after a bound automatic port fallback to 18081..18090,
+	// on initial launch or during the guarded legacy-8081 migration.
+	// Old settings do not record whether 8081 was manually chosen.
+	AutoPortFallback bool `json:"auto_port_fallback,omitempty"`
 	verifyMu     sync.Mutex
 	lastVerify   time.Time
 	cached       [32]byte
@@ -46,6 +118,9 @@ func (c *panelConfig) mode() string {
 }
 func (c *panelConfig) valid() bool {
 	if c.Version != 1 || c.Port < 1 || c.Port > 65535 {
+		return false
+	}
+	if c.AutoPortFallback && (c.Port <= autoPanelStartPort || c.Port > autoPanelLastPort) {
 		return false
 	}
 	switch c.AuthMode {
@@ -74,7 +149,11 @@ func readPanelConfig(path string) (*panelConfig, error) {
 	if err != nil {
 		return nil, errors.New("settings unavailable")
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	return decodePanelConfig(data)
+}
+
+func decodePanelConfig(data []byte) (*panelConfig, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var c panelConfig
 	if decoder.Decode(&c) != nil || !c.valid() {
@@ -119,6 +198,72 @@ func savePanelConfig(path string, c *panelConfig) error {
 	}
 	return os.Rename(f.Name(), path)
 }
+// Initial automatic port persistence is create-only: an administrator's
+// settings must never be overwritten by an auto-port startup (including a
+// concurrent write or a dangling symlink at the destination).
+func saveInitialPanelConfig(path string, c *panelConfig) error {
+	if path == "" || c == nil || !c.valid() {
+		return errors.New("invalid initial panel settings")
+	}
+	if existing, err := readPanelConfig(path); err != nil {
+		return err
+	} else if existing != nil {
+		return errors.New("panel settings already exist")
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return createInitialPanelFile(path, append(data, '\n'))
+}
+
+func validateInitialPanelDirectory(dir string) error {
+	// Reject symlinks in the entire directory chain, not just the leaf.
+	for parent := dir; ; parent = filepath.Dir(parent) {
+		st, err := os.Lstat(parent)
+		if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe panel settings directory")
+		}
+		if parent == dir && st.Mode().Perm()&0022 != 0 {
+			return errors.New("writable panel settings directory")
+		}
+		if parent == filepath.Dir(parent) {
+			break
+		}
+	}
+	return nil
+}
+
+func createInitialPanelFile(path string, data []byte) error {
+	dir := filepath.Clean(filepath.Dir(path))
+	if err := validateInitialPanelDirectory(dir); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".kas-settings-init-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// A hard link provides O_EXCL-like create-only behavior, without a
+	// replacement window. The temporary file is created 0600 in the same
+	// directory/filesystem; any existing leaf makes this fail closed.
+	if err = os.Link(f.Name(), path); err != nil {
+		return err
+	}
+	return syncPanelDir(dir)
+}
+
 func (a *app) currentHost() string {
 	if host := a.liveHost.Load(); host != nil {
 		return *host
@@ -128,12 +273,19 @@ func (a *app) currentHost() string {
 
 // Browsers omit the default HTTP port in Host/Origin even for a :80 URL.
 func (a *app) directHost(host string) bool {
-	current := a.currentHost()
-	if host == current {
-		return true
-	}
-	ip, port, err := net.SplitHostPort(current)
-	return err == nil && port == "80" && host == ip
+ current:=a.currentHost()
+ if host==current{return true}
+ listenIP,listenPort,err:=net.SplitHostPort(current)
+ if err!=nil{return false}
+ if a.lan==nil { return listenPort=="80" && host==listenIP }
+ ip,port,err:=net.SplitHostPort(host)
+ if err!=nil {
+  if listenPort!="80"{return false}
+  ip=host;port="80"
+ }
+ if port!=listenPort {return false}
+ candidate:=net.ParseIP(ip)
+ return candidate!=nil && candidate.To4()!=nil
 }
 func (a *app) currentPanel() *panelConfig {
 	if a.lan == nil {
@@ -202,15 +354,21 @@ func (p *homeLAN) credentialRoot() string {
 }
 
 type settingsResponse struct {
-	Port        int    `json:"port"`
-	AuthMode    string `json:"auth_mode"`
-	Login       string `json:"login"`
-	PasswordSet bool   `json:"password_set"`
-	URL         string `json:"url,omitempty"`
+	Port             int    `json:"port"`
+	AuthMode         string `json:"auth_mode"`
+	Login            string `json:"login"`
+	PasswordSet      bool   `json:"password_set"`
+	URL              string `json:"url,omitempty"`
+	AutoPortFallback bool   `json:"auto_port_fallback,omitempty"`
+	LegacyPortMigrated bool `json:"legacy_port_migrated,omitempty"`
 }
 
 func panelResponse(c *panelConfig, url string) settingsResponse {
-	return settingsResponse{c.Port, c.mode(), c.login(), c.AuthMode != "none", url}
+	return settingsResponse{
+		Port: c.Port, AuthMode: c.mode(), Login: c.login(),
+		PasswordSet: c.AuthMode != "none", URL: url,
+		AutoPortFallback: c.AutoPortFallback,
+	}
 }
 func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if a.lan == nil {
@@ -218,14 +376,26 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		writeFilterJSON(w, 200, panelResponse(a.currentPanel(), ""))
+		// Only the actual direct IPv4 request Host can be advertised as an
+		// HTTP link; never turn untrusted KeenDNS Host/forwarded headers
+		// into a destination for the administrator.
+		url := ""
+		if a.directHost(r.Host) {
+			url = "http://" + r.Host
+			if !strings.HasSuffix(url, "/") {
+				url += "/"
+			}
+		}
+		response := panelResponse(a.currentPanel(), url)
+		response.LegacyPortMigrated = legacyPanelBackupMatches(a.settingsPath, a.currentPanel())
+		writeFilterJSON(w, 200, response)
 		return
 	}
 	if r.Method != http.MethodPost {
 		filterError(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
-	if r.Header.Get("Origin") != a.expectedOrigin(r.Host) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
+	if !a.requestOriginAllowed(r) || r.Header.Get("Content-Type") != "application/json" || r.Header.Get("X-KAS-Confirm") != "settings" {
 		filterError(w, 403, "REQUEST_BLOCKED")
 		return
 	}
@@ -323,5 +493,12 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 		a.listeners.replace(reserved)
 		reserved = nil
 	}
-	writeFilterJSON(w, 200, panelResponse(next, "http://"+address))
+	// Return a usable URL after a port change, not the wildcard listen IP.
+	displayAddress:=address
+	if a.directHost(r.Host) {
+		if clientIP,_,err:=net.SplitHostPort(r.Host);err==nil && net.ParseIP(clientIP)!=nil{
+			displayAddress=net.JoinHostPort(clientIP,strconv.Itoa(next.Port))
+		}
+	}
+	writeFilterJSON(w, 200, panelResponse(next, "http://"+displayAddress))
 }

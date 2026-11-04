@@ -45,6 +45,8 @@ jobs:
 
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
+      - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
+        run: python3 tests/watchdog-diagnostics-regression.py
 
       - name: Stable release gate workflow contract
         run: python3 tests/stable-release-gate-regression.py
@@ -63,6 +65,9 @@ jobs:
       - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
         run: python3 tests/pages-deploy-dryrun.py
 
+      - name: Reusable WEB Release publisher dry-run (offline, no GitHub mutations)
+        run: python3 tests/web-beta-publish-dryrun.py
+
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py
 
@@ -77,6 +82,9 @@ jobs:
 
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
+
+      - name: Doctor Mihomo init classification (dash and BusyBox ash)
+        run: python3 tests/doctor-init-regression.py
 
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
@@ -95,6 +103,14 @@ jobs:
 
       - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
         run: python3 tests/update-opkg-staleness-regression.py
+
+      - name: Mihomo init S28/S99 resolution contract regression (issue #355)
+        run: |
+          sudo python3 tests/mihomo-init-contract-regression.py
+          python3 tests/mihomo-init-safety-regression.py
+
+      - name: Entware/BusyBox preflight regression (issue #356, read-only)
+        run: sudo python3 tests/busybox-preflight-regression.py
 
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py

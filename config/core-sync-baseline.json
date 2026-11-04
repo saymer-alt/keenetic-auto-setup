@@ -1,0 +1,46 @@
+{
+  "schema": "core-sync/v1",
+  "description": "Pinned, consciously accepted differences at the initial baseline. Any changed blob SHA reopens REVIEW. No pathname is permanently ignored.",
+  "acknowledged": {
+    "bootstrap.sh": {
+      "main": "dc379dad5d441fc5cd70a330d832ead8bb87999e",
+      "stable": "e3ee81948e8a95026974bcaa1c12f9f317b8430d",
+      "reason": "Branch-specific first-fetch and bootstrap changes; inspect before backport"
+    },
+    "config-import.sh": {
+      "main": "058b981e343c8c5b9c2f1d105dbd0acd28fe76bc",
+      "stable": "892224586a0dfed251b7db565989ed3c445fe964",
+      "reason": "Main has extra importer logic; stable retains selectively accepted recovery fixes"
+    },
+    "install.sh": {
+      "main": "39ae1d238f956e95f334590ebd9851889fa99c44",
+      "stable": "aa5fde5ba48349f3ddf7dffa977aa339277b5e04",
+      "reason": "Different installer revisions; requires separate review before promotion"
+    },
+    "mihomo-doctor.sh": {
+      "main": "bee15bec58aeb2b036c6946402e5b4adae4398b1",
+      "stable": "9100087e64ee5aca500cf31e5b033e858f0bf508",
+      "reason": "Known Doctor backport/review divergence; follow up separately"
+    },
+    "setup.sh": {
+      "main": "dd8db767deab1730ad3ebecd8f02b7d6b010bced",
+      "stable": "ad7dd35ee21ae46b93d1a7a2e20e8044f98f60f3",
+      "reason": "Bootstrap/setup channel and verification logic varies across branches"
+    },
+    "update-watchdog.sh": {
+      "main": "794faf0ee491b749ddc3d57613d47554e6d48031",
+      "stable": "e10dc8d0d718f9082588c3f2e685021c12d63697",
+      "reason": "Main-side updater changes remain different from production stable; review separately"
+    },
+    "kas-download-check.sh": {
+      "main": "d961fc78c11048cbce47e9ae93219af1d8373984",
+      "stable": null,
+      "reason": "Standalone download diagnostic currently only in main"
+    },
+    "uninstall.sh": {
+      "main": "b1a73741216f00c3fdc1a8f8f29377b5d2ead09e",
+      "stable": null,
+      "reason": "Full uninstall remains deliberately outside stable production"
+    }
+  }
+}

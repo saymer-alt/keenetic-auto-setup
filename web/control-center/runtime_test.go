@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDoctorSummaryRequiresCompleteConsistentFooter(t *testing.T) {
@@ -37,9 +38,19 @@ func TestRuntimeVersionBoundedLocalResponse(t *testing.T) {
 		want   string
 	}{
 		{`{"meta":true,"version":"1.19.33"}`, 200, "1.19.33"},
+		{`{"meta":true,"version":"v1.19.33"}`, 200, "1.19.33"},
+		{`{"meta":true,"version":"v1.19.33-beta.1"}`, 200, "1.19.33-beta.1"},
+		{`{"meta":true,"version":"vv1.19.33"}`, 200, ""},
+		{`{"meta":true,"version":"V1.19.33"}`, 200, ""},
+		{`{"meta":true,"version":"v"}`, 200, ""},
+		{`{"meta":true,"version":"v<script>"}`, 200, ""},
 		{`{"meta":true,"version":"<secret>"}`, 200, ""},
+		{`{"meta":false,"version":"v1.19.33"}`, 200, ""},
 		{`{"version":"1.19.33"}`, 200, ""},
-		{`{"meta":true,"version":"1.19.33"}`, 401, ""},
+		{`{"meta":true,"version":"v1.19.33"}`, 401, ""},
+		{`{"meta":true,"version":"v1.19.33"}`, 404, ""},
+		{`{"meta":true,"version":"v1.19.33"}`, 503, ""},
+		{`{"meta":true,"version":"v1.19.33"} trailing`, 200, ""},
 		{strings.Repeat("x", 5000), 200, ""},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +67,29 @@ func TestRuntimeVersionBoundedLocalResponse(t *testing.T) {
 		}
 	}
 }
+func TestRuntimeVersionTimeoutFailsClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	client := srv.Client()
+	client.Timeout = 50 * time.Millisecond
+	if version := readMihomoVersion(context.Background(), client, srv.URL+"/version", ""); version != "" {
+		t.Fatal("accepted an unresponsive Mihomo API", version)
+	}
+}
+
+// Mihomo-only normalization must not weaken the validation used by package
+// metadata and build/core/watchdog identities.
+func TestMihomoPrefixDoesNotBroadenComponentVersionPattern(t *testing.T) {
+	if componentVersionPattern.MatchString("v1.19.33") {
+		t.Fatal("component-wide version validation was loosened")
+	}
+	if parsePackageVersion("Package: magitrickle\nVersion: v1.19.33\n", "magitrickle") != "" {
+		t.Fatal("MagiTrickle package accepted a Mihomo-only version prefix")
+	}
+}
+
 func TestProcessEvidenceMatchesExecutableNotName(t *testing.T) {
 	root := t.TempDir()
 	proc := filepath.Join(root, "proc")

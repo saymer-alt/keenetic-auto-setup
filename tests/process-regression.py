@@ -100,18 +100,21 @@ wait_for_contract_port() { return 0; }
                 (ambiguous/'stat').write_text('999999 (mihomo) S 1 1 1 0 0 0 0\n')
                 check('unreadable exe -> unknown even with known daemon', h+'\nmp_state\n', 2)
                 check('unknown is not stopped', h+'\nmp_stopped\n', 1)
-                watchdog = function(source('mihomo-watchdog.sh'), 'can_restart').replace('/opt/etc/init.d/S99mihomo restart', 'echo UNEXPECTED-RESTART')
+                watchdog_source = source('mihomo-watchdog.sh')
+                watchdog = function(watchdog_source, 'wd_restart_identity') + function(watchdog_source, 'can_restart')
                 wdstate = lab/'restart-state'
                 out = run(shell, h+watchdog+f'''
 RESTART_STATE={shlex.quote(str(wdstate))}; MIN_RESTART_INTERVAL=0
 reset_healthy_heartbeat() {{ :; }}
 ml_lifecycle_acquire() {{ echo LOCK; }}
 ml_lifecycle_release() {{ echo RELEASE; }}
+resolve_mihomo_init() {{ MIHOMO_INIT_RESOLVED=unexpected_restart; }}
+unexpected_restart() {{ echo UNEXPECTED-RESTART; }}
 log() {{ echo "$*"; }}
 can_restart fixture
 ''', 1)
                 assert 'UNEXPECTED-RESTART' not in out and not wdstate.exists(), out
-                assert 'LOCK' in out and 'RELEASE' in out and '[SKIP]' in out, out
+                assert 'LOCK' in out and 'RELEASE' in out and '[RESTART-SKIPPED]' in out, out
                 n += 1
                 out = run(shell, h+probe+stubs+'doctor_mihomo_probe 1 unused\n[ "$PROBE_SKIPPED" -eq 1 ]\n')
                 assert 'ELF' not in out
