@@ -37,6 +37,12 @@ recognizes the installed baseline against a catalogue of known managed
 release bodies (v1.8.x tag watchdogs plus the updater's legacy hashes; the
 `MIHOMO WATCHDOG SCRIPT` marker alone is not ownership proof — a locally
 edited file can keep it, so such a base is flagged UNRECOGNIZED),
+checks executability of the canonical/wrapper files (the `ls -ldn`
+primitive, same as the updater) and the active cron routes (a mirror of the
+`wd_normalize_cron` grammar): broken permissions or a missing/duplicate
+recognized route go into a repair plan, unrecognized active routes are
+`REVIEW REQUIRED` (foreign scheduling is never deleted), and a content-only
+no-op never declares broken permissions or scheduling healthy,
 inventories the other components without touching them, and marks anything
 it cannot positively identify as `UNKNOWN`; a cron slot with unrecognized
 content is a separate `REVIEW REQUIRED` status. `--apply` re-assesses,
@@ -50,6 +56,11 @@ matches no known managed release requires explicit approval
 (`--allow-unrecognized-base`, or a per-hash interactive confirmation); and
 any post-apply SHA-256 mismatch — including channel drift between the two
 downloads — is an **unverified apply** and exits non-zero, never green.
+Permission/schedule repair (`PLAN_REPAIR`) runs the stock updater without
+rewriting recognized content. Downloaded shell scripts (the watchdog
+candidate, the updater itself, the kas-update self-check copy) must start
+with `#!/bin/sh`: valid shell code with a marker but without the shebang
+line is refused before anything runs.
 
 Legacy layouts stay supported: a full old watchdog sitting directly at
 `/opt/etc/cron.5mins/mihomo_watchdog` (with or without the canonical binary)

@@ -30,6 +30,15 @@
 #     не совпадающей ни с одним известным релизом, требует отдельного
 #     явного разрешения: --allow-unrecognized-base (неинтерактивно) или
 #     отдельного подтверждения с показом хэша (интерактивно);
+#   - помимо содержимого проверяет здоровье распознанной пары read-only:
+#     исполняемые права canonical/wrapper (примитив ls -ldn, как в
+#     updater'е) и активные cron-маршруты (зеркало грамматики
+#     wd_normalize_cron). Неисполнимость или отсутствие/дубликат
+#     распознанного маршрута — PLAN_REPAIR: apply вызывает штатный
+#     updater, который чинит это без перезаписи распознанного содержимого;
+#     нераспознанные активные маршруты — REVIEW (чужое расписание никогда
+#     не удаляется); no-op «уже актуально» больше не объявляется при
+#     сломанных правах/расписании;
 #   - cron slot с нераспознанным содержимым — REVIEW: apply отказывается,
 #     файл сохраняется, ничего не «чинится молча». Исключение — точное
 #     совпадение с KNOWN_LEGACY_HASHES (зеркало LEGACY_HASHES updater'а):
@@ -40,9 +49,10 @@
 #     сломанный layout: kas-update не выдаёт такой repair за update и
 #     отказывается (ремонт — install.sh или прямой запуск updater'а);
 #   - скачивает с канала штатный update-watchdog.sh, проверяет его
-#     (маркер, sh -n) и запускает его для транзакции. ВСЯ логика замены,
-#     backup, atomic rename и cron-нормализации остаётся в существующем
-#     updater'е — kas-update её не копирует;
+#     (первая строка строго "#!/bin/sh", маркер, sh -n) и запускает его
+#     для транзакции. ВСЯ логика замены, backup, atomic rename и
+#     cron-нормализации остаётся в существующем updater'е — kas-update
+#     её не копирует;
 #   - после применения сверяет фактический SHA-256 с оценённым. Любое
 #     расхождение (в т.ч. drift канала между двумя загрузками) — это
 #     НЕВЕРИФИЦИРОВАННОЕ применение: ошибка (nonzero), а не успех.
@@ -294,8 +304,67 @@ fetch_url() { # $1 = url, $2 = contents-api url ("" = no api fallback), $3 = des
 
 validate_shell_file() { # $1 = file, $2 = required marker
     [ -s "$1" ] || return 1
+    # Mandatory interpreter line: downloaded bytes are executed as root via
+    # `sh`, and a valid shell body with a marker but no `#!/bin/sh` must
+    # never pass this gate.
+    [ "$(head -n 1 "$1" 2>/dev/null)" = "#!/bin/sh" ] || return 1
     grep -q "$2" "$1" 2>/dev/null || return 1
     sh -n "$1" 2>/dev/null || return 1
+    return 0
+}
+
+# --- read-only managed-pair health (permissions + cron schedule) -----------
+# Mode checks use the project-proven `ls -ldn` primitive (Keenetic BusyBox
+# stat has no GNU -c), mirroring the updater's wd_file_state.
+
+file_mode_string() { # $1 = regular non-symlink file -> 10-char perms, "" fail
+    _fms_listing=$(LC_ALL=C ls -ldn "$1" 2>/dev/null) || return 1
+    set -- $_fms_listing
+    [ "$#" -ge 4 ] || return 1
+    printf '%s\n' "$1"
+}
+
+file_is_executable() { # 0 when the file exists as a regular file with any x bit
+    [ -f "$1" ] && [ ! -L "$1" ] || return 1
+    _fie_perms=$(file_mode_string "$1") || return 1
+    case "$_fie_perms" in
+        -??x??????|-?????x???|-????????x) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Read-only crontab classification, mirroring the updater's
+# wd_normalize_cron grammar (trim each line; recognized five-minute
+# run-parts/direct variants are counted; ANY other active line referencing
+# the watchdog or cron.5mins is unknown foreign scheduling). kas-update
+# never rewrites the crontab: repair delegates to the transactional
+# updater, unknown routes require review.
+kas_route_state() {
+    ROUTE_STATE="unknown"
+    [ -f "$CRONTAB_FILE" ] && [ ! -L "$CRONTAB_FILE" ] || return 0
+    _krs_rc=0
+    awk '
+        function trim(s){gsub(/^[ \t]+|[ \t]+$/, "", s); gsub(/[ \t]+/, " ", s); return s}
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ {next}
+        {
+            norm=trim($0)
+            prefix="*/5 * * * * root "
+            cmd=substr(norm,length(prefix)+1)
+            if (substr(norm,1,length(prefix)) == prefix) {
+                if (cmd == "run-parts /opt/etc/cron.5mins" || cmd == "/opt/bin/run-parts /opt/etc/cron.5mins") {route++; next}
+                if (cmd == "/bin/sh /opt/etc/cron.5mins/mihomo_watchdog" || cmd == "/opt/etc/cron.5mins/mihomo_watchdog" ||
+                    cmd == "/bin/sh /opt/bin/mihomo_watchdog.sh" || cmd == "/opt/bin/mihomo_watchdog.sh") {route++; next}
+            }
+            if (index(norm,"mihomo_watchdog") || index(norm,"cron.5mins")) unknown=1
+        }
+        END {exit unknown ? 2 : (route > 1 ? 3 : (route == 1 ? 0 : 1))}
+    ' "$CRONTAB_FILE" || _krs_rc=$?
+    case "$_krs_rc" in
+        0) ROUTE_STATE="ok" ;;
+        1) ROUTE_STATE="missing" ;;
+        3) ROUTE_STATE="duplicate" ;;
+        *) ROUTE_STATE="unknown" ;;
+    esac
     return 0
 }
 
@@ -380,9 +449,13 @@ assess_watchdog() {
     WRAPPER_STATE="unknown"
     PLAN_BINARY=0
     PLAN_WRAPPER=0
+    PLAN_REPAIR=0
     MANAGED_UNKNOWN=1
     REVIEW_NEEDED=0
     REVIEW_REASON=""
+    EXEC_BIN_OK=1
+    EXEC_CRON_OK=1
+    ROUTE_STATE="ok"
     CANDIDATE_FILE="$WORK_DIR/candidate.sh"
 
     if ! has_hash_tool; then
@@ -470,7 +543,17 @@ assess_watchdog() {
         W_REASON="watchdog is not installed; primary installation is bootstrap.sh/install.sh"
         if [ "$AVAIL_STATE" = "ok" ]; then
             if [ "$WRAPPER_STATE" = "legacy" ]; then
-                PLAN_WRAPPER=1
+                # The migration ends with the updater's cron normalization;
+                # an unknown active route would fail it halfway, so review
+                # comes first. A missing/duplicate route is safe to repair.
+                kas_route_state
+                case "$ROUTE_STATE" in
+                    unknown)
+                        REVIEW_NEEDED=1
+                        REVIEW_REASON="crontab has unrecognized active route(s) referencing the watchdog; kas-update never deletes foreign scheduling"
+                        ;;
+                    *) PLAN_WRAPPER=1 ;;
+                esac
             elif [ "$WRAPPER_STATE" = "exact" ] || [ "$WRAPPER_STATE" = "wrapperish" ]; then
                 REVIEW_NEEDED=1
                 REVIEW_REASON="the cron slot schedules $WATCHDOG_BIN but the canonical file is missing; repair it with install.sh or a direct update-watchdog.sh run - kas-update does not install"
@@ -486,6 +569,15 @@ assess_watchdog() {
             W_STATE="update"
             PLAN_BINARY=1
         fi
+        # Read-only health of the recognized pair: executability + schedule.
+        # Broken permissions or a missing/duplicate managed route are NOT
+        # declared healthy by a content-only no-op; the transactional
+        # updater repairs them without rewriting recognized content.
+        file_is_executable "$WATCHDOG_BIN" || EXEC_BIN_OK=0
+        case "$WRAPPER_STATE" in
+            exact|wrapperish|legacy) file_is_executable "$WATCHDOG_CRON" || EXEC_CRON_OK=0 ;;
+        esac
+        kas_route_state
     else
         # Installed content is recognized, but the channel version could not
         # be verified this run: no conclusions, no apply.
@@ -506,6 +598,15 @@ assess_watchdog() {
         elif [ "$WRAPPER_STATE" = "foreign" ]; then
             REVIEW_NEEDED=1
         fi
+        [ "$EXEC_BIN_OK" -eq 1 ] || PLAN_REPAIR=1
+        [ "$EXEC_CRON_OK" -eq 1 ] || PLAN_REPAIR=1
+        case "$ROUTE_STATE" in
+            missing|duplicate) PLAN_REPAIR=1 ;;
+            unknown)
+                REVIEW_NEEDED=1
+                REVIEW_REASON="crontab has unrecognized active route(s) referencing the watchdog; kas-update never deletes foreign scheduling"
+                ;;
+        esac
     fi
 
     MANAGED_UNKNOWN=0
@@ -541,6 +642,16 @@ print_watchdog_state() {
             else
                 warn_out "installed baseline: UNRECOGNIZED (not a known managed release body); apply requires explicit approval (--allow-unrecognized-base)"
             fi
+        fi
+        if [ "$W_STATE" = "current" ] || [ "$W_STATE" = "update" ]; then
+            [ "$EXEC_BIN_OK" -eq 1 ] || warn_out "canonical watchdog is NOT executable (content is preserved; apply repairs the permission via the updater)"
+            [ "$EXEC_CRON_OK" -eq 1 ] || warn_out "cron wrapper is NOT executable (content is preserved; apply repairs the permission via the updater)"
+            case "$ROUTE_STATE" in
+                ok) info_out "cron schedule: recognized five-minute route present" ;;
+                missing) warn_out "cron schedule: no active watchdog route found in $CRONTAB_FILE (apply lets the updater install the managed route)" ;;
+                duplicate) warn_out "cron schedule: multiple recognized watchdog routes in $CRONTAB_FILE (apply lets the updater keep exactly one)" ;;
+                *) unknown_out "cron schedule: unrecognized active route(s) in $CRONTAB_FILE (REVIEW REQUIRED; foreign scheduling is never deleted)" ;;
+            esac
         fi
     else
         info_out "canonical watchdog $WATCHDOG_BIN is not installed"
@@ -613,7 +724,10 @@ print_plan() {
     if [ "$PLAN_WRAPPER" -eq 1 ]; then
         info_out "  - let update-watchdog.sh handle the cron wrapper layout (create a missing wrapper in an empty slot, or migrate a recognized legacy layout; foreign content is preserved and reported)"
     fi
-    if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ]; then
+    if [ "$PLAN_REPAIR" -eq 1 ]; then
+        info_out "  - repair managed permissions/cron scheduling via update-watchdog.sh (content-preserving; unrecognized routes are never touched)"
+    fi
+    if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ] && [ "$PLAN_REPAIR" -eq 0 ]; then
         info_out "  - nothing to change"
     fi
     if [ "$REVIEW_NEEDED" -eq 1 ]; then
@@ -686,7 +800,7 @@ do_check() {
         print_plan
         return 2
     fi
-    if [ "$PLAN_BINARY" -eq 1 ] || [ "$PLAN_WRAPPER" -eq 1 ]; then
+    if [ "$PLAN_BINARY" -eq 1 ] || [ "$PLAN_WRAPPER" -eq 1 ] || [ "$PLAN_REPAIR" -eq 1 ]; then
         print_plan
         return 1
     fi
@@ -757,7 +871,7 @@ do_apply() {
         return 1
     fi
 
-    if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ]; then
+    if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ] && [ "$PLAN_REPAIR" -eq 0 ]; then
         ok_out "watchdog is already current; nothing to apply (no files rewritten)"
         return 0
     fi

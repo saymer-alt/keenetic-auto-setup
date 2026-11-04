@@ -193,7 +193,7 @@ wget() {
 }
 '''
 
-PREFIX = r'''
+PREFIX = r'''#!/bin/sh
 id() { echo 0; }
 sleep() { :; }
 opkg() {
@@ -202,15 +202,13 @@ opkg() {
 }
 ''' + MOCK_FETCHERS
 
-UPDATER_PREFIX = r'''
-id() { echo 0; }
-sleep() { :; }
-# Host-independence overrides for the delegated updater, mirroring
-# maintenance-regression.py: managed files must verify as root:root even on
-# CI runners and non-root hosts. On hosts with a no-op chmod (MSYS/NTFS
+# Host-independence mode overrides shared by the script under test and the
+# delegated updater: managed files must verify as root:root even on CI
+# runners and non-root hosts. On hosts with a no-op chmod (MSYS/NTFS
 # mounts) the requested mode is recorded in a .kas-mode sidecar and
 # synthesized back by the ls -ldn override; on normal hosts the real chmod
 # still runs and the Python-level stat assertions verify real modes.
+MODE_OVERRIDES = r'''
 chown() { :; }
 chmod() {
   # Real chmod runs with the full argument list; the sidecar only covers
@@ -241,7 +239,14 @@ ls() {
     command ls "$@"
   fi
 }
-''' + MOCK_FETCHERS
+'''
+
+UPDATER_PREFIX = '#!/bin/sh\n' + r'''
+id() { echo 0; }
+sleep() { :; }
+''' + MODE_OVERRIDES + MOCK_FETCHERS
+
+PREFIX = PREFIX + MODE_OVERRIDES
 
 
 class KasUpdateRegression(unittest.TestCase):
@@ -610,6 +615,21 @@ class KasUpdateRegression(unittest.TestCase):
         write_lf(self.crontab, '*/5 * * * * root /bin/sh ' + wrapper_exec + '\n')
         self.crontab.chmod(0o644)
 
+    def set_mode(self, path, mode):
+        """Set a managed-file mode in a way every host shell under test can
+        observe: the real chmod (effective on POSIX) plus the harness mode
+        sidecar consumed by the ls -ldn override (covers no-op chmod hosts)."""
+        path.chmod(mode)
+        write_lf(Path(str(path) + '.kas-mode'), '%o\n' % mode)
+
+    def assert_mode(self, path, mode):
+        if POSIX_MODES:
+            self.assertEqual(path.stat().st_mode & 0o7777, mode)
+        else:
+            sidecar = Path(str(path) + '.kas-mode')
+            self.assertTrue(sidecar.is_file(), 'missing mode sidecar for %s' % path)
+            self.assertEqual(sidecar.read_text(encoding='utf-8').strip(), '%o' % mode)
+
     def test_legacy_cron_full_body_migrates_when_canonical_absent(self):
         # canonical absent + recognized legacy full watchdog at the cron
         # path: kas-update plans the migration and the unchanged transactional
@@ -712,6 +732,158 @@ class KasUpdateRegression(unittest.TestCase):
         digest = lambda tokens: sorted(t for t in tokens.split()
                                        if re.fullmatch(r'[0-9a-f]{64}', t))
         self.assertEqual(digest(kas_list), digest(upd_list))
+
+    # --- P1: no-op must not declare broken permissions/schedule healthy ---
+
+    def test_non_executable_binary_gets_repair_not_noop(self):
+        self.install_watchdog(NEW_BODY)
+        self.set_mode(self.binary, 0o600)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('NOT executable', check.stdout)
+        self.assertIn('repair', check.stdout)
+        self.assertNotIn('nothing to apply', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # Content-preserving repair: bytes untouched, mode fixed.
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        self.assert_mode(self.binary, 0o755)
+        follow = self.run_kas_update(['--check'])
+        self.assertEqual(follow.returncode, 0, follow.stdout + follow.stderr)
+        self.assertIn('nothing to apply', follow.stdout)
+
+    def test_non_executable_wrapper_gets_repair_not_noop(self):
+        self.install_watchdog(NEW_BODY)
+        self.set_mode(self.wrapper, 0o600)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('NOT executable', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('exec ' + str(self.binary).replace('\\', '/'), self.wrapper.read_text())
+        self.assert_mode(self.wrapper, 0o755)
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+
+    def test_missing_cron_route_gets_repair_not_noop(self):
+        self.install_watchdog(NEW_BODY)
+        write_lf(self.crontab, '')  # recognized pair, but nothing scheduled
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('no active watchdog route', check.stdout)
+        self.assertNotIn('nothing to apply', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        routes = [line for line in self.crontab.read_text().splitlines()
+                  if line.strip()]
+        self.assertEqual(len(routes), 1)
+        self.assertIn('cron.5mins', routes[0])
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        follow = self.run_kas_update(['--check'])
+        self.assertEqual(follow.returncode, 0, follow.stdout + follow.stderr)
+
+    def test_foreign_cron_route_requires_review_not_noop(self):
+        wrapper_exec = str(self.binary).replace('\\', '/')
+        self.install_watchdog(NEW_BODY)
+        foreign = '*/2 * * * * root /bin/sh ' + wrapper_exec + '\n'
+        write_lf(self.crontab, foreign)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('REVIEW REQUIRED', check.stdout)
+        self.assertIn('never deletes foreign scheduling', check.stdout)
+        self.assertNotIn('nothing to apply', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('REVIEW REQUIRED', result.stdout + result.stderr)
+        # Foreign scheduling is never touched.
+        self.assertEqual(self.crontab.read_text(), foreign)
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_duplicate_recognized_routes_repaired(self):
+        wrapper_exec = str(self.binary).replace('\\', '/')
+        self.install_watchdog(NEW_BODY)
+        write_lf(self.crontab, ''.join([
+            '*/5 * * * * root /bin/sh ' + wrapper_exec + '\n',
+            '*/5 * * * * root run-parts ' + str(self.lab).replace('\\', '/')
+            + '/opt/etc/cron.5mins\n',
+        ]))
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('multiple recognized watchdog routes', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        routes = [line for line in self.crontab.read_text().splitlines()
+                  if line.strip()]
+        self.assertEqual(len(routes), 1)
+        self.assertIn('run-parts', routes[0])
+        follow = self.run_kas_update(['--check'])
+        self.assertEqual(follow.returncode, 0, follow.stdout + follow.stderr)
+
+    # --- P1: downloaded shell scripts must start with #!/bin/sh ----------
+
+    def test_candidate_without_shebang_is_refused(self):
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_self_payload()
+        no_shebang = self.lab / 'no-shebang-candidate.sh'
+        no_shebang.write_bytes(NEW_BODY[len(b'#!/bin/sh\n'):])
+        write_lf(self.manifest, '\n'.join([
+            'mihomo-watchdog.sh\t' + str(no_shebang),
+            'kas-update.sh\t' + str(self.served_self),
+        ]) + '\n')
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('UNKNOWN', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('nothing was changed', result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_candidate_with_malformed_shebang_is_refused(self):
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_self_payload()
+        malformed = self.lab / 'malformed-candidate.sh'
+        malformed.write_bytes(b'#!/bin/bash\n' + NEW_BODY[len(b'#!/bin/sh\n'):])
+        write_lf(self.manifest, '\n'.join([
+            'mihomo-watchdog.sh\t' + str(malformed),
+            'kas-update.sh\t' + str(self.served_self),
+        ]) + '\n')
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_updater_without_shebang_is_refused(self):
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_self_payload()
+        bad = self.lab / 'updater-no-shebang.sh'
+        write_lf(bad, '# MIHOMO WATCHDOG UPDATER\necho not the updater\n')
+        write_lf(self.manifest, '\n'.join([
+            'mihomo-watchdog.sh\t' + str(self.candidate_file()),
+            'update-watchdog.sh\t' + str(bad),
+            'kas-update.sh\t' + str(self.served_self),
+        ]) + '\n')
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('failed validation', result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
 
     def test_apply_requires_confirmation_without_tty(self):
         self.install_watchdog(release_body('v1.8.7'))
@@ -847,6 +1019,11 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('REVIEW', updates)
         self.assertIn('legacy', updates.lower())
         self.assertIn('bounded backup', updates)
+        self.assertIn('исполняемость', updates)
+        self.assertIn('#!/bin/sh', updates)
+        updates_en = (REPO / 'docs' / 'EN' / 'UPDATES.md').read_text(encoding='utf-8')
+        self.assertIn('executability', updates_en)
+        self.assertIn('#!/bin/sh', updates_en)
         self.assertIn(DOCUMENTED_COMMAND, updates)
         self.assertIn('read-only', updates.lower())
         scripts_ru = (REPO / 'docs' / 'SCRIPTS.md').read_text(encoding='utf-8')
