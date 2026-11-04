@@ -2,11 +2,17 @@ name: Keenetic Ported native KAS E2E
 
 on:
   pull_request:
-    # Native E2E is expensive. Ignore only documentation/issue-template-only PRs;
-    # any change to scripts, tests, fixtures or workflow CI still runs it.
+    # Native E2E is expensive. Ignore only PRs whose every changed file is
+    # documentation, issue templates, or the advisory Core Sync Guard metadata
+    # blob; any change to scripts, tests, fixtures or workflow CI still runs it.
+    # config/core-sync-baseline.json is consumed only by the dedicated
+    # core-sync-guard workflow (offline regression + live blob comparison);
+    # the router lifecycle E2E never reads it (issue #214, observed on #389:
+    # a single-JSON metadata PR paid a 14m48s native-kas run for no signal).
     paths-ignore:
       - '**/*.md'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'config/core-sync-baseline.json'
   workflow_dispatch:
     inputs:
       kas_ref:

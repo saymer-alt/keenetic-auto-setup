@@ -491,6 +491,12 @@ finding_action() {
         *"bypass_wa hook missing"*|*"bypass_wa hook is not executable"*)
             printf '%s' "Restore the project 020-bypass_wa.sh hook with install.sh, then rebuild firewall or reboot and run Doctor again."
             ;;
+        *"bypass_wa Netfilter chain absent"*)
+            printf '%s' "If KAS was just installed, wait about 10 minutes and re-run Doctor, or rebuild the firewall once. Do not add Netfilter rules manually."
+            ;;
+        *"PREROUTING unreadable"*|*"bypass_wa Netfilter chain unreadable"*|*"bypass_wa Netfilter chain cannot be inspected"*)
+            printf '%s' "Netfilter state could not be read reliably. Re-run Doctor after a firewall rebuild or xtables lock settles; do not assume the rules are missing or edit iptables manually."
+            ;;
         *"bypass_wa Netfilter verification unavailable"*|*"bypass_wa Netfilter chain missing"*|*"bypass_wa Netfilter rules incomplete"*)
             printf '%s' "Ensure KeeneticOS opkg-kmod-netfilter is installed, then rebuild firewall or reboot. Doctor expects PREROUTING -> _CUST_BYPASS_WA_ plus UDP multiport MARK/CONNMARK/RETURN rules."
             ;;
@@ -2597,7 +2603,7 @@ else
     if [ "$_bypass_chain_rc" -ne 0 ]; then
         BYPASS_NETFILTER_RUNTIME=failed
         case "$_bypass_chain" in
-            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|"chain does not exist"*)
+            *"No chain/target/match"*|*"no chain/target/match"*|*"Chain does not exist"*|*"chain does not exist"*)
                 fail "bypass_wa Netfilter chain absent: _CUST_BYPASS_WA_ (hook has not applied yet; if KAS was just installed, wait about 10 minutes and re-run Doctor, or rebuild the firewall once; a single reboot also rebuilds it)$_bypass_component_hint"
                 ;;
             *"Resource temporarily unavailable"*|*"Resource busy"*|*"xtables.lock"*)
