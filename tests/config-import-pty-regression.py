@@ -80,6 +80,8 @@ import re
 import select
 import shutil
 import subprocess
+
+from mihomo_init_fixture import write_package_init
 import sys
 import tempfile
 import termios
@@ -1288,12 +1290,14 @@ def test_e2e_recovery_gap_cases():
     fake_init = "/opt/etc/init.d/S99mihomo"
     config_path = "/opt/etc/mihomo/config.yaml"
     backup_path = "/opt/etc/mihomo/config.yaml.bak"
-    created.extend([fake_bin, fake_init])
+    rc_func = "/opt/etc/init.d/rc.func"
+    if os.path.lexists(rc_func):
+        raise RuntimeError("refusing to overwrite an existing Entware rc.func")
+    created.extend([fake_bin, fake_init, rc_func])
 
     with open(fake_bin, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(FAKE_MIHOMO_TWO_RULES)
-    with open(fake_init, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("#!/bin/sh\nexit 0\n")
+    write_package_init(fake_init, "exit 0\n")
     os.chmod(fake_bin, 0o755)
     os.chmod(fake_init, 0o755)
 
