@@ -197,7 +197,11 @@ PREFIX = r'''#!/bin/sh
 id() { echo 0; }
 sleep() { :; }
 opkg() {
-  if [ "${1:-}" = list-installed ]; then printf '%s\n' 'magitrickle 0.3.5-all'; return 0; fi
+  if [ "${MOCK_OPKG_FAIL:-}" = 1 ]; then return 1; fi
+  if [ "${1:-}" = list-installed ]; then
+    printf '%s\n' "${MOCK_OPKG_LIST_INSTALLED:-magitrickle - 0.8.2-1}"
+    return 0
+  fi
   return 1
 }
 ''' + MOCK_FETCHERS
@@ -330,10 +334,15 @@ class KasUpdateRegression(unittest.TestCase):
 
     def run_kas_update(self, args, shell=None):
         shell = shell or ['sh']
+        # POSIX-style script path: MSYS coreutils sha256sum escapes filenames
+        # containing backslashes with a leading '\' on the hash line, which
+        # would corrupt the self-check hash of $0 on Windows hosts. Routers
+        # and Linux CI always use forward-slash POSIX paths.
+        script_path = str(self.compose_self()).replace('\\', '/')
         # stdin is always detached: check never reads it, and apply must see
         # a non-TTY stdin exactly like an operator piping or scheduling it.
         return subprocess.run(
-            shell + [str(self.compose_self())] + list(args),
+            shell + [script_path] + list(args),
             env=self.env, stdin=subprocess.DEVNULL, capture_output=True,
             text=True, encoding='utf-8', errors='replace', timeout=60)
 
@@ -356,8 +365,64 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('already current', result.stdout)
         self.assertIn('nothing to apply', result.stdout)
-        self.assertIn('(opkg): 0.3.5-all', result.stdout)
+        self.assertIn('(opkg): 0.8.2-1', result.stdout)
         self.assertIn('not run by kas-update', result.stdout)
+        self.assertIn('running copy matches stable', result.stdout)
+
+    def test_opkg_two_field_version_is_supported(self):
+        # Older/test fixtures sometimes omit the Entware separator.
+        self.install_watchdog(NEW_BODY)
+        self.env['MOCK_OPKG_LIST_INSTALLED'] = 'magitrickle 0.3.5-all'
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('MagiTrickle (opkg): 0.3.5-all', result.stdout)
+
+    def test_opkg_unparseable_version_is_unknown_not_dash(self):
+        self.install_watchdog(NEW_BODY)
+        self.env['MOCK_OPKG_LIST_INSTALLED'] = 'magitrickle -'
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('version format is unknown', result.stdout)
+        self.assertNotIn('MagiTrickle (opkg): -;', result.stdout)
+
+    def test_opkg_absent_package_is_informational(self):
+        self.install_watchdog(NEW_BODY)
+        self.env['MOCK_OPKG_LIST_INSTALLED'] = 'other-pkg - 1.0'
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('MagiTrickle: not found in the opkg package list', result.stdout)
+
+    def test_opkg_failure_is_unknown_not_missing(self):
+        # A failing opkg invocation (lock, corrupted status DB) must not be
+        # reported as "package not found": the advisory inventory is UNKNOWN.
+        self.install_watchdog(NEW_BODY)
+        self.env['MOCK_OPKG_FAIL'] = '1'
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('opkg list-installed failed', result.stdout)
+        self.assertNotIn('not found in the opkg package list', result.stdout)
+
+    def test_historical_tag_skips_unavailable_selfcheck_without_retries(self):
+        # v1.8.7 contains the watchdog, but never shipped kas-update.sh.
+        # Candidate watchdog comparison must still run; no self-fetch
+        # attempts should waste time on the guaranteed 404.
+        self.install_watchdog(NEW_BODY)
+        self.env['KEENETIC_AUTO_SETUP_REF'] = 'v1.8.7'
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('already current', result.stdout)
+        self.assertIn('not shipped in historical Core tag v1.8.7', result.stdout)
+        self.assertNotIn('curl download failed', result.stdout)
+        self.assertFalse(any('kas-update.sh' in url for url in self.network_hits()))
 
     def test_check_update_available(self):
         self.install_watchdog(OLD_BODY)

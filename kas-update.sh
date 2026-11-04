@@ -689,11 +689,28 @@ print_component_inventory() {
     fi
     info_out "Mihomo updates are a separate explicit operation: update-mihomo.sh (not run by kas-update)"
     if command -v opkg >/dev/null 2>&1; then
-        _mt_ver=$(opkg list-installed 2>/dev/null | awk '$1 == "magitrickle" { print $2; exit }')
-        if [ -n "$_mt_ver" ]; then
-            info_out "MagiTrickle (opkg): $_mt_ver; updates: opkg install magitrickle (explicit, not run by kas-update)"
+        # Entware opkg normally prints "magitrickle - 0.8.2-1" (3 fields).
+        # Some test/older output uses "magitrickle 0.8.2-1" (2 fields).
+        # Do not report the separator "-" as a package version. A failing
+        # opkg invocation is UNKNOWN, never "package not found".
+        _mt_list=$(opkg list-installed 2>/dev/null)
+        if [ "$?" -ne 0 ]; then
+            unknown_out "MagiTrickle (opkg): version not checked (opkg list-installed failed)"
         else
-            info_out "MagiTrickle: not found in the opkg package list"
+            _mt_ver=$(printf '%s\n' "$_mt_list" | awk '
+                $1 == "magitrickle" {
+                    if (NF == 3 && $2 == "-" && $3 != "-") print $3
+                    else if (NF == 2 && $2 != "-") print $2
+                    else print "UNKNOWN"
+                    exit
+                }')
+            if [ "$_mt_ver" = "UNKNOWN" ]; then
+                unknown_out "MagiTrickle (opkg): package entry found, but version format is unknown"
+            elif [ -n "$_mt_ver" ]; then
+                info_out "MagiTrickle (opkg): $_mt_ver; updates: opkg install magitrickle (explicit, not run by kas-update)"
+            else
+                info_out "MagiTrickle: not found in the opkg package list"
+            fi
         fi
     else
         info_out "opkg not available; MagiTrickle version not checked"
@@ -757,6 +774,15 @@ EOF
 
 self_check() { # advisory: is the running kas-update copy current on the channel?
     SELF_STATE="unknown"
+    # Historical immutable Core tags predate kas-update.sh. A self-fetch there
+    # can only return 404; do not waste bounded retry/fallback time or emit
+    # misleading curl/wget warnings. Candidate watchdog checks still run.
+    case "$PROJECT_REF" in
+        v1.8.[0-7])
+            info_out "kas-update self-check: not shipped in historical Core tag $PROJECT_REF; skipped"
+            return 0
+            ;;
+    esac
     [ -f "$0" ] && [ ! -L "$0" ] || { info_out "kas-update self-check: running copy is not a readable file; skipped"; return 0; }
     has_hash_tool || { info_out "kas-update self-check: skipped (no sha256sum)"; return 0; }
     _sc_local=$(file_hash "$0")
