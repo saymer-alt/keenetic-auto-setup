@@ -250,6 +250,55 @@ mp_pids() {
 }
 # END MIHOMO PROCESS STATE v1
 
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
+# saymer-alt/entware-go e573954 installs S99mihomo the same way.
+# Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
+# Neither recipe installs an alias. Unknown bytes and executable symlinks
+# require operator review. Never execute a candidate to identify it.
+MIHOMO_INIT_RESOLVED=""
+MIHOMO_INIT_STATE=""
+resolve_mihomo_init() {
+    local _mir_found="" _mir_state=absent _mir_path _mir_digest
+    MIHOMO_INIT_RESOLVED=""
+    MIHOMO_INIT_STATE=""
+    for _mir_path in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do
+        if [ -d "$_mir_path" ]; then
+            _mir_state="notfile:$_mir_path"
+        elif [ -f "$_mir_path" ] && [ -x "$_mir_path" ]; then
+            if [ -n "$_mir_found" ]; then
+                MIHOMO_INIT_STATE="ambiguous"
+                return 2
+            fi
+            _mir_found="$_mir_path"
+        elif [ -e "$_mir_path" ] || [ -L "$_mir_path" ]; then
+            _mir_state="notexec:$_mir_path"
+        fi
+    done
+    if [ -n "$_mir_found" ]; then
+        if [ -L "$_mir_found" ] ||
+           ! _mir_digest=$(sha256sum < "$_mir_found") ||
+           [ "${_mir_digest%% *}" != "06ba8f6abe78a3b109d2037c902d826085d5a4814cf4b4aca0d135b22a7b86d9" ]; then
+            MIHOMO_INIT_STATE="unverified:$_mir_found"
+            return 2
+        fi
+        if [ ! -f /bin/sh ] || [ ! -x /bin/sh ] ||
+           [ ! -f /opt/etc/init.d/rc.func ] || [ ! -r /opt/etc/init.d/rc.func ]; then
+            MIHOMO_INIT_STATE="runtime:$_mir_found"
+            return 2
+        fi
+        MIHOMO_INIT_RESOLVED="$_mir_found"
+        return 0
+    fi
+    MIHOMO_INIT_STATE="$_mir_state"
+    if [ "$_mir_state" = "absent" ]; then
+        return 1
+    fi
+    return 2
+}
+# END MIHOMO INIT RESOLUTION v1
+
+
 
 # =========================================================
 # MIHOMO WATCHDOG SCRIPT - PRODUCTION VERSION
@@ -725,7 +774,7 @@ run_diag_port() {
 }
 
 # Bounded post-restart tunnel observation, run only after an actual
-# restart. [RESTART-OK] proves the process; this adds whether SOCKS works
+# restart. [RESTART-VERIFIED] records process identity; this adds whether SOCKS works
 # again immediately. It is a correlation record, not proof that the restart
 # repaired the upstream, and it never triggers further actions here.
 # The probe uses dg_probe (defined above both call sites): this function is
@@ -881,6 +930,40 @@ fi
 # 1 if rate-limited
 # =========================================================
 
+# Observe exactly one canonical process, with a stable PID/start-time pair.
+# A proven stopped state is a valid baseline for the first service start.
+wd_restart_identity() {
+    local rc pid start exe
+    if mp_state; then
+        set -- $MP_PIDS
+        [ "$#" -eq 1 ] || return 2
+        pid="$1"
+        start=$(ml_starttime "$pid") || return 2
+        exe=$(readlink "/proc/$pid/exe") || return 2
+        case "$exe" in
+            /opt/bin/mihomo|/opt/sbin/mihomo) ;;
+            *) return 2 ;;
+        esac
+        [ "$(ml_starttime "$pid")" = "$start" ] || return 2
+        printf '%s %s\n' "$pid" "$start"
+    else
+        rc=$?
+        [ "$rc" -eq 1 ] || return 2
+        printf '%s\n' stopped
+    fi
+}
+
+wd_old_identity_gone() {
+    local pid start
+    [ "$1" = stopped ] && return 0
+    pid=${1%% *}
+    if start=$(ml_starttime "$pid"); then
+        [ "$start" != "${1#* }" ]
+    else
+        [ ! -d "/proc/$pid" ]
+    fi
+}
+
 can_restart() {
     local reason="$1"
     local now
@@ -904,50 +987,55 @@ can_restart() {
         elapsed=$(( now - last ))
 
         if [ "$elapsed" -lt "$MIN_RESTART_INTERVAL" ]; then
-            log "[RATE-LIMIT] Restart blocked (${elapsed}s < ${MIN_RESTART_INTERVAL}s) | ${reason}"
+            log "[RATE-LIMIT] [RESTART-SKIPPED] Restart blocked (${elapsed}s < ${MIN_RESTART_INTERVAL}s) | ${reason}"
             return 1
         fi
     fi
 
     if ! ml_lifecycle_acquire; then
-        log "[SKIP] Mihomo lifecycle busy or unverifiable - restart skipped"
+        log "[RESTART-SKIPPED] Mihomo lifecycle busy or unverifiable"
         return 1
     fi
 
-    if ! mp_known; then
-        log "[SKIP] Mihomo runtime UNKNOWN - restart skipped"
+    if ! resolve_mihomo_init; then
+        log "[RESTART-SKIPPED] Mihomo init ${MIHOMO_INIT_STATE}; verify the Entware package"
         ml_lifecycle_release || true
         return 1
     fi
 
-    # Record restart timestamp and proceed
-    echo "$now" > "$RESTART_STATE"
-
-    log "[RESTART] ${reason}"
-    /opt/etc/init.d/S99mihomo restart
-
-    # Same-run outcome verification (observability only): the
-    # [RESTART] line above is written before the restart, so this
-    # bounded check records whether the process came back without
-    # waiting for the next cron run. No further action is taken
-    # here - the next run repeats the full health checks.
-    if mp_known; then
-        _i=0
-        while [ "$_i" -lt 10 ]; do
-            mp_running && break
-            sleep 1
-            _i=$((_i + 1))
-        done
-        if mp_running; then
-            log "[RESTART-OK] process is running after restart"
-        else
-            log "[RESTART-FAIL] process did not come up within 10s after restart"
-        fi
-    else
-        log "[RESTART-FAIL] runtime UNKNOWN after restart"
+    local before after i
+    if ! before=$(wd_restart_identity); then
+        log "[RESTART-SKIPPED] Mihomo process identity is unknown before restart"
+        ml_lifecycle_release || true
+        return 1
     fi
 
-    return 0
+    # Consume cooldown for every attempted command, including failures.
+    if ! printf '%s\n' "$now" > "$RESTART_STATE"; then
+        log "[RESTART-SKIPPED] Cannot record restart cooldown"
+        ml_lifecycle_release || true
+        return 1
+    fi
+    log "[RESTART] ${reason}"
+    if "$MIHOMO_INIT_RESOLVED" restart; then
+        i=0
+        while [ "$i" -lt 10 ]; do
+            if after=$(wd_restart_identity) && [ "$after" != stopped ] &&
+               [ "$after" != "$before" ] && wd_old_identity_gone "$before"; then
+                log "[RESTART-VERIFIED] New Mihomo process identity observed"
+                return 0
+            fi
+            sleep 1
+            i=$((i + 1))
+        done
+        log "[RESTART-UNKNOWN] Command returned success without evidence of a new Mihomo process"
+        # The caller may still recheck the tunnel. Its result is separate
+        # from process restart evidence.
+        return 0
+    else
+        log "[RESTART-FAILED] Mihomo init returned exit $?"
+        return 1
+    fi
 }
 
 
