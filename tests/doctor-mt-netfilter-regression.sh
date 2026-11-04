@@ -210,7 +210,7 @@ out=$(run_mode "$TMP/retained-broad.yaml" 1 false clean)
 printf '%s\n' "$out" | grep -Fq 'broad catch-all regex rule present' || fail_test 'retained broad .com rule not detected'
 
 # --- B3: narrow concrete domain regex must NOT be a catch-all ---
-sed 's@^[[]a-zA-Z0-9-[]]+(\\.[[]a-zA-Z0-9-[]]+)*\\.com\$@^api\\.example\\.com$@' "$TMP/retained-broad.yaml" > "$TMP/narrow-regex.yaml"
+sed 's@^[[:space:]]*rule: .*@    rule: ^api\\.example\\.com$@' "$TMP/retained-broad.yaml" > "$TMP/narrow-regex.yaml"
 out=$(run_mode "$TMP/narrow-regex.yaml" 1 false clean)
 printf '%s\n' "$out" | grep -Fq 'broad catch-all regex rule present' && fail_test 'concrete domain regex incorrectly broad'
 
