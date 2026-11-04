@@ -42,7 +42,7 @@ let panelBusy=false,panelUpdateUI=null;
 let mtCheckData=null,mtChecking=false,mtMessage='';
 let updateCheckData=null,updateOperation=null,updateChecking=false,updateSubmitting=false,updateMessage='',updatePollTimer=null,updateEpoch=0,updateKnownID=null;
 let metricsData=null,metricsBusy=false,metricsError='';
-let statusData=null,statusError='',doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
+let statusData=null,statusError='',statusEpoch=0,doctorData=null,busy=false,importData=null,submitting=false,pollTimer=null,importMessage='';
 let exporting=false,providerMessage='';
 let downloadingConfig=false,configDownloadMessage='';
 let lastOperation='import',importView='configuration',copyStatus='';
@@ -350,6 +350,8 @@ async function saveAccess(){
  finally{accessBusy=false;draw();}
 }
 async function refresh(){
+ // A later refresh always wins, even if an older response or error arrives last.
+ const epoch=++statusEpoch;
  refreshComponents();
  statusData=null;statusError='';draw();
  try{
@@ -357,9 +359,9 @@ async function refresh(){
   if(!resp.ok)throw Error('HTTP_'+resp.status);
   const data=await resp.json();
   if(!validStatus(data))throw Error('INVALID_OR_STALE_RESPONSE');
-  statusData=data;
- }catch(e){statusData=null;statusError=e.message||'UNKNOWN';}
- draw();
+  if(epoch===statusEpoch)statusData=data;
+ }catch(e){if(epoch===statusEpoch){statusData=null;statusError=e.message||'UNKNOWN';}}
+ if(epoch===statusEpoch)draw();
 }
 async function runDoctor(){
  lastOperation='doctor';
