@@ -361,6 +361,7 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('nothing to apply', result.stdout)
         self.assertIn('(opkg): 0.8.2-1', result.stdout)
         self.assertIn('not run by kas-update', result.stdout)
+        self.assertIn('running copy matches stable', result.stdout)
 
     def test_opkg_two_field_version_is_supported(self):
         # Older/test fixtures sometimes omit the Entware separator.
