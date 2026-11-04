@@ -30,6 +30,8 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+
+from mihomo_init_fixture import pin_fixture_init
 import sys
 import tempfile
 
@@ -89,7 +91,7 @@ CANDIDATE_CONFIG = ('mixed-port: 7890\nmode: rule\nproxy-providers:\n'
 # Applets the production script may exec. cmp is deliberately absent from the
 # restricted PATH used by the cmp-missing case; pidof is provided as a
 # function seam by the wrappers instead.
-LAB_TOOLS = ('awk', 'cat', 'chmod', 'cmp', 'cp', 'date', 'grep', 'mkdir',
+LAB_TOOLS = ('awk', 'sha256sum', 'cat', 'chmod', 'cmp', 'cp', 'date', 'grep', 'mkdir',
              'mv', 'rm', 'rmdir', 'sleep', 'wc')
 
 
@@ -105,6 +107,7 @@ def build_lab(lab, case, tools=LAB_TOOLS):
     init = lab / 'opt/etc/init.d/S99mihomo'
     init.write_text(INIT, newline='\n')
     init.chmod(0o700)
+    init.with_name("rc.func").touch()
     mihomo = lab / 'opt/bin/mihomo'
     mihomo.write_text(MIHOMO, newline='\n')
     mihomo.chmod(0o700)
@@ -166,6 +169,7 @@ def run_case(shell, case, running=True, expected_source=True,
         body = (ROOT / 'config-import.sh').read_text().replace(
             '/tmp/', posix + 'tmp/').replace('/opt/', posix + 'opt/')
         wrappers = WRAPPERS + (CMP_WRAPPER if 'cmp' in tools else '')
+        body = pin_fixture_init(body, lab / 'opt/etc/init.d/S99mihomo')
         script.write_text('#!/bin/sh\n' + wrappers + '\n' + body)
         env = dict(os.environ, LAB=str(lab), CASE=case)
         env['PATH'] = str(restricted).replace('\\', '/')

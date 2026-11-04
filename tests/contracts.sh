@@ -616,9 +616,10 @@ grep -Fq 'Mihomo binary/config unchanged and daemon is running - restart skipped
 grep -Fq 'Mihomo binary/config unchanged but daemon is stopped - starting service' "$ROOT/install.sh" || fail "installer must still recover a stopped service"
 grep -Fq 'if [ "$MIHOMO_SERVICE_ACTION" != "none" ]; then' "$ROOT/install.sh" || fail "installer must skip startup delay when no Mihomo service action occurred"
 _restart_gate_line=$(grep -n 'if \[ "$MIHOMO_RESTART_NEEDED" -eq 1 \]; then' "$ROOT/install.sh" | head -1 | cut -d: -f1)
-_restart_cmd_line=$(grep -n '^[[:space:]]*/opt/etc/init.d/S99mihomo restart' "$ROOT/install.sh" | head -1 | cut -d: -f1)
+_restart_cmd_line=$(grep -n '"\$MIHOMO_INIT_SCRIPT" restart' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 [ -n "$_restart_gate_line" ] && [ -n "$_restart_cmd_line" ] || fail "installer restart gate/command ordering could not be determined"
-[ "$_restart_gate_line" -lt "$_restart_cmd_line" ] || fail "S99mihomo restart must remain behind the restart-needed gate"
+[ "$_restart_gate_line" -lt "$_restart_cmd_line" ] || fail "resolved-init Mihomo restart must remain behind the restart-needed gate"
+grep -Fq 'resolve_mihomo_init' "$ROOT/install.sh" || fail "installer must resolve the Mihomo init script through the guarded S28/S99 contract (issue #355)"
 pass "repeat install skips Mihomo restart when binary/config are unchanged"
 
 grep -q '^opkg_repo_snapshot()' "$ROOT/install.sh" || fail "installer must snapshot opkg repository configuration around the MagiTrickle helper"
