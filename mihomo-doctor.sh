@@ -2496,9 +2496,22 @@ else
                 gsub(/\$/, "", t)
                 return (t ~ /^[a-z][a-z0-9]{1,9}$/)
             }
-            function broad_regex(p,   a, n, i) {
+            function broad_regex(p,   a, n, i, t, prefix, suffix) {
                 n = split(p, a, "|")
-                for (i = 1; i <= n; i++) if (broad_alt(a[i])) return 1
+                for (i = 1; i <= n; i++) {
+                    t = a[i]
+                    if (broad_alt(t)) return 1
+                    # Retained field form: ^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.com$
+                    # Match exact arbitrary-label expression plus a bare TLD;
+                    # do not flag concrete domain-specific regexes.
+                    sub(/^\^/, "", t)
+                    sub(/\$/, "", t)
+                    prefix = "[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\."
+                    if (index(t, prefix) == 1) {
+                        suffix = substr(t, length(prefix) + 1)
+                        if (suffix ~ /^[a-z][a-z0-9]{1,9}$/) return 1
+                    }
+                }
                 return 0
             }
             function close_rule() {
