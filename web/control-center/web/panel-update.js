@@ -190,11 +190,12 @@
      if(verifiedPanelReturn(data,components)){message={key:'success',params:{version:publicVersion(data.Version)}};finish(true);armReload(data);}
      else{message={key:'unverified'};occupy(true);schedule();}
     }else if(data.State==='FAIL'){
-     const recovered=!data.Gate&&data.Phase==='recovered'&&data.ErrorCode==='PANEL_RECOVERED_CHECK_VERSION';
-     message={key:data.Gate?'recovery':recovered?'recovered':'failed',params:{code:data.ErrorCode||'UNKNOWN'}};
-     if(recovered)check=null; // require a fresh version check; never reuse the old upgrade offer
-     finish();
-     if(data.Gate){occupy(true);check=null;el('panel-update-apply').disabled=true;}else{try{sessionStorage.removeItem('kas_panel_update_id');}catch(_){}}
+     const gateCleared=data.Gate===false;
+     const recovered=gateCleared&&data.Phase==='recovered'&&data.ErrorCode==='PANEL_RECOVERED_CHECK_VERSION';
+     message={key:!gateCleared?'recovery':recovered?'recovered':'failed',params:{code:data.ErrorCode||'UNKNOWN'}};
+     if(recovered||!gateCleared)check=null;
+     if(gateCleared){finish(true);}
+     else{clearTimeout(timer);timer=null;occupy(true);}
     }else{message={key:'unverified'};if(working)schedule();}
    }catch(_){if(working)schedule();}
    draw();
