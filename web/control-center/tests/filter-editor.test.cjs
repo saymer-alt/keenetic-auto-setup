@@ -429,7 +429,7 @@ test('overview shows process evidence and explicitly sourced versions',async()=>
  const app=ui(response(200,{providers:{}}));await new Promise(setImmediate);
  app.run(`statusData={timestamp:'test',mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'stopped',version:'0.8.2-1',version_source:'package'}}};draw();`);
  assert.match(app.el('mihomo-file').textContent,/Процесс запущен.*1\.19\.33.*API/);
- assert.match(app.el('magitrickle-file').textContent,/Процесс не найден.*0\.8\.2-1.*пакет/);
+ assert.match(app.el('magitrickle-file').textContent,/Процесс остановлен.*0\.8\.2-1.*пакет/);
  app.run(`statusData.runtime.mihomo={state:'unknown',version:'<SECRET>',version_source:'api'};draw();`);
  assert.match(app.el('mihomo-file').textContent,/Не удалось определить/);
  assert.doesNotMatch(app.el('mihomo-file').textContent,/SECRET/);
