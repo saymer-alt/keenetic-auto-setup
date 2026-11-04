@@ -1,5 +1,13 @@
 # KAS WEB beta.7 — план работ и handoff для нового чата (03.11.2026)
 
+## Решение по выпуску beta.7 от 04.11.2026
+
+Beta.7 включает четыре исправления панели [#381](https://github.com/saymer-alt/keenetic-auto-setup/pull/381), [#384](https://github.com/saymer-alt/keenetic-auto-setup/pull/384), [#385](https://github.com/saymer-alt/keenetic-auto-setup/pull/385) и [#387](https://github.com/saymer-alt/keenetic-auto-setup/pull/387). Автоматические проверки относятся к финальной интегрированной ревизии. Аппаратные проверки NC-4210 и KN-1012 SE выполняет владелец после публикации, статус до проверки — `FIELD NOT TESTED`.
+
+Форма Network Doctor WEB перенесена в beta.8. Контракт [#382](https://github.com/saymer-alt/keenetic-auto-setup/pull/382) требует проверки фактического адреса назначения для прямых и SOCKS5h-проб и сопоставления селекторов с CLI. [#376](https://github.com/saymer-alt/keenetic-auto-setup/pull/376), карта [#383](https://github.com/saymer-alt/keenetic-auto-setup/pull/383) и связка MagiTrickle [#326](https://github.com/saymer-alt/keenetic-auto-setup/pull/326) → [#338](https://github.com/saymer-alt/keenetic-auto-setup/pull/338) остаются отдельными работами.
+
+Разделы ниже сохраняют историю планирования. Объём текущего выпуска и порядок аппаратного допуска определены этим решением.
+
 > **Статус: ROADMAP / DESIGN, не реализованный релиз.** Это закреплённый план следующего цикла, а не разрешение на merge, Release, Pages, `stable` или доступ к физическим роутерам. Проверять актуальные HEAD/CI/GitHub issues перед началом работ. Приоритет: сначала завершить и испытать beta.6.
 
 ## Актуализация 04.11.2026 — ревизия GitHub и новые независимые Draft PR
