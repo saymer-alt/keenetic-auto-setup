@@ -106,6 +106,9 @@ jobs:
           sudo python3 tests/mihomo-init-contract-regression.py
           python3 tests/mihomo-init-safety-regression.py
 
+      - name: Entware/BusyBox preflight regression (issue #356, read-only)
+        run: sudo python3 tests/busybox-preflight-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
