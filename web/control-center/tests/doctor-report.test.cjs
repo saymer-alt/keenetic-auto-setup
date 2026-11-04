@@ -58,7 +58,7 @@ test('real pre-section process warning keeps its evidence in the readable report
 });
 
 function withWarnings(findings){
- const details=report.replace('[OK]   No restarts or problem detections in the available history',findings.map(x=>'[WARN] '+x).join('\\n')).replace('WARN: 0','WARN: '+findings.length).replace('[OK] Overall status: OK','[WARN] Overall status: WARN');
+ const details=report.replace('[OK]   No restarts or problem detections in the available history',findings.map(x=>'[WARN] '+x).join('\n')).replace('WARN: 0','WARN: '+findings.length).replace('[OK] Overall status: OK','[WARN] Overall status: WARN');
  return {details,exit_code:1,summary:{verdict:'WARN',ok:37,warn:findings.length,fail:0,info:65}};
 }
 test('canonical 1.2.19 watchdog findings have distinct bilingual advice and keep evidence',()=>{
