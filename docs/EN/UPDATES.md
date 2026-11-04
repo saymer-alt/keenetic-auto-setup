@@ -33,17 +33,33 @@ sh /tmp/kas-update.sh --apply
 (`/opt/bin/mihomo_watchdog.sh` + `/opt/etc/cron.5mins/mihomo_watchdog`),
 compares SHA-256 against the channel (`KEENETIC_AUTO_SETUP_REF`, default
 `stable`; script-installed KAS Core keeps no version number on the device),
+recognizes the installed baseline against a catalogue of known managed
+release bodies (v1.8.x tag watchdogs plus the updater's legacy hashes; the
+`MIHOMO WATCHDOG SCRIPT` marker alone is not ownership proof — a locally
+edited file can keep it, so such a base is flagged UNRECOGNIZED),
 inventories the other components without touching them, and marks anything
-it cannot positively identify as `UNKNOWN`. `--apply` re-assesses, prints
-the plan, asks for confirmation on a TTY (`--yes` for non-interactive use),
-updates only recognized KAS-managed parts through the transactional updater,
-verifies the installed SHA-256 afterwards, and is idempotent on reruns.
+it cannot positively identify as `UNKNOWN`; a cron slot with unrecognized
+content is a separate `REVIEW REQUIRED` status. `--apply` re-assesses,
+prints the plan, asks for confirmation on a TTY (`--yes` for non-interactive
+use), updates only recognized KAS-managed parts through the transactional
+updater, and is idempotent on reruns. Three hard stops: an unrecognized cron
+slot blocks apply entirely (the file is preserved; to update the canonical
+binary while keeping a deliberate custom wrapper, run `update-watchdog.sh`
+directly, then re-run `--check`); overwriting an installed baseline that
+matches no known managed release requires explicit approval
+(`--allow-unrecognized-base`, or a per-hash interactive confirmation); and
+any post-apply SHA-256 mismatch — including channel drift between the two
+downloads — is an **unverified apply** and exits non-zero, never green.
 
 `kas-update` never touches the Mihomo binary, `config.yaml`, MagiTrickle,
 netfilter, routing policies, WAN/VPN, Entware packages or KAS Web. Mihomo and
 MagiTrickle remain separate explicit updates (below). Doctor and
 `config-import.sh` keep no installed copy — they run from GitHub on every
 invocation, so there is nothing installed to update.
+
+Exit codes `--check`: `0` current or not installed, `1` update plan exists,
+`2` UNKNOWN or REVIEW REQUIRED. Exit codes `--apply`: `0` applied and
+verified or nothing to do, `1` refusal, error, or unverified updater result.
 
 Status: the documented `stable` URL becomes user-facing only after the slice
 is promoted to `stable` per the branch policy (issue #369); until then the

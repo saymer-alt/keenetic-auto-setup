@@ -10,9 +10,16 @@ native PID/proc namespaces), so kas-update's delegation flow is what runs.
 
 Covered: check current/update/UNKNOWN classification, no-network and
 invalid-candidate refusals, foreign/symlink preservation, absent-watchdog
-no-op, wrapper creation, legacy full-watchdog preservation, busy lifecycle
-lock, TTY confirmation requirement, updater validation failure, user-data
-preservation, idempotent re-apply, and sh/dash/BusyBox ash dialects.
+no-op, wrapper creation, busy lifecycle lock, TTY confirmation requirement,
+updater validation failure, user-data preservation, idempotent re-apply,
+sh/dash/BusyBox ash dialects, plus the post-review safety contracts:
+- customized watchdog body with an intact sanity marker is UNRECOGNIZED and
+  requires explicit approval (--allow-unrecognized-base) before overwrite;
+- recognized managed-release baselines apply with plain --yes;
+- a candidate/updater payload drift (post-apply SHA mismatch) is a failure,
+  never a green result;
+- a foreign cron slot is REVIEW REQUIRED: --check exits 2 and --apply
+  refuses with both files preserved (current and outdated binary variants).
 """
 import hashlib
 import os
@@ -21,24 +28,61 @@ import subprocess
 import tempfile
 import time
 import unittest
+import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Tiny marker-valid bodies used as channel candidates and mismatch payloads.
 OLD_BODY = b'#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# previous release body\nexit 0\n'
 NEW_BODY = b'#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# next release body\nexit 0\n'
+DRIFT_BODY = b'#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# drifted channel body\nexit 0\n'
+UNVERIFIED_NOTE = 're-run kas-update --check to re-assess the actual state'
 sha = lambda data: hashlib.sha256(data).hexdigest()
 
 PROC_NATIVE = subprocess.run(['sh', '-c',
     'IFS=" " read -r actual rest < /proc/self/stat; [ "$actual" = "$$" ]']
     ).returncode == 0
 
-# Real chmod/chown semantics only exist on POSIX hosts; elsewhere the
+# Real-file permission semantics only exist on POSIX hosts; elsewhere the
 # harness emulates them (see UPDATER_PREFIX) and CI covers real modes.
 POSIX_MODES = os.name == 'posix'
 
 DOCUMENTED_COMMAND = ('curl -fSsL -o /tmp/kas-update.sh '
     'https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-update.sh')
+
+BODY_CACHE = {}
+
+
+def release_body(tag):
+    """Bytes of mihomo-watchdog.sh at a release tag; its sha256 must be in
+    kas-update's KNOWN_RELEASE_HASHES catalogue (recognition fixture)."""
+    if tag in BODY_CACHE:
+        return BODY_CACHE[tag]
+    data = None
+    try:
+        out = subprocess.run(['git', '-C', str(REPO), 'show', '%s:mihomo-watchdog.sh' % tag],
+                             capture_output=True)
+        if out.returncode == 0 and out.stdout:
+            data = out.stdout
+    except OSError:
+        pass
+    if data is None:
+        # Checkout without tags (e.g. plain CI fetch): take the exact
+        # release bytes from raw.githubusercontent.com instead.
+        url = 'https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/%s/mihomo-watchdog.sh' % tag
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = response.read()
+    BODY_CACHE[tag] = data
+    return data
+
+
+def insert_local_tune_comment(body):
+    """A locally edited release body: extra comment line after the shebang,
+    sanity marker intact, SHA-256 no longer matching any managed release."""
+    edited = body.replace(b'#!/bin/sh\n', b'#!/bin/sh\n# locally tuned\n', 1)
+    assert edited != body and b'MIHOMO WATCHDOG SCRIPT' in edited
+    return edited
 
 
 # Write LF + UTF-8 on every host so fixtures stay byte-identical for the
@@ -56,18 +100,37 @@ def path_rewrite(text, lab):
 # opkg only inside the process under test; the real sha256sum/mkdir/mv/cp/
 # chmod are used. The same fetcher block is served inside the delegated
 # updater payload, because the updater runs in its own shell process.
+# kas_mock_fetch rotates through repeated manifest entries per basename,
+# advancing only on success (single-entry manifests behave identically).
 MOCK_FETCHERS = r'''
 kas_mock_fetch() {
   [ -n "${2:-}" ] && [ -n "${1:-}" ] || return 91
-  printf '%s\n' "$1" >> "$MOCK_LOG"
   _kf_base=${1##*/}; _kf_base=${_kf_base%%\?*}
+  _kf_count_file="$MOCK_LOG.count.$_kf_base"
+  _kf_idx=0
+  if [ -f "$_kf_count_file" ]; then _kf_idx=$(cat "$_kf_count_file"); fi
+  printf '%s\n' "$1" >> "$MOCK_LOG"
+  _kf_total=0
   while IFS="	" read -r _kf_key _kf_path; do
     [ "$_kf_key" = "$_kf_base" ] || continue
-    [ -f "$_kf_path" ] || return 92
-    command cp "$_kf_path" "$2" || return 93
-    return 0
+    _kf_total=$(( _kf_total + 1 ))
   done < "$MANIFEST"
-  return 91
+  [ "$_kf_total" -gt 0 ] || return 91
+  _kf_pick=$_kf_idx
+  if [ "$_kf_pick" -ge "$_kf_total" ]; then _kf_pick=$(( _kf_total - 1 )); fi
+  _kf_n=0
+  _kf_chosen=""
+  while IFS="	" read -r _kf_key _kf_path; do
+    [ "$_kf_key" = "$_kf_base" ] || continue
+    if [ "$_kf_n" -eq "$_kf_pick" ]; then _kf_chosen="$_kf_path"; break; fi
+    _kf_n=$(( _kf_n + 1 ))
+  done < "$MANIFEST"
+  [ -n "$_kf_chosen" ] && [ -f "$_kf_chosen" ] || return 92
+  command cp "$_kf_chosen" "$2" || return 93
+  if [ "$_kf_pick" -lt "$(( _kf_total - 1 ))" ]; then
+    printf '%s\n' "$(( _kf_idx + 1 ))" > "$_kf_count_file"
+  fi
+  return 0
 }
 curl() {
   _cu_dest=""; _cu_url=""; _cu_prev=""
@@ -206,18 +269,18 @@ class KasUpdateRegression(unittest.TestCase):
     def prepare_self_payload(self):
         write_lf(self.served_self, self.compose_self().read_text(encoding='utf-8'))
 
+    def candidate_file(self, body=NEW_BODY):
+        path = self.lab / ('candidate-%s.sh' % sha(body)[:8])
+        if not path.exists():
+            path.write_bytes(body)
+        return path
+
     def serve_default_network(self):
         write_lf(self.manifest, '\n'.join([
             'mihomo-watchdog.sh\t' + str(self.candidate_file()),
             'update-watchdog.sh\t' + str(self.served_updater),
             'kas-update.sh\t' + str(self.served_self),
         ]) + '\n')
-
-    def candidate_file(self):
-        path = self.lab / 'candidate-body.sh'
-        if not path.exists():
-            path.write_bytes(NEW_BODY)
-        return path
 
     def run_kas_update(self, args, shell=None):
         shell = shell or ['sh']
@@ -260,8 +323,24 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('update available', result.stdout)
         self.assertIn(sha(OLD_BODY), result.stdout)
         self.assertIn(sha(NEW_BODY), result.stdout)
+        # OLD_BODY is a valid-marker body that matches no known release:
+        # the check must name it as an unrecognized base, not a plain update.
+        self.assertIn('UNRECOGNIZED', result.stdout)
+        self.assertIn('--allow-unrecognized-base', result.stdout)
         self.assertIn('apply plan', result.stdout)
         self.assertIn('transactional update-watchdog.sh', result.stdout)
+
+    def test_check_recognized_release_base_reports_plain_update(self):
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--check'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('update available', result.stdout)
+        self.assertIn('recognized managed release body', result.stdout)
+        self.assertNotIn('UNRECOGNIZED', result.stdout)
+        self.assertNotIn('--allow-unrecognized-base', result.stdout)
 
     def test_check_network_failure_is_unknown(self):
         self.install_watchdog(OLD_BODY)
@@ -300,6 +379,86 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('nothing was changed', apply_result.stdout + apply_result.stderr)
         self.assertEqual(self.binary.read_bytes(), before)
 
+    def test_custom_marker_base_requires_explicit_approval(self):
+        # Locally customized watchdog that KEPT the sanity marker: hash
+        # matches no known managed release. Never silently overwritten.
+        custom = insert_local_tune_comment(release_body('v1.8.7'))
+        self.install_watchdog(custom)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('UNRECOGNIZED', check.stdout)
+        self.assertIn(sha(custom), check.stdout)
+        # Plain --yes is NOT enough: the unrecognized base needs its own
+        # explicit permission.
+        refused = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
+        self.assertIn('not a known managed release', refused.stdout + refused.stderr)
+        self.assertIn('--allow-unrecognized-base', refused.stdout + refused.stderr)
+        self.assertEqual(self.binary.read_bytes(), custom)
+        self.assertEqual(self.updater_hits(), [])
+        # With the explicit flag the update proceeds through the updater.
+        approved = self.run_kas_update(['--apply', '--yes', '--allow-unrecognized-base'])
+        self.assertEqual(approved.returncode, 0, approved.stdout + approved.stderr)
+        self.assertIn('apply verified', approved.stdout)
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+
+    def test_recognized_release_base_applies_without_extra_flag(self):
+        # A real managed release body is recognized: the ordinary upgrade
+        # path must not demand --allow-unrecognized-base.
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('apply verified', result.stdout)
+        self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+
+    def test_recognized_previous_release_body(self):
+        # Older release bodies are recognized too (cross-release upgrade).
+        self.install_watchdog(release_body('v1.8.6'))
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertIn('recognized managed release body', check.stdout)
+        self.assertNotIn('UNRECOGNIZED', check.stdout)
+
+    def test_sha_mismatch_after_updater_is_a_failure(self):
+        # Channel drift between kas-update's assessment download and the
+        # updater's own download: the updater exits 0 having installed
+        # different (still validated) bytes. kas-update must fail loudly,
+        # never report a green apply.
+        self.install_watchdog(release_body('v1.8.7'))
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        # Rotating manifest: assessment fetch serves NEW_BODY, the updater's
+        # own candidate fetch then serves DRIFT_BODY.
+        write_lf(self.manifest, '\n'.join([
+            'mihomo-watchdog.sh\t' + str(self.candidate_file(NEW_BODY)),
+            'mihomo-watchdog.sh\t' + str(self.candidate_file(DRIFT_BODY)),
+            'update-watchdog.sh\t' + str(self.served_updater),
+            'kas-update.sh\t' + str(self.served_self),
+        ]) + '\n')
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('apply did NOT verify', result.stdout + result.stderr)
+        self.assertIn(sha(NEW_BODY), result.stdout + result.stderr)
+        self.assertIn(sha(DRIFT_BODY), result.stdout + result.stderr)
+        self.assertIn(UNVERIFIED_NOTE, result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), DRIFT_BODY)
+        # A follow-up check reassesses the actual state honestly: the drifted
+        # body now IS the channel body in this fixture, so the state reports
+        # current with the drifted hash — never the stale assessment.
+        follow = self.run_kas_update(['--check'])
+        self.assertEqual(follow.returncode, 0, follow.stdout + follow.stderr)
+        self.assertIn('already current', follow.stdout)
+        self.assertIn(sha(DRIFT_BODY), follow.stdout)
+
     def test_not_installed_is_noop(self):
         self.prepare_updater_payload()
         self.prepare_self_payload()
@@ -315,7 +474,7 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertEqual(self.updater_hits(), [])
 
     def test_apply_update_transaction_and_idempotency(self):
-        self.install_watchdog(OLD_BODY)
+        self.install_watchdog(release_body('v1.8.7'))
         self.prepare_updater_payload()
         self.prepare_self_payload()
         self.serve_default_network()
@@ -359,42 +518,62 @@ class KasUpdateRegression(unittest.TestCase):
             self.assertEqual(self.wrapper.stat().st_mode & 0o7777, 0o755)
         self.assertEqual(self.binary.read_bytes(), NEW_BODY)
 
-    def test_foreign_full_watchdog_wrapper_is_preserved(self):
-        self.install_watchdog(OLD_BODY)
-        legacy_body = '#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# unknown full watchdog body\nexit 0\n'
-        write_lf(self.wrapper, legacy_body)
+    def test_foreign_wrapper_current_binary_requires_review(self):
+        # Current canonical binary + unrecognized cron slot: NOT a green
+        # "everything current"; the schedule is unverified content.
+        foreign_body = '#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# unknown full watchdog body\nexit 0\n'
+        self.install_watchdog(NEW_BODY)
+        write_lf(self.wrapper, foreign_body)
         self.wrapper.chmod(0o755)
         self.prepare_updater_payload()
         self.prepare_self_payload()
         self.serve_default_network()
         check = self.run_kas_update(['--check'])
-        self.assertEqual(check.returncode, 1, check.stdout + check.stderr)
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('REVIEW REQUIRED', check.stdout)
         self.assertIn('unrecognized', check.stdout)
         result = self.run_kas_update(['--apply', '--yes'])
-        # The transactional updater updates the canonical binary, preserves
-        # the unrecognized full watchdog at the cron path, and deliberately
-        # exits non-zero because the layout stays incomplete. kas-update must
-        # report that honestly (exit 1) while the files show exactly this.
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn('NOT a known managed version', result.stdout)
-        self.assertIn('review the updater output above', result.stdout + result.stderr)
-        self.assertEqual(self.wrapper.read_text(), legacy_body)
+        self.assertIn('REVIEW REQUIRED', result.stdout + result.stderr)
+        self.assertIn('update-watchdog.sh directly', result.stdout + result.stderr)
         self.assertEqual(self.binary.read_bytes(), NEW_BODY)
+        self.assertEqual(self.wrapper.read_text(), foreign_body)
+        self.assertEqual(self.updater_hits(), [])
+
+    def test_foreign_wrapper_outdated_binary_requires_review(self):
+        # Outdated canonical binary + unrecognized cron slot: kas-update
+        # refuses instead of driving a transaction with an unreviewed
+        # schedule; both files stay untouched.
+        self.install_watchdog(OLD_BODY)
+        foreign_body = '#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# another unknown body\nexit 0\n'
+        write_lf(self.wrapper, foreign_body)
+        self.wrapper.chmod(0o755)
+        self.prepare_updater_payload()
+        self.prepare_self_payload()
+        self.serve_default_network()
+        check = self.run_kas_update(['--check'])
+        self.assertEqual(check.returncode, 2, check.stdout + check.stderr)
+        self.assertIn('REVIEW REQUIRED', check.stdout)
+        result = self.run_kas_update(['--apply', '--yes'])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(self.binary.read_bytes(), OLD_BODY)
+        self.assertEqual(self.wrapper.read_text(), foreign_body)
+        self.assertEqual(self.updater_hits(), [])
 
     def test_apply_requires_confirmation_without_tty(self):
-        self.install_watchdog(OLD_BODY)
+        self.install_watchdog(release_body('v1.8.7'))
         self.prepare_updater_payload()
         self.prepare_self_payload()
         self.serve_default_network()
         result = self.run_kas_update(['--apply'])
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('interactive confirmation', result.stdout + result.stderr)
-        self.assertEqual(self.binary.read_bytes(), OLD_BODY)
+        self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
 
     def test_apply_busy_lifecycle_lock(self):
         if not PROC_NATIVE:
             self.skipTest('native PID/proc namespace required for a live lock owner')
-        self.install_watchdog(OLD_BODY)
+        self.install_watchdog(release_body('v1.8.7'))
         self.prepare_updater_payload()
         self.prepare_self_payload()
         self.serve_default_network()
@@ -432,12 +611,12 @@ class KasUpdateRegression(unittest.TestCase):
             result = self.run_kas_update(['--apply', '--yes'])
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('busy', result.stdout + result.stderr)
-            self.assertEqual(self.binary.read_bytes(), OLD_BODY)
+            self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
         finally:
             holder.communicate('\n', timeout=5)
 
     def test_apply_refuses_invalid_updater_payload(self):
-        self.install_watchdog(OLD_BODY)
+        self.install_watchdog(release_body('v1.8.7'))
         self.prepare_self_payload()
         bad_updater = self.lab / 'bad-updater.sh'
         write_lf(bad_updater, '#!/bin/sh\necho not the updater\n')
@@ -449,7 +628,7 @@ class KasUpdateRegression(unittest.TestCase):
         result = self.run_kas_update(['--apply', '--yes'])
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('failed validation', result.stdout + result.stderr)
-        self.assertEqual(self.binary.read_bytes(), OLD_BODY)
+        self.assertEqual(self.binary.read_bytes(), release_body('v1.8.7'))
 
     def test_symlinked_canonical_refused(self):
         target = self.lab / 'opt/bin/user-real-watchdog.sh'
@@ -470,7 +649,7 @@ class KasUpdateRegression(unittest.TestCase):
         for shell in self.shells:
             with self.subTest(shell=' '.join(shell)):
                 self.setUp()
-                self.install_watchdog(OLD_BODY)
+                self.install_watchdog(release_body('v1.8.7'))
                 self.prepare_updater_payload()
                 self.prepare_self_payload()
                 self.serve_default_network()
@@ -481,11 +660,38 @@ class KasUpdateRegression(unittest.TestCase):
                 self.assertIn('apply verified', result.stdout)
                 self.assertEqual(self.binary.read_bytes(), NEW_BODY)
 
+    def test_dialect_matrix_review_refusal(self):
+        # Review refusal and unrecognized-base refusal run on every dialect.
+        custom = insert_local_tune_comment(release_body('v1.8.7'))
+        for shell in self.shells:
+            with self.subTest(shell=' '.join(shell)):
+                self.setUp()
+                self.install_watchdog(custom)
+                self.prepare_updater_payload()
+                self.prepare_self_payload()
+                self.serve_default_network()
+                refused = self.run_kas_update(['--apply', '--yes'], shell=shell)
+                self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
+                self.assertIn('not a known managed release', refused.stdout + refused.stderr)
+                self.setUp()
+                self.install_watchdog(NEW_BODY)
+                write_lf(self.wrapper, '#!/bin/sh\n# MIHOMO WATCHDOG SCRIPT\n# alien body\nexit 0\n')
+                self.wrapper.chmod(0o755)
+                self.prepare_updater_payload()
+                self.prepare_self_payload()
+                self.serve_default_network()
+                review = self.run_kas_update(['--apply', '--yes'], shell=shell)
+                self.assertEqual(review.returncode, 1, review.stdout + review.stderr)
+                self.assertIn('REVIEW REQUIRED', review.stdout + review.stderr)
+                self.assertEqual(self.updater_hits(), [])
+
     def test_documented_contract_in_docs(self):
         updates = (REPO / 'docs' / '12-updates.md').read_text(encoding='utf-8')
         self.assertIn('kas-update.sh', updates)
         self.assertIn('--check', updates)
         self.assertIn('--apply', updates)
+        self.assertIn('--allow-unrecognized-base', updates)
+        self.assertIn('REVIEW', updates)
         self.assertIn(DOCUMENTED_COMMAND, updates)
         self.assertIn('read-only', updates.lower())
         scripts_ru = (REPO / 'docs' / 'SCRIPTS.md').read_text(encoding='utf-8')
@@ -494,6 +700,7 @@ class KasUpdateRegression(unittest.TestCase):
         self.assertIn('kas-update.sh', scripts_en)
         changelog = (REPO / 'CHANGELOG.md').read_text(encoding='utf-8')
         self.assertIn('kas-update', changelog)
+        self.assertIn('--allow-unrecognized-base', changelog)
 
 
 if __name__ == '__main__':

@@ -23,13 +23,24 @@
 # Что делает (--apply, явное действие):
 #   - повторно оценивает состояние, печатает план и (интерактивно)
 #     запрашивает подтверждение; без TTY требуется --yes;
+#   - распознаёт установленную базу по каталогу SHA-256 известных
+#     managed-релизов (теги v1.8.x + LEGACY_HASHES updater'а). Сам маркер
+#     "MIHOMO WATCHDOG SCRIPT" владением не является: локально
+#     отредактированный файл может сохранить маркер. Перезапись базы,
+#     не совпадающей ни с одним известным релизом, требует отдельного
+#     явного разрешения: --allow-unrecognized-base (неинтерактивно) или
+#     отдельного подтверждения с показом хэша (интерактивно);
+#   - cron slot с нераспознанным содержимым — REVIEW: apply отказывается,
+#     файл сохраняется, ничего не «чинится молча»;
 #   - скачивает с канала штатный update-watchdog.sh, проверяет его
 #     (маркер, sh -n) и запускает его для транзакции. ВСЯ логика замены,
 #     backup, atomic rename и cron-нормализации остаётся в существующем
 #     updater'е — kas-update её не копирует;
-#   - после применения проверяет фактический SHA-256 установленного
-#     watchdog и сообщает результат. Повторный запуск идемпотентен:
-#     уже актуальное состояние не переписывается (zero flash writes).
+#   - после применения сверяет фактический SHA-256 с оценённым. Любое
+#     расхождение (в т.ч. drift канала между двумя загрузками) — это
+#     НЕВЕРИФИЦИРОВАННОЕ применение: ошибка (nonzero), а не успех.
+#     Повторный запуск идемпотентен: уже актуальное состояние не
+#     переписывается (zero flash writes).
 #
 # kas-update НИКОГДА (в любой режим):
 #   - не трогает Mihomo binary, config.yaml, MagiTrickle и его настройки,
@@ -40,11 +51,13 @@
 #   - не обновляет KAS Web (отдельный lifecycle) и не использует
 #     GitHub "latest": источник — только выбранный ref проекта.
 #   - при UNKNOWN/чужом/изменённом файле отказывается от применения,
-#     ничего не переписывая.
+#     ничего не переписывая; чужой cron slot требует ручного REVIEW.
 #
 # Использование:
 #   sh kas-update.sh --check          # read-only: состояние + план
 #   sh kas-update.sh --apply [--yes]  # явное применение (watchdog)
+#   [--allow-unrecognized-base]       # явное разрешение на перезапись
+#                                     # нераспознанной установленной базы
 #   sh kas-update.sh --help
 #
 # Канал: KEENETIC_AUTO_SETUP_REF (по умолчанию stable). Для старых
@@ -57,10 +70,12 @@
 #   --check: 0 = состояние распознано и актуально (или watchdog не
 #                установлен — это INFO, установка отдельная операция);
 #            1 = доступны обновления/исправления (есть план);
-#            2 = UNKNOWN/ошибка среды (достоверно определить не удалось).
-#   --apply: 0 = применено успешно либо обновлять нечего;
-#            1 = отказ или ошибка (система не изменена, либо её
-#                восстановлением занимался транзакционный updater).
+#            2 = UNKNOWN или REVIEW REQUIRED (чужой cron slot / ошибка
+#                среды: достоверно определить не удалось).
+#   --apply: 0 = применено И верифицировано, либо обновлять нечего;
+#            1 = отказ, ошибка или НЕВЕРИФИЦИРОВАННЫЙ результат updater'а
+#                (система не изменена, восстановлена updater'ом, либо
+#                фактическое состояние требует повторной проверки).
 #   прочее:  2 = ошибка использования.
 #
 # Отношение к IPK (issue #295): kas-update — интерфейс обслуживания.
@@ -111,7 +126,34 @@ WORK_DIR="/tmp/kas-update.$$"
 
 MODE=""
 ASSUME_YES=0
+ALLOW_UNRECOGNIZED_BASE=0
 HASH_TOOL=""
+
+# Known managed release bodies of the canonical watchdog (SHA-256), used to
+# recognize the installed baseline. Sanity-marker presence alone is NOT
+# ownership proof: a locally edited file may keep the marker, so --apply
+# refuses to overwrite an unrecognized base without explicit permission.
+# Provenance: git tags v1.8.0..v1.8.7 of mihomo-watchdog.sh plus the
+# LEGACY_HASHES pre-release bodies already recognized by update-watchdog.sh.
+# Maintenance: re-derive the tag row(s) with
+#   git show vX.Y.Z:mihomo-watchdog.sh | sha256sum
+# when a new KAS Core release is cut.
+KNOWN_RELEASE_HASHES=" \
+14611cd83b49a2e6848f0e11991cdcbced8e14748d138cf09eaeff6904360542 \
+63d99cf5197c637ac7def84ce512acbb6768dda3bee7693976ef8a4d901c9748 \
+b8faf45dd9f6cef39dffec38ba3edb46ca69e96ad790eb889ae7036a51447982 \
+a660e191909664b79f3d6d5fa0211ea85ad5609ab20e090e7309ee89d122d9ff \
+7c8b6969fd4474e355d51801d6379d06281525140e74c8ca2d85e02dca5a8715 \
+39c5a07ff74d9bc922678e06ecb7def97c0c5ab66641b2d41aedba741b9fbee6 \
+a37fbd888bb6b7149922c3603b1fc26f6478e3e5c88f91945f31f0552c7c163a \
+122d17d8fa40cc9d6a4c1879094cdcf299c5e6e5a4e00c83a8bb807a7749bd80"
+
+is_known_release_hash() {
+    for _krh in $KNOWN_RELEASE_HASHES; do
+        [ "$_krh" = "$1" ] && return 0
+    done
+    return 1
+}
 
 # Terminal status colors are presentation only (docs/18). Semantic prefixes
 # remain the source of truth; NO_COLOR/TERM=dumb and non-TTY keep it plain.
@@ -296,6 +338,8 @@ managed_path_anomaly() {
 #   AVAIL_HASH        sha256 of the channel candidate ("" if unavailable)
 #   AVAIL_STATE       ok | unavailable | invalid
 #   WRAPPER_STATE     exact | wrapperish | missing | foreign | anomaly
+#   W_BASE            recognized | unrecognized | "" (n/a)
+#   REVIEW_NEEDED     0/1 (foreign cron slot -> explicit review, no apply)
 #   PLAN_BINARY / PLAN_WRAPPER   0/1
 #   MANAGED_UNKNOWN   0/1 (watchdog pair unknown -> --apply must refuse)
 #   CANDIDATE_FILE    local copy of the channel candidate (for post-verify)
@@ -303,12 +347,14 @@ assess_watchdog() {
     W_HASH=""
     W_STATE="unknown"
     W_REASON=""
+    W_BASE=""
     AVAIL_HASH=""
     AVAIL_STATE="unavailable"
     WRAPPER_STATE="unknown"
     PLAN_BINARY=0
     PLAN_WRAPPER=0
     MANAGED_UNKNOWN=1
+    REVIEW_NEEDED=0
     CANDIDATE_FILE="$WORK_DIR/candidate.sh"
 
     if ! has_hash_tool; then
@@ -337,6 +383,14 @@ assess_watchdog() {
             W_REASON="installed watchdog has no KAS sanity marker; it is preserved as user content"
             return 0
         fi
+        # Marker presence is not ownership proof: a locally edited script can
+        # keep the marker. Only a hash matching a known managed release body
+        # (or the channel itself, verified below) counts as a recognized base.
+        if is_known_release_hash "$W_HASH"; then
+            W_BASE="recognized"
+        else
+            W_BASE="unrecognized"
+        fi
     fi
 
     # Wrapper classification (report + plan only).
@@ -346,9 +400,10 @@ assess_watchdog() {
         WRAPPER_STATE="exact"
     elif is_wrapperish; then
         WRAPPER_STATE="wrapperish"
-    elif has_watchdog_marker "$WATCHDOG_CRON"; then
-        WRAPPER_STATE="foreign"
     else
+        # Full watchdog bodies with the marker and everything else at the
+        # cron path are unverified content: preserved by the transactional
+        # updater, and kas-update treats them as review-required.
         WRAPPER_STATE="foreign"
     fi
 
@@ -369,16 +424,22 @@ assess_watchdog() {
         # Absent canonical binary. An empty slot is NOT an update target:
         # primary installation belongs to bootstrap.sh/install.sh. A file at
         # the cron path alone is a legacy layout the transactional updater
-        # recognizes (exact known bodies migrate; unknown ones are preserved).
+        # recognizes (exact known bodies migrate; unknown ones are preserved
+        # and reviewed).
         W_STATE="absent"
         W_REASON="watchdog is not installed; primary installation is bootstrap.sh/install.sh"
         if [ "$AVAIL_STATE" = "ok" ] \
             && [ "$WRAPPER_STATE" != "missing" ] && [ "$WRAPPER_STATE" != "unknown" ]; then
-            PLAN_WRAPPER=1
+            if [ "$WRAPPER_STATE" = "foreign" ]; then
+                REVIEW_NEEDED=1
+            else
+                PLAN_WRAPPER=1
+            fi
         fi
     elif [ "$AVAIL_STATE" = "ok" ]; then
         if [ "$W_HASH" = "$AVAIL_HASH" ]; then
             W_STATE="current"
+            W_BASE="recognized"
         else
             W_STATE="update"
             PLAN_BINARY=1
@@ -393,10 +454,13 @@ assess_watchdog() {
 
     # A missing wrapper next to a recognized canonical binary is a real
     # repair target (the updater creates it in the empty slot). Without the
-    # canonical binary an empty slot is NOT a kas-update task.
+    # canonical binary an empty slot is NOT a kas-update task. A foreign
+    # cron slot is never a plan item: it needs explicit review first.
     if [ "$W_STATE" = "current" ] || [ "$W_STATE" = "update" ]; then
         if [ "$WRAPPER_STATE" = "missing" ]; then
             PLAN_WRAPPER=1
+        elif [ "$WRAPPER_STATE" = "foreign" ]; then
+            REVIEW_NEEDED=1
         fi
     fi
 
@@ -427,6 +491,13 @@ print_watchdog_state() {
             anomaly) unknown_out "watchdog: $W_REASON" ;;
             *) unknown_out "watchdog: $W_REASON" ;;
         esac
+        if [ "$W_STATE" = "update" ]; then
+            if [ "$W_BASE" = "recognized" ]; then
+                info_out "installed baseline: recognized managed release body"
+            else
+                warn_out "installed baseline: UNRECOGNIZED (not a known managed release body); apply requires explicit approval (--allow-unrecognized-base)"
+            fi
+        fi
     else
         info_out "canonical watchdog $WATCHDOG_BIN is not installed"
         info_out "primary installation is bootstrap.sh/install.sh; kas-update does not install KAS"
@@ -440,7 +511,7 @@ print_watchdog_state() {
         exact) info_out "cron wrapper: exact managed wrapper" ;;
         wrapperish) info_out "cron wrapper: managed wrapper with local drift (works; the updater keeps it)" ;;
         missing) warn_out "cron wrapper missing: $WATCHDOG_CRON (apply lets the updater create it)" ;;
-        foreign) warn_out "cron wrapper content is unrecognized; it is preserved, never deleted" ;;
+        foreign) warn_out "cron wrapper content is unrecognized (REVIEW REQUIRED); it is preserved, never deleted or replaced by kas-update" ;;
         anomaly) unknown_out "cron wrapper is a symlink or not a regular file" ;;
         *) unknown_out "cron wrapper state could not be determined" ;;
     esac
@@ -490,12 +561,18 @@ print_plan() {
     info_out "apply plan:"
     if [ "$PLAN_BINARY" -eq 1 ]; then
         info_out "  - update canonical watchdog to the $PROJECT_REF version (transactional update-watchdog.sh: validation, backup hygiene, atomic rename)"
+        if [ "${W_BASE:-}" = "unrecognized" ]; then
+            warn_out "  - installed base is UNRECOGNIZED (SHA-256 is not a known managed release body): apply only after explicit approval"
+        fi
     fi
     if [ "$PLAN_WRAPPER" -eq 1 ]; then
         info_out "  - let update-watchdog.sh handle the cron wrapper layout (create a missing wrapper in an empty slot, or migrate a recognized legacy layout; foreign content is preserved and reported)"
     fi
     if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ]; then
         info_out "  - nothing to change"
+    fi
+    if [ "$REVIEW_NEEDED" -eq 1 ]; then
+        warn_out "  - cron slot requires REVIEW before any apply; kas-update will not run while it is unresolved"
     fi
     info_out "  - never touched: Mihomo binary, $MIHOMO_CONFIG, MagiTrickle, netfilter, routing policies, WAN/VPN, Entware packages, KAS Web"
 }
@@ -508,6 +585,10 @@ Usage:
   sh $PROG_NAME --check          read-only state + plan
   sh $PROG_NAME --apply [--yes]  explicit apply (canonical watchdog, via the
                                  transactional $UPDATER_SCRIPT)
+  [--allow-unrecognized-base]    required (with --apply) to overwrite an
+                                 installed watchdog body that matches no
+                                 known managed release; interactively, an
+                                 explicit per-hash confirmation is asked instead
 
 Channel: KEENETIC_AUTO_SETUP_REF (default: stable).
 Exit codes: see the script header. --check never changes the system.
@@ -553,6 +634,11 @@ do_check() {
         unknown_out "check result: UNKNOWN - apply is refused until the state above is resolved"
         return 2
     fi
+    if [ "$REVIEW_NEEDED" -eq 1 ]; then
+        warn_out "check result: REVIEW REQUIRED - the cron slot holds unrecognized content; kas-update preserves it and will not apply anything until it is reviewed"
+        print_plan
+        return 2
+    fi
     if [ "$PLAN_BINARY" -eq 1 ] || [ "$PLAN_WRAPPER" -eq 1 ]; then
         print_plan
         return 1
@@ -562,17 +648,37 @@ do_check() {
 }
 
 confirm_apply() {
-    [ "$ASSUME_YES" -eq 1 ] && return 0
-    if [ -t 0 ] 2>/dev/null; then
-        printf 'Apply the watchdog update now? [y/N] '
-        IFS= read -r _ca_answer || return 1
-        case "$_ca_answer" in
-            y|Y|yes|YES|Yes) return 0 ;;
-            *) return 1 ;;
+    if [ "$ASSUME_YES" -ne 1 ]; then
+        if [ -t 0 ] 2>/dev/null; then
+            printf 'Apply the watchdog update now? [y/N] '
+            IFS= read -r _ca_answer || return 1
+            case "$_ca_answer" in
+                y|Y|yes|YES|Yes) ;;
+                *) return 1 ;;
+            esac
+        else
+            err_out "apply requires an interactive confirmation; re-run with --yes for non-interactive use"
+            return 1
+        fi
+    fi
+    # An unrecognized installed base (marker kept, but the body matches no
+    # known managed release) needs its own explicit permission: this is the
+    # locally-edited-watchdog case, and kas-update never silently overwrites it.
+    if [ "$PLAN_BINARY" -eq 1 ] && [ "${W_BASE:-}" = "unrecognized" ] && [ "$ALLOW_UNRECOGNIZED_BASE" -ne 1 ]; then
+        if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ] 2>/dev/null; then
+            err_out "the installed watchdog body is not a known managed release (SHA-256: $W_HASH)"
+            err_out "overwriting it requires explicit permission: re-run with --allow-unrecognized-base (or interactively confirm when asked)"
+            return 1
+        fi
+        printf 'Installed watchdog is UNRECOGNIZED (not a known release body, SHA-256: %s).\n' "$W_HASH"
+        printf 'It may be your local customization. Overwrite it with the %s version? [y/N] ' "$PROJECT_REF"
+        IFS= read -r _ua_answer || return 1
+        case "$_ua_answer" in
+            y|Y|yes|YES|Yes) ;;
+            *) warn_out "unrecognized base kept; nothing was changed"; return 1 ;;
         esac
     fi
-    err_out "apply requires an interactive confirmation; re-run with --yes for non-interactive use"
-    return 1
+    return 0
 }
 
 do_apply() {
@@ -593,6 +699,15 @@ do_apply() {
         return 1
     fi
 
+    # An unrecognized cron slot is never worked around: the transactional
+    # updater would update the binary yet report an incomplete layout, and
+    # kas-update does not drive a transaction whose schedule is unreviewed.
+    if [ "$REVIEW_NEEDED" -eq 1 ]; then
+        err_out "refusing to apply: $WATCHDOG_CRON holds unrecognized content (REVIEW REQUIRED)"
+        err_out "kas-update preserves it unchanged. Review the file manually; if it is a deliberate custom wrapper, keep it and use update-watchdog.sh directly for the canonical binary, then re-run kas-update --check"
+        return 1
+    fi
+
     if [ "$PLAN_BINARY" -eq 0 ] && [ "$PLAN_WRAPPER" -eq 0 ]; then
         ok_out "watchdog is already current; nothing to apply (no files rewritten)"
         return 0
@@ -600,7 +715,7 @@ do_apply() {
 
     print_watchdog_state
     print_plan
-    confirm_apply || { warn_out "apply cancelled; nothing was changed"; return 1; }
+    confirm_apply || { warn_out "apply cancelled or not approved; nothing was changed"; return 1; }
 
     # Stage the channel updater and delegate the whole transaction to it.
     # kas-update never reimplements replacement/backup/atomic-rename logic.
@@ -621,14 +736,21 @@ do_apply() {
         _da_now=$(file_hash "$WATCHDOG_BIN")
         if [ -n "$_da_now" ] && [ "$_da_now" = "$AVAIL_HASH" ]; then
             ok_out "apply verified: installed watchdog SHA-256 matches the assessed $PROJECT_REF version"
-        elif [ -n "$_da_now" ]; then
-            warn_out "apply finished, but the installed SHA-256 differs from the assessed version:"
-            warn_out "  assessed: ${AVAIL_HASH:-unavailable}; installed: $_da_now"
-            warn_out "the updater validated what it installed; re-run --check to re-assess"
-        else
-            warn_out "apply finished, but the installed watchdog could not be hashed; re-run --check"
+            return 0
         fi
-        return 0
+        # The updater reported success but the installed bytes are not what
+        # kas-update assessed (channel drift between the two downloads, or
+        # an unhashable result). This is NOT a verified apply: fail loudly.
+        err_out "apply did NOT verify: updater exit 0, but the installed SHA-256 differs from the assessed $PROJECT_REF version"
+        err_out "  assessed: ${AVAIL_HASH:-unavailable}; installed: ${_da_now:-UNHASHABLE}"
+        if [ -n "$_da_now" ] && [ -f "$CANDIDATE_FILE" ]; then
+            _da_fresh=$(file_hash "$CANDIDATE_FILE")
+            [ -n "$_da_fresh" ] || _da_fresh=UNHASHABLE
+            err_out "  candidate copy fetched by kas-update: ${_da_fresh:-UNHASHABLE}"
+            err_out "a mismatch here means the channel content changed between kas-update's download and the updater's download (or the updater installed a different valid body); the updater verified the sanity of what it installed"
+        fi
+        err_out "re-run kas-update --check to re-assess the actual state"
+        return 1
     fi
     err_out "watchdog updater reported a failure; its own transaction keeps the previous watchdog or restores it"
     # Report facts, not assumptions: re-assess read-only and show what the
@@ -653,6 +775,9 @@ while [ "$#" -gt 0 ]; do
             ;;
         --yes)
             ASSUME_YES=1
+            ;;
+        --allow-unrecognized-base)
+            ALLOW_UNRECOGNIZED_BASE=1
             ;;
         --help|-h)
             usage
