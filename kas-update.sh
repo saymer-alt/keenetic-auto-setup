@@ -777,7 +777,7 @@ self_check() { # advisory: is the running kas-update copy current on the channel
             return 0
             ;;
     esac
-    [ -f "$0" && [ ! -L "$0" ] || { info_out "kas-update self-check: running copy is not a readable file; skipped"; return 0; }
+    [ -f "$0" ] && [ ! -L "$0" ] || { info_out "kas-update self-check: running copy is not a readable file; skipped"; return 0; }
     has_hash_tool || { info_out "kas-update self-check: skipped (no sha256sum)"; return 0; }
     _sc_local=$(file_hash "$0")
     [ -n "$_sc_local" ] || { info_out "kas-update self-check: skipped (cannot hash the running copy)"; return 0; }
