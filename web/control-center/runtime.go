@@ -219,10 +219,17 @@ func readMihomoVersion(ctx context.Context, client *http.Client, target, secret 
 		Meta    bool   `json:"meta"`
 		Version string `json:"version"`
 	}
-	if json.Unmarshal(raw, &body) != nil || !body.Meta || !componentVersionPattern.MatchString(body.Version) {
+	if json.Unmarshal(raw, &body) != nil || !body.Meta {
 		return ""
 	}
-	return body.Version
+	// The Mihomo Controller API may use "v1.19.33", while package and
+	// component inventory versions retain their separate strict validation.
+	// Accept exactly one optional lowercase v, never broaden that contract.
+	version := strings.TrimPrefix(body.Version, "v")
+	if !componentVersionPattern.MatchString(version) {
+		return ""
+	}
+	return version
 }
 func (a *app) runtimeStatus(ctx context.Context) runtimeObservation {
 	observation := runtimeObservation{

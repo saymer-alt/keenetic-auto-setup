@@ -50,6 +50,13 @@
 <p id="config-warning" class="notice"></p><button id="apply" type="button"></button><p id="config-state" role="status" aria-live="polite" class="operation-state"></p>
 </section></div>
 <div class="view" id="view-diagnostics" hidden>
+<section class="card">
+<h2 id="metrics-heading">Системные показатели</h2>
+<p id="metrics-help" class="muted"></p>
+<button type="button" id="metrics-refresh" class="secondary">Получить показатели</button>
+<p id="metrics-state" role="status" aria-live="polite"></p>
+<dl id="metrics-values" class="doctor-facts" hidden></dl>
+</section>
 <section class="card"><h2 id="doctor-heading"></h2><p id="doctor-help" class="muted"></p><div class="action-bar"><button id="run" type="button"></button><button id="copy" type="button" class="secondary" disabled></button></div><p id="copy-state" role="status" aria-live="polite"></p><p id="doctor-state" role="status" aria-live="polite" class="operation-state"></p><section id="doctor-summary" class="doctor-summary" hidden aria-label="Doctor"></section><details class="help"><summary id="details-label"></summary><pre id="output"></pre></details><p id="footer" class="caption"></p></section>
 </div>
 <div class="view" id="view-settings" hidden>

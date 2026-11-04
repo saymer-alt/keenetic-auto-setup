@@ -553,7 +553,13 @@ now_ms() {
         _nm_frac="${_nm_frac}0"
     done
     _nm_frac=${_nm_frac%"${_nm_frac#???}"}
-    now_ms_result=$(( _nm_int * 1000 + _nm_frac ))
+    # POSIX sh/dash/ash arithmetic reads a leading 0 as octal, so the padded
+    # centisecond fraction must re-enter arithmetic as plain decimal: an
+    # uptime fraction like .09 pads to "090" and would abort the whole
+    # watchdog run with "Illegal number: 090". Strip the zero pad instead.
+    _nm_pad=${_nm_frac#"${_nm_frac%%[1-9]*}"}
+    [ -n "$_nm_pad" ] || _nm_pad=0
+    now_ms_result=$(( _nm_int * 1000 + _nm_pad ))
     return 0
 }
 

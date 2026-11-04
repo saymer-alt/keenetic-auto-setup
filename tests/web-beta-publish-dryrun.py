@@ -115,7 +115,7 @@ class FakeGithub:
         self.comparison = {"status": "ahead", "files": [{"filename": "web/control-center/web/app.js"}]}
         self.record = {"head_sha": SHA, "status": "completed", "conclusion": "success",
                        "event": "workflow_dispatch", "head_branch": "main",
-                       "path": ".github/workflows/web-beta3-build.yml@main"}
+                       "path": ".github/workflows/kas-web-candidate-build.yml@main"}
         self.operations = []
         self.fail_upload_at = None
         self.hijack_latest_after_publish = False
@@ -361,9 +361,14 @@ def main():
         gh.record["event"] = "push"
     scenario("push-run cannot replace pinned dispatch", push_run, False,
              lambda gh, *_: no_release(gh))
+    def foreign_workflow(a, gh, *_):
+        gh.record["path"] = ".github/workflows/web-beta3-build.yml@main"
+    scenario("retired workflow cannot back a release", foreign_workflow, False,
+             lambda gh, *_: no_release(gh))
     def old_source(a, gh, *_):
         gh.record["head_sha"] = "a" * 40
-    scenario("run source SHA mismatch", old_source, False, lambda gh, *_: no_release(gh))
+    scenario("run source SHA mismatch", old_source, False,
+             lambda gh, *_: no_release(gh))
     def missing_previous(a, gh, *_):
         gh.prior["draft"] = True
     scenario("previous Release still draft", missing_previous, False,
