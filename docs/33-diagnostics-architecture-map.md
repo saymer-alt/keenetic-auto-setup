@@ -19,7 +19,7 @@
 ## Контракты переиспользования (уже реализованные)
 
 - **`network-diagnostics/v1`** — текущий JSON-контракт Network Doctor. В `main` поле `vantage` описывает наблюдения с роутера. Выбор интерфейса и массив `vantages[]` предложены в Draft [#376](https://github.com/saymer-alt/keenetic-auto-setup/pull/376).
-- **Marker-блоки** (`# BEGIN/END ... v1`) — способ делить код между скриптами без общего source. Lifecycle lock и process state уже используются, init resolution предложен в Draft [#366](https://github.com/saymer-alt/keenetic-auto-setup/pull/366).
+- **Marker-блоки** (`# BEGIN/END ... v1`) — способ делить код между скриптами без общего source. Lifecycle lock, process state и init resolution уже используются в `main` (init resolution вошёл через [#366](https://github.com/saymer-alt/keenetic-auto-setup/pull/366)). Адаптация `mihomo-doctor.sh` и `uninstall.sh` под S28/S99 остаётся отдельной работой по #355.
 - Статусы и exit-коды определяет контракт каждого инструмента. Например, Network Doctor использует `INCONCLUSIVE` с exit 3, а Entware preflight в Draft #367 использует exit 2 для `UNKNOWN` при отсутствии `FAIL`.
 - **CLI-цвета и префиксы** (docs/18) — presentation-only; семантика в префиксах.
 
