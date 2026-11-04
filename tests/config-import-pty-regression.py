@@ -697,6 +697,15 @@ def daemon_running():
     return result.returncode == 0 and result.stdout.strip() != ""
 
 
+def wait_for_daemon():
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if daemon_running():
+            return True
+        time.sleep(0.05)
+    return daemon_running()
+
+
 def daemon_hard_stop(fake_init):
     subprocess.run([fake_init, "stop"], capture_output=True)
     subprocess.run(["pkill", "-x", "mihomo"], capture_output=True)
@@ -815,7 +824,7 @@ def test_e2e_rollback_contracts():
             # restores the known-good config and restarts the service.
             reset(VALID_PREV, None)
             subprocess.run([fake_init, "start"], capture_output=True)
-            check("R8 daemon preconditions (%s)" % shell_name, daemon_running())
+            check("R8 daemon preconditions (%s)" % shell_name, wait_for_daemon())
             rc, out, _master = paste(argv, FAIL_CANDIDATE)
             after = read_file(config_path)
             bak = read_file(backup_path)
@@ -871,7 +880,7 @@ def test_e2e_rollback_contracts():
             # for the import, started again afterwards, backup untouched.
             reset(b"", b"mixed-port: 7890\nmode: rule\nsecret: real-old\n")
             subprocess.run([fake_init, "start"], capture_output=True)
-            check("R12 daemon preconditions (%s)" % shell_name, daemon_running())
+            check("R12 daemon preconditions (%s)" % shell_name, wait_for_daemon())
             rc, out, _master = paste(argv, CANDIDATE)
             check("R12 recovery with running service (%s)" % shell_name,
                   rc == 0 and read_file(config_path) == CANDIDATE

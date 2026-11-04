@@ -45,7 +45,15 @@ def test_resolver(shell, consumer, lab):
     run(shell, block + body, "2:\n")
     candidate.write_text(INIT)
     run(shell, block + body, f"0:{candidate}\n")
+    run(shell, block + "\nsha256sum() { return 127; }\n" + body, "2:\n")
+    second = lab / "S99mihomo"
+    run(shell, block + body +
+        f"cp -p {shlex.quote(str(candidate))} {shlex.quote(str(second))}\n" + body, "2:\n")
+    second.unlink()
     run(shell, block + body + f"rm {shlex.quote(str(candidate))}\n" + body, "1:\n")
+    candidate.symlink_to(foreign)
+    foreign.write_text(INIT)
+    run(shell, block + body, "2:\n")
     print(f"PASS {consumer} {shell}: foreign link, missing interpreter, stale result")
 
 
