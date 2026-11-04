@@ -99,9 +99,9 @@ case "$(classify_path "$BB")" in
         case "$(can_execute "$BB")" in
             ok)
                 emit PASS "busybox-binary" "$BB present and executes"
-                BB_LIST=$( "$BB" --list 2>/dev/null )
-                if [ -z "$BB_LIST" ]; then
-                    emit UNKNOWN "busybox-applets" "$BB --list produced no output; applet availability cannot be established"
+                if ! BB_LIST=$("$BB" --list 2>/dev/null) || [ -z "$BB_LIST" ]; then
+                    BB_LIST=""
+                    emit UNKNOWN "busybox-applets" "$BB --list failed or produced no output; consult the rescue guide before using Entware tools"
                 fi
                 ;;
             execfail)
@@ -184,15 +184,23 @@ done
 # feeds are https:// and the applet fails on them (Entware #887). A real
 # wget-ssl file is healthy. This is read-only reporting, not ownership
 # proof: `opkg status wget-ssl` below adds the package view when usable.
-if [ -e /opt/bin/wget ] || [ -L /opt/bin/wget ]; then
-    if [ -L /opt/bin/wget ] && [ -n "$BB_LIST" ] &&
-       [ "$( "$BB" readlink -f /opt/bin/wget 2>/dev/null )" = "$( "$BB" readlink -f "$BB" 2>/dev/null )" ]; then
-        emit WARN "wget-capability" "/opt/bin/wget points at busybox: the BusyBox wget applet has no HTTPS support, https feeds will fail with 'wget returned 1' (Entware #887)"
+if [ -f /opt/bin/wget ] && [ -x /opt/bin/wget ]; then
+    if [ -L /opt/bin/wget ]; then
+        if [ -z "$BB_LIST" ] ||
+           ! _wget_target=$("$BB" readlink -f /opt/bin/wget 2>/dev/null) ||
+           ! _bb_target=$("$BB" readlink -f "$BB" 2>/dev/null) ||
+           [ -z "$_wget_target" ] || [ -z "$_bb_target" ]; then
+            emit UNKNOWN "wget-capability" "cannot resolve the wget and BusyBox targets; verify the wget implementation manually"
+        elif [ "$_wget_target" = "$_bb_target" ]; then
+            emit WARN "wget-capability" "/opt/bin/wget points at busybox: the BusyBox wget applet has no HTTPS support, https feeds will fail with 'wget returned 1' (Entware #887)"
+        else
+            emit PASS "wget-capability" "/opt/bin/wget does not resolve to the canonical BusyBox binary"
+        fi
     else
         emit PASS "wget-capability" "/opt/bin/wget is not a busybox-applet link"
     fi
 else
-    emit FAIL "wget-capability" "/opt/bin/wget is missing: feed downloads and KAS bootstrap downloads will fail"
+    emit FAIL "wget-capability" "/opt/bin/wget is missing or unusable; consult the rescue guide before attempting downloads"
 fi
 
 # --- 5. opkg package view (best effort) ------------------------------------

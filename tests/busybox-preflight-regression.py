@@ -288,6 +288,33 @@ def main():
 
     run_matrix("wget-applet", wget_applet, assert_wget_applet)
 
+    def failed_list(fx):
+        fx.install_healthy()
+        fx.bin("busybox", """#!/bin/sh
+case "$1" in
+    --help) exit 0 ;;
+    --list) printf 'chmod\n'; exit 7 ;;
+    -c) exit 0 ;;
+esac
+exit 1
+""")
+
+    def assert_failed_list(name, shell, rc, lines):
+        check("failed BusyBox applet enumeration is UNKNOWN (%s)" % " ".join(shell),
+              rc == 2 and sev(lines, "busybox-applets") == ["UNKNOWN"], lines)
+
+    run_matrix("failed-list", failed_list, assert_failed_list)
+
+    def failed_readlink(fx):
+        fx.install_healthy(wget_is_applet=True)
+        fx.bin("busybox", FAKE_BUSYBOX.replace("readlink)", "readlink) exit 7 ;; ignored)"))
+
+    def assert_failed_readlink(name, shell, rc, lines):
+        check("failed canonical lookup leaves wget capability UNKNOWN (%s)" % " ".join(shell),
+              rc == 2 and sev(lines, "wget-capability") == ["UNKNOWN"], lines)
+
+    run_matrix("failed-readlink", failed_readlink, assert_failed_readlink)
+
     # 7. no opkg -> UNKNOWN, exit 2 when nothing failed
     def noopkg(fx):
         fx.install_healthy(with_opkg=False)
