@@ -24,7 +24,7 @@ REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 for path in /opt/bin/kas-control-center /opt/bin/mihomo /opt/etc/init.d/S98kas-control-center \
     /opt/etc/kas-control-center.settings.json /opt/etc/mihomo /opt/lib/opkg \
     /opt/share/kas-control-center /opt/etc/passwd /opt/etc/shadow /opt/tmp/opkg.lock \
-    /opt/var/run/mihomo-night.pid; do
+    /opt/var/run/mihomo-night.pid /opt/etc/init.d/S28mihomo +    /opt/etc/init.d/S99mihomo /opt/etc/init.d/rc.func; do
     [ ! -e "$path" ] && [ ! -L "$path" ] || fail "test-owned path already exists: $path"
 done
 for path in /opt /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /opt/var/run /opt/tmp; do
@@ -47,7 +47,7 @@ cleanup() {
         "$LAB/opkg" -f "$LAB/opkg.conf" --tmp-dir "$LAB/opkg-tmp" remove kas-control-center >/dev/null 2>&1 || result=1
     fi
     if [ -f "$LAB/hosts.backup" ]; then cat "$LAB/hosts.backup" > /etc/hosts; fi
-    rm -f /opt/etc/kas-control-center.settings.json /opt/etc/passwd /opt/etc/shadow /opt/bin/mihomo
+    rm -f /opt/etc/kas-control-center.settings.json /opt/etc/passwd /opt/etc/shadow /opt/bin/mihomo +        /opt/etc/init.d/S99mihomo /opt/etc/init.d/rc.func
     rm -rf /opt/etc/mihomo /opt/lib/opkg /opt/share/kas-control-center
     if [ "$BRIDGE_CREATED" -eq 1 ]; then ip link delete br0 || result=1; fi
     rm -rf "$LAB"
@@ -60,10 +60,13 @@ chmod 755 /opt /opt/bin /opt/etc /opt/etc/init.d /opt/share /opt/lib /opt/var /o
 printf 'dest root /\narch all 1\narch aarch64-3.10 10\n' > "$LAB/opkg.conf"
 install -m 700 "$OPKG" "$LAB/opkg"
 install -m 755 "$MIHOMO" /opt/bin/mihomo
-# Lab stand-in for the package-owned S99mihomo: a standard start/stop/restart
-# wrapper around the REAL mihomo binary, so the import transaction exercises
-# the actual one-Mihomo discipline and service restart path.
-cat > /opt/etc/init.d/S99mihomo <<'S99'
+# Use the exact package init bytes, with a disposable rc.func to manage
+# the real Mihomo process in the Ubuntu lab.
+PYTHONPATH="$REPO/tests" python3 -c '
+import sys
+from mihomo_init_fixture import write_package_init
+write_package_init("/opt/etc/init.d/S99mihomo", sys.stdin.read())
+' <<'S99'
 #!/bin/sh
 PID=/opt/var/run/mihomo-night.pid
 BIN=/opt/bin/mihomo
