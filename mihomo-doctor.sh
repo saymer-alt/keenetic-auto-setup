@@ -2360,7 +2360,7 @@ else
         _v=$(awk '/^        tablePrefix:/{print $2; exit}' "$MT_CFG")
         [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_REMAP=$_v
+        [ -n "$_v" ] && MT_REMAP=$(printf '%s' "$_v" | tr -d '\r')
         # BEGIN DOCTOR MT LINK PARSE v1
         # YAML "- br0" is a sequence item, not a sibling key. Two shapes
         # are handled: block sequences (items may sit at the key indent or
@@ -2378,6 +2378,8 @@ else
                 _v=$0
                 sub(/^  link:[[:space:]]*/, "", _v)
                 sub(/#.*$/, "", _v)
+                # Comments and CRLF leave whitespace after ]; trim it first.
+                sub(/[[:space:]]+$/, "", _v)
                 if (_v ~ /^\[/) {
                     sub(/^\[/, "", _v); sub(/\]$/, "", _v)
                     _n=split(_v, _a, ",")
