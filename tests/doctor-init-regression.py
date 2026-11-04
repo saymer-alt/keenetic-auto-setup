@@ -12,12 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "mihomo-doctor.sh").read_text()
 start = source.index('hdr "5. Service"')
 end = source.index('hdr "6. Ports"', start)
+# The resolver is inside this service section; extracting it a second time
+# would execute duplicate declarations and weaken the fidelity of the fixture.
 section = source[start:end]
-marker = "# BEGIN MIHOMO INIT RESOLUTION"
-if marker in source:
-    start = source.index(marker)
-    end = source.index("# END MIHOMO INIT RESOLUTION", start)
-    section = source[start:end] + section
+assert "# BEGIN MIHOMO INIT RESOLUTION v1" in section
+assert "# END MIHOMO INIT RESOLUTION v1" in section
 
 
 def run_case(shell, first, second, expected, *, runtime=True, procs=1):
@@ -49,7 +48,6 @@ warn() { printf 'WARN %s\\n' "$*"; }
 fail() { printf 'FAIL %s\\n' "$*"; }
 info() { printf 'INFO %s\\n' "$*"; }
 OPT_ROOT=$1
-INIT_EXPECTED="$OPT_ROOT/etc/init.d/S99mihomo"
 MIHOMO_PROCS=$2
 '''
         result = subprocess.run(shell + ["-s", str(opt), str(procs)], input=prelude + section,
@@ -70,6 +68,8 @@ for shell in (["dash"], ["busybox", "ash"]):
         ("package", "package", ("WARN", "UNVERIFIED", "ambiguous")),
         ("absent", "absent", ("INFO", "absent", "WARN")),
         ("package", "disabled", ("OK Verified Mihomo init", "/S28mihomo")),
+        ("package", "link", ("WARN", "UNVERIFIED", "ambiguous")),
+        ("package", "foreign", ("WARN", "UNVERIFIED", "ambiguous")),
         ("absent", "dangling", ("WARN", "UNVERIFIED", "notexec")),
         ("link", "absent", ("WARN", "UNVERIFIED", "unverified")),
         ("absent", "foreign", ("WARN", "UNVERIFIED", "unverified")),
