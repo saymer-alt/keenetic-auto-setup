@@ -8,6 +8,49 @@ This is the short user-facing path for updating Mihomo, MagiTrickle and the watc
 plus migrating the TUN stack. Deeper implementation details remain in the
 [full HOWTO](../HOWTO.md).
 
+## Unified entry point: kas-update
+
+`kas-update.sh` is the single maintenance command for an installed KAS Core:
+inspect first, apply explicitly (issue #390). `--apply` does not reimplement
+replacement logic; it delegates the transaction to the stock
+`update-watchdog.sh` from the channel: candidate validation, backup hygiene,
+atomic rename and cron normalization stay there.
+
+For older installations without a local `kas-update`, the initial run goes
+through GitHub:
+
+```bash
+curl -fSsL -o /tmp/kas-update.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-update.sh && sh -n /tmp/kas-update.sh && sh /tmp/kas-update.sh --check
+```
+
+Then apply explicitly:
+
+```bash
+sh /tmp/kas-update.sh --apply
+```
+
+`--check` (strictly read-only) reports the installed watchdog pair
+(`/opt/bin/mihomo_watchdog.sh` + `/opt/etc/cron.5mins/mihomo_watchdog`),
+compares SHA-256 against the channel (`KEENETIC_AUTO_SETUP_REF`, default
+`stable`; script-installed KAS Core keeps no version number on the device),
+inventories the other components without touching them, and marks anything
+it cannot positively identify as `UNKNOWN`. `--apply` re-assesses, prints
+the plan, asks for confirmation on a TTY (`--yes` for non-interactive use),
+updates only recognized KAS-managed parts through the transactional updater,
+verifies the installed SHA-256 afterwards, and is idempotent on reruns.
+
+`kas-update` never touches the Mihomo binary, `config.yaml`, MagiTrickle,
+netfilter, routing policies, WAN/VPN, Entware packages or KAS Web. Mihomo and
+MagiTrickle remain separate explicit updates (below). Doctor and
+`config-import.sh` keep no installed copy — they run from GitHub on every
+invocation, so there is nothing installed to update.
+
+Status: the documented `stable` URL becomes user-facing only after the slice
+is promoted to `stable` per the branch policy (issue #369); until then the
+separate commands below remain the supported path. A future `kas-core.ipk`
+(issue #295, [plan](../kas-core-ipk-plan-20261030.md)) becomes the delivery
+vehicle; `kas-update` remains the check/activation CLI.
+
 ## Mihomo update
 
 Supported path:
