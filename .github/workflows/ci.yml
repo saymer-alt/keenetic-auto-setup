@@ -83,6 +83,9 @@ jobs:
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
 
+      - name: Doctor Mihomo init classification (dash and BusyBox ash)
+        run: python3 tests/doctor-init-regression.py
+
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
 
