@@ -109,6 +109,7 @@ probe /opt/etc/cron.5mins/mihomo_watchdog unknown
 probe /opt/etc/crontab shared
 probe /opt/etc/ndm/netfilter.d/020-bypass_wa.sh unknown
 probe /opt/etc/init.d/S00ubifs unknown
+probe /opt/etc/init.d/S28mihomo shared
 probe /opt/etc/init.d/S99mihomo shared
 probe /opt/etc/init.d/S99magitrickle shared
 probe /opt/var/lib/magitrickle/config.yaml shared
