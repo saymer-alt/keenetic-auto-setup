@@ -387,6 +387,7 @@ exit 1
             ("empty", "duplicate"),
             ("empty", "no-version"),
             ("empty", "failure"),
+            ("fail", "single"),
             ("fail", "duplicate")):
         run_matrix("opkg-" + _status + "-" + _listing, healthy,
                    assert_unknown_inventory,
