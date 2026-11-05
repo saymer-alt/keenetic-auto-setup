@@ -216,8 +216,12 @@ else
     # Only fall back when status output is entirely empty. An explicit status
     # record lacking 'install ok installed' may indicate a half-configured
     # package and MUST remain UNKNOWN, even if list-installed has an entry.
-    _opkg_status=$("$OPKG_BIN" status busybox 2>/dev/null) || :
-    case "$_opkg_status" in
+    _opkg_status_ok=1
+    _opkg_status=$("$OPKG_BIN" status busybox 2>/dev/null) || _opkg_status_ok=0
+    if [ "$_opkg_status_ok" -ne 1 ]; then
+        emit UNKNOWN "opkg-view" "opkg status command failed; do not accept list-installed as proof of package database health"
+    else
+        case "$_opkg_status" in
         *"Status: install ok installed"*)
             emit PASS "opkg-view" "opkg status confirms busybox installed"
             ;;
@@ -251,7 +255,8 @@ OPKG_BUSYBOX_INVENTORY
         *)
             emit UNKNOWN "opkg-view" "opkg status returned an ambiguous/non-installed record for busybox; package database may be damaged or mid-transaction, do not override using list-installed"
             ;;
-    esac
+        esac
+    fi
 fi
 
 # --- 6. poorbox fallback (informational, optional) --------------------------
