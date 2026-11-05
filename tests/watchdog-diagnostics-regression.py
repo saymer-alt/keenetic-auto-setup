@@ -15,7 +15,7 @@ BusyBox ash. Proves, without any router, network or Mihomo installation:
 - recovery: a successful check resets consecutive failures but keeps the
       repeat window until it expires; a reboot (missing state) starts fresh;
 - post-restart: one bounded tunnel recheck records recovered / still
-      failing / unknown separately from [RESTART-OK];
+      failing / unknown separately from [RESTART-VERIFIED];
 - the restart policy itself is unchanged (existing restart decisions fire
       exactly as before) and logs stay free of URLs, stderr and secrets.
 
@@ -26,6 +26,8 @@ import argparse
 import os
 import shlex
 import subprocess
+
+from mihomo_init_fixture import pin_fixture_init
 import sys
 import tempfile
 
@@ -64,6 +66,7 @@ class Fixture:
         with open(init, "w", encoding="utf-8", newline="\n") as f:
             f.write("#!/bin/sh\necho \"$1\" >> \"%s/actions\"\n" % self.lab)
         os.chmod(init, 0o755)
+        open(self.lab + "/opt/etc/init.d/rc.func", "w").close()
         for name in ("actions", "curllog"):
             open(self.lab + "/" + name, "w").close()
         with open(self.lab + "/curln", "w") as f:
@@ -72,6 +75,7 @@ class Fixture:
     def redirect(self, text):
         # Redirect every absolute production path into the disposable lab.
         # Plain concatenation keeps forward slashes on every host OS.
+        text = pin_fixture_init(text, self.lab + "/opt/etc/init.d/S99mihomo")
         text = text.replace("/tmp/", self.lab + "/tmp/")
         text = text.replace("/opt/var/log", self.lab + "/opt/var/log")
         text = text.replace("/opt/etc/init.d", self.lab + "/opt/etc/init.d")
@@ -170,6 +174,7 @@ def full_script(fx, extra_stubs=""):
         "sleep() { :; }\n"
         + extra_stubs
     )
+    text = text.replace("can_restart() {", "wd_restart_identity() { echo stopped; }\ncan_restart() {", 1)
     return fx.redirect(text[:idx] + stubs + text[idx:])
 
 
