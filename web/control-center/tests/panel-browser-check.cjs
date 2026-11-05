@@ -73,7 +73,10 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
   await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('HTTP_503'));
   assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
   statusScenario={timestamp:'2020-01-01T00:00:00Z',runtime:{mihomo:{state:'running'}}};await page.locator('#refresh').click();
-  await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('INVALID_OR_STALE_RESPONSE'));
+  // A stale/unverifiable snapshot renders the readable refresh prompt; the raw
+  // machine token never reaches the UI (issue #395).
+  await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('устарел или не распознан'));
+  assert.doesNotMatch(await page.locator('#status-text').innerText(),/INVALID_OR_STALE_RESPONSE/);
   assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
   statusScenario=null;await page.locator('#refresh').click();
   await page.waitForFunction(()=>document.getElementById('mihomo-file').dataset.state==='running');
