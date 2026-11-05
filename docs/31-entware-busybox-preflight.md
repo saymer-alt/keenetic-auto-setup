@@ -50,3 +50,12 @@ sh /tmp/kas-entware-preflight.sh
 ```
 
 Тесты контракта: `tests/busybox-preflight-regression.py` (матрица состояний под dash и BusyBox ash: healthy, прерванное обновление, dangling-ссылка, не-исполняемый busybox, exec-отказ, wget→апплет, отсутствие opkg; статическая проверка read-only).
+
+
+### `opkg-view` в нативной Entware — узкий безопасный fallback (#356)
+
+В нативной QEMU-лаборатории Router Emulator Draft #56 `opkg list-installed` подтверждал установленный BusyBox 1.37, однако восстановленный `kas-entware-preflight.sh` возвращал `UNKNOWN opkg-view` (`RESTORED_PREFLIGHT_RC=2`) из-за несовпадения формата/результата `opkg status busybox`. Это было обнаружено в исследовательском workflow [41968076595](https://github.com/saymer-alt/router-emulator/actions/runs/41968076595). **Прямой вывод `opkg status` в лог не экспортировался**, поэтому конкретный формат ответа пока неизвестен.
+
+Обновлённый read-only-контракт: первичный `opkg status busybox` с точной строкой `Status: install ok installed` по-прежнему даёт `PASS`. **Только когда этот вызов не вернул вообще никаких данных**, разрешено прочесть `opkg list-installed` и, при успешном завершении и **ровно одной** строке `busybox - <непустая версия>`, вывести `PASS` с пометкой *limited package-view evidence*. Это подтверждает доступность инвентаризации, **не** целостность всей базы opkg и не разрешает никакие обновления. Если `status` вернул явно неполное/противоречивое состояние, остаётся `UNKNOWN` независимо от `list-installed`; когда строк нет, их несколько или команда завершается ошибкой, тоже `UNKNOWN`.
+
+Реализация использует только POSIX shell builtins для анализа строк (без зависимости от пропавших `/opt/bin/grep`, `awk`, `sed`, `wc`), ничего не меняет и оставляет `FAIL` для повреждённых ELF/`sh`/апплетов. В `tests/busybox-preflight-regression.py` добавлены позитивный и отрицательные сценарии для dash/BusyBox ash. Вне указанного формата ответа или при сомнении диагностический статус обязан оставаться `UNKNOWN`: нельзя сделать зелёный QEMU ценой обхода повреждённой базы.
