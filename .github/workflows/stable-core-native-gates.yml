@@ -1,0 +1,54 @@
+# Native validation for production Core runtime backports (policy #369).
+# Runs three sequential independent QEMU lifecycle passes on the SAME
+# immutable PR head SHA. A green host-only CI is not promotion evidence.
+# PRs from forks are excluded because this workflow executes the PR's code.
+name: Stable Core native QEMU x3
+
+on:
+  pull_request:
+    branches:
+      - stable
+    paths:
+      - 'config-import.sh'
+      - 'install.sh'
+      - 'mihomo-watchdog.sh'
+      - 'update-mihomo.sh'
+      - 'tests/**'
+      - '.github/workflows/stable-core-native-gates.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-core-native-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  native-1:
+    name: Native KAS lifecycle 1/3
+    if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    with:
+      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      kas_ref: ${{ github.event.pull_request.head.sha }}
+      stage: kas
+
+  native-2:
+    name: Native KAS lifecycle 2/3
+    needs: native-1
+    if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    with:
+      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      kas_ref: ${{ github.event.pull_request.head.sha }}
+      stage: kas
+
+  native-3:
+    name: Native KAS lifecycle 3/3
+    needs: native-2
+    if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    with:
+      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      kas_ref: ${{ github.event.pull_request.head.sha }}
+      stage: kas
