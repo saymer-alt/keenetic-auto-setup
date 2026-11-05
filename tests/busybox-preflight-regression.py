@@ -87,10 +87,41 @@ esac
 exit ${FAKE_BB_RC:-0}
 """
 
-FAKE_OPKG = """#!/bin/sh
-[ "$1" = status ] || exit 0
-[ "$2" = busybox ] || exit 0
-printf 'Package: busybox\\nVersion: 1.38.0-3\\nStatus: install ok installed\\n'
+FAKE_OPKG = r"""#!/bin/sh
+case "$1" in
+    status)
+        [ "$2" = busybox ] || exit 0
+        case "$FAKE_OPKG_STATUS_MODE" in
+            installed)
+                printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install ok installed\n'
+                ;;
+            empty)
+                exit 0
+                ;;
+            fail)
+                exit 4
+                ;;
+            partial)
+                printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install ok unpacked\n'
+                ;;
+            malformed)
+                printf 'Package: busybox\nVersion: 1.37.0-6\n'
+                ;;
+            *) exit 10 ;;
+        esac
+        ;;
+    list-installed)
+        case "$FAKE_OPKG_LIST_MODE" in
+            single) printf 'grep - 3.12-1\nbusybox - 1.37.0-6\nopkg - 1.0\n' ;;
+            duplicate) printf 'busybox - 1.37.0-6\nbusybox - 1.37.0-6\n' ;;
+            empty) printf 'grep - 3.12-1\n' ;;
+            no-version) printf 'busybox - \n' ;;
+            failure) exit 7 ;;
+            *) exit 11 ;;
+        esac
+        ;;
+    *) exit 12 ;;
+esac
 """
 
 GUARD_PATHS = ["/opt/bin/busybox", "/opt/bin/sh", "/opt/bin/opkg",
@@ -162,6 +193,8 @@ APPETS_EXCEPT_WGET = [a for a in APPLETS if a != "wget"]
 def run_preflight(shell_argv, env_extra=None):
     env = dict(os.environ)
     env["NO_COLOR"] = "1"
+    env["FAKE_OPKG_STATUS_MODE"] = "installed"
+    env["FAKE_OPKG_LIST_MODE"] = "single"
     if env_extra:
         env.update(env_extra)
     proc = subprocess.run(shell_argv + [SCRIPT], capture_output=True,
@@ -326,6 +359,39 @@ exit 1
               sev(lines, "opkg-view") == ["UNKNOWN"], lines)
 
     run_matrix("noopkg", noopkg, assert_noopkg)
+
+    # 8. Native opkg may provide no record through "status busybox" while
+    # list-installed still identifies exactly one installed BusyBox. This is
+    # a limited fallback for an EMPTY status response, not a bypass for
+    # explicit unpacked, partial or malformed records.
+    def assert_inventory_fallback(name, shell, rc, lines):
+        check("empty status + exact inventory PASS (%s)" % " ".join(shell),
+              rc == 0 and sev(lines, "opkg-view") == ["PASS"]
+              and "limited package-view evidence" in lines, lines)
+
+    run_matrix("opkg-empty-inventory", healthy, assert_inventory_fallback,
+               env_extra={"FAKE_OPKG_STATUS_MODE": "empty"})
+
+    # 9. Conservative negative matrix: ambiguous status is NEVER masked
+    # by a positive list-installed record; inventory absence, duplicate,
+    # malformed version and list command error remain UNKNOWN as well.
+    def assert_unknown_inventory(name, shell, rc, lines):
+        check("unsafe opkg status/inventory UNKNOWN (%s / %s)" %
+              (name, " ".join(shell)),
+              rc == 2 and sev(lines, "opkg-view") == ["UNKNOWN"], lines)
+
+    for _status, _listing in (
+            ("partial", "single"),
+            ("malformed", "single"),
+            ("empty", "empty"),
+            ("empty", "duplicate"),
+            ("empty", "no-version"),
+            ("empty", "failure"),
+            ("fail", "duplicate")):
+        run_matrix("opkg-" + _status + "-" + _listing, healthy,
+                   assert_unknown_inventory,
+                   env_extra={"FAKE_OPKG_STATUS_MODE": _status,
+                              "FAKE_OPKG_LIST_MODE": _listing})
 
     # The script itself must stay read-only and POSIX-safe: no ln, no
     # chmod, no opkg update/upgrade/install and no downloaders as command
