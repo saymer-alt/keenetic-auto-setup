@@ -38,9 +38,9 @@ concurrency:
 
 jobs:
   native-kas:
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@54fae5addc745b2133658b14e624df7cdaeb4cdd
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
     with:
-      emulator_ref: 54fae5addc745b2133658b14e624df7cdaeb4cdd
+      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
       kas_ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       # PRs keep the established full lifecycle; only manual dispatch opts into removal.
       stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'kas' }}
