@@ -211,13 +211,45 @@ done
 if [ -z "$OPKG_BIN" ]; then
     emit UNKNOWN "opkg-view" "no executable opkg found at /opt/bin/opkg or /opt/sbin/opkg; package database state cannot be read"
 else
-    _opkg_status=$("$OPKG_BIN" status busybox 2>/dev/null) || _opkg_status=""
+    # Some native opkg builds return no record for 'status busybox' even
+    # when their list-installed database reports a single installed busybox.
+    # Only fall back when status output is entirely empty. An explicit status
+    # record lacking 'install ok installed' may indicate a half-configured
+    # package and MUST remain UNKNOWN, even if list-installed has an entry.
+    _opkg_status=$("$OPKG_BIN" status busybox 2>/dev/null) || :
     case "$_opkg_status" in
         *"Status: install ok installed"*)
-            emit PASS "opkg-view" "opkg readable; busybox is recorded as installed"
+            emit PASS "opkg-view" "opkg status confirms busybox installed"
+            ;;
+        "")
+            _opkg_list_ok=1
+            _opkg_list=$("$OPKG_BIN" list-installed 2>/dev/null) || _opkg_list_ok=0
+            _opkg_busybox_rows=0
+            if [ "$_opkg_list_ok" -eq 1 ]; then
+                # Read with shell builtins only: the missing-applet case must
+                # not depend on /opt/bin/grep, awk, sed, cut, or wc.
+                while IFS= read -r _opkg_line; do
+                    case "$_opkg_line" in
+                        "busybox - "?*)
+                            _opkg_busybox_rows=$((_opkg_busybox_rows + 1))
+                            ;;
+                        "busybox - ")
+                            # Invalid empty version cannot establish installed state.
+                            _opkg_busybox_rows=2
+                            ;;
+                    esac
+                done <<OPKG_BUSYBOX_INVENTORY
+$_opkg_list
+OPKG_BUSYBOX_INVENTORY
+            fi
+            if [ "$_opkg_list_ok" -eq 1 ] && [ "$_opkg_busybox_rows" -eq 1 ]; then
+                emit PASS "opkg-view" "opkg status returned no record; list-installed confirms one busybox entry (limited package-view evidence)"
+            else
+                emit UNKNOWN "opkg-view" "opkg status returned no record and list-installed did not confirm exactly one installed busybox entry; inspect package database manually"
+            fi
             ;;
         *)
-            emit UNKNOWN "opkg-view" "opkg did not report busybox as 'install ok installed'; the package database may be damaged or mid-transaction"
+            emit UNKNOWN "opkg-view" "opkg status returned an ambiguous/non-installed record for busybox; package database may be damaged or mid-transaction, do not override using list-installed"
             ;;
     esac
 fi
