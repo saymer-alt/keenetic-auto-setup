@@ -95,6 +95,20 @@ case "$1" in
             installed)
                 printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install ok installed\n'
                 ;;
+            user-installed)
+                # Entware (OpenWrt fork) wording: middle word is the
+                # install-type marker, not dpkg's ok. Measured in the QEMU
+                # lab (issue #356, 2026-11-05).
+                printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install user installed\n'
+                ;;
+            auto-installed)
+                printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install auto installed\n'
+                ;;
+            user-unpacked)
+                # user/auto marker with a non-installed state must keep
+                # failing closed: the state word is still authoritative.
+                printf 'Package: busybox\nVersion: 1.37.0-6\nStatus: install user unpacked\n'
+                ;;
             empty)
                 exit 0
                 ;;
@@ -372,6 +386,20 @@ exit 1
     run_matrix("opkg-empty-inventory", healthy, assert_inventory_fallback,
                env_extra={"FAKE_OPKG_STATUS_MODE": "empty"})
 
+    # 8b. Entware's opkg is an OpenWrt fork: a fully installed package reads
+    # 'Status: install user installed' (explicit) or 'install auto installed'
+    # (dependency) instead of dpkg's 'ok' (measured in the disposable QEMU
+    # lab, issue #356). Both wordings PASS as direct status evidence; a
+    # user/auto marker with a non-installed state still fails closed.
+    def assert_entware_status_pass(name, shell, rc, lines):
+        check("entware %s status PASS (%s)" % (name, " ".join(shell)),
+              rc == 0 and sev(lines, "opkg-view") == ["PASS"]
+              and "limited package-view evidence" not in lines, lines)
+
+    for _entware_mode in ("user-installed", "auto-installed"):
+        run_matrix("opkg-" + _entware_mode, healthy, assert_entware_status_pass,
+                   env_extra={"FAKE_OPKG_STATUS_MODE": _entware_mode})
+
     # 9. Conservative negative matrix: ambiguous status is NEVER masked
     # by a positive list-installed record; inventory absence, duplicate,
     # malformed version and list command error remain UNKNOWN as well.
@@ -382,6 +410,7 @@ exit 1
 
     for _status, _listing in (
             ("partial", "single"),
+            ("user-unpacked", "single"),
             ("malformed", "single"),
             ("empty", "empty"),
             ("empty", "duplicate"),

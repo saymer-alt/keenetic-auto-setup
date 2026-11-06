@@ -214,15 +214,26 @@ else
     # Some native opkg builds return no record for 'status busybox' even
     # when their list-installed database reports a single installed busybox.
     # Only fall back when status output is entirely empty. An explicit status
-    # record lacking 'install ok installed' may indicate a half-configured
-    # package and MUST remain UNKNOWN, even if list-installed has an entry.
+    # record that does not name the installed state may indicate a
+    # half-configured package and MUST remain UNKNOWN, even if
+    # list-installed has an entry.
+    #
+    # Entware's opkg is an OpenWrt fork: the middle Status word carries the
+    # install-type marker 'user' (installed on explicit request) or 'auto'
+    # (pulled in as a dependency) where dpkg writes 'ok' (measured in the
+    # disposable QEMU lab, issue #356, 2026-11-05: healthy busybox record is
+    # 'install user installed', record contains no 'ok'). All three wordings
+    # mean a fully installed package; the state word must still be exactly
+    # 'installed', so half-configured/unpacked records keep failing closed.
     _opkg_status_ok=1
     _opkg_status=$("$OPKG_BIN" status busybox 2>/dev/null) || _opkg_status_ok=0
     if [ "$_opkg_status_ok" -ne 1 ]; then
         emit UNKNOWN "opkg-view" "opkg status command failed; do not accept list-installed as proof of package database health"
     else
         case "$_opkg_status" in
-        *"Status: install ok installed"*)
+        *"Status: install ok installed"*|\
+        *"Status: install user installed"*|\
+        *"Status: install auto installed"*)
             emit PASS "opkg-view" "opkg status confirms busybox installed"
             ;;
         "")
