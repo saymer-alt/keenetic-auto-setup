@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.21"
+DOCTOR_VERSION="1.2.22"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -2490,12 +2490,12 @@ else
             # pattern itself is never reported.
             function broad_alt(t) {
                 gsub(/^\^/, "", t)
-                gsub(/\$$/, "", t)
+                gsub(/\$/, "", t)
                 gsub(/^\.\*/, "", t)
                 gsub(/^\.\+/, "", t)
                 gsub(/^\\\./, "", t)
                 gsub(/^\*/, "", t)
-                gsub(/\$$/, "", t)
+                gsub(/\$/, "", t)
                 return (t ~ /^[a-z][a-z0-9]{1,9}$/)
             }
             function broad_regex(p,   a, n, i, t, prefix, suffix) {
@@ -2763,6 +2763,54 @@ else
         info "MagiTrickle logs are not persisted to a file (zerolog writes to stdout, lost at daemonization) - nothing to analyze"
     fi
 fi
+
+# BEGIN DOCTOR NATIVE OPKG TUN v1
+# KeeneticOS 5.0+ can represent opkg-created TUN interfaces as OpkgTunN.
+# Independent of optional MagiTrickle; only read Mihomo config and sysfs.
+# Preserve honest UNVERIFIED status for NDM attach and traffic counters.
+_sys_net="${KAS_SYS_NET:-/sys/class/net}"
+_nt_devs=""
+if [ -d "$_sys_net" ]; then
+    _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
+fi
+_nt_cfg_devs=""
+if [ -r "$CONFIG" ]; then
+    _nt_cfg_devs=$(awk '
+        /^[[:space:]]*device:[[:space:]]*/ {
+            v=$0
+            sub(/^[[:space:]]*device:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*$/, "", v)
+            gsub(/"/, "", v)
+            gsub(sprintf("%c",39), "", v)
+            sub(/^[[:space:]]+/, "", v)
+            sub(/[[:space:]]+$/, "", v)
+            if (v ~ /^opkgtun[0-9]+$/) print v
+        }
+    ' "$CONFIG" 2>/dev/null | sort -u | head -n 4)
+fi
+_nt_present=""
+_nt_missing=""
+if [ -n "$_nt_cfg_devs" ]; then
+    for _nt_config in $_nt_cfg_devs; do
+        if [ -d "$_sys_net/$_nt_config" ]; then
+            _nt_present="$_nt_present $_nt_config"
+        else
+            _nt_missing="$_nt_missing $_nt_config"
+        fi
+    done
+    if [ -n "$_nt_missing" ]; then
+        if [ -n "$_nt_devs" ]; then
+            info "Mihomo config references opkg-native TUN device(s) but configured device(s) absent (${_nt_missing# }); other observed opkgtunN (${_nt_devs% }) may be unrelated; native topology is NOT confirmed (NDM attach/boot order UNVERIFIED)"
+        else
+            info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
+        fi
+    else
+        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_present# }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
+    fi
+elif [ -n "$_nt_devs" ]; then
+    info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
+fi
+# END DOCTOR NATIVE OPKG TUN v1
 
 # =========================================================
 hdr "7. Keenetic proxy bridge (ProxyN)"
