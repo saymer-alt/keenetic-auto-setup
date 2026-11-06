@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.20"
+DOCTOR_VERSION="1.2.21"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -2356,16 +2356,47 @@ else
         _v=$(awk '/^    upstream:/{f=1;next} /^    [^[:space:]#]/{f=0} f&&/^      port:/{print $2; exit}' "$MT_CFG")
         is_num "$_v" && MT_UPSTREAM_PORT=$_v
         _v=$(awk '/^      chainPrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^        tablePrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_REMAP=$_v
+        [ -n "$_v" ] && MT_REMAP=$(printf '%s' "$_v" | tr -d '\r')
         # BEGIN DOCTOR MT LINK PARSE v1
-        # YAML "- br0" is a sequence item, not a sibling key.
+        # YAML "- br0" is a sequence item, not a sibling key. Two shapes
+        # are handled: block sequences (items may sit at the key indent or
+        # deeper) and flow-style inline lists (`link: [br0, br1]`).
         MT_LINK=$(awk '
-            /^  link:/ { l=1; next }
-            l && /^  -[[:space:]]+/ { sub(/^  -[[:space:]]+/, ""); sub(/\r$/, ""); print; next }
+            function emit(v) {
+                sub(/\r$/, "", v)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                gsub(/"/, "", v)
+                if (v != "") print v
+            }
+            /^  link:/ {
+                l=1
+                # flow-style inline list on the key line itself
+                _v=$0
+                sub(/^  link:[[:space:]]*/, "", _v)
+                sub(/#.*$/, "", _v)
+                # Comments and CRLF leave whitespace after ]; trim it first.
+                sub(/[[:space:]]+$/, "", _v)
+                if (_v ~ /^\[/) {
+                    sub(/^\[/, "", _v); sub(/\]$/, "", _v)
+                    _n=split(_v, _a, ",")
+                    for (_i=1; _i<=_n; _i++) emit(_a[_i])
+                    l=0
+                }
+                next
+            }
+            l && /^[[:space:]]+-[[:space:]]+/ {
+                _v=$0
+                sub(/^[[:space:]]+-[[:space:]]+/, "", _v)
+                sub(/[[:space:]]*#.*$/, "", _v)
+                emit(_v)
+                next
+            }
+            # the next 2-space sibling key ends the sequence; deeper lines
+            # stay inside it
             l && /^  [^[:space:]#-]/ { l=0 }
         ' "$MT_CFG" | tr '\n' ' ')
         # END DOCTOR MT LINK PARSE v1
@@ -2437,6 +2468,190 @@ else
         info "MT route scope and group inventory unavailable: config is not readable"
     fi
     # END DOCTOR MT ROUTING SCOPE v1
+
+    # BEGIN DOCTOR MT GROUP ANALYSIS v1
+    # Group-level semantics beyond aggregate counts (issue #327 SE/279 case):
+    # a group can be "enabled" while routing nothing, and a broad catch-all
+    # regex can silently proxy unrelated traffic. Rule values, group names
+    # and subnets are classified but never printed.
+    if [ -r "$MT_CFG" ]; then
+        MT_GROUP_ANALYSIS=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            # One alternative counts as a broad TLD catch-all when it
+            # reduces to a bare top-level domain after stripping common
+            # anchors and wildcard prefixes (e.g. .*\\.com). The literal
+            # pattern itself is never reported.
+            function broad_alt(t) {
+                gsub(/^\^/, "", t)
+                gsub(/\$$/, "", t)
+                gsub(/^\.\*/, "", t)
+                gsub(/^\.\+/, "", t)
+                gsub(/^\\\./, "", t)
+                gsub(/^\*/, "", t)
+                gsub(/\$$/, "", t)
+                return (t ~ /^[a-z][a-z0-9]{1,9}$/)
+            }
+            function broad_regex(p,   a, n, i, t, prefix, suffix) {
+                n = split(p, a, "|")
+                for (i = 1; i <= n; i++) {
+                    t = a[i]
+                    if (broad_alt(t)) return 1
+                    # Retained field form: ^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.com$
+                    # Match exact arbitrary-label expression plus a bare TLD;
+                    # do not flag concrete domain-specific regexes.
+                    sub(/^\^/, "", t)
+                    sub(/\$/, "", t)
+                    prefix = "[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\."
+                    if (index(t, prefix) == 1) {
+                        suffix = substr(t, length(prefix) + 1)
+                        if (suffix ~ /^[a-z][a-z0-9]{1,9}$/) return 1
+                    }
+                }
+                return 0
+            }
+            function close_rule() {
+                if (!have_rule) return
+                eff = (enabled == "true" && rule_enabled == "true")
+                if (eff) {
+                    active_rules++
+                    if (rule_type == "subnet") active_subnet++
+                    g_eff_rules++
+                    if (rule_type == "subnet") g_eff_subnet++
+                    if (iface == "mitun0") {
+                        if (rule_type == "regex" && broad_regex(rule)) broad_catchall = 1
+                    }
+                }
+                if (tolower(rule) ~ /telegram/) {
+                    g_tg_rule_seen = 1
+                    if (eff) {
+                        g_tg_matched_rules++
+                        if (rule_type == "subnet") g_tg_matched_subnet++
+                    }
+                }
+                have_rule = 0
+            }
+            # A Telegram-labeled group owns its enabled subnet routes even
+            # when their CIDR values cannot contain the word "telegram".
+            # For unlabeled groups count only explicit Telegram rule matches;
+            # do not attribute unrelated subnets to that service.
+            function close_group() {
+                close_rule()
+                if (!have_group) return
+                if (g_tg_named || g_tg_rule_seen) {
+                    tg_present = 1
+                    if (enabled == "true") tg_group_enabled = 1
+                    tg_eff_rules += g_tg_named ? g_eff_rules : g_tg_matched_rules
+                    tg_eff_subnet += g_tg_named ? g_eff_subnet : g_tg_matched_subnet
+                }
+                have_group = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_group(); in_groups = 0 }
+            in_groups && /^- id:/ {
+                close_group()
+                groups++; have_group = 1
+                enabled = "false"; iface = ""
+                g_tg_named = 0; g_tg_rule_seen = 0
+                g_eff_rules = 0; g_eff_subnet = 0
+                g_tg_matched_rules = 0; g_tg_matched_subnet = 0
+                next
+            }
+            in_groups && /^  name:/ { if (tolower(val($0)) ~ /telegram/) g_tg_named = 1; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_group(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_GROUP_ANALYSIS
+        if [ "$#" -eq 9 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5" && is_num "$6" && is_num "$7" && is_num "$8" && is_num "$9"; then
+            info "MT group semantics: enabled rules $3 (subnet $4) in enabled groups $2/$1; effective subnet routes populate ipsets, enabled counts alone do not prove routing"
+            if [ "$5" -eq 1 ]; then
+                warn "MT broad catch-all regex rule present (enabled group routes a bare-TLD pattern to mitun0; pattern withheld): games, APIs and unrelated sites may be proxied unintentionally; treat as intentional-policy INFO if configured on purpose"
+            fi
+            if [ "$6" -eq 1 ]; then
+                info "MT telegram-related rules detected: telegram group enabled=$([ "$7" -eq 1 ] && printf yes || printf no), effective telegram rules=$8 (subnet $9); a disabled group with zero effective subnet routes must not be diagnosed as a universal Telegram failure"
+            else
+                info "MT telegram-related rules: none detected (observation, not a failure verdict)"
+            fi
+        else
+            info "MT group semantics unavailable (unsupported config structure or parser error)"
+        fi
+    fi
+    # END DOCTOR MT GROUP ANALYSIS v1
+
+    # BEGIN DOCTOR MT NETFILTER EFFECTIVE v1
+    # CONFIGURED (config.yaml) vs LOADED (magitrickled running) vs EFFECTIVE
+    # (actual iptables/ipset/ip state), issue #327. Strictly read-only:
+    # iptables -S listings, ipset name list, ip rule/route listing. A busy
+    # xtables lock or an absent tool is reported as UNKNOWN, never silently
+    # as zero, and never auto-fixed.
+    MT_EFF_CHAINS=unknown
+    MT_EFF_SET_RULES=unknown
+    MT_EFF_DNAT53=unknown
+    MT_EFF_IPSETS=unknown
+    MT_EFF_FWMARK=unknown
+    MT_EFF_MITUN0_ROUTES=unknown
+    MT_EFF_READY=0
+    _eff_note=""
+    if command -v iptables >/dev/null 2>&1; then
+        # "VAR=$(cmd) && rc=0 || rc=$?" keeps the capture set -e-safe while
+        # preserving the producer's exit status for the honest UNKNOWN path.
+        MT_MANGLE_DUMP=$(iptables -t mangle -S 2>/dev/null) && _eff_mangle_rc=0 || _eff_mangle_rc=$?
+        MT_NAT_DUMP=$(iptables -t nat -S 2>/dev/null) && _eff_nat_rc=0 || _eff_nat_rc=$?
+        if [ "$_eff_mangle_rc" -eq 0 ] && [ "$_eff_nat_rc" -eq 0 ]; then
+            MT_EFF_READY=1
+            MT_EFF_CHAINS=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c "^-N $MT_CHAIN") || MT_EFF_CHAINS=0
+            MT_EFF_SET_RULES=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c -- "--match-set $MT_IPSET_PREFIX") || MT_EFF_SET_RULES=0
+            MT_EFF_DNAT53=$(printf '%s\n' "$MT_NAT_DUMP" | grep "dport 53" | grep -c "DNAT.*:$MT_DNS_PORT\b") || MT_EFF_DNAT53=0
+        else
+            _eff_note="iptables busy or unreadable (firewall rebuild in progress); re-run Doctor in a few minutes"
+        fi
+    else
+        _eff_note="iptables not available"
+    fi
+    if command -v ipset >/dev/null 2>&1; then
+        MT_IPSET_DUMP=$(ipset -n list 2>/dev/null) && _eff_ipset_rc=0 || _eff_ipset_rc=$?
+        if [ "$_eff_ipset_rc" -eq 0 ]; then
+            MT_EFF_IPSETS=$(printf '%s\n' "$MT_IPSET_DUMP" | grep -c "^$MT_IPSET_PREFIX") || MT_EFF_IPSETS=0
+        fi
+    fi
+    if command -v ip >/dev/null 2>&1; then
+        MT_IPRULE_DUMP=$(ip rule show 2>/dev/null) && _eff_rule_rc=0 || _eff_rule_rc=$?
+        if [ "$_eff_rule_rc" -eq 0 ]; then
+            MT_EFF_FWMARK=$(printf '%s\n' "$MT_IPRULE_DUMP" | grep -ci "fwmark") || MT_EFF_FWMARK=0
+        fi
+        MT_IPROUTE_DUMP=$(ip route show table all 2>/dev/null) && _eff_route_rc=0 || _eff_route_rc=$?
+        if [ "$_eff_route_rc" -eq 0 ]; then
+            MT_EFF_MITUN0_ROUTES=$(printf '%s\n' "$MT_IPROUTE_DUMP" | grep -c "mitun0") || MT_EFF_MITUN0_ROUTES=0
+        fi
+    fi
+    info "MT effective netfilter (observed): mangle ${MT_CHAIN}chains=$MT_EFF_CHAINS, ipset-match rules=$MT_EFF_SET_RULES, nat dport53-DNAT:$MT_DNS_PORT=$MT_EFF_DNAT53, ipsets=$MT_EFF_IPSETS, fwmark rules=$MT_EFF_FWMARK, mitun0 routes=$MT_EFF_MITUN0_ROUTES"
+    [ -n "$_eff_note" ] && info "MT effective netfilter limited: $_eff_note"
+    if [ "$MT_EFF_READY" -eq 1 ]; then
+        if [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_CHAINS" = "0" ]; then
+            warn "magitrickled is running but no effective MT_* mangle chains exist: rules were not applied, failed, or were overwritten; DNS endpoint scope alone does not prove routing (issue #327)"
+        fi
+        if [ "$MT_PROCS" -eq 0 ] && [ "$MT_EFF_CHAINS" != "0" ] && [ "$MT_EFF_CHAINS" != "unknown" ]; then
+            warn "residual MT_* mangle chains while magitrickled is not running: stale netfilter state may still reroute traffic after OPKG-off or daemon stop; review manually, Doctor does not modify rules"
+        fi
+        if [ "$MT_REMAP" = "true" ] && [ "$MT_EFF_DNAT53" != "0" ] && [ "$MT_EFF_DNAT53" != "unknown" ]; then
+            warn "configured disableRemap53=true but effective DNAT to port $MT_DNS_PORT exists: CONFIGURED/EFFECTIVE mismatch for DNS interception"
+        fi
+        if [ "$MT_REMAP" != "true" ] && [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_DNAT53" = "0" ]; then
+            warn "DNS interception configured but no effective DNAT to port $MT_DNS_PORT: clients may be bypassing MagiTrickle DNS despite a running daemon"
+        fi
+    fi
+    # END DOCTOR MT NETFILTER EFFECTIVE v1
 
         # Layer 2: listeners (only meaningful when the process runs)
         _dns_listening=0
