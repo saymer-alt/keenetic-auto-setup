@@ -11,8 +11,8 @@ Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read 
 **Token efficiency practices (owner decision, 05.11.2026, issue #420):** agents additionally follow [docs/agent-token-efficiency.md](../agent-token-efficiency.md) — loop guard after two identical futile attempts, evidence reuse only for compatible SHA/environment/scope, environment facts with source/date/applicability, addressed tool calls, build economy, short evidence-navigating reports. These rules never justify weakening mandatory tests, release gates or safety contracts.
 
 
-- Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
-  bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.
+- **Source reading: risk before volume.** Start with the exact ref/SHA, affected function/block, callers, shared state and focused test located via the [component reading map](07-component-reading-map.md). A proven local wording/presentation/read-only helper fix may use bounded source reads; inspect consumers and negative tests before editing. Do not indiscriminately read full scripts or whole documentation trees.
+- **Full read is still mandatory before safety-critical edits.** Read every **affected** install/update/import/migration, watchdog restart, locking/rollback, RAM/SWAP/storage, process-identity or persistent routing/DNS/firewall/ProxyN script **in full at the exact SHA once**; also read cross-script dependencies and their relevant contracts. Treat Doctor severity/prerequisite parsing and any unclear cross-component effects as high-risk. Examples: watchdog → docs/04; bypass_wa → docs/05; S00ubifs → docs/06; install → docs/03 and docs/07. If a local change crosses its proven boundary, escalate before editing; never trim safeguards or mandatory verification to save tokens.
 - Repository search/index results are discovery aids, not proof of current branch state. Before asserting current content, editing, or comparing evidence, fetch the exact file/blob from the intended branch/ref and verify its SHA; search indexing may lag behind recent commits.
 - Do not rewrite working architecture. Changes should be minimal diffs in the existing
   style: POSIX sh, log/warn/err functions, retry 3×, `command -v` checks.
@@ -46,9 +46,7 @@ Default working rules:
 - before starting: `git status`; verify `main` baseline, your topic branch/HEAD and unrelated
   uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
   only with explicit instruction);
-- before modifying a file, inspect its history (`git log --oneline -- <file>`):
-  many commits are series of small fixes to one script; the reason for the change
-  matters more than the change itself;
+- inspect **relevant** file/function history for nontrivial or surprising logic (e.g. `git log -n 10 --oneline -- <file>`, targeted blame); preserve the reasons behind critical safeguards. Do not load an entire file's history merely to correct a harmless typo;
 - commit only on explicit operator instruction; the message should say what and why;
   no force-push;
 - VPS notes (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) were moved
@@ -79,8 +77,7 @@ Default working rules:
 
 ## 12. Agent working style
 
-- Determine which components the task touches ([architecture/platforms](01-architecture-and-platforms.md)), reread the [safety-sensitive operations](02-development-and-safety.md),
-  and read the relevant doc before editing, not after.
+- Determine which components the task touches (use the [component reading map](07-component-reading-map.md) and [architecture/platforms](01-architecture-and-platforms.md)); read applicable [safety-sensitive sections](02-development-and-safety.md) and the task's focused documentation **before** editing, not the entire docs tree.
 - Any action on a live router requires an operator task.
 - A commit to `main` is development only. Production one-liners use `stable`.
   Do not move `stable` casually: CI must be green and focused live-router acceptance

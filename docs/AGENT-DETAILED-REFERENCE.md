@@ -6,6 +6,7 @@ Only the essential [root AGENTS.md](../AGENTS.md) is loaded at startup. All file
 
 | Task | Reference |
 | --- | --- |
+| Locate relevant code, callers and focused tests **without dumping whole scripts** | [Component reading map — risk-tiered](agent-guidance/07-component-reading-map.md) |
 | Architecture and current platform contracts | [Architecture/platforms](agent-guidance/01-architecture-and-platforms.md) |
 | Installer, updater, watchdog and safety-sensitive code | [Development/safety](agent-guidance/02-development-and-safety.md) |
 | Git/PR workflow, documentation, technical debt | [Agent workflow](agent-guidance/03-agent-workflow-and-git.md) |
