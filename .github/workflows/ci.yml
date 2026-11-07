@@ -25,6 +25,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Agent instruction and context contracts
+        run: python3 tests/agent-instructions-regression.py
+
       - name: Shell syntax
         shell: bash
         run: |
@@ -158,9 +161,6 @@ jobs:
         run: |
           sh tests/doctor-native-tun-regression.sh .
           busybox ash tests/doctor-native-tun-regression.sh .
-
-      - name: Agent instruction and context contracts
-        run: python3 tests/agent-instructions-regression.py
 
       - name: Local Markdown links
         run: python3 tests/docs-links.py
