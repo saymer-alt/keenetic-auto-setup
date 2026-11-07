@@ -219,10 +219,13 @@ pass "coexisting zRAM and external swap can never be silently downgraded"
 # KAS-SAFETY-001 constitutional contract, applied to policy and documentation.
 grep -Fq 'KAS-SAFETY-001' "$ROOT/docs/CONSTITUTION.md" || fail "dual swap critical invariant constitution missing"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/AGENTS.md" || fail "agents must read constitutional contract"
-# Keep startup rules short enough to be useful rather than a historical project novel.
-# 8 KiB budget intentionally leaves ample room under Codex default 32 KiB limit.
+# Keep startup instructions focused while never incentivizing removal of binding safety rules.
+# <=8 KiB is preferred; 12 KiB is a conservative hard gate below Codex default 32 KiB.
 agent_startup_bytes=$(wc -c < "$ROOT/AGENTS.md" | tr -d '[:space:]')
-[ "$agent_startup_bytes" -le 8192 ] || fail "AGENTS.md exceeds 8 KiB focused startup budget"
+[ "$agent_startup_bytes" -le 12288 ] || fail "AGENTS.md exceeds 12 KiB hard startup budget"
+if [ "$agent_startup_bytes" -gt 8192 ]; then
+    echo "[WARN] AGENTS.md is above the 8 KiB target; review additions but preserve safety requirements" >&2
+fi
 grep -Fq 'KAS-SAFETY-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-SAFETY-001"
 grep -Fq 'KAS-AGENT-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-AGENT-001"
 grep -Fq 'main' "$ROOT/AGENTS.md" || fail "AGENTS startup missing main branch policy"
