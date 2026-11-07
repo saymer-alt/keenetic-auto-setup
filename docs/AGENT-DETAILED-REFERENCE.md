@@ -17,4 +17,6 @@ Only the essential [root AGENTS.md](../AGENTS.md) is loaded at startup. All file
 - [Historical KAS incidents and past pitfalls](archaeology/kas-agent-historical-context-2026.md): old runtime observations, **not current instructions**.
 - [Historical router model/field inventory](archaeology/kas-platform-field-inventory-2026.md): field examples from old `AGENTS.md` that must **never** be assumed to describe current equipment.
 
-Original sections from the 2026-11-07 base `AGENTS.md` commit `9837c8141d60cbe6e9d408ee69515bb0bd16dbe6` are preserved between the active topical guides and these two archives. The archive is for relevant historical investigations only; do not auto-read it or paste it into normal coding prompts.
+Original sections from the 2026-11-07 base `AGENTS.md` commit `9837c8141d60cbe6e9d408ee69515bb0bd16dbe6` are preserved between the active topical guides and these two archives.
+
+For findings, implementation status and **future recommendations not to auto-execute**, see [Agent context audit — 2026-11-07](agent-guidance/AGENT-CONTEXT-AUDIT-2026-11-07.md). The archive is for relevant historical investigations only; do not auto-read it or paste it into normal coding prompts.
