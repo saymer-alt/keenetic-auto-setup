@@ -28,6 +28,12 @@ jobs:
       - name: Agent instruction and context contracts
         run: python3 tests/agent-instructions-regression.py
 
+      # POC is not yet present on stable; keep this stdlib/mock-only regression
+      # scoped to branches that actually contain the opt-in POC.
+      - name: Agent orchestration POC safety (no network or model)
+        if: ${{ hashFiles('scripts/orchestration-poc/kas_orchestrate.py') != '' }}
+        run: python3 -m unittest discover -s scripts/orchestration-poc/tests -v
+
       - name: Shell syntax
         shell: bash
         run: |
