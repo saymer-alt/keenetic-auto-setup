@@ -15,6 +15,15 @@ ports="1400,3478,3482"
 # Custom chain name
 chain="_CUST_BYPASS_WA_"
 
+# A KeeneticOS Netfilter rewrite can invalidate a chain between separate
+# iptables -w commands. -w serializes each xtables command, NOT the whole hook.
+# Do not declare a successful hook if a required rule was not applied.
+# The router owns retries/notifications; do not recurse or sleep in netfilter.d.
+fail_iptables_step() {
+    printf '%s\n' "[ERROR] bypass_wa: iptables $1 failed; rules may be incomplete" >&2
+    exit 1
+}
+
 # netfilter.d is invoked by KeeneticOS for multiple protocol/table updates.
 # Ignore everything except IPv4 mangle, including an accidental manual call
 # without the documented type/table context.
@@ -56,28 +65,28 @@ fi
 # Keep the original hook application behavior until the runtime-safe
 # apply/rollback protocol is validated in field testing.
 iptables -w -t mangle -N "$chain" 2>/dev/null || \
-iptables -w -t mangle -F "$chain" || true
+iptables -w -t mangle -F "$chain"  || fail_iptables_step chain-create-or-flush
 
 # Attach chain to PREROUTING if not already present
 iptables -w -t mangle -C PREROUTING -m mark --mark 0x0 -j "$chain" >/dev/null 2>&1 || \
-iptables -w -t mangle -A PREROUTING -m mark --mark 0x0 -j "$chain" || true
+iptables -w -t mangle -A PREROUTING -m mark --mark 0x0 -j "$chain"  || fail_iptables_step prerouting-link
 
 # Mark matching UDP traffic
 iptables -w -t mangle -C "$chain" -p udp -m multiport --dports $ports \
 -j MARK --set-mark 0x$mark_id_ >/dev/null 2>&1 || \
 iptables -w -t mangle -A "$chain" -p udp -m multiport --dports $ports \
--j MARK --set-mark 0x$mark_id_ || true
+-j MARK --set-mark 0x$mark_id_  || fail_iptables_step mark-rule
 
 # Save mark to connection tracking
 iptables -w -t mangle -C "$chain" -p udp -m multiport --dports $ports \
 -j CONNMARK --save-mark >/dev/null 2>&1 || \
 iptables -w -t mangle -A "$chain" -p udp -m multiport --dports $ports \
--j CONNMARK --save-mark || true
+-j CONNMARK --save-mark  || fail_iptables_step connmark-rule
 
 # Return from chain
 iptables -w -t mangle -C "$chain" -p udp -m multiport --dports $ports \
 -j RETURN >/dev/null 2>&1 || \
 iptables -w -t mangle -A "$chain" -p udp -m multiport --dports $ports \
--j RETURN || true
+-j RETURN  || fail_iptables_step return-rule
 
 exit 0
