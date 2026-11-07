@@ -50,3 +50,12 @@ sh /tmp/kas-entware-preflight.sh
 ```
 
 Тесты контракта: `tests/busybox-preflight-regression.py` (матрица состояний под dash и BusyBox ash: healthy, прерванное обновление, dangling-ссылка, не-исполняемый busybox, exec-отказ, wget→апплет, отсутствие opkg; статическая проверка read-only).
+
+
+## Отдельная лаборатория семантики prerm/postinst (#356, стадия 2)
+
+`tests/entware-busybox-script-lab.py` — **моделирующий тест**, извлечённый по смыслу из Entware/Entware `package/utils/busybox/Makefile` на закреплённом коммите [e198474](https://github.com/Entware/Entware/blob/e19847436af08c926dce6b080eda391f3a220d5e/package/utils/busybox/Makefile) (Git blob `3398fd4e7eec3787562498d25cb0be902e1a34cc`). Содержимое управляющих операций `prerm`/`postinst` адаптировано с заменой абсолютного `/opt` на временный каталог; роль BusyBox исполняет ограниченный shell-shim, **не настоящий Entware ELF**. Тест автоматически удаляет собственный временный каталог и не обращается к системному `/opt`.
+
+Прогон из исходников: `python3 tests/entware-busybox-script-lab.py`. Он демонстрирует удаление BusyBox-ссылок при `prerm`, состояние отсутствующего `sh`/`chmod` до `postinst`, восстановление отсутствующих ссылок по манифесту, сохранность сторонних `wget-ssl` и GNU `grep` (сравнение байтов), случай с `/opt` как symlink. Важный отрицательный сценарий: **dangling symlink остаётся сломанной**, даже если `postinst` завершается exit 0. `busybox --list` не заменяет `busybox_applets.lst.dist`.
+
+**Граница доказательств:** `SCRIPT-SEMANTICS PASS` не означает `OPKG UPGRADE PASS`. Не выполнялись настоящая транзакция opkg `1.37→1.38`, настоящие пакетные `preinst/prerm/postinst`, ABI/loader, конфликты ownership с реальной базой пакетов, защита HTTPS на настоящем `wget-ssl`, recovery из повреждённой БД или полевой тест Keenetic. Для этого нужен отдельный изолированный офлайн-root/контейнер c **проверенными IPK и хешами**, без монтирования рабочего `/opt`. До такой приёмки Issue #356 остаётся открытым. Ни одна пользовательская инструкция автоматического ремонта из этого теста не следует.

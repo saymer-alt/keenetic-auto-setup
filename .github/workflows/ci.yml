@@ -118,6 +118,9 @@ jobs:
       - name: Entware/BusyBox preflight regression (issue #356, read-only)
         run: sudo python3 tests/busybox-preflight-regression.py
 
+      - name: Entware BusyBox maintainer-script semantics (issue #356, disposable root)
+        run: python3 tests/entware-busybox-script-lab.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
