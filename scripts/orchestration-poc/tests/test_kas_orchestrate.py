@@ -393,6 +393,11 @@ class CheckpointTests(unittest.TestCase):
         self.store = make_store(self.tmp)
         self.runner = FakeRunner()
         do_fetch(self.runner, self.store)
+        self.task = {
+            "cmd": "dispatch", "repo": ko.DEFAULT_REPO, "executor": "dry-run",
+            "repo_path": str(POC_DIR), "state_dir": str(self.store.dir),
+            "json": False, "zcode_cli": None, "zcode_electron": None,
+        }
 
     def test_checkpoint_local_fields(self) -> None:
         self.runner.push_git_sha()  # guard_stale_sha at checkpoint
@@ -429,11 +434,73 @@ class CheckpointTests(unittest.TestCase):
         new_calls = self.runner.calls[self.calls_before_checkpoint:]
         self.assertTrue(all(c[0] != "gh" for c in new_calls))
 
-    def test_checkpoint_sets_owner_decision_on_pass(self) -> None:
+    def test_checkpoint_pass_unearned_from_ready_stops(self) -> None:
+        # A bare manual PASS with no executor run must be refused (GO-A2 fix).
         self.runner.push_git_sha()  # guard_stale_sha at checkpoint
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
             "status": "PASS", "evidence": [], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": False,
+            "confirm": False, "state_dir": str(self.store.dir), "json": False,
+        })
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+        self.assertEqual(self.store.load()["state"], "READY")
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_checkpoint_pass_after_mock_run_stops(self) -> None:
+        # Mock success reaches REVIEW_READY but never earns PASS.
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue guard from merged #446
+        ko.cmd_dispatch(ko.parser_namespace({
+            **self.task, "executor": "mock"}), ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "PASS", "evidence": [], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": False,
+            "confirm": False, "state_dir": str(self.store.dir), "json": False,
+        })
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+
+    def test_checkpoint_pass_earned_after_real_executor_ok(self) -> None:
+        # A recorded successful zcode-cli run earns PASS (guard stays silent).
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue guard from merged #446
+        cli, electron = self.tmp / "zcode.cjs", self.tmp / "ZCode.exe"
+        cli.write_text("// stub", encoding="utf-8")
+        electron.write_text("stub", encoding="utf-8")
+        orig = ko.EXEC_RUNNER
+        ko.EXEC_RUNNER = lambda cmd, **kw: subprocess.CompletedProcess([], 0, "ok", "")
+        try:
+            res = ko.cmd_dispatch(ko.parser_namespace({
+                **self.task, "executor": "zcode-cli",
+                "zcode_cli": str(cli), "zcode_electron": str(electron)}),
+                ko.GhRunner(self.runner), self.store, POC_DIR)
+        finally:
+            ko.EXEC_RUNNER = orig
+        self.assertEqual(res["state"], "REVIEW_READY")
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "PASS", "evidence": ["executor output"], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": False,
+            "confirm": False, "state_dir": str(self.store.dir), "json": False,
+        })
+        res = ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(res["status"], "PASS")
+        self.assertEqual(self.store.load()["state"], "OWNER_DECISION")
+
+    def test_checkpoint_sets_owner_decision_on_fail(self) -> None:
+        self.runner.push_git_sha()  # guard_stale_sha at checkpoint
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "FAIL", "evidence": [], "blocker": "no run yet",
             "next_decision": "review", "head_sha": "", "post": False,
             "confirm": False, "state_dir": str(self.store.dir), "json": False,
         })
