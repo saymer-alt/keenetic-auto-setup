@@ -26,6 +26,8 @@ type filterProvider struct{
  filterLine int
 }
 func filterKey(raw string)(string,bool){
+ raw=strings.TrimSpace(raw)
+ if raw==""{return "",false}
  if keyPattern.MatchString(raw){return raw,true}
  if len(raw)>2 && raw[0]=='\'' && raw[len(raw)-1]=='\''{
   v:=strings.ReplaceAll(raw[1:len(raw)-1],"''","'")
@@ -35,7 +37,24 @@ func filterKey(raw string)(string,bool){
   v,err:=strconv.Unquote(raw)
   return v,err==nil&&v!=""
  }
- return "",false
+ return plainFilterKey(raw)
+}
+// FIELD #428: accept plain YAML mapping keys with internal spaces and
+// Unicode. Reject every YAML indicator (comments, anchors, aliases, tags,
+// block/flow, reserved characters, escapes) and control characters so
+// ambiguous or dangerous shapes keep failing closed.
+func plainFilterKey(raw string)(string,bool){
+ if strings.HasPrefix(raw,"- ")||strings.HasPrefix(raw,"? "){return "",false}
+ for _,r:=range raw{
+  if r<0x20||r==0x7f{return "",false}
+  if r<0x80{
+   switch r{
+   case ':','#','&','*','!','|','>','%','@','`','\'','"','{','}','[',']',',','\\':
+    return "",false
+   }
+  }
+ }
+ return raw,true
 }
 // Reject flow mappings, anchors/merge keys on edited providers, duplicated
 // keys, multiline exclude-filter scalars and unknown indentation.
@@ -76,7 +95,7 @@ func scanFilterProviders(input []byte)([]string,[]filterProvider,error){
   }
   if len(providers)==0||!strings.HasPrefix(l,"    "){return nil,nil,errFilterUnsupported}
   p:=&providers[len(providers)-1]
-  if strings.HasPrefix(l,"    <<:"){return nil,nil,errFilterUnsupported}
+  if strings.HasPrefix(l,"    <<"){return nil,nil,errFilterUnsupported}
   if strings.HasPrefix(l,"    type:")&&!strings.HasPrefix(l,"     "){
    typ:=strings.TrimSpace(strings.TrimPrefix(l,"    type:"))
    if strings.HasPrefix(typ,"http #"){typ="http"}
