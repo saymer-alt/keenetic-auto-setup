@@ -54,9 +54,15 @@ owner pastes nothing).
 - GitHub account must equal the repository owner (`gh api user`) and the issue
   payload schema is validated (number/title/body/url/updatedAt) — malformed
   data fails closed (`STOP_BAD_ACCOUNT`, `STOP_MALFORMED_ISSUE`).
-- Repo owner allowlist; issue must be `OPEN`; the checkout HEAD is re-verified
-  against the contract base SHA before dispatch AND checkpoint
-  (`STOP_STALE_SHA`).
+- Repo owner allowlist; issue must be `OPEN`; the issue's **exact** URL and
+  requested number must match. The contract saves the original `updatedAt`;
+  before **every real dispatch** (`mock` or `zcode-cli`) the Issue is
+  fetched again, and a closed, replaced or edited Issue stops **before** any
+  executor runs (`STOP_ISSUE_CLOSED`, `STOP_MALFORMED_ISSUE`,
+  `STOP_ISSUE_CHANGED`, or `STOP_NETWORK`).
+- The checkout HEAD is also re-verified against the contract base SHA before
+  dispatch AND checkpoint (`STOP_STALE_SHA`). `dry-run` only reads the cached
+  Issue contract and does not start a model.
 - Issue body is capped at 50 KB with an explicit truncation marker.
 - `dry-run` never claims the task (state stays READY). Real executors run with
   `ELECTRON_RUN_AS_NODE=1` and `--mode plan` only; a non-zero executor exit
@@ -73,11 +79,11 @@ owner pastes nothing).
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
 
-25 tests cover the happy path and the negative cases: stale SHA at dispatch
-and checkpoint, duplicate dispatch, malformed issue payloads, wrong GitHub
-account, missing auth, network failure, lock contention, executor failure and
-timeout (verifying `ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state),
-plus the no-opt-in posting guard. The `mock` executor proves the state machine
+The expanded mock tests cover the happy path and negative cases: stale SHA at
+dispatch/checkpoint; an Issue closed, edited, renumbered, or unreachable after
+fetch; strict URL matching; duplicate dispatch; malformed data; wrong GitHub
+account; missing auth; lock contention; executor failure and timeout (checking
+`ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state); and posting guards. The `mock` executor proves the state machine
 only — it is NOT proof of full automation.
 
 ## Disable / uninstall
