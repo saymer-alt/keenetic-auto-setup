@@ -1,0 +1,2 @@
+# Archival evidence keeps the delivered byte hashes; edited reports remain text.
+TRANSPORT-RESEARCH-EVIDENCE.json -text whitespace=cr-at-eol
