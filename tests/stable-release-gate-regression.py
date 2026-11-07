@@ -68,7 +68,8 @@ class StableReleaseGateTests(unittest.TestCase):
     def test_least_privilege_read_only(self):
         self.assertRegex(self.source, r'(?m)^permissions:\r?\n  contents: read\r?\n')
         self.assertRegex(self.source,
-                         r'(?m)^  native-gate:\r?\n    permissions:\r?\n      contents: read\r?\n')
+                         r'(?m)^  native-gate:\r?\n    needs: core-sync-evidence\r?\n'
+                         r'    permissions:\r?\n      contents: read\r?\n')
 
     def test_emulator_ref_is_pinned_literal_without_override_input(self):
         self.assertEqual(with_value(self.source, 'emulator_ref'), PINNED_EMULATOR)
@@ -93,6 +94,16 @@ class StableReleaseGateTests(unittest.TestCase):
         for scenario, (stage, profile) in expected.items():
             self.assertEqual(evaluate(stage_expr, scenario), stage, 'stage for ' + scenario)
             self.assertEqual(evaluate(profile_expr, scenario), profile, 'profile for ' + scenario)
+
+    def test_release_reconciliation_precedes_native_gate(self):
+        self.assertIn('core-sync-evidence:', self.source)
+        self.assertIn('needs: core-sync-evidence', self.source)
+        self.assertIn('scripts/core-sync-check.py', self.source)
+        self.assertIn('tests/core-sync-guard-regression.py', self.source)
+        self.assertIn('report.json', self.source)
+        self.assertIn('identity.json', self.source)
+        self.assertIn('S00ubifs', self.source)
+        self.assertIn('actions/upload-artifact@v4', self.source)
 
     def test_sequential_dispatch_documented(self):
         self.assertIn('SEQUENTIAL DISPATCH REQUIRED', self.source)

@@ -99,6 +99,20 @@ Rolling releases such as `latest` may keep the machine-oriented Release name `la
 
 Repositories with an old non-versioned placeholder Release such as `Releases` do not need history rewritten merely to comply with this document. If normal versioned releases resume, use Profile A from that point onward.
 
+## Mandatory KAS Core release reconciliation (owner decision 07.11.2026)
+
+This policy is specific to KAS Core v1.x releases. Independent KAS WEB beta releases follow their own release pipeline.
+
+Before authorizing a Core tag or GitHub Release:
+
+1. Run the existing manual stable-release-gate workflow for the exact 40-character candidate SHA. Its Core Sync Evidence job **automatically** runs before every native QEMU scenario, using the existing Core Sync Guard.
+2. Preserve the workflow run ID, the pinned candidate/main/observed stable SHAs, and artifacts report.json, report.md and identity.json. The report compares root shell scripts by Git blob SHA and independently compares S00ubifs. Other embedded hooks/non-shell paths still require targeted human review.
+3. Inspect every REVIEW or DIFF with issue #401. Mark each difference ALREADY_STABLE, READY_TO_BACKPORT, MAIN_ONLY (reason), NEEDS_FIELD or BLOCKED. An ACKNOWLEDGED baseline entry is not automatic approval for a release.
+4. For applicable runtime changes, require precise supporting PR and Shell/ash/QEMU evidence; field acceptance stays explicit. If the candidate SHA changes, collect new report evidence.
+5. Record review disposition and owner GO in the release PR/issue **before** tagging. Missing or failed report evidence means the release checklist is incomplete.
+
+Drift is not automatically fatal: some branch differences are intentional. Never bulk-merge main into stable, acknowledge all blob pairs just to obtain a green report, or auto-tag/release as a side effect of reporting. This is a mandatory review artifact, not an authorization for deployment.
+
 ## 5. Release creation checklist
 
 Before publishing a human-facing versioned release:
