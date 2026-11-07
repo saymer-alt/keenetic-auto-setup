@@ -71,4 +71,3 @@
   install.sh creates the directory.
 - Tags: v1.x are toolkit releases; the `mihomo` tag is storage for the pinned mipsel ipk,
   not a release.
-
