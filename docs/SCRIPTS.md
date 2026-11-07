@@ -8,7 +8,7 @@
 
 | Скрипт | Назначение / документация |
 | --- | --- |
-| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh`, использует резервные источники GitHub и запускает мастер](14-setup.md#зачем-нужен-bootstrapsh) |
+| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |
 | [`config-import.sh`](../config-import.sh) | [Импорт и безопасная замена `config.yaml`](13-config-import.md) |
