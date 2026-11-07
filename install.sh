@@ -2849,7 +2849,8 @@ if opkg list-installed 2>/dev/null | grep -q "^magitrickle "; then
     else
         _mt_final_state=$?
         if [ "$_mt_final_state" -eq 1 ]; then
-            check_warn "MT_RUNTIME_STOPPED: magitrickled is not running at the final checkpoint (installer cannot confirm MagiTrickle started) - inspect with Doctor (MagiTrickle section) or start manually: /opt/etc/init.d/S99magitrickle start"
+            check_warn "MT_RUNTIME_STOPPED: magitrickled is not running at the final checkpoint (installer cannot confirm MagiTrickle started) - check read-only first: pidof magitrickled, cat /proc/uptime, then Doctor (MagiTrickle section)"
+            check_info "MT_RUNTIME_ASYNC: for the first 300 s after boot the upstream init keeps a background startup loop retrying magitrickled, so do not run /opt/etc/init.d/S99magitrickle start while that loop may be active - a second start would create a duplicate loop; even after 300 s start manually only after confirming no startup loop is running and the daemon is still absent"
         else
             check_warn "MT_RUNTIME_UNKNOWN: magitrickled process state cannot be determined (pidof missing or restricted /proc) - verify manually: pidof magitrickled"
         fi

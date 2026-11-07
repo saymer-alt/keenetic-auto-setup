@@ -81,6 +81,26 @@ def main():
     # The final checkpoint must re-read the live process state instead of
     # caching the post-start verdict (the daemon may appear between checks).
     assert 'if mt_runtime_state; then' in text[text.index('# END MAGITRICKLE RUNTIME STATE v1'):]
+    # FIELD #427 final review: the MT_RUNTIME_STOPPED checkpoint advice must
+    # stay read-only. An unguarded "start manually" recommendation is unsafe
+    # while the upstream early-boot startup loop may still be active
+    # (uptime <= 300 keeps an unmanaged 'startup_loop &' retrying every 5 s):
+    # a user following it could create a duplicate loop with no code change.
+    # A manual start may appear only inside the explicit after-300s guard.
+    _cp_start = text.index('MT_RUNTIME_STOPPED: magitrickled is not running at the final checkpoint')
+    _cp = text[_cp_start:text.index('MT_RUNTIME_UNKNOWN', _cp_start)]
+    _stopped = [ln for ln in _cp.splitlines() if 'MT_RUNTIME_STOPPED' in ln]
+    assert len(_stopped) == 1, 'expected exactly one MT_RUNTIME_STOPPED checkpoint warning'
+    for anti in ('start manually', 'S99magitrickle start'):
+        assert anti not in _stopped[0], \
+            'unguarded manual-start advice must not return to MT_RUNTIME_STOPPED: %s' % anti
+    for needle in ('pidof magitrickled', '/proc/uptime', 'Doctor'):
+        assert needle in _stopped[0], \
+            'MT_RUNTIME_STOPPED must advise the read-only check %s first' % needle
+    for needle in ('do not', 'startup loop', 'duplicate',
+                   'even after 300 s', 'no startup loop is running'):
+        assert needle in _cp, \
+            'checkpoint must keep the guarded manual-start explanation: %s' % needle
     count = 0
     shells_list = shells()
     assert shells_list, 'no POSIX shell found to run the regression'
