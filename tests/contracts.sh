@@ -127,6 +127,17 @@ if command -v busybox >/dev/null 2>&1; then
 fi
 pass "Doctor Netfilter pair-probe (PREROUTING + chain) regression passed"
 
+# Field case 2026-11-02: Keenetic LAN "Enable IPv6" (BridgeN) is independent
+# from ProxyN IPv4/IPv6 runtime. A disabled LAN segment is normal; a
+# disabled internet-capable ProxyN IPv4 needs an operator-facing warning.
+sh "$ROOT/tests/doctor-ipv6-runtime-regression.sh" "$ROOT" ||
+    fail "Doctor per-segment IPv6 / ProxyN runtime regression failed"
+if command -v busybox >/dev/null 2>&1; then
+    busybox ash "$ROOT/tests/doctor-ipv6-runtime-regression.sh" "$ROOT" ||
+        fail "BusyBox ash Doctor IPv6 runtime regression failed"
+fi
+pass "Doctor IPv6 runtime report regression passed"
+
 
 pass "terminal status palette is green/cyan/yellow/red while persistent logs remain plain"
 
@@ -141,7 +152,7 @@ grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/install.sh" |
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/update-watchdog.sh" || fail "watchdog updater production ref must default to stable"
 grep -Fq 'PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"' "$ROOT/mihomo-doctor.sh" || fail "doctor delivery-path check must default to stable"
 grep -Eq '^DOCTOR_VERSION="[0-9]+\.[0-9]+\.[0-9]+"$' "$ROOT/mihomo-doctor.sh" || fail "Doctor must expose a semantic diagnostic version variable"
-grep -Fq 'DOCTOR_VERSION="1.2.18"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
+grep -Fq 'DOCTOR_VERSION="1.2.22"' "$ROOT/mihomo-doctor.sh" || fail "Doctor version must match the current storage-protection contract"
 grep -Fq 'info "Doctor version: $DOCTOR_VERSION"' "$ROOT/mihomo-doctor.sh" || fail "Doctor must print its own version in every support report"
 pass "Doctor support output carries an explicit self-version"
 
