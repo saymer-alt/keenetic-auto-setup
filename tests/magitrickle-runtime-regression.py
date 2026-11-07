@@ -171,12 +171,16 @@ def main():
         (shim / 'ss-only' / 'ss').write_text(
             '#!/bin/sh\nprintf \'LISTEN 0 128 127.0.0.1:3553 0.0.0.0:*\\n\'\n')
         os.chmod(shim / 'ss-only' / 'ss', 0o755)
+        # The ss-fallback branch must be exercised with netstat truly absent:
+        # a shim-only PATH (fake ss + a copy of the real grep), because the
+        # runner image may ship a real netstat that would hijack the branch.
+        shutil.copy2(shutil.which('grep'), shim / 'ss-only' / 'grep')
         check('listener: netstat match',
               base + 'PATH=%s:$PATH\n_mt_dns_port=3553\nmagitrickle_dns_listening\n' % (shim / 'netstat-match'), 0)
         check('listener: netstat no match',
               base + 'PATH=%s:$PATH\n_mt_dns_port=3553\nmagitrickle_dns_listening\n' % (shim / 'netstat-empty'), 1)
-        check('listener: ss fallback',
-              base + 'PATH=%s:$PATH\n_mt_dns_port=3553\nmagitrickle_dns_listening\n' % (shim / 'ss-only'), 0)
+        check('listener: ss fallback (netstat absent)',
+              base + 'PATH=%s\n_mt_dns_port=3553\nmagitrickle_dns_listening\n' % (shim / 'ss-only'), 0)
         check('listener: no tool -> skip(2)',
               base + 'PATH=/nonexistent-mt-shim\n_mt_dns_port=3553\nmagitrickle_dns_listening\n', 2)
 
