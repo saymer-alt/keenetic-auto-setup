@@ -1,5 +1,8 @@
 # AGENTS.md — keenetic-auto-setup
 
+> **Core release policy (07.11.2026):** перед каждым выпуском KAS Core v1.x обязательно выполнить pinned main/stable Core Sync report через job core-sync-evidence в stable-release-gate.yml. Перед QEMU автоматически сохраняются report.json/Markdown + identity.json; владелец вручную разбирает REVIEW/DIFF в #401. Без актуальных доказательств для конечного SHA и owner GO выпуск не разрешён. Это не относится к KAS WEB beta. Не делать полный main→stable merge. Подробности: RELEASE-STANDARD.md, раздел Mandatory KAS Core release reconciliation.
+
+
 > **Общее правило для всех проектов saymer-alt:** [Proof Before Build](https://github.com/saymer-alt/saymer-alt/blob/main/PROOF-BEFORE-BUILD.md) ([PR #9](https://github.com/saymer-alt/saymer-alt/pull/9)). Специализированное ТЭО и пример KAS: [docs/PROOF-BEFORE-BUILD.md](docs/PROOF-BEFORE-BUILD.md). Новые функции — только после доказательства проблемы, сравнения альтернатив, оценки пользы, стоимости и рисков. Обязательные safety-контракты KAS сохраняются.
 
 
