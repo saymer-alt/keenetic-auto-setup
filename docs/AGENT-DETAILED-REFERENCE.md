@@ -7,6 +7,8 @@ Only the essential [root AGENTS.md](../AGENTS.md) is loaded at startup. All file
 | Task | Reference |
 | --- | --- |
 | Locate relevant code, callers and focused tests **without dumping whole scripts** | [Component reading map — risk-tiered](agent-guidance/07-component-reading-map.md) |
+| Routing, TUN/ProxyN, DNS and controller — choose one architecture section | [Architecture quick index](../ARCHITECTURE.md#быстрый-указатель-по-задачам) |
+| Regression scope, field evidence vs CI and release gates — choose one section | [Testing Strategy reading guide](TESTING_STRATEGY.md#reading-guide) |
 | Architecture and current platform contracts | [Architecture/platforms](agent-guidance/01-architecture-and-platforms.md) |
 | Installer, updater, watchdog and safety-sensitive code | [Development/safety](agent-guidance/02-development-and-safety.md) |
 | Git/PR workflow, documentation, technical debt | [Agent workflow](agent-guidance/03-agent-workflow-and-git.md) |
@@ -17,6 +19,7 @@ Only the essential [root AGENTS.md](../AGENTS.md) is loaded at startup. All file
 
 - [Historical KAS incidents and past pitfalls](archaeology/kas-agent-historical-context-2026.md): old runtime observations, **not current instructions**.
 - [Historical router model/field inventory](archaeology/kas-platform-field-inventory-2026.md): field examples from old `AGENTS.md` that must **never** be assumed to describe current equipment.
+- [September 2026 testing and hardware acceptance](archaeology/kas-testing-field-evidence-2026-09.md): historical per-router Doctor/MCP results, hardware matrix and optional field follow-ups; not today's readiness evidence.
 
 Original sections from the 2026-11-07 base `AGENTS.md` commit `9837c8141d60cbe6e9d408ee69515bb0bd16dbe6` are preserved between the active topical guides and these two archives.
 
