@@ -24,4 +24,3 @@ This is **archived material**, preserved from the previous long `AGENTS.md` at c
 - Shell dialect is busybox/ash: do not use bashisms; `local` is allowed
   (busybox supports it and it is already used in the watchdog). $RANDOM, pidof, ss, netstat
   may be absent — preserve selective `command -v` checks in the code.
-
