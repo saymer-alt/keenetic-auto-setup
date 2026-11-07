@@ -258,7 +258,7 @@ trap 'exit 129' HUP
 
 
 # =========================================================
-# mihomo-doctor.sh v1.2.18 - READ-ONLY diagnostic for the
+# mihomo-doctor.sh v1.2.20 - READ-ONLY diagnostic for the
 # keenetic-auto-setup stack (Mihomo + watchdog + Keenetic
 # proxy bridge) on Keenetic + Entware.
 #
@@ -290,7 +290,7 @@ trap 'exit 129' HUP
 
 OPT_ROOT="${DOCTOR_OPT_ROOT:-/opt}"
 MEMINFO="${DOCTOR_MEMINFO:-/proc/meminfo}"
-DOCTOR_VERSION="1.2.18"
+DOCTOR_VERSION="1.2.22"
 
 MIHOMO_PATH="$OPT_ROOT/bin/mihomo"
 CONFIG_DIR="$OPT_ROOT/etc/mihomo"
@@ -596,6 +596,30 @@ is_num() {
 first_line() {
     printf '%s\n' "$1" | head -n 1
 }
+
+# BEGIN DOCTOR INTERFACE IPV6 LAYER READER v1
+# Read KeeneticOS interface runtime (summary.layer), not raw IPv6 addresses.
+# A link-local IPv6 address can exist even when segment IPv6 is disabled.
+# Unknown/unreadable is never silently converted into disabled.
+doc_read_interface_layers() {
+    DOC_IPV4_LAYER=unknown
+    DOC_IPV6_LAYER=unknown
+    _dil_iface=$1
+    _dil_output=$(ndmc -c "show interface $_dil_iface" 2>/dev/null | tr -d '\r')
+    printf '%s\n' "$_dil_output" | grep -Eq "^[[:space:]]*id:[[:space:]]*$_dil_iface[[:space:]]*$" || return 1
+    _dil_states=$(printf '%s\n' "$_dil_output" | awk '
+        /^[[:space:]]*summary:[[:space:]]*$/ {summary=1; next}
+        summary && /^[[:space:]]*layer:[[:space:]]*$/ {layer=1; next}
+        layer && $1 == "ipv4:" {v4=$2}
+        layer && $1 == "ipv6:" {v6=$2}
+        END {print (v4 == "" ? "unknown" : v4), (v6 == "" ? "unknown" : v6)}
+    ')
+    set -- $_dil_states
+    DOC_IPV4_LAYER=${1:-unknown}
+    DOC_IPV6_LAYER=${2:-unknown}
+    return 0
+}
+# END DOCTOR INTERFACE IPV6 LAYER READER v1
 
 proxy_profile_class() {
     # Same compatibility contract as install.sh. Old installers used other
@@ -952,6 +976,114 @@ ver_compare() {
         _va=$_ra; _vb=$_rb
     done
 }
+
+# BEGIN MIHOMO PACKAGE SELECTION
+# Standalone scripts carry identical helpers; regression tests prevent divergence.
+detect_mihomo_package_arch() {
+    awk '
+    $1 == "arch" && $2 !~ /^(all|noarch)$/ {
+        arch=$2; sub(/_kn$/, "", arch)
+        if (arch !~ /^(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4)$/) {bad=1; next}
+        if (!seen[arch]++) {selected=arch; count++}
+    }
+    END {if (!bad && count == 1) print selected; else exit 1}'
+}
+
+select_mihomo_asset() {
+    awk -v suffix="_$IPK_SUFFIX.ipk" '
+    function numeric(a,b) {
+        if (length(a) != length(b)) return length(a)>length(b) ? 1 : -1
+        if (("x" a) == ("x" b)) return 0
+        return ("x" a)>("x" b) ? 1 : -1
+    }
+    function valid(v, base,parts,n,i,x) {
+        x=v; sub(/[+].*$/, "", x)
+        if (v ~ /[+]/) {
+            base=v; sub(/^[^+]*[+]/, "", base)
+            if (base !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+        }
+        base=x; sub(/-.*/, "", base)
+        if (base !~ /^[0-9]+[.][0-9]+[.][0-9]+$/) return 0
+        n=split(base,parts,".")
+        for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]/) return 0
+        if (x ~ /-/) {
+            sub(/^[^-]*-/, "", x)
+            if (x !~ /^[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*$/) return 0
+            n=split(x,parts,".")
+            for(i=1;i<=n;i++) if (parts[i] ~ /^0[0-9]+$/) return 0
+        }
+        return 1
+    }
+    function compare(a,b,ap,bp,aa,bb,an,bn,i,c) {
+        sub(/[+].*$/, "", a); sub(/[+].*$/, "", b)
+        ap=a; bp=b; sub(/^[^-]*-/, "", ap); sub(/^[^-]*-/, "", bp)
+        if (a !~ /-/) ap=""
+        if (b !~ /-/) bp=""
+        sub(/-.*/, "", a); sub(/-.*/, "", b)
+        split(a,aa,"."); split(b,bb,".")
+        for(i=1;i<=3;i++) {c=numeric(aa[i],bb[i]); if(c) return c}
+        if (("x" ap) == ("x" bp)) return 0
+        if (ap == "") return 1
+        if (bp == "") return -1
+        an=split(ap,aa,"."); bn=split(bp,bb,".")
+        for(i=1;i<=an && i<=bn;i++) {
+            if (aa[i] ~ /^[0-9]+$/ && bb[i] ~ /^[0-9]+$/) {
+                c=numeric(aa[i],bb[i]); if(c) return c; continue
+            }
+            if (aa[i] ~ /^[0-9]+$/) return -1
+            if (bb[i] ~ /^[0-9]+$/) return 1
+            if (("x" aa[i]) == ("x" bb[i])) continue
+            return ("x" aa[i])>("x" bb[i]) ? 1 : -1
+        }
+        if (an == bn) return 0
+        return an>bn ? 1 : -1
+    }
+    {
+        url=$0; name=url; sub(/^.*\//, "", name)
+        if (substr(name,1,7) != "mihomo_" || name ~ /^mihomo_nohf_/) next
+        if (substr(name,length(name)-length(suffix)+1) != suffix) next
+        if (url !~ /^(https:\/\/github[.]com)?\/saymer-alt\/entware-go\/releases\/download\/latest\/[A-Za-z0-9_.+-]+[.]ipk$/) {bad=1; next}
+        version=substr(name,8,length(name)-7-length(suffix))
+        release=version; sub(/^.*-/, "", release); sub(/-[^-]*$/, "", version)
+        if (release !~ /^[1-9][0-9]*$/ || !valid(version)) {bad=1; next}
+        c=count ? compare(version,selected_version) : 1
+        if (c == 0) c=numeric(release,selected_release)
+        if (c > 0) {selected=url; selected_version=version; selected_release=release; count=1}
+        else if (c == 0) count++
+    }
+    END {if(bad) exit 3; if(count>1) exit 2; if(count==1) print selected; else exit 1}'
+}
+
+release_mihomo_asset() {
+    # Validate before selection: a jq error must never fall through to API grep.
+    _mra_urls=$(jq -er '
+        if type != "object" or .tag_name != "latest" or (.assets | type) != "array" or (.assets | length) == 0 then error("release metadata") else . end
+        # A known failed stable upload is ineligible, not a reason to reject a healthy ABI.
+        | def starter:
+            .state == "starter" and .size == 0 and .digest == null
+            and (.id | type) == "number" and .id > 0 and (.id | floor) == .id
+            and (.name | test("^mihomo_(nohf_)?(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)-[1-9][0-9]*_(aarch64-3[.]10|armv7-3[.]2|mipsel-3[.]4|mips-3[.]4|x64-3[.]2)[.]ipk$"))
+            and ((.name | startswith("mihomo_nohf_")) == false or (.name | endswith("_armv7-3.2.ipk")))
+            and (.browser_download_url | test("^(https://github[.]com)?/saymer-alt/entware-go/releases/download/latest/[A-Za-z0-9_.+-]+[.]ipk$"));
+        if all(.assets[]; (.name | type) == "string" and (.browser_download_url | type) == "string"
+            and .name == (.browser_download_url | split("/") | last)
+            and (if (.name | startswith("mihomo_")) then
+                (.state == "uploaded" and (.size | type) == "number" and .size > 0 and (.size | floor) == .size)
+                or starter
+                else true end))
+            and (.assets as $assets | all($assets[];
+                if (.name | startswith("mihomo_")) and .state == "starter" then
+                    . as $pending
+                    | ([$assets[] | select(.name == $pending.name)] | length == 1)
+                      and ([$assets[] | select(.id == $pending.id)] | length == 1)
+                else true end))
+          then [.assets[] | select((.name | startswith("mihomo_")) and .state == "starter" | not)
+                | .browser_download_url] | join("\n")
+          else error("asset metadata") end
+    ' 2>/dev/null) || return 3
+    printf '%s\n' "$_mra_urls" | select_mihomo_asset
+}
+# END MIHOMO PACKAGE SELECTION
 
 if [ $# -gt 0 ]; then
     echo "Usage: sh mihomo-doctor.sh"
@@ -2248,17 +2380,302 @@ else
         _v=$(awk '/^    upstream:/{f=1;next} /^    [^[:space:]#]/{f=0} f&&/^      port:/{print $2; exit}' "$MT_CFG")
         is_num "$_v" && MT_UPSTREAM_PORT=$_v
         _v=$(awk '/^      chainPrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_CHAIN=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^        tablePrefix:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"')
+        [ -n "$_v" ] && MT_IPSET_PREFIX=$(printf '%s' "$_v" | tr -d '"\r')
         _v=$(awk '/^      disableRemap53:/{print $2; exit}' "$MT_CFG")
-        [ -n "$_v" ] && MT_REMAP=$_v
-        MT_LINK=$(awk '/^  link:/{l=1;next} /^  [^[:space:]#]/{l=0} l&&/^[[:space:]]*-/{sub(/^[[:space:]]*-[[:space:]]*/,"");print}' "$MT_CFG" | tr '\n' ' ')
+        [ -n "$_v" ] && MT_REMAP=$(printf '%s' "$_v" | tr -d '\r')
+        # BEGIN DOCTOR MT LINK PARSE v1
+        # YAML "- br0" is a sequence item, not a sibling key. Two shapes
+        # are handled: block sequences (items may sit at the key indent or
+        # deeper) and flow-style inline lists (`link: [br0, br1]`).
+        MT_LINK=$(awk '
+            function emit(v) {
+                sub(/\r$/, "", v)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                gsub(/"/, "", v)
+                if (v != "") print v
+            }
+            /^  link:/ {
+                l=1
+                # flow-style inline list on the key line itself
+                _v=$0
+                sub(/^  link:[[:space:]]*/, "", _v)
+                sub(/#.*$/, "", _v)
+                # Comments and CRLF leave whitespace after ]; trim it first.
+                sub(/[[:space:]]+$/, "", _v)
+                if (_v ~ /^\[/) {
+                    sub(/^\[/, "", _v); sub(/\]$/, "", _v)
+                    _n=split(_v, _a, ",")
+                    for (_i=1; _i<=_n; _i++) emit(_a[_i])
+                    l=0
+                }
+                next
+            }
+            l && /^[[:space:]]+-[[:space:]]+/ {
+                _v=$0
+                sub(/^[[:space:]]+-[[:space:]]+/, "", _v)
+                sub(/[[:space:]]*#.*$/, "", _v)
+                emit(_v)
+                next
+            }
+            # the next 2-space sibling key ends the sequence; deeper lines
+            # stay inside it
+            l && /^  [^[:space:]#-]/ { l=0 }
+        ' "$MT_CFG" | tr '\n' ' ')
+        # END DOCTOR MT LINK PARSE v1
     fi
     info "MT config source: $MT_CFG_SRC"
     info "DNS proxy: port $MT_DNS_PORT -> upstream $MT_UPSTREAM_ADDR:$MT_UPSTREAM_PORT"
     info "Web UI: port $MT_WEB_PORT (enabled: $MT_WEB_ENABLED)"
     info "Link interfaces: ${MT_LINK:-<none>}; iptables chain prefix: $MT_CHAIN; ipset prefix: $MT_IPSET_PREFIX; remap53 disabled: $MT_REMAP"
+    # BEGIN DOCTOR MT ROUTING SCOPE v1
+    # app.link selects DNS-substitution interfaces; it is not a global
+    # forwarding switch. Do not reveal user-defined rules or endpoints.
+    if [ -r "$MT_CFG" ]; then
+        MT_LINK_BR0=no
+        MT_LINK_BR1=no
+        MT_CLEAN_LINK=$(printf '%s' "$MT_LINK" | tr -d '\r')
+        case " $MT_CLEAN_LINK " in *" br0 "*) MT_LINK_BR0=yes ;; esac
+        case " $MT_CLEAN_LINK " in *" br1 "*) MT_LINK_BR1=yes ;; esac
+        info "MT app.link DNS substitution interfaces: br0=$MT_LINK_BR0, br1=$MT_LINK_BR1 (not a global traffic-routing policy)"
+
+        MT_IPV4_OFF=$(awk '/^    disableIPv4:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_IPV6_OFF=$(awk '/^    disableIPv6:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        MT_CONFIG_VERSION=$(awk '/^configVersion:/ { print $2; exit }' "$MT_CFG" | tr -d '\r')
+        [ -n "$MT_IPV4_OFF" ] || MT_IPV4_OFF=unknown
+        [ -n "$MT_IPV6_OFF" ] || MT_IPV6_OFF=unknown
+        [ -n "$MT_CONFIG_VERSION" ] || MT_CONFIG_VERSION=unknown
+        info "MT routing controls: configVersion=$MT_CONFIG_VERSION, disableIPv4=$MT_IPV4_OFF, disableIPv6=$MT_IPV6_OFF"
+
+        MT_RULE_SUMMARY=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            function close_rule() {
+                if (!have_rule) return
+                if (enabled == "true" && rule_enabled == "true") {
+                    active_rules++
+                    if (iface == "mitun0" && (rule_type == "namespace" || rule_type == "domain")) {
+                        if (rule == "2ip.io") ip_test = 1
+                        if (rule == "speedtest.net") speed_test = 1
+                    }
+                }
+                have_rule = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_rule(); in_groups = 0 }
+            in_groups && /^- id:/ { close_rule(); groups++; enabled = "false"; iface = ""; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_rule(); printf "%d %d %d %d %d\n", groups, enabled_groups, active_rules, ip_test, speed_test }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_RULE_SUMMARY
+        if [ "$#" -eq 5 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5"; then
+            info "MT route groups: $2 enabled / $1 total; enabled rules in enabled groups: $3 (configured targets, not observed traffic)"
+            if [ "$4" -eq 1 ] || [ "$5" -eq 1 ]; then
+                info "MT proxy-routed network tests: 2ip.io=$( [ "$4" -eq 1 ] && printf mitun0 || printf 'not detected' ), speedtest.net=$( [ "$5" -eq 1 ] && printf mitun0 || printf 'not detected' ); geo-IP/speedtest results may represent Mihomo rather than the segment default route"
+            fi
+        else
+            info "MT route group inventory unavailable (unsupported config structure or parser error)"
+        fi
+    else
+        info "MT route scope and group inventory unavailable: config is not readable"
+    fi
+    # END DOCTOR MT ROUTING SCOPE v1
+
+    # BEGIN DOCTOR MT GROUP ANALYSIS v1
+    # Group-level semantics beyond aggregate counts (issue #327 SE/279 case):
+    # a group can be "enabled" while routing nothing, and a broad catch-all
+    # regex can silently proxy unrelated traffic. Rule values, group names
+    # and subnets are classified but never printed.
+    if [ -r "$MT_CFG" ]; then
+        MT_GROUP_ANALYSIS=$(awk '
+            function val(s) {
+                sub(/^[^:]*:[[:space:]]*/, "", s)
+                sub(/[[:space:]]*#.*/, "", s)
+                sub(/^[[:space:]]*/, "", s)
+                sub(/[[:space:]]*$/, "", s)
+                gsub(/"/, "", s)
+                return s
+            }
+            # One alternative counts as a broad TLD catch-all when it
+            # reduces to a bare top-level domain after stripping common
+            # anchors and wildcard prefixes (e.g. .*\\.com). The literal
+            # pattern itself is never reported.
+            function broad_alt(t) {
+                gsub(/^\^/, "", t)
+                gsub(/\$/, "", t)
+                gsub(/^\.\*/, "", t)
+                gsub(/^\.\+/, "", t)
+                gsub(/^\\\./, "", t)
+                gsub(/^\*/, "", t)
+                gsub(/\$/, "", t)
+                return (t ~ /^[a-z][a-z0-9]{1,9}$/)
+            }
+            function broad_regex(p,   a, n, i, t, prefix, suffix) {
+                n = split(p, a, "|")
+                for (i = 1; i <= n; i++) {
+                    t = a[i]
+                    if (broad_alt(t)) return 1
+                    # Retained field form: ^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.com$
+                    # Match exact arbitrary-label expression plus a bare TLD;
+                    # do not flag concrete domain-specific regexes.
+                    sub(/^\^/, "", t)
+                    sub(/\$/, "", t)
+                    prefix = "[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\."
+                    if (index(t, prefix) == 1) {
+                        suffix = substr(t, length(prefix) + 1)
+                        if (suffix ~ /^[a-z][a-z0-9]{1,9}$/) return 1
+                    }
+                }
+                return 0
+            }
+            function close_rule() {
+                if (!have_rule) return
+                eff = (enabled == "true" && rule_enabled == "true")
+                if (eff) {
+                    active_rules++
+                    if (rule_type == "subnet") active_subnet++
+                    g_eff_rules++
+                    if (rule_type == "subnet") g_eff_subnet++
+                    if (iface == "mitun0") {
+                        if (rule_type == "regex" && broad_regex(rule)) broad_catchall = 1
+                    }
+                }
+                if (tolower(rule) ~ /telegram/) {
+                    g_tg_rule_seen = 1
+                    if (eff) {
+                        g_tg_matched_rules++
+                        if (rule_type == "subnet") g_tg_matched_subnet++
+                    }
+                }
+                have_rule = 0
+            }
+            # A Telegram-labeled group owns its enabled subnet routes even
+            # when their CIDR values cannot contain the word "telegram".
+            # For unlabeled groups count only explicit Telegram rule matches;
+            # do not attribute unrelated subnets to that service.
+            function close_group() {
+                close_rule()
+                if (!have_group) return
+                if (g_tg_named || g_tg_rule_seen) {
+                    tg_present = 1
+                    if (enabled == "true") tg_group_enabled = 1
+                    tg_eff_rules += g_tg_named ? g_eff_rules : g_tg_matched_rules
+                    tg_eff_subnet += g_tg_named ? g_eff_subnet : g_tg_matched_subnet
+                }
+                have_group = 0
+            }
+            /^groups:[[:space:]]*$/ { in_groups = 1; next }
+            in_groups && /^[[:alpha:]]/ { close_group(); in_groups = 0 }
+            in_groups && /^- id:/ {
+                close_group()
+                groups++; have_group = 1
+                enabled = "false"; iface = ""
+                g_tg_named = 0; g_tg_rule_seen = 0
+                g_eff_rules = 0; g_eff_subnet = 0
+                g_tg_matched_rules = 0; g_tg_matched_subnet = 0
+                next
+            }
+            in_groups && /^  name:/ { if (tolower(val($0)) ~ /telegram/) g_tg_named = 1; next }
+            in_groups && /^  interface:/ { iface = val($0); next }
+            in_groups && /^  enable:/ { enabled = val($0); if (enabled == "true") enabled_groups++; next }
+            in_groups && /^  - id:/ { close_rule(); have_rule = 1; rule = ""; rule_type = ""; rule_enabled = "false"; next }
+            in_groups && /^    type:/ { rule_type = val($0); next }
+            in_groups && /^    rule:/ { rule = val($0); next }
+            in_groups && /^    enable:/ { rule_enabled = val($0); next }
+            END { close_group(); printf "%d %d %d %d %d %d %d %d %d\n", groups, enabled_groups, active_rules, active_subnet, broad_catchall, tg_present, tg_group_enabled, tg_eff_rules, tg_eff_subnet }
+        ' "$MT_CFG" 2>/dev/null)
+        set -- $MT_GROUP_ANALYSIS
+        if [ "$#" -eq 9 ] && is_num "$1" && is_num "$2" && is_num "$3" && is_num "$4" && is_num "$5" && is_num "$6" && is_num "$7" && is_num "$8" && is_num "$9"; then
+            info "MT group semantics: enabled rules $3 (subnet $4) in enabled groups $2/$1; effective subnet routes populate ipsets, enabled counts alone do not prove routing"
+            if [ "$5" -eq 1 ]; then
+                warn "MT broad catch-all regex rule present (enabled group routes a bare-TLD pattern to mitun0; pattern withheld): games, APIs and unrelated sites may be proxied unintentionally; treat as intentional-policy INFO if configured on purpose"
+            fi
+            if [ "$6" -eq 1 ]; then
+                info "MT telegram-related rules detected: telegram group enabled=$([ "$7" -eq 1 ] && printf yes || printf no), effective telegram rules=$8 (subnet $9); a disabled group with zero effective subnet routes must not be diagnosed as a universal Telegram failure"
+            else
+                info "MT telegram-related rules: none detected (observation, not a failure verdict)"
+            fi
+        else
+            info "MT group semantics unavailable (unsupported config structure or parser error)"
+        fi
+    fi
+    # END DOCTOR MT GROUP ANALYSIS v1
+
+    # BEGIN DOCTOR MT NETFILTER EFFECTIVE v1
+    # CONFIGURED (config.yaml) vs LOADED (magitrickled running) vs EFFECTIVE
+    # (actual iptables/ipset/ip state), issue #327. Strictly read-only:
+    # iptables -S listings, ipset name list, ip rule/route listing. A busy
+    # xtables lock or an absent tool is reported as UNKNOWN, never silently
+    # as zero, and never auto-fixed.
+    MT_EFF_CHAINS=unknown
+    MT_EFF_SET_RULES=unknown
+    MT_EFF_DNAT53=unknown
+    MT_EFF_IPSETS=unknown
+    MT_EFF_FWMARK=unknown
+    MT_EFF_MITUN0_ROUTES=unknown
+    MT_EFF_READY=0
+    _eff_note=""
+    if command -v iptables >/dev/null 2>&1; then
+        # "VAR=$(cmd) && rc=0 || rc=$?" keeps the capture set -e-safe while
+        # preserving the producer's exit status for the honest UNKNOWN path.
+        MT_MANGLE_DUMP=$(iptables -t mangle -S 2>/dev/null) && _eff_mangle_rc=0 || _eff_mangle_rc=$?
+        MT_NAT_DUMP=$(iptables -t nat -S 2>/dev/null) && _eff_nat_rc=0 || _eff_nat_rc=$?
+        if [ "$_eff_mangle_rc" -eq 0 ] && [ "$_eff_nat_rc" -eq 0 ]; then
+            MT_EFF_READY=1
+            MT_EFF_CHAINS=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c "^-N $MT_CHAIN") || MT_EFF_CHAINS=0
+            MT_EFF_SET_RULES=$(printf '%s\n' "$MT_MANGLE_DUMP" | grep -c -- "--match-set $MT_IPSET_PREFIX") || MT_EFF_SET_RULES=0
+            MT_EFF_DNAT53=$(printf '%s\n' "$MT_NAT_DUMP" | grep "dport 53" | grep -c "DNAT.*:$MT_DNS_PORT\b") || MT_EFF_DNAT53=0
+        else
+            _eff_note="iptables busy or unreadable (firewall rebuild in progress); re-run Doctor in a few minutes"
+        fi
+    else
+        _eff_note="iptables not available"
+    fi
+    if command -v ipset >/dev/null 2>&1; then
+        MT_IPSET_DUMP=$(ipset -n list 2>/dev/null) && _eff_ipset_rc=0 || _eff_ipset_rc=$?
+        if [ "$_eff_ipset_rc" -eq 0 ]; then
+            MT_EFF_IPSETS=$(printf '%s\n' "$MT_IPSET_DUMP" | grep -c "^$MT_IPSET_PREFIX") || MT_EFF_IPSETS=0
+        fi
+    fi
+    if command -v ip >/dev/null 2>&1; then
+        MT_IPRULE_DUMP=$(ip rule show 2>/dev/null) && _eff_rule_rc=0 || _eff_rule_rc=$?
+        if [ "$_eff_rule_rc" -eq 0 ]; then
+            MT_EFF_FWMARK=$(printf '%s\n' "$MT_IPRULE_DUMP" | grep -ci "fwmark") || MT_EFF_FWMARK=0
+        fi
+        MT_IPROUTE_DUMP=$(ip route show table all 2>/dev/null) && _eff_route_rc=0 || _eff_route_rc=$?
+        if [ "$_eff_route_rc" -eq 0 ]; then
+            MT_EFF_MITUN0_ROUTES=$(printf '%s\n' "$MT_IPROUTE_DUMP" | grep -c "mitun0") || MT_EFF_MITUN0_ROUTES=0
+        fi
+    fi
+    info "MT effective netfilter (observed): mangle ${MT_CHAIN}chains=$MT_EFF_CHAINS, ipset-match rules=$MT_EFF_SET_RULES, nat dport53-DNAT:$MT_DNS_PORT=$MT_EFF_DNAT53, ipsets=$MT_EFF_IPSETS, fwmark rules=$MT_EFF_FWMARK, mitun0 routes=$MT_EFF_MITUN0_ROUTES"
+    [ -n "$_eff_note" ] && info "MT effective netfilter limited: $_eff_note"
+    if [ "$MT_EFF_READY" -eq 1 ]; then
+        if [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_CHAINS" = "0" ]; then
+            warn "magitrickled is running but no effective MT_* mangle chains exist: rules were not applied, failed, or were overwritten; DNS endpoint scope alone does not prove routing (issue #327)"
+        fi
+        if [ "$MT_PROCS" -eq 0 ] && [ "$MT_EFF_CHAINS" != "0" ] && [ "$MT_EFF_CHAINS" != "unknown" ]; then
+            warn "residual MT_* mangle chains while magitrickled is not running: stale netfilter state may still reroute traffic after OPKG-off or daemon stop; review manually, Doctor does not modify rules"
+        fi
+        if [ "$MT_REMAP" = "true" ] && [ "$MT_EFF_DNAT53" != "0" ] && [ "$MT_EFF_DNAT53" != "unknown" ]; then
+            warn "configured disableRemap53=true but effective DNAT to port $MT_DNS_PORT exists: CONFIGURED/EFFECTIVE mismatch for DNS interception"
+        fi
+        if [ "$MT_REMAP" != "true" ] && [ "$MT_PROCS" -gt 0 ] && [ "$MT_EFF_DNAT53" = "0" ]; then
+            warn "DNS interception configured but no effective DNAT to port $MT_DNS_PORT: clients may be bypassing MagiTrickle DNS despite a running daemon"
+        fi
+    fi
+    # END DOCTOR MT NETFILTER EFFECTIVE v1
 
         # Layer 2: listeners (only meaningful when the process runs)
         _dns_listening=0
@@ -2371,6 +2788,54 @@ else
     fi
 fi
 
+# BEGIN DOCTOR NATIVE OPKG TUN v1
+# KeeneticOS 5.0+ can represent opkg-created TUN interfaces as OpkgTunN.
+# Independent of optional MagiTrickle; only read Mihomo config and sysfs.
+# Preserve honest UNVERIFIED status for NDM attach and traffic counters.
+_sys_net="${KAS_SYS_NET:-/sys/class/net}"
+_nt_devs=""
+if [ -d "$_sys_net" ]; then
+    _nt_devs=$(ls "$_sys_net" 2>/dev/null | grep -E "^opkgtun[0-9]+$" | head -n 4 | tr "\n" " ")
+fi
+_nt_cfg_devs=""
+if [ -r "$CONFIG" ]; then
+    _nt_cfg_devs=$(awk '
+        /^[[:space:]]*device:[[:space:]]*/ {
+            v=$0
+            sub(/^[[:space:]]*device:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*$/, "", v)
+            gsub(/"/, "", v)
+            gsub(sprintf("%c",39), "", v)
+            sub(/^[[:space:]]+/, "", v)
+            sub(/[[:space:]]+$/, "", v)
+            if (v ~ /^opkgtun[0-9]+$/) print v
+        }
+    ' "$CONFIG" 2>/dev/null | sort -u | head -n 4)
+fi
+_nt_present=""
+_nt_missing=""
+if [ -n "$_nt_cfg_devs" ]; then
+    for _nt_config in $_nt_cfg_devs; do
+        if [ -d "$_sys_net/$_nt_config" ]; then
+            _nt_present="$_nt_present $_nt_config"
+        else
+            _nt_missing="$_nt_missing $_nt_config"
+        fi
+    done
+    if [ -n "$_nt_missing" ]; then
+        if [ -n "$_nt_devs" ]; then
+            info "Mihomo config references opkg-native TUN device(s) but configured device(s) absent (${_nt_missing# }); other observed opkgtunN (${_nt_devs% }) may be unrelated; native topology is NOT confirmed (NDM attach/boot order UNVERIFIED)"
+        else
+            info "Mihomo config references an opkg-native TUN device but no opkgtunN Linux device is present at check time (boot order or service state; NDM reportedly does not attach to an existing device - field observation, UNVERIFIED)"
+        fi
+    else
+        info "Mihomo config references an opkg-native TUN device and it is present (${_nt_present# }): native topology observed; NDM counters for app-created devices are field-reported inconsistent (UNVERIFIED) and this topology is not KAS-supported yet"
+    fi
+elif [ -n "$_nt_devs" ]; then
+    info "opkg-native TUN device(s) present (${_nt_devs% }) while the Mihomo config does not reference them: foreign or unrelated opkg tun; the KAS standard device remains mitun0"
+fi
+# END DOCTOR NATIVE OPKG TUN v1
+
 # =========================================================
 hdr "7. Keenetic proxy bridge (ProxyN)"
 # =========================================================
@@ -2440,6 +2905,49 @@ else
             info "Foreign Proxy interface(s) present:$FOREIGN_PROXIES - not used as the Mihomo bridge, reported only"
         fi
 
+        # BEGIN DOCTOR INTERFACE IPV6 AUDIT v1
+        # KeeneticOS 5.0+ has a per-LAN-segment "Enable IPv6" control.
+        # BridgeN IPv6 and the upstream ProxyN IPv6 are distinct; neither
+        # a disabled LAN IPv6 nor a pending ProxyN IPv6 proves tunnel failure.
+        # Read-only state only; never toggle IPv6, routes or policies.
+        if [ -n "$PROJECT_PROXY" ]; then
+            if doc_read_interface_layers "$PROJECT_PROXY"; then
+                case "$DOC_IPV4_LAYER" in
+                    running)
+                        info "Project proxy $PROJECT_PROXY: IPv4 runtime=running"
+                        ;;
+                    disabled)
+                        warn "Project proxy $PROJECT_PROXY: IPv4 runtime=disabled despite internet-capable ProxyN; inspect Keenetic interface/logs and routing (SOCKS port alone does not prove ProxyN routing)"
+                        ;;
+                    *)
+                        info "Project proxy $PROJECT_PROXY: IPv4 runtime=$DOC_IPV4_LAYER (not a proven down state)"
+                        ;;
+                esac
+                info "Project proxy $PROJECT_PROXY: IPv6 runtime=$DOC_IPV6_LAYER (independent of LAN segment IPv6)"
+            else
+                info "Project proxy $PROJECT_PROXY: IPv4/IPv6 runtime=unknown (show interface unavailable)"
+            fi
+        fi
+
+        # Configured LAN bridges only, bounded to 8. Description, IPs,
+        # endpoints and full ndmc output are never included in reports.
+        _doc_bridges=$(printf '%s\n' "$RC_DUMP" | awk '$1 == "interface" && $2 ~ /^Bridge[0-9]+$/ {print $2}' | head -n 8)
+        for _doc_bridge in $_doc_bridges; do
+            if doc_read_interface_layers "$_doc_bridge"; then
+                case "$DOC_IPV6_LAYER" in
+                    running|disabled|pending)
+                        info "LAN segment $_doc_bridge: IPv6 runtime=$DOC_IPV6_LAYER (per-segment setting; disabled is allowed)"
+                        ;;
+                    *)
+                        info "LAN segment $_doc_bridge: IPv6 runtime=unknown"
+                        ;;
+                esac
+            else
+                info "LAN segment $_doc_bridge: IPv6 runtime=unknown (show interface unavailable)"
+            fi
+        done
+        # END DOCTOR INTERFACE IPV6 AUDIT v1
+
         # bypass_wa is a user-owned failover policy. Its health contract is
         # intentionally weaker than the installer-owned ProxyN contract:
         # the policy must exist and contain at least one permitted interface.
@@ -2504,13 +3012,13 @@ if ! command -v iptables >/dev/null 2>&1; then
     fail "bypass_wa Netfilter verification unavailable: iptables not found$_bypass_component_hint"
 else
     _bypass_ports="1400,3478,3482"
-    # Read-only pair probe (KAS PR #312 review backport): PREROUTING and the
-    # chain are read together as one bounded attempt, so a transient failure
-    # of one read cannot fail the whole section after the other read
-    # recovered. For the chain, "No chain/target/match" is a definitive
-    # answer and is not retried; a busy xtables lock or an unknown read error
-    # may clear within seconds, hence a small bounded read-only retry for
-    # both reads. The chain is never created or modified here.
+    # Read-only pair probe (PR #312 review): PREROUTING and the chain are
+    # read together as one bounded attempt, so a transient failure of one
+    # read cannot fail the whole section after the other read recovered.
+    # For the chain, "No chain/target/match" is a definitive answer and is
+    # not retried; a busy xtables lock or an unknown read error may clear
+    # within seconds, hence a small bounded read-only retry for both reads.
+    # The chain is never created or modified here.
     _bypass_attempt=1
     _bypass_max_attempts=3
     while :; do
@@ -3029,30 +3537,23 @@ elif [ -z "$IPK_SUFFIX" ]; then
     info "Package availability check skipped (architecture unknown)"
 else
     FOUND_NAME=""
+    FOUND_URL=""
+    PACKAGE_SELECTION_RC=0
     if command -v jq >/dev/null 2>&1; then
-        FOUND_NAME=$(printf '%s\n' "$RELEASE_JSON" | jq -r --arg suffix "$IPK_SUFFIX" '
-            .assets[]?
-            | select(.name | startswith("mihomo_") and endswith("_" + $suffix + ".ipk") and (contains("nohf") | not))
-            | .name
-        ' 2>/dev/null | head -n 1)
-    fi
-    if [ -z "$FOUND_NAME" ] || [ "$FOUND_NAME" = "null" ]; then
+        FOUND_URL=$(printf '%s\n' "$RELEASE_JSON" | release_mihomo_asset) || PACKAGE_SELECTION_RC=$?
+    else
+        # Preserve the no-jq fallback, but rank every matching URL using the
+        # same exact ABI/version/release rules as the installer and updater.
         FOUND_URL=$(printf '%s\n' "$RELEASE_JSON" \
             | grep -o '"browser_download_url": *"[^"]*mihomo_[^"]*_'${IPK_SUFFIX}'\.ipk"' \
-            | grep -v "nohf" \
-            | head -n 1 | sed 's/.*": *"//;s/"$//')
-        [ -n "$FOUND_URL" ] && FOUND_NAME=$(basename "$FOUND_URL")
+            | sed 's/.*": *"//;s/"$//' \
+            | select_mihomo_asset) || PACKAGE_SELECTION_RC=$?
     fi
+    [ -n "$FOUND_URL" ] && FOUND_NAME=${FOUND_URL##*/}
 
-    case "$FOUND_NAME" in
-        mihomo_*_${IPK_SUFFIX}.ipk) : ;;
-        *) FOUND_NAME="" ;;
-    esac
-    case "$FOUND_NAME" in
-        *nohf*) FOUND_NAME="" ;;
-    esac
-
-    if [ -n "$FOUND_NAME" ]; then
+    if [ "$PACKAGE_SELECTION_RC" -gt 1 ]; then
+        warn "Package availability unverified: release metadata is malformed or ambiguous"
+    elif [ -n "$FOUND_NAME" ]; then
         ok "Package for $IPK_SUFFIX available in $ENTWARE_REPO:latest - $FOUND_NAME"
         AVAIL_VER=${FOUND_NAME#mihomo_}
         AVAIL_VER=${AVAIL_VER%_${IPK_SUFFIX}.ipk}
