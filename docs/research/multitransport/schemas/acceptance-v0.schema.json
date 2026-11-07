@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/saymer-alt/keenetic-auto-setup/docs/research/multitransport/schemas/acceptance-v0.schema.json",
+  "title": "MultiTransport field acceptance record v0",
+  "description": "One redacted record of a physical field test of one provider artifact on one device (MT-001, design only). Records are mutable evidence kept separately from the immutable manifest; they are keyed to the exact artifact SHA and are never inherited automatically by other binaries, devices or profiles. Only synthetic identifiers and numeric metrics — no owner configs, credentials, private URIs or raw logs. A record is syntax-checked here; whether a test actually happened as described is verified by the evidence process (owner review), not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider_id",
+    "artifact_sha256",
+    "device_id",
+    "profile_label",
+    "test_type",
+    "started_at",
+    "result"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "provider_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Evidence is valid only for the binary with this exact digest."
+    },
+    "adapter_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$",
+      "description": "Synthetic device/stand identifier (e.g. NC-4210-LAB-01). No serial numbers, no private addresses."
+    },
+    "platform_arch": { "enum": ["aarch64", "armv7", "mips", "mipsel", "x86_64"] },
+    "profile_label": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._@/-]{0,63}$",
+      "description": "Synthetic workload/profile label (e.g. 18x1-short)."
+    },
+    "test_type": {
+      "enum": ["TCP_E2E", "UDP_E2E", "RAM_BASELINE", "RAM_SOAK", "FAIL_CLOSED", "REBOOT", "LATENCY", "THROUGHPUT", "OTHER"]
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "duration_sec": { "type": "integer", "minimum": 0, "maximum": 2592000 },
+    "result": { "enum": ["PASS", "FAIL", "UNKNOWN"] },
+    "metrics": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+      "additionalProperties": { "type": ["number", "null"] },
+      "description": "Numeric redacted metrics only (e.g. vmhwm_kib, min_memavailable_kib, peak_rss_kb)."
+    },
+    "evidence_ref": { "type": "string", "minLength": 4, "maxLength": 256 },
+    "notes": { "type": "string", "maxLength": 512 }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "provider_id": "wdtt",
+  "adapter_version": "0.1.0",
+  "server_wire": "synthetic-wdtt-qwdtt-vkturn-dtls-wg-1",
+  "server_class": "synthetic-wdtt-exit-vps",
+  "architecture": [{ "arch": "aarch64", "abi": "musl-static" }],
+  "capabilities": {
+    "socks_tcp": { "code": "PRESENT", "build": "PRESENT" },
+    "socks_udp": { "code": "UNKNOWN", "build": "UNKNOWN" },
+    "tun": { "code": "ABSENT", "build": "ABSENT" }
+  },
+  "inbound_bind": "127.0.0.1:1081",
+  "resource_requirements": {
+    "admission_min_mb": 512,
+    "admission_source": "KAS-#137-combined-admission-policy",
+    "measured": false,
+    "measurement_ref": null,
+    "notes": "512 MB is a documented admission policy, not proven sufficiency; no A/B measurements yet (MT-004)."
+  },
+  "artifact_provenance": {
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "source_commit": "0123456789abcdef0123456789abcdef01234567",
+    "build_ref": "synthetic-ci-run-0001",
+    "artifact_path": "versions/0.1.0/worker"
+  },
+  "configuration_reference": "synthetic-docs/wdtt-owner-config-v0.md"
+}

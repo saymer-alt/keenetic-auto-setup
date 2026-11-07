@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/saymer-alt/keenetic-auto-setup/docs/research/multitransport/schemas/provider-v0.schema.json",
+  "title": "MultiTransport provider manifest v0",
+  "description": "Immutable trusted-package manifest of a MultiTransport transport provider (MT-001, design only). This is a syntax/admission-preflight contract: it does NOT verify artifact SHA authenticity, PID ownership, route safety or real E2E operation — those are runtime checks of later milestones (see MULTITRANSPORT-MVP.md). Field evidence (physical tests) lives in acceptance-v0, not here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider_id",
+    "adapter_version",
+    "server_wire",
+    "server_class",
+    "architecture",
+    "capabilities",
+    "inbound_bind",
+    "resource_requirements",
+    "artifact_provenance",
+    "configuration_reference"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "provider_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$",
+      "description": "Stable provider identifier; must equal the transport.d directory name."
+    },
+    "adapter_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "server_wire": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/@-]{2,63}$",
+      "not": { "enum": ["auto", "any", "unknown", "n/a", "none"] },
+      "description": "Explicit wire-protocol variant identifier. Placeholder or explanatory text is forbidden; different wires are never interchangeable."
+    },
+    "server_class": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+      "description": "Class of compatible server side (e.g. wdtt-exit-vps). Not interchangeable across providers."
+    },
+    "architecture": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["arch", "abi"],
+        "properties": {
+          "arch": { "enum": ["aarch64", "armv7", "mips", "mipsel", "x86_64"] },
+          "abi": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,31}$" }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+      "additionalProperties": { "$ref": "#/$defs/capability" },
+      "description": "Static code/build levels only. Physical field results belong to acceptance-v0 records; live availability belongs to status-v0."
+    },
+    "inbound_bind": { "$ref": "#/$defs/loopbackBind" },
+    "resource_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["admission_min_mb", "admission_source", "measured", "measurement_ref"],
+      "properties": {
+        "admission_min_mb": {
+          "type": ["integer", "null"],
+          "minimum": 64,
+          "maximum": 16384,
+          "description": "Documented admission floor policy. null = no documented floor; starting then requires explicit owner GO. A floor is a policy, not proof of sufficiency for any workload."
+        },
+        "admission_source": {
+          "type": ["string", "null"],
+          "minLength": 4,
+          "maxLength": 128,
+          "description": "Where the floor comes from (contract/issue/issue-comment reference). Required when admission_min_mb is an integer."
+        },
+        "measured": {
+          "type": "boolean",
+          "description": "Whether real memory measurements exist for this artifact."
+        },
+        "measurement_ref": {
+          "type": ["string", "null"],
+          "minLength": 4,
+          "maxLength": 256,
+          "description": "Pointer to redacted measurement evidence (e.g. acceptance record id). Required when measured is true."
+        },
+        "notes": { "type": "string", "maxLength": 512 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "admission_min_mb": { "type": "integer" } } },
+          "then": { "properties": { "admission_source": { "type": "string", "minLength": 4 } } }
+        },
+        {
+          "if": { "properties": { "measured": { "const": true } } },
+          "then": { "properties": { "measurement_ref": { "type": "string", "minLength": 4 } } }
+        }
+      ]
+    },
+    "artifact_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "source_commit", "artifact_path"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "source_commit": { "type": "string", "pattern": "^[a-f0-9]{7,64}$" },
+        "build_ref": { "type": "string", "minLength": 4, "maxLength": 256 },
+        "artifact_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$",
+          "not": { "pattern": "(^|/)\\.\\.($|/)" },
+          "description": "Provider-relative path; path traversal is rejected."
+        }
+      }
+    },
+    "configuration_reference": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 256,
+      "description": "Pointer to the owner-config format documentation/template. The secret config itself is never part of the manifest."
+    }
+  },
+  "$defs": {
+    "staticLevel": { "enum": ["PRESENT", "ABSENT", "UNKNOWN"] },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "build"],
+      "properties": {
+        "code": { "$ref": "#/$defs/staticLevel" },
+        "build": { "$ref": "#/$defs/staticLevel" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "build": { "const": "PRESENT" } } },
+          "then": { "properties": { "code": { "const": "PRESENT" } } },
+          "description": "Monotonic invariant: a binary cannot have a feature built in when its sources lack it."
+        }
+      ]
+    },
+    "loopbackBind": {
+      "type": "string",
+      "description": "Exactly 127.0.0.1:port (v0 conservative rule; wider 127/8 requires separate justification). Wildcard, LAN, IPv6, 'localhost' and other 127.x addresses are rejected.",
+      "pattern": "^127\\.0\\.0\\.1:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3})$"
+    }
+  }
+}
