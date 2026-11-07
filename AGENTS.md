@@ -6,7 +6,7 @@ Small startup contract for Codex, ZCode and other coding agents. **Do not load w
 
 KAS is a KeeneticOS + Entware toolkit for Mihomo/ProxyN, MagiTrickle, bypass rules, storage protection and watchdog. Improve demonstrable user behavior with minimal, reversible changes. Do not rewrite proven routing or rollback paths merely to simplify code. New features/major integrations require [Proof Before Build](docs/PROOF-BEFORE-BUILD.md); narrowly scoped defect fixes need proportional evidence.
 
-**KAS-AGENT-001:** satisfy the actual user objective, not a literal but harmful interpretation. For complex/risky tasks use [docs/AGENT-TASK-CONTRACT.md](docs/AGENT-TASK-CONTRACT.md): goal, baseline refs/SHA, scope/non-goals, protected state, negative tests, permissions/GO and Definition of Done. An ambiguous "clean up", "release" or "merge" is NOT permission to destroy or publish. Pause only the unsafe step, proceed with safe authorized work.
+**KAS-AGENT-001:** satisfy the actual user objective, not a literal but harmful interpretation. **Before drafting or executing any KAS agent task**, consult [docs/CONSTITUTION.md](docs/CONSTITUTION.md) and [docs/AGENT-TASK-CONTRACT.md](docs/AGENT-TASK-CONTRACT.md); for a narrow routine task, read the applicable rules, not unrelated examples. For complex/risky work, use the complete task contract: goal, exact refs/SHA, existing work, scope/non-goals, protected state, negative cases, permissions/GO and Definition of Done. An ambiguous "clean up", "release" or "merge" is NOT permission to destroy or publish. Pause only the unsafe step, proceed with safe authorized work.
 
 ## Never weaken these safety contracts
 
