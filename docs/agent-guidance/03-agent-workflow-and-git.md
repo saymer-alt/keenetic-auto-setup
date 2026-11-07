@@ -22,7 +22,7 @@ Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read 
   for real failures. Remove one only with an explicit task and an explanation of why
   it is no longer needed.
 - Do not remove existing behavior merely to simplify it — many "strange" places have
-  reasons behind them (see §10).
+  reasons behind them (consult [historical incidents](../archaeology/kas-agent-historical-context-2026.md) only if investigating that behavior).
 - "`sh -n` passed" ≠ "it works": syntax is the first filter, not proof.
 - Explicitly list which scenarios a change affects: installation (ram/disk), repeated
   install.sh run, update-mihomo (success and rollback), update-watchdog, reboot, watchdog
@@ -36,14 +36,14 @@ Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read 
 ## 7. Working with Git
 
 Default working rules:
-- `main` is development; `stable` is production delivery. Develop on `main`, require
+- `main` is development; `stable` is production delivery. **Base work on an exact `main` ref and implement changes in a separate topic branch**; require
   green CI, promote through a `main → stable` pull request, and verify CI on the promoted
   commit. After a successful promotion, if `main` has not received newer development
   commits and `stable` is a descendant with the same promoted tree, fast-forward `main`
   to the `stable` merge commit (no force) so branch history is synchronized and GitHub
   does not advertise a misleading reverse `stable → main` PR. Then tag/release that exact
   production commit;
-- before starting: `git status`; make sure you are on main and there are no unrelated
+- before starting: `git status`; verify `main` baseline, your topic branch/HEAD and unrelated
   uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
   only with explicit instruction);
 - before modifying a file, inspect its history (`git log --oneline -- <file>`):
@@ -79,7 +79,7 @@ Default working rules:
 
 ## 12. Agent working style
 
-- Determine which components the task touches (§2), reread the risk zones (§5),
+- Determine which components the task touches ([architecture/platforms](01-architecture-and-platforms.md)), reread the [safety-sensitive operations](02-development-and-safety.md),
   and read the relevant doc before editing, not after.
 - Any action on a live router requires an operator task.
 - A commit to `main` is development only. Production one-liners use `stable`.
@@ -87,7 +87,7 @@ Default working rules:
   still matters when hardware behavior is involved.
 - Do not claim "it works" if verification was limited to sh -n: list what was checked
   and what requires a live run on a device.
-- If the task looks like "rewrite everything properly", stop and reread §4 and docs/10:
+- If the task looks like "rewrite everything properly", stop and reread the [development principles](02-development-and-safety.md) and docs/10:
   stability matters more than elegance.
 
 ## Technical debt
