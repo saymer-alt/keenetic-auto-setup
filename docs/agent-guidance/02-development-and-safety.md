@@ -78,7 +78,7 @@ Without an explicit task and operator confirmation, do not:
 - run network experiments on a live router without a task.
 
 If a change in these areas is required, first understand the dependency
-(§2 and the relevant doc), make the smallest change, and list verification scenarios
+([architecture and platform contracts](01-architecture-and-platforms.md) and the relevant component doc), make the smallest change, and list verification scenarios
 for the operator.
 
 Risk-zone specifics:
@@ -95,3 +95,13 @@ Risk-zone specifics:
   destabilizes the system; expanding the directory list requires a RAM assessment.
 - Tunnel MTU: "slow / some sites do not work" can be a path-MTU symptom. Do not treat 1200–1300 as a universal default: 1200 is a live-working anchor for the documented nested Keenetic WARP-over-ProxyN/Mihomo topology. Distinguish the Keenetic WireGuard/WARP MTU from Mihomo `tun.mtu` (`mitun0`); see docs/09 and encyclopedia/34.
 
+
+## Current operational pitfalls (verified against scripts on PR #433 base; not historical inventory)
+
+These are **active implementation guardrails**, separated from the incident chronology in [the history archive](../archaeology/kas-agent-historical-context-2026.md). Before changing behavior, re-check the exact target SHA; old field models, firmware and dates are evidence, not current configuration.
+
+- **Watchdog error handling:** `mihomo-watchdog.sh` intentionally does not use blanket `set -e`; many probe failures are handled by `if`/explicit status logic. Do not add `set -e` without tracing all failure/cleanup/restart paths. The watchdog's managed five-minute cron wrapper and lifecycle lock must remain consistent with `update-watchdog.sh`. Duplicate managed cron routes must be prevented; unknown/user-managed schedules remain untouched unless explicitly authorized.
+- **Mihomo executable identity:** `update-mihomo.sh` and `migrate-mihomo-mips.sh` prefer a positively identified running `/proc/<pid>/exe` at canonical `/opt/sbin/mihomo` or `/opt/bin/mihomo`; when the canonical running executable cannot be established, fallback search prefers executable `/opt/sbin/mihomo`, then `/opt/bin/mihomo`. Do not select nested backup copies or infer daemon identity solely from `pidof`; preserve one-Mihomo/process-state safety gates.
+- **Netfilter hook invocation:** current `020-bypass-wa.sh` requires both `type=iptables` and `table=mangle` before modifying rules. Manual execution without those netfilter.d values is intentionally a no-op. Historical descriptions that mention only `$table` are incomplete; inspect the live hook before changing it.
+- **External dependency and platform evidence:** a CI Ubuntu command, a past KN/NC model test, or a historical `run-parts` observation is not universal proof for every KeeneticOS/Entware environment. For targeted changes use [testing/portability requirements](04-testing-and-portability.md) and verify the current device or report NOT_TESTED.
+- **Release/source-of-truth:** for current published behavior consult exact refs/tags and current `README.md`/scripts, not old pinned-binary or uninstall notes in the archived pitfalls section. Keep historical records as explanations, not executable instructions.
