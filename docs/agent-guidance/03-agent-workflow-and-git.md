@@ -1,0 +1,100 @@
+# Agent workflow, Git and documentation rules
+
+> Detailed **on-demand** guidance extracted from the previous root `AGENTS.md` at commit `9837c8141d60cbe6e9d408ee69515bb0bd16dbe6`. Task planning, proof and source accuracy, branch governance, handoffs, documentation and technical debt. Relative plain-text paths like `docs/06` are repository-root-relative. The binding entrypoint remains [AGENTS.md](../../AGENTS.md) and [KAS Constitution](../CONSTITUTION.md). These notes do not authorize relaxing safety or owner permission gates.
+
+## 6. AI agent working rules
+
+**MANDATORY — KAS-AGENT-001 / anti-monkey-paw task contract (owner decision, 2026-10-30).**
+**Общая политика для всех репозиториев:** [saymer-alt/AGENT-TASK-CONTRACT.md](https://github.com/saymer-alt/saymer-alt/blob/main/AGENT-TASK-CONTRACT.md) (обязательна наряду с более строгим локальным KAS-AGENT-001).
+Before drafting **or executing** a task for Z AI/ZCode/Codex/other agents, read [docs/AGENT-TASK-CONTRACT.md](../AGENT-TASK-CONTRACT.md) and [docs/CONSTITUTION.md](../CONSTITUTION.md). Tasks that affect repository history, releases, IPKs, updater, running services, network or owner settings must be written **clearly and in sufficient technical detail**, not shortened to save tokens: state the human-visible goal, current refs/SHA and already completed work, scope and non-goals, protected state, dependencies, explicit permission gates, negative cases, exact tests and Definition of Done. **A technically literal but harmful outcome is FAIL**, even if all listed steps were performed. Do not infer destructive permissions from vague verbs such as "cleanup", "merge" or "release"; when materially ambiguous, stop that risky action and continue safe authorized work. In final reports distinguish planned, implemented, CI-verified, field-tested, merged and published. Small narrow changes may use proportionally shorter specifications; never omit essential constraints.
+
+**Token efficiency practices (owner decision, 05.11.2026, issue #420):** agents additionally follow [docs/agent-token-efficiency.md](../agent-token-efficiency.md) — loop guard after two identical futile attempts, evidence reuse only for compatible SHA/environment/scope, environment facts with source/date/applicability, addressed tool calls, build economy, short evidence-navigating reports. These rules never justify weakening mandatory tests, release gates or safety contracts.
+
+
+- Before changing a script, read it in full and read the relevant doc: watchdog → docs/04,
+  bypass_wa → docs/05, S00ubifs → docs/06, install → docs/03 and docs/07.
+- Repository search/index results are discovery aids, not proof of current branch state. Before asserting current content, editing, or comparing evidence, fetch the exact file/blob from the intended branch/ref and verify its SHA; search indexing may lag behind recent commits.
+- Do not rewrite working architecture. Changes should be minimal diffs in the existing
+  style: POSIX sh, log/warn/err functions, retry 3×, `command -v` checks.
+- Do not shorten "redundant" fallback chains (jq → grep → repeated request → HTML →
+  last-resort `opkg install mihomo` in install.sh; curl → wget in update-mihomo.sh):
+  judging by history (dozens of iterative fixes to these files), the stages were added
+  for real failures. Remove one only with an explicit task and an explanation of why
+  it is no longer needed.
+- Do not remove existing behavior merely to simplify it — many "strange" places have
+  reasons behind them (see §10).
+- "`sh -n` passed" ≠ "it works": syntax is the first filter, not proof.
+- Explicitly list which scenarios a change affects: installation (ram/disk), repeated
+  install.sh run, update-mihomo (success and rollback), update-watchdog, reboot, watchdog
+  behavior when WAN is unavailable. Live verification is performed by the operator
+  on the device.
+- Available checks after changes: sh -n on every changed .sh; if changing
+  mihomo-watchdog.sh, preserve the sanity marker "MIHOMO WATCHDOG SCRIPT" (update-watchdog.sh
+  depends on it); if changing log volume, account for 500/300-line rotation.
+- When in doubt, stop and ask the operator. Missing information is not permission.
+
+## 7. Working with Git
+
+Default working rules:
+- `main` is development; `stable` is production delivery. Develop on `main`, require
+  green CI, promote through a `main → stable` pull request, and verify CI on the promoted
+  commit. After a successful promotion, if `main` has not received newer development
+  commits and `stable` is a descendant with the same promoted tree, fast-forward `main`
+  to the `stable` merge commit (no force) so branch history is synchronized and GitHub
+  does not advertise a misleading reverse `stable → main` PR. Then tag/release that exact
+  production commit;
+- before starting: `git status`; make sure you are on main and there are no unrelated
+  uncommitted changes; do not overwrite someone else's work (reset --hard / checkout -- files
+  only with explicit instruction);
+- before modifying a file, inspect its history (`git log --oneline -- <file>`):
+  many commits are series of small fixes to one script; the reason for the change
+  matters more than the change itself;
+- commit only on explicit operator instruction; the message should say what and why;
+  no force-push;
+- VPS notes (ubuntu*.md, debian1.md, setup_debian12*.sh, mieru.md) were moved
+  to the saymer-alt/vps-gateway-bootstrap repository (docs/archaeology/) and are no longer
+  part of this repository.
+
+## 8. Documentation
+
+- README.md is the concise Russian project entry point; `docs/EN/README.md` is its synchronized English counterpart. Keep both task-oriented and move detailed behavior to HOWTO/docs instead of duplicating long explanations in the entry pages.
+- **README brevity decision (2026-10-22):** the RU and EN READMEs are copy/paste-oriented landing pages, not long HOWTOs. Preserve the nine Common commands and the exact copyable stable installer *in both Common commands and Installation*, plus concise prerequisites, critical zRAM/SWAP and 512-MB gates, first-run config import and links to detailed guides. Target <=8000 characters for each README (enforced by `tests/bootstrap-readme-regression.py`). Do not restate curl transport details, retries, TLS internals, or long safety reasoning in the Common commands block; use `docs/03-install.md` and `docs/14-setup.md` instead. The full script inventories live in `docs/SCRIPTS.md` and `docs/EN/SCRIPTS.md` rather than repeated in landing pages.
+- docs/HOWTO.md and docs/HOWTO_RU.md are the complete step-by-step guide (preparation,
+  installation, modes, configuration, MagiTrickle, watchdog, update, rollback,
+  diagnostics, MT7621, common problems). Keep README and HOWTO aligned with each other
+  and with the code.
+- ARCHITECTURE.md is the main architecture document (RU): three traffic paths, roles of
+  Keenetic/MagiTrickle/Mihomo, ProxyN vs mitun0, interface-name ≠ WAN, DNS architecture,
+  guarantee boundaries. README links to it as the primary architecture reading.
+- numbered docs are focused guides; `docs/12-updates.md` and `docs/EN/UPDATES.md` are the user-facing maintenance guides. `CHANGELOG.md` records release history and current unreleased work.
+- If documentation and code disagree, the code is the source of truth. The watchdog guide
+  (`docs/04-watchdog.md`) is expected to track the current two-stage WAN + port + socks5h
+  logic, 20-minute healthy heartbeat, mkdir lock and 500/300-line rotation; do not preserve
+  stale "known difference" notes when the guide has already been updated.
+- When script behavior changes, consider updating README and the relevant doc in the same
+  change; a significant shift should get a CHANGELOG entry (the "same commit" format is
+  a proposal).
+
+- **Ownership journal phase (issue #179, 2026-10-22):** journal-on-install is a separate deliverable from uninstall. Only a proven freshly created/enabled resource is recorded in `/opt/etc/keenetic-auto-setup/ownership.v1` after verification; an old compatible ProxyN, preexisting DNS intercept, reused `magitrickle` package/repository or policy MUST NOT be retrospectively claimed. Writes are atomic under the lifecycle lock; invalid/symlinked log means fail closed. The journal is evidence, never sufficient authorization to remove anything. Keep `uninstall.sh --remove/--purge` out of production until independently tested (lab KN-1010 acceptance) and user-approved. Keep README concise and point to `docs/24-ownership-ledger.md` when detailed provenance is needed.
+
+## 12. Agent working style
+
+- Determine which components the task touches (§2), reread the risk zones (§5),
+  and read the relevant doc before editing, not after.
+- Any action on a live router requires an operator task.
+- A commit to `main` is development only. Production one-liners use `stable`.
+  Do not move `stable` casually: CI must be green and focused live-router acceptance
+  still matters when hardware behavior is involved.
+- Do not claim "it works" if verification was limited to sh -n: list what was checked
+  and what requires a live run on a device.
+- If the task looks like "rewrite everything properly", stop and reread §4 and docs/10:
+  stability matters more than elegance.
+
+## Technical debt
+
+- Treat technical debt as a separate engineering risk, but do not confuse it with cosmetics, personal style preferences, or merely "ugly" working code.
+- For each debt item, provide evidence first and classify its impact: **High** (breakage/security/data-loss risk or blocks operation), **Medium** (impedes development, creates duplication or logic divergence, or materially increases maintenance cost), **Low** (local complexity with little current risk).
+- Do not refactor for cleanliness alone. Pay down debt when the benefit and risk reduction justify the change; do not rewrite stable, verified code without a concrete reason.
+- Debt fixes must keep minimal scope, preserve existing safety boundaries, and pass the project's normal regression/safety checks. If the fix creates greater risk or new debt, stop and propose a safer alternative.
+- If debt is discovered outside the current task, do not silently expand scope: record the finding and recommendation, and implement it only when it is in scope or explicitly approved by the operator.
+- If debt is discovered outside the current task, do not change code or documentation solely to record the finding. In the final report, state the location, brief description, evidence, **High / Medium / Low** level, risk, and recommended action. If the finding deserves separate tracking, propose creating a GitHub Issue. Create an Issue, add a `TODO`, or change files to record debt only with explicit operator permission. `TODO (TechDebt ...)` is acceptable when such a comment is within the approved scope and is genuinely needed next to the code.
