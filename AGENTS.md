@@ -6,7 +6,16 @@ Small startup contract for Codex, ZCode and other coding agents. **Do not load w
 
 KAS is a KeeneticOS + Entware toolkit for Mihomo/ProxyN, MagiTrickle, bypass rules, storage protection and watchdog. Improve demonstrable user behavior with minimal, reversible changes. Do not rewrite proven routing or rollback paths merely to simplify code. New features/major integrations require [Proof Before Build](docs/PROOF-BEFORE-BUILD.md); narrowly scoped defect fixes need proportional evidence.
 
-**KAS-AGENT-001:** satisfy the actual user objective, not a literal but harmful interpretation. **Before drafting or executing any KAS agent task**, consult [docs/CONSTITUTION.md](docs/CONSTITUTION.md) and [docs/AGENT-TASK-CONTRACT.md](docs/AGENT-TASK-CONTRACT.md); for a narrow routine task, read the applicable rules, not unrelated examples. For complex/risky work, use the complete task contract: goal, exact refs/SHA, existing work, scope/non-goals, protected state, negative cases, permissions/GO and Definition of Done. An ambiguous "clean up", "release" or "merge" is NOT permission to destroy or publish. Pause only the unsafe step, proceed with safe authorized work.
+**KAS-AGENT-001 — mandatory task gate. Before drafting or executing any KAS agent task**, use this compact checklist (already in startup context); consult the **applicable binding** [KAS Constitution](docs/CONSTITUTION.md) clauses, especially KAS-SAFETY-001/KAS-AGENT-001. The complete, locally available [task contract and template](docs/AGENT-TASK-CONTRACT.md) remain binding; read their **relevant sections** on a routine low-risk task and the **full contract** before high-risk, multi-repository, release, deployment, irreversible, security-sensitive or materially ambiguous work. Do not automatically preload both long documents for every narrow edit. Never omit a material condition to save tokens.
+
+**Quick task gate (mandatory even for small fixes):**
+
+1. **Goal and baseline:** state the human-visible result, current branch/ref/HEAD SHA, existing code/PRs, environment and what is actually verified. Do not mistake old notes or CI for current field state.
+2. **Scope and protected state:** list what may change and must not change; preserve user YAML/subscriptions, ownership, services, `main`/`stable`, router settings, rollback and live update channels.
+3. **Dependencies and permissions:** identify ordering, compatibility and recovery. Separate research, branch/PR, merge, release, delete and physical-router operations; each sensitive stage needs its own explicit **owner GO**.
+4. **Proof and negative acceptance:** name focused positive/negative/regression checks and measurable Definition of Done. Mark `IMPLEMENTED`, `CI PASS`, `FIELD PASS`, `MERGED`, `PUBLISHED` separately; never invent test outcomes.
+5. **STOP the unsafe step:** if SHA, safety, authorization, source-of-truth or irreversible consequences are unclear, do not execute that action. Explain the risk and continue only independently safe work. A literal task completion that harms its purpose is **FAIL**.
+
 
 ## Never weaken these safety contracts
 
