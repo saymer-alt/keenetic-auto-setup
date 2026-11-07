@@ -143,7 +143,7 @@ def validate_issue_data(data: Any, repo: str) -> None:
         raise Stop("MALFORMED_ISSUE", f"issue #{number} body has type {type(body).__name__}")
     url = data.get("url")
     expected_url = f"https://github.com/{repo}/issues/{number}"
-    if not isinstance(url, str) or not url.startswith(expected_url):
+    if not isinstance(url, str) or url != expected_url:
         raise Stop("MALFORMED_ISSUE",
                    f"issue url {url!r:.200} does not match {repo}#{number}")
     if not isinstance(data.get("updatedAt"), str):
@@ -156,7 +156,25 @@ def fetch_issue(runner: GhRunner, repo: str, number: int) -> dict[str, Any]:
         "--json", "number,title,state,body,url,updatedAt,labels,author",
     )
     validate_issue_data(data, repo)
+    if data["number"] != number:
+        raise Stop("MALFORMED_ISSUE",
+                   f"gh returned issue #{data['number']} instead of requested #{number}")
     return data
+
+
+def guard_issue_fresh(runner: GhRunner, task: dict[str, Any]) -> None:
+    """Never dispatch a real executor on an Issue changed or closed after fetch."""
+    repo = task.get("repo")
+    number = task.get("issue")
+    previous = task.get("issue_updated_at")
+    if (not isinstance(repo, str) or not repo or
+            not isinstance(number, int) or isinstance(number, bool) or number <= 0 or
+            not isinstance(previous, str) or not previous):
+        raise Stop("STATE_INCOMPLETE", "missing Issue identity or updatedAt; re-fetch the task")
+    current = fetch_issue(runner, repo, number)
+    if current["updatedAt"] != previous or current["title"] != task.get("intent"):
+        raise Stop("ISSUE_CHANGED",
+                   f"Issue #{number} changed after fetch; inspect and re-fetch before dispatch")
 
 
 def guard_repo(repo: str) -> None:
@@ -301,6 +319,7 @@ def build_contract(repo: str, issue: dict[str, Any], base_sha: str, body: str,
         "task_id": f"issue-{number}-{base_sha[:12]}",
         "issue": number,
         "issue_url": issue.get("url", ""),
+        "issue_updated_at": issue["updatedAt"],
         "repo": repo,
         "base_sha": base_sha,
         "allowed_paths": ["scripts/orchestration-poc/*", "docs/agent-orchestration-poc.md"],
@@ -326,6 +345,7 @@ def render_handoff(contract: dict[str, Any]) -> str:
     return (
         "# KAS orchestration handoff — task {task_id}\n\n"
         "- Issue: {issue} ({issue_url})\n"
+        "- Issue last updated: {issue_updated_at}\n"
         "- Repo: {repo}\n"
         "- Base SHA: {base_sha}\n"
         "- Allowed paths: {allowed_paths}\n"
@@ -549,6 +569,10 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     if task["state"] in ("REVIEW_READY", "BLOCKED", "OWNER_DECISION"):
         raise Stop("DUPLICATE", f"task {task['task_id']} is {task['state']}; dispatch closed")
     guard_stale_sha(runner, repo_path, task["base_sha"])
+    if args.executor != "dry-run":
+        # Validate live owner authority BEFORE changing task state or starting any executor.
+        # A plan-only mock is also a real dispatch for state-machine purposes.
+        guard_issue_fresh(runner, task)
     if args.executor == "dry-run":
         # Nothing runs, so the task must not claim RUNNING.
         with store.journal.open("a", encoding="utf-8") as fh:
