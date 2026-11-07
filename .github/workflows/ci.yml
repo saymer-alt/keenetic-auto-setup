@@ -92,6 +92,9 @@ jobs:
       - name: Doctor Mihomo init classification (dash and BusyBox ash)
         run: python3 tests/doctor-init-regression.py
 
+      - name: MagiTrickle post-install runtime health regression (issue #427)
+        run: python3 tests/magitrickle-runtime-regression.py
+
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
 

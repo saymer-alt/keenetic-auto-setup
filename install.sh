@@ -1968,6 +1968,144 @@ ensure_bypass_policy_exit() {
 
 ensure_bypass_policy_exit "$PROXY_IFACE"
 
+# BEGIN MAGITRICKLE RUNTIME STATE v1
+# FIELD #427: a 'done' from the MagiTrickle init script is not proof of a
+# live daemon. Same standalone contract as the Mihomo process state:
+# 0 running, 1 stopped, 2 unknown. A restricted proc view is unknown, never
+# absence. Process identity only - never DNS/Netfilter functional health
+# (the read-only Doctor owns that distinction).
+MT_CFG_PATH="/opt/var/lib/magitrickle/config.yaml"
+MT_INIT_SCRIPT="/opt/etc/init.d/S99magitrickle"
+mt_runtime_state() {
+    local rc p exe flags state seen uncertain
+    MT_PIDS=""
+    if command -v pidof >/dev/null 2>&1; then
+        if MT_PIDS=$(pidof magitrickled 2>/dev/null); then
+            [ -n "$MT_PIDS" ] || { MT_PIDS=""; return 2; }
+            seen=0
+            for p in $MT_PIDS; do
+                seen=1
+                case "$p" in ''|0|*[!0-9]*) MT_PIDS=""; return 2 ;; esac
+            done
+            [ "$seen" -eq 1 ] || { MT_PIDS=""; return 2; }
+            return 0
+        else
+            rc=$?
+            MT_PIDS=""
+            [ "$rc" -eq 1 ] && return 1
+            return 2
+        fi
+    fi
+    # A restricted/incomplete proc view cannot establish absence.
+    [ -r /proc/self/stat ] && [ -d /proc/1 ] && [ -r /proc/mounts ] || return 2
+    if grep -Eq 'hidepid=([1-9]|invisible|noaccess)' /proc/mounts; then
+        return 2
+    fi
+    seen=0; uncertain=0
+    for p in /proc/[0-9]*; do
+        [ -d "$p" ] || continue
+        seen=1
+        if exe=$(readlink "$p/exe" 2>/dev/null); then
+            exe=${exe% (deleted)}
+            case "$exe" in
+                /opt/bin/magitrickled|*/magitrickled)
+                    MT_PIDS="$MT_PIDS ${p##*/}" ;;
+            esac
+            continue
+        fi
+        state=$(cat "$p/comm" 2>/dev/null)
+        if [ "$state" = "magitrickled" ]; then
+            MT_PIDS="$MT_PIDS ${p##*/}"
+            continue
+        fi
+        # Vanished processes, zombies and kernel threads execute no userspace ELF.
+        [ -d "$p" ] || continue
+        if state=$(cat "$p/stat" 2>/dev/null); then
+            state=${state##*) }
+            case "${state%% *}" in Z|X) continue ;; esac
+            flags=$(printf '%s\n' "$state" | awk 'NF >= 7 {print $7}')
+            case "$flags" in
+                ''|*[!0-9]*) ;;
+                *) [ $((flags & 2097152)) -ne 0 ] && continue ;;
+            esac
+        fi
+        uncertain=1
+    done
+    [ "$seen" -eq 1 ] || return 2
+    [ "$uncertain" -eq 0 ] || return 2
+    [ -n "$MT_PIDS" ] && return 0
+    return 1
+}
+# Bounded post-start wait: return as soon as the daemon is running, keep
+# polling a stopped/unknown state for the remaining window because a slow
+# start is normal on constrained routers, and never wait beyond ~5 seconds.
+mt_wait_runtime() {
+    _mt_wait_state=2
+    _mt_try=0
+    while [ "$_mt_try" -le 5 ]; do
+        mt_runtime_state; _mt_wait_state=$?
+        [ "$_mt_wait_state" -eq 0 ] && return 0
+        [ "$_mt_try" -eq 5 ] && break
+        _mt_try=$((_mt_try + 1))
+        sleep 1
+    done
+    return "$_mt_wait_state"
+}
+# Effective DNS proxy port from the MagiTrickle config; package default 3553
+# as fallback (the same defaults as the read-only Doctor MT section).
+magitrickle_dns_port() {
+    _mt_dns_port=3553
+    [ -r "$MT_CFG_PATH" ] || return 0
+    _mt_v=$(awk '/^  dnsProxy:/{f=1;next} /^  [^[:space:]#]/{f=0} f&&/^    port:/{print $2; exit}' "$MT_CFG_PATH")
+    case "$_mt_v" in ''|*[!0-9]*) return 0 ;; esac
+    _mt_dns_port=$_mt_v
+}
+magitrickle_dns_listening() {
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tln 2>/dev/null | grep -Eq ":${_mt_dns_port}[[:space:]]"
+        return $?
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        ss -tln 2>/dev/null | grep -Eq ":${_mt_dns_port}[[:space:]]"
+        return $?
+    fi
+    return 2
+}
+# Bounded post-start runtime confirmation with exactly ONE managed recovery
+# attempt on a proven stop. The first outcome and the recovery attempt are
+# both reported; never a restart loop; never an unconditional 'installed and
+# started' claim without a confirmed magitrickled process.
+mt_confirm_after_start() {
+    mt_wait_runtime; _mt_state=$?
+    if [ "$_mt_state" -eq 0 ]; then
+        magitrickle_dns_listening; _mt_listen=$?
+        if [ "$_mt_listen" -eq 0 ]; then
+            log "MagiTrickle installed and started (magitrickled running, DNS listener on port $_mt_dns_port confirmed)"
+        elif [ "$_mt_listen" -eq 2 ]; then
+            log "MagiTrickle installed and started (magitrickled process confirmed; DNS listener check unavailable on this system)"
+        else
+            warn "MT_LISTENER_MISSING: magitrickled is running but DNS port $_mt_dns_port is not listening yet - the daemon may still be initializing; re-check with Doctor (MagiTrickle section)"
+        fi
+        return 0
+    fi
+    if [ "$_mt_state" -eq 1 ]; then
+        warn "MT_RUNTIME_STOPPED: MagiTrickle init start returned success but magitrickled is not running after the bounded wait"
+        warn "MT_RUNTIME_RECOVERY: one managed restart attempt follows; the failed first start stays reported"
+        "$MT_INIT_SCRIPT" start >/dev/null 2>&1; _mt_retry_rc=$?
+        mt_wait_runtime; _mt_state=$?
+        if [ "$_mt_state" -eq 0 ]; then
+            warn "MT_RUNTIME_RECOVERY_OK: managed restart succeeded (rc=$_mt_retry_rc); investigate the first-stop cause with Doctor (MagiTrickle section)"
+        else
+            warn "MT_RUNTIME_STILL_STOPPED: magitrickled is still not running after one managed restart (restart rc=$_mt_retry_rc); installation continues and the final checkpoint reports the runtime state"
+            warn "MT_RUNTIME_ADVICE: inspect with 'pidof magitrickled', the S99magitrickle start output and Doctor; the MagiTrickle config $MT_CFG_PATH is never modified by the installer"
+        fi
+        return "$_mt_state"
+    fi
+    warn "MT_RUNTIME_UNKNOWN: magitrickled process state cannot be determined (pidof missing or restricted /proc); verify manually: pidof magitrickled"
+    return 2
+}
+# END MAGITRICKLE RUNTIME STATE v1
+
 # ---------------------------
 # MAGITRICKLE
 # ---------------------------
@@ -2029,7 +2167,9 @@ fi
 
 log "Starting MagiTrickle..."
 /opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
-log "MagiTrickle installed and started"
+# FIELD #427: the init script result alone is not runtime proof.
+magitrickle_dns_port
+mt_confirm_after_start || true
 
 # ---------------------------
 # BYPASS RULES
@@ -2692,6 +2832,29 @@ if opkg list-installed 2>/dev/null | grep -q "^magitrickle "; then
         check_ok "MagiTrickle init script present"
     else
         check_warn "MagiTrickle init script /opt/etc/init.d/S99magitrickle missing"
+    fi
+    # FIELD #427: package/init-script presence is not runtime proof. The old
+    # outcome could claim success while magitrickled was already stopped.
+    magitrickle_dns_port
+    if mt_runtime_state; then
+        check_ok "MagiTrickle process running (magitrickled PID(s):$MT_PIDS; process check only, not DNS/Netfilter functional health)"
+        if magitrickle_dns_listening; then
+            check_ok "MagiTrickle DNS listener on port $_mt_dns_port confirmed"
+        else
+            _mt_listen=$?
+            if [ "$_mt_listen" -eq 2 ]; then
+                check_info "MagiTrickle DNS listener check skipped - neither netstat nor ss is available"
+            else
+                check_warn "MT_LISTENER_MISSING: MagiTrickle DNS port $_mt_dns_port is not listening - daemon may still be initializing or the config changed; check with Doctor (MagiTrickle section)"
+            fi
+        fi
+    else
+        _mt_final_state=$?
+        if [ "$_mt_final_state" -eq 1 ]; then
+            check_warn "MT_RUNTIME_STOPPED: magitrickled is not running at the final checkpoint (installer cannot confirm MagiTrickle started) - inspect with Doctor (MagiTrickle section) or start manually: /opt/etc/init.d/S99magitrickle start"
+        else
+            check_warn "MT_RUNTIME_UNKNOWN: magitrickled process state cannot be determined (pidof missing or restricted /proc) - verify manually: pidof magitrickled"
+        fi
     fi
 else
     check_fail "MagiTrickle package not installed"
