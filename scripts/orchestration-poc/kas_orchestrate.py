@@ -432,9 +432,9 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
     """A manually supplied `checkpoint --status PASS` is only accepted as
     verified executor success when the record proves it: the task state must
     be REVIEW_READY (set exclusively by a completed dispatch) and the
-    append-only journal must hold the success event of the real executor for
-    this exact task_id (task_id embeds the contract base SHA, re-verified
-    against the checkout by guard_stale_sha). Mock/dry-run runs and bare
+    append-only journal must hold the success event of the real executor
+    after the latest fetch event for this task_id (which can repeat after
+    reset at the same SHA). Mock/dry-run runs, historical success, and bare
     manual declarations never earn PASS (issue #430 GO-A2 review fix)."""
     if task.get("state") != "REVIEW_READY":
         raise Stop("PASS_UNEARNED",
@@ -442,20 +442,31 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
                    f"state is {task.get('state')!r}, need REVIEW_READY; "
                    "use NOT_TESTED/FAIL/BLOCKED for everything else")
     ok_event = f"executor:{REAL_EXECUTOR}:ok"
-    found = False
+    # task_id is deterministic for an Issue and base SHA. A reset preserves
+    # the audit journal, so a past executor success must NOT earn PASS for a
+    # newly fetched task with the same task_id.
+    fetch_seen = False
+    success_since_fetch = False
     if store.journal.exists():
         for line in store.journal.read_text(encoding="utf-8").splitlines():
             try:
                 ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue  # audit trail: skip damaged lines, require positive evidence
-            if ev.get("task_id") == task.get("task_id") and ev.get("event") == ok_event:
-                found = True
-                break
-    if not found:
+            except json.JSONDecodeError as exc:
+                raise Stop("PASS_UNEARNED", "journal contains invalid JSON; proof is unreliable") from exc
+            if not isinstance(ev, dict):
+                raise Stop("PASS_UNEARNED", "journal event is not a JSON object")
+            if ev.get("task_id") != task.get("task_id"):
+                continue
+            if ev.get("event") == "fetched":
+                fetch_seen = True
+                success_since_fetch = False  # latest fetch starts a new proof cycle
+            elif ev.get("event") == ok_event and fetch_seen:
+                success_since_fetch = True
+    if not fetch_seen or not success_since_fetch:
         raise Stop("PASS_UNEARNED",
-                   f"no {ok_event} event for task {task.get('task_id')!r} in the journal; "
-                   "mock/dry-run success does not earn PASS")
+                   f"no {ok_event} since the latest fetched event for "
+                   f"task {task.get('task_id')!r}; mock/dry-run or historical "
+                   "success does not earn PASS")
 
 
 def build_checkpoint(task: dict[str, Any], status: str, head_sha: str,
