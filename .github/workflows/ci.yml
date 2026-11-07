@@ -25,6 +25,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Agent instruction and context contracts
+        run: python3 tests/agent-instructions-regression.py
+
       - name: Shell syntax
         shell: bash
         run: |
