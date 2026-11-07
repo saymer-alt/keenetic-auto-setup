@@ -72,7 +72,8 @@ owner pastes nothing).
   code or timeout moves the task to BLOCKED (`STOP_EXECUTOR_FAILED` /
   `STOP_EXECUTOR_TIMEOUT`). Manual `checkpoint --status PASS` additionally
   requires REVIEW_READY and a same-task journal record of successful real
-  `zcode-cli` execution (`STOP_PASS_UNEARNED`); mock/dry-run cannot earn PASS.
+  `zcode-cli` execution **after the most recent fetch** (`STOP_PASS_UNEARNED`);
+  mock/dry-run or old successes retained by reset cannot earn PASS.
 - Posting a checkpoint to GitHub is double-locked
   (`--post` + `--confirm` + `KAS_ORCH_ALLOW_WRITE=1`) and additionally stopped
   in this POC build; the file is delivered manually.
@@ -84,7 +85,7 @@ owner pastes nothing).
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
 
-The expanded 34-test mock suite covers the happy path and negative cases: stale SHA at
+The expanded 35-test mock suite covers the happy path and negative cases: stale SHA at
 dispatch/checkpoint; an Issue closed, edited, renumbered, or unreachable after
 fetch; strict URL matching; duplicate dispatch; malformed data; wrong GitHub
 account; missing auth; lock contention; executor failure and timeout (checking
