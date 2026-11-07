@@ -94,7 +94,7 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(res["state"], "READY")
         self.assertTrue(res["task_id"].startswith("issue-430-db36be0"))
         contract = json.loads(self.store.contract_file.read_text(encoding="utf-8"))
-        for field in ("task_id", "issue", "repo", "base_sha", "intent",
+        for field in ("task_id", "issue", "issue_updated_at", "repo", "base_sha", "intent",
                       "DoD", "required_gates", "stop_conditions", "status"):
             self.assertIn(field, contract)
         handoff = self.store.handoff_file.read_text(encoding="utf-8")
@@ -127,6 +127,7 @@ class FetchTests(unittest.TestCase):
             ("title", {**ISSUE_JSON, "title": "   "}),
             ("body", {**ISSUE_JSON, "body": 42}),
             ("url", {**ISSUE_JSON, "url": "https://github.com/other/repo/issues/430"}),
+            ("url_prefix", {**ISSUE_JSON, "url": ISSUE_JSON["url"] + "-spoofed"}),
             ("updatedAt", {**ISSUE_JSON, "updatedAt": None}),
         ]
         for name, payload in cases:
@@ -201,6 +202,7 @@ class DispatchTests(unittest.TestCase):
         # dry-run never claims the task; the guard closes a REAL (mock) run
         do_fetch(self.runner, self.store)
         self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue freshness check before real dispatch
         args = ko.parser_namespace({**self.task, "executor": "mock"})
         ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         with self.assertRaises(ko.Stop) as cm:
@@ -218,7 +220,8 @@ class DispatchTests(unittest.TestCase):
 
     def test_mock_executor_reaches_review_ready(self) -> None:
         do_fetch(self.runner, self.store)
-        self.runner.push_git_sha()  # guard_stale_sha at dispatch
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue freshness check before real dispatch  # guard_stale_sha at dispatch
         self.task["executor"] = "mock"
         args = ko.parser_namespace(self.task)
         res = ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
@@ -230,13 +233,70 @@ class DispatchTests(unittest.TestCase):
 
     def test_zcode_cli_missing_binary_stops(self) -> None:
         do_fetch(self.runner, self.store)
-        self.runner.push_git_sha()  # guard_stale_sha at dispatch
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue freshness check before real dispatch  # guard_stale_sha at dispatch
         self.task["executor"] = "zcode-cli"
         self.task["zcode_cli"] = str(self.tmp / "no-such-zcode.cjs")
         args = ko.parser_namespace(self.task)
         with self.assertRaises(ko.Stop) as cm:
             ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertEqual(cm.exception.code, "EXECUTOR_MISSING")
+
+
+    def test_dispatch_closed_after_fetch_stops(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue({**ISSUE_JSON, "state": "CLOSED",
+                                   "updatedAt": "2026-11-07T19:00:00Z"})
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "ISSUE_CLOSED")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_dispatch_issue_edited_after_fetch_stops(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue({**ISSUE_JSON, "body": "Owner changed scope",
+                                   "updatedAt": "2026-11-07T19:00:00Z"})
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "ISSUE_CHANGED")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_dispatch_network_error_before_executor_stops(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        self.runner.push("", returncode=1, stderr="dial tcp: connection refused")
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "NETWORK")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_dispatch_wrong_number_from_gh_stops(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue({**ISSUE_JSON, "number": 431,
+                                   "url": "https://github.com/saymer-alt/keenetic-auto-setup/issues/431"})
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "MALFORMED_ISSUE")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_dispatch_missing_issue_timestamp_stops(self) -> None:
+        do_fetch(self.runner, self.store)
+        task = self.store.load()
+        task.pop("issue_updated_at")
+        self.store.save(task)
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "STATE_INCOMPLETE")
+        self.assertEqual(self.store.load()["state"], "READY")
 
     def test_guard_only_plan_mode_allowed(self) -> None:
         self.assertEqual(ko.PLAN_MODE, "plan")
@@ -252,6 +312,7 @@ class DispatchTests(unittest.TestCase):
     def test_executor_failure_marks_blocked_no_false_pass(self) -> None:
         do_fetch(self.runner, self.store)
         self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue freshness check before real dispatch
         cli, electron = self.setUp_executor_paths()
         seen: dict[str, object] = {}
 
@@ -282,6 +343,7 @@ class DispatchTests(unittest.TestCase):
     def test_executor_timeout_marks_blocked(self) -> None:
         do_fetch(self.runner, self.store)
         self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # live Issue freshness check before real dispatch
         cli, electron = self.setUp_executor_paths()
 
         def fake_exec(cmd, **kwargs):
