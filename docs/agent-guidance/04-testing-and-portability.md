@@ -61,4 +61,3 @@ What is always available:
   performed by the operator on the device; (proposal) not on the only production router.
 The agent must clearly separate what was verified by sh -n/review from what requires
 a live run.
-
