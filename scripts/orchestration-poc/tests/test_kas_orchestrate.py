@@ -468,6 +468,32 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "PASS_UNEARNED")
         self.assertEqual(self.store.load()["state"], "REVIEW_READY")
 
+    def test_checkpoint_old_success_same_sha_after_reset_cannot_earn_pass(self) -> None:
+        # reset intentionally retains the journal; task_id repeats at same SHA.
+        old = self.store.load()
+        self.store.transition(old, "REVIEW_READY", "executor:zcode-cli:ok")
+        previous_id = old["task_id"]
+        self.store.reset()
+        do_fetch(self.runner, self.store)
+        self.assertEqual(self.store.load()["task_id"], previous_id)
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()  # #446 freshness guard on new mock dispatch
+        ko.cmd_dispatch(ko.parser_namespace({
+            **self.task, "executor": "mock"}), ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "PASS", "evidence": [], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": False,
+            "confirm": False, "state_dir": str(self.store.dir), "json": False,
+        })
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+        self.assertFalse(self.store.checkpoint_file.exists())
+
     def test_checkpoint_pass_earned_after_real_executor_ok(self) -> None:
         # A recorded successful zcode-cli run earns PASS (guard stays silent).
         self.runner.push_git_sha()
