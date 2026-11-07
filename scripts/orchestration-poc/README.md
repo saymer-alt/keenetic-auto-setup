@@ -42,9 +42,12 @@ owner pastes nothing).
 - `dry-run` (default): print the exact executor command, run nothing.
 - `mock`: simulated successful dispatch for tests; no model call.
 - `zcode-cli`: build and run the headless command **always with `--mode plan`**
-  (yolo/build/edit are refused by construction). Currently NOT_VERIFIED
-  end-to-end: the CLI v0.17.1 selects the first personal provider rule, not
-  the Z.AI Coding Plan — see the docs file before any attempt.
+  (yolo/build/edit are refused by construction). Currently BLOCKED end-to-end:
+  headless model selection needs the standalone credential identity pointer
+  (`account-provider:account:<providerId>:identity`), which this machine does
+  not have — the CLI falls back to the first personal provider rule or fails
+  with "Select a model". Any credential fix is a separate owner GO — see the
+  docs file for the GO-A/GO-A2 evidence.
 
 ## Safety properties
 
@@ -61,7 +64,10 @@ owner pastes nothing).
 - `dry-run` never claims the task (state stays READY). Real executors run with
   `ELECTRON_RUN_AS_NODE=1` and `--mode plan` only; a non-zero executor exit
   code or timeout moves the task to BLOCKED (`STOP_EXECUTOR_FAILED` /
-  `STOP_EXECUTOR_TIMEOUT`) — a false PASS is impossible.
+  `STOP_EXECUTOR_TIMEOUT`) — a false PASS is impossible. A manually supplied
+  `checkpoint --status PASS` is refused with `STOP_PASS_UNEARNED` unless the
+  task is REVIEW_READY after a recorded successful run of the real executor
+  (`zcode-cli`) for the same task/SHA — mock/dry-run success never earns PASS.
 - Posting a checkpoint to GitHub is double-locked
   (`--post` + `--confirm` + `KAS_ORCH_ALLOW_WRITE=1`) and additionally stopped
   in this POC build; the file is delivered manually.
@@ -73,11 +79,12 @@ owner pastes nothing).
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
 
-25 tests cover the happy path and the negative cases: stale SHA at dispatch
+28 tests cover the happy path and the negative cases: stale SHA at dispatch
 and checkpoint, duplicate dispatch, malformed issue payloads, wrong GitHub
 account, missing auth, network failure, lock contention, executor failure and
 timeout (verifying `ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state),
-plus the no-opt-in posting guard. The `mock` executor proves the state machine
+unearned PASS checkpoints (bare PASS, and PASS after a mock run), plus the
+no-opt-in posting guard. The `mock` executor proves the state machine
 only — it is NOT proof of full automation.
 
 ## Disable / uninstall
