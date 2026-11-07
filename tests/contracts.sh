@@ -228,6 +228,20 @@ grep -Fq 'KAS-AGENT-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-A
 grep -Fq 'main' "$ROOT/AGENTS.md" || fail "AGENTS startup missing main branch policy"
 grep -Fq 'stable' "$ROOT/AGENTS.md" || fail "AGENTS startup missing stable branch policy"
 [ -s "$ROOT/docs/AGENT-DETAILED-REFERENCE.md" ] || fail "extended agent guidance missing"
+for agent_guide in \
+  01-architecture-and-platforms.md \
+  02-development-and-safety.md \
+  03-agent-workflow-and-git.md \
+  04-testing-and-portability.md \
+  05-history-and-pitfalls.md \
+  06-owner-policy-and-licensing.md
+do
+  [ -s "$ROOT/docs/agent-guidance/$agent_guide" ] || fail "missing focused agent guide: $agent_guide"
+done
+grep -Fq '## 10. Historical context (why it is this way)' "$ROOT/docs/agent-guidance/05-history-and-pitfalls.md" || fail "agent incident history moved or lost"
+grep -Fq '## 5. Security: risk zones' "$ROOT/docs/agent-guidance/02-development-and-safety.md" || fail "agent detailed security guidance missing"
+grep -Fq '## 7. Working with Git' "$ROOT/docs/agent-guidance/03-agent-workflow-and-git.md" || fail "agent detailed Git workflow missing"
+grep -Fq 'agent-guidance/05-history-and-pitfalls.md' "$ROOT/AGENTS.md" || fail "agent startup missing historical guidance pointer"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/.github/pull_request_template.md" || fail "PR checklist must enforce constitutional contract"
 grep -Fq 'Installer — ERROR, Doctor — FAIL, Updater — ERROR' "$ROOT/README.md" || fail "README must state critical dual-swap severity"
 grep -Fq 'Coexistence native zRAM + external swap — строго запрещённый профиль' "$ROOT/docs/20-process-swap-detection.md" || fail "scanner contract must forbid dual backend"
