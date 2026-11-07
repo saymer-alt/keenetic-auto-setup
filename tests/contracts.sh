@@ -219,6 +219,35 @@ pass "coexisting zRAM and external swap can never be silently downgraded"
 # KAS-SAFETY-001 constitutional contract, applied to policy and documentation.
 grep -Fq 'KAS-SAFETY-001' "$ROOT/docs/CONSTITUTION.md" || fail "dual swap critical invariant constitution missing"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/AGENTS.md" || fail "agents must read constitutional contract"
+# Keep startup instructions focused while never incentivizing removal of binding safety rules.
+# <=8 KiB is preferred; 12 KiB is a conservative hard gate below Codex default 32 KiB.
+agent_startup_bytes=$(wc -c < "$ROOT/AGENTS.md" | tr -d '[:space:]')
+[ "$agent_startup_bytes" -le 12288 ] || fail "AGENTS.md exceeds 12 KiB hard startup budget"
+if [ "$agent_startup_bytes" -gt 8192 ]; then
+    echo "[WARN] AGENTS.md is above the 8 KiB target; review additions but preserve safety requirements" >&2
+fi
+grep -Fq 'KAS-SAFETY-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-SAFETY-001"
+grep -Fq 'KAS-AGENT-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-AGENT-001"
+grep -Fq 'main' "$ROOT/AGENTS.md" || fail "AGENTS startup missing main branch policy"
+grep -Fq 'stable' "$ROOT/AGENTS.md" || fail "AGENTS startup missing stable branch policy"
+[ -s "$ROOT/docs/AGENT-DETAILED-REFERENCE.md" ] || fail "extended agent guidance missing"
+for agent_guide in \
+  01-architecture-and-platforms.md \
+  02-development-and-safety.md \
+  03-agent-workflow-and-git.md \
+  04-testing-and-portability.md \
+  06-owner-policy-and-licensing.md
+do
+  [ -s "$ROOT/docs/agent-guidance/$agent_guide" ] || fail "missing focused agent guide: $agent_guide"
+done
+[ -s "$ROOT/docs/archaeology/kas-agent-historical-context-2026.md" ] || fail "historical agent incidents archive missing"
+[ -s "$ROOT/docs/archaeology/kas-platform-field-inventory-2026.md" ] || fail "historical router inventory archive missing"
+grep -Fq '## 10. Historical context (why it is this way)' "$ROOT/docs/archaeology/kas-agent-historical-context-2026.md" || fail "historical incident section not preserved"
+grep -Fq '## 3. Target platforms' "$ROOT/docs/archaeology/kas-platform-field-inventory-2026.md" || fail "historical platform section not preserved"
+grep -Fq '## 5. Security: risk zones' "$ROOT/docs/agent-guidance/02-development-and-safety.md" || fail "agent detailed security guidance missing"
+grep -Fq '## 7. Working with Git' "$ROOT/docs/agent-guidance/03-agent-workflow-and-git.md" || fail "agent detailed Git workflow missing"
+! grep -Eq 'KN-[0-9]{4}|NC-[0-9]{4}' "$ROOT/AGENTS.md" || fail "agent startup must not contain old router inventory"
+! grep -Fq 'AGENT-ARCHIVE' "$ROOT/AGENTS.md" || fail "agent startup accidentally expanded with archival material"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/.github/pull_request_template.md" || fail "PR checklist must enforce constitutional contract"
 grep -Fq 'Installer — ERROR, Doctor — FAIL, Updater — ERROR' "$ROOT/README.md" || fail "README must state critical dual-swap severity"
 grep -Fq 'Coexistence native zRAM + external swap — строго запрещённый профиль' "$ROOT/docs/20-process-swap-detection.md" || fail "scanner contract must forbid dual backend"
