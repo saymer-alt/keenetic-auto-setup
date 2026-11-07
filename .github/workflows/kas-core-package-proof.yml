@@ -7,6 +7,7 @@ on:
     paths:
       - 'packaging/core/**'
       - 'tests/test_core_ipk.py'
+      - 'tests/test_core_version_contract.py'
       - 'tests/test_core_preflight.py'
       - 'tests/test_core_activation.py'
       - 'tests/watchdog-package-regression.py'
@@ -49,6 +50,7 @@ jobs:
           sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" python3 tests/test_ipk.py -v
           sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" \
             python3 tests/test_opkg_downgrade_repro.py -v
+          sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" python3 tests/test_core_version_contract.py -v
           sudo env KAS_TEST_OPKG="$KAS_TEST_OPKG" \
             GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" \
             python3 tests/test_core_preflight.py -v

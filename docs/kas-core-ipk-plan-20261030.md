@@ -34,6 +34,13 @@
 ## 3. Фазы доведения (по #295, с конкретикой)
 
 **Фаза A — аудит и контракты (без изменений роутера).**
+- **Статус 02.11.2026 (session PR):** монотонность версий зафиксирована тестом
+  `tests/test_core_version_contract.py` (host-слой: builder отказывает всему вне
+  `0.0.0~proofN-N`; real-opkg слой: строгая монотонность proof-схемы и
+  упорядочивание «релиз > любой proof» через `opkg compare-versions`);
+  sentinel-тест пакета перечисляет защищённые namespace (cron/init/netfilter/
+  crontab/state/config) и запрещает их в payload и control-hooks; сводка ownership
+  script-KAS vs kas-core vs kas-control-center добавлена в docs/24-ownership-ledger.md.
 - Свести ownership-леджер: какие файлы принадлежат script-installed KAS
   (`setup.sh`/`bootstrap.sh`/`update-watchdog.sh`), какие — будущему `kas-core`,
   какие — `kas-control-center`; правила коллизий (modified/foreign/symlink → block
