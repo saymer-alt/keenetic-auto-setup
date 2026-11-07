@@ -1975,7 +1975,6 @@ ensure_bypass_policy_exit "$PROXY_IFACE"
 # absence. Process identity only - never DNS/Netfilter functional health
 # (the read-only Doctor owns that distinction).
 MT_CFG_PATH="/opt/var/lib/magitrickle/config.yaml"
-MT_INIT_SCRIPT="/opt/etc/init.d/S99magitrickle"
 mt_runtime_state() {
     local rc p exe flags state seen uncertain
     MT_PIDS=""
@@ -2071,10 +2070,15 @@ magitrickle_dns_listening() {
     fi
     return 2
 }
-# Bounded post-start runtime confirmation with exactly ONE managed recovery
-# attempt on a proven stop. The first outcome and the recovery attempt are
-# both reported; never a restart loop; never an unconditional 'installed and
-# started' claim without a confirmed magitrickled process.
+# Bounded post-start runtime confirmation, read-only toward the service: the
+# installer performs exactly ONE managed start above and this gate never
+# issues a second start. FIELD #427 owner review: upstream S99magitrickle
+# start returns success before the daemon exists during early boot
+# (uptime <= 300 keeps an unmanaged 'startup_loop &' retrying every 5 s), so
+# an automatic retry here would race that background starter and can create
+# duplicate startup loops. A missing process is reported honestly and re-read
+# at the final checkpoint; UNKNOWN never triggers any start; never an
+# unconditional 'installed and started' claim without a confirmed process.
 mt_confirm_after_start() {
     mt_wait_runtime; _mt_state=$?
     if [ "$_mt_state" -eq 0 ]; then
@@ -2090,16 +2094,8 @@ mt_confirm_after_start() {
     fi
     if [ "$_mt_state" -eq 1 ]; then
         warn "MT_RUNTIME_STOPPED: MagiTrickle init start returned success but magitrickled is not running after the bounded wait"
-        warn "MT_RUNTIME_RECOVERY: one managed restart attempt follows; the failed first start stays reported"
-        "$MT_INIT_SCRIPT" start >/dev/null 2>&1; _mt_retry_rc=$?
-        mt_wait_runtime; _mt_state=$?
-        if [ "$_mt_state" -eq 0 ]; then
-            warn "MT_RUNTIME_RECOVERY_OK: managed restart succeeded (rc=$_mt_retry_rc); investigate the first-stop cause with Doctor (MagiTrickle section)"
-        else
-            warn "MT_RUNTIME_STILL_STOPPED: magitrickled is still not running after one managed restart (restart rc=$_mt_retry_rc); installation continues and the final checkpoint reports the runtime state"
-            warn "MT_RUNTIME_ADVICE: inspect with 'pidof magitrickled', the S99magitrickle start output and Doctor; the MagiTrickle config $MT_CFG_PATH is never modified by the installer"
-        fi
-        return "$_mt_state"
+        warn "MT_RUNTIME_ASYNC: the daemon may still be starting asynchronously - early boot keeps an unmanaged startup loop until uptime 300 s and a second start would race it; this gate never starts MagiTrickle twice; re-check with 'pidof magitrickled' or the final checkpoint below"
+        return 1
     fi
     warn "MT_RUNTIME_UNKNOWN: magitrickled process state cannot be determined (pidof missing or restricted /proc); verify manually: pidof magitrickled"
     return 2
@@ -2167,7 +2163,9 @@ fi
 
 log "Starting MagiTrickle..."
 /opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
-# FIELD #427: the init script result alone is not runtime proof.
+# FIELD #427: the init script result alone is not runtime proof; the
+# confirmation gate below is read-only (exactly one managed start above,
+# never an automatic retry that could race the upstream startup loop).
 magitrickle_dns_port
 mt_confirm_after_start || true
 

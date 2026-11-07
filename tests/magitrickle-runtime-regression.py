@@ -4,10 +4,14 @@
 FIELD KN-3811: the installer reported 'MagiTrickle installed and started'
 because the init script printed 'done' while the magitrickled daemon was
 actually absent. The gate must derive RUNNING/STOPPED/UNKNOWN from the real
-process table with a bounded wait, perform exactly one managed recovery
-attempt on a proven stop, report every outcome, and never claim success
-without a confirmed process. Process identity only - never DNS/Netfilter
-functional health (the read-only Doctor owns that distinction).
+process table with a bounded wait and never issue a second start: upstream
+S99magitrickle start returns success before the daemon exists during early
+boot (uptime <= 300 keeps an unmanaged 'startup_loop &' retrying every 5 s),
+so an automatic retry would race that background starter and can create
+duplicate startup loops. Every outcome is reported and the final checkpoint
+re-reads the live state; success is claimed only with a confirmed process.
+Process identity only - never DNS/Netfilter functional health (the read-only
+Doctor owns that distinction).
 
 The MAGITRICKLE RUNTIME STATE block is extracted from install.sh (production
 logic, not a reimplementation) and exercised under every available shell
@@ -62,11 +66,21 @@ def main():
     assert 'log "MagiTrickle installed and started"' not in text, \
         'unconditional MagiTrickle success claim must be replaced by confirmed-runtime reporting'
     for needle in (
-        'MT_RUNTIME_STOPPED', 'MT_RUNTIME_UNKNOWN', 'MT_RUNTIME_RECOVERY',
-        'MT_LISTENER_MISSING', 'MT_RUNTIME_ADVICE',
+        'MT_RUNTIME_STOPPED', 'MT_RUNTIME_UNKNOWN', 'MT_RUNTIME_ASYNC',
+        'MT_LISTENER_MISSING',
         'process check only, not DNS/Netfilter functional health',
     ):
         assert needle in text, needle
+    # FIELD #427 owner review: the runtime gate must never reference or
+    # invoke the init script - exactly one managed start happens outside the
+    # gate, and the retired managed-recovery codes must not return.
+    assert 'MT_INIT_SCRIPT' not in marker, \
+        'the runtime gate must never reference or invoke the MagiTrickle init script'
+    assert 'MT_RUNTIME_RECOVERY' not in text, \
+        'automatic second start was removed; recovery codes must not return'
+    # The final checkpoint must re-read the live process state instead of
+    # caching the post-start verdict (the daemon may appear between checks).
+    assert 'if mt_runtime_state; then' in text[text.index('# END MAGITRICKLE RUNTIME STATE v1'):]
     count = 0
     shells_list = shells()
     assert shells_list, 'no POSIX shell found to run the regression'
@@ -184,42 +198,47 @@ def main():
         check('listener: no tool -> skip(2)',
               base + 'PATH=/nonexistent-mt-shim\n_mt_dns_port=3553\nmagitrickle_dns_listening\n', 2)
 
-    # Post-start confirmation: every outcome reported, exactly one managed
-    # recovery attempt on a proven stop, no restart on unknown, and the
-    # success claim only with a confirmed process. The listener decision is
-    # stubbed directly (the real tool detection is covered above); the init
-    # fixture counts its invocations.
+    # Post-start confirmation: every outcome reported, no second start ever.
+    # The single managed start is simulated once in the prelude (the init
+    # fixture counts its invocations, reset per scenario), so every scenario
+    # asserts calls=1 - exactly ONE total init start, zero additional - and
+    # the success claim appears only with a confirmed process. The listener
+    # decision is stubbed directly (the real tool detection is covered above).
     with tempfile.TemporaryDirectory(prefix='mt-confirm-') as directory:
         lab = Path(directory)
         init = lab / 'S99magitrickle'
         init.write_text('#!/bin/sh\necho start >> "%s/calls.log"\nexit 0\n' % lab)
         os.chmod(init, 0o755)
         calls = 'printf \'calls=%%s\\n\' "$(cat "%s/calls.log" 2>/dev/null | wc -l)"\n' % lab
-        prelude = base + 'MT_INIT_SCRIPT=%s\nlog() { echo "[setup] $1"; }\nwarn() { echo "[WARN] $1"; }\nsleep() { :; }\n_mt_dns_port=3553\nrm -f "%s/calls.log"\n' % (init, lab)
+        prelude = base + 'log() { echo "[setup] $1"; }\nwarn() { echo "[WARN] $1"; }\nsleep() { :; }\n_mt_dns_port=3553\nrm -f "%s/calls.log"\n"%s" start >/dev/null 2>&1\n' % (lab, init)
 
-        check('confirm: running + listener confirmed, no restart',
+        check('confirm: running + listener confirmed, zero additional starts',
               prelude + 'mt_wait_runtime() { return 0; }\nmagitrickle_dns_listening() { return 0; }\nmt_confirm_after_start; echo "rc=$?"\n' + calls,
-              0, must=['installed and started', 'DNS listener on port 3553 confirmed', 'calls=0'],
-              absent=['MT_RUNTIME_STOPPED'])
+              0, must=['installed and started', 'DNS listener on port 3553 confirmed', 'calls=1'],
+              absent=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_ASYNC'])
         check('confirm: running but listener missing -> explicit warn, no restart',
               prelude + 'mt_wait_runtime() { return 0; }\nmagitrickle_dns_listening() { return 1; }\nmt_confirm_after_start; echo "rc=$?"\n' + calls,
-              0, must=['MT_LISTENER_MISSING', 'calls=0'],
+              0, must=['MT_LISTENER_MISSING', 'calls=1'],
               absent=['installed and started (magitrickled running, DNS listener'])
         check('confirm: running, listener tool unavailable -> honest log',
               prelude + 'mt_wait_runtime() { return 0; }\nmagitrickle_dns_listening() { return 2; }\nmt_confirm_after_start; echo "rc=$?"\n' + calls,
-              0, must=['listener check unavailable', 'calls=0'])
-        check('confirm: proven stop, one managed recovery succeeds',
-              prelude + 'n=0\nmt_wait_runtime() { n=$((n+1)); [ "$n" -ge 2 ] && return 0; return 1; }\nmagitrickle_dns_listening() { return 0; }\nmt_confirm_after_start; echo "rc=$?"\n' + calls,
-              0, must=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_RECOVERY', 'MT_RUNTIME_RECOVERY_OK', 'calls=1'],
-              absent=['MT_RUNTIME_STILL_STOPPED'])
-        check('confirm: proven stop, recovery fails exactly once, no loop',
+              0, must=['listener check unavailable', 'calls=1'])
+        check('confirm: init success, process absent -> async warning, no second start',
               prelude + 'mt_wait_runtime() { return 1; }\nmt_confirm_after_start; _mt_rc=$?; echo "rc=$_mt_rc"\n' + calls + 'exit "$_mt_rc"\n',
-              1, must=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_RECOVERY', 'MT_RUNTIME_STILL_STOPPED', 'MT_RUNTIME_ADVICE', 'calls=1'],
-              absent=['installed and started'])
+              1, must=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_ASYNC', 'calls=1'],
+              absent=['installed and started', 'MT_RUNTIME_RECOVERY'])
+        check('confirm: process appears during the bounded wait -> RUNNING reported honestly',
+              prelude + 'n=0\nmt_runtime_state() { n=$((n+1)); [ "$n" -ge 3 ] && return 0; return 1; }\nmagitrickle_dns_listening() { return 0; }\nmt_confirm_after_start; echo "rc=$?"\n' + calls,
+              0, must=['installed and started', 'calls=1'],
+              absent=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_ASYNC'])
         check('confirm: unknown state, read-only, no restart',
               prelude + 'mt_wait_runtime() { return 2; }\nmt_confirm_after_start; _mt_rc=$?; echo "rc=$_mt_rc"\n' + calls + 'exit "$_mt_rc"\n',
-              2, must=['MT_RUNTIME_UNKNOWN', 'calls=0'],
-              absent=['MT_RUNTIME_RECOVERY'])
+              2, must=['MT_RUNTIME_UNKNOWN', 'calls=1'],
+              absent=['MT_RUNTIME_RECOVERY', 'MT_RUNTIME_ASYNC'])
+        check('confirm: repeat gate invocation (repeat install) still zero additional starts',
+              prelude + 'mt_wait_runtime() { return 1; }\nmt_confirm_after_start || true\nmt_confirm_after_start || true\n' + calls,
+              0, must=['MT_RUNTIME_STOPPED', 'MT_RUNTIME_ASYNC', 'calls=1'],
+              absent=['installed and started'])
 
     print('PASS %d magitrickle runtime gate checks (%s)' % (
         count, ', '.join(' '.join(s) for s in shells_list)), flush=True)
