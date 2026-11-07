@@ -115,13 +115,47 @@ def check_auth(runner: GhRunner) -> None:
         raise Stop("NO_AUTH", "gh is not authenticated; run `gh auth login` first")
 
 
+def check_account(runner: GhRunner, repo: str) -> str:
+    """The authenticated GitHub account must own the target repository."""
+    expected_owner = repo.split("/")[0]
+    user = runner.gh_json("api", "user")
+    login = user.get("login")
+    if not isinstance(login, str) or not login:
+        raise Stop("BAD_ACCOUNT", f"could not resolve gh account login: {user!r:.200}")
+    if login != expected_owner:
+        raise Stop("BAD_ACCOUNT", f"gh account {login!r} does not own {repo!r}")
+    return login
+
+
+def validate_issue_data(data: Any, repo: str) -> None:
+    """Fail closed on any malformed issue payload before it becomes a contract."""
+    if not isinstance(data, dict):
+        raise Stop("MALFORMED_ISSUE", f"issue payload is {type(data).__name__}, expected object")
+    number = data.get("number")
+    if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+        raise Stop("MALFORMED_ISSUE", f"issue number invalid: {number!r}")
+    if data.get("state") != "OPEN":
+        raise Stop("ISSUE_CLOSED", f"issue #{number} state is {data.get('state')!r}, only OPEN accepted")
+    if not isinstance(data.get("title"), str) or not data["title"].strip():
+        raise Stop("MALFORMED_ISSUE", f"issue #{number} has no usable title")
+    body = data.get("body")
+    if body is not None and not isinstance(body, str):
+        raise Stop("MALFORMED_ISSUE", f"issue #{number} body has type {type(body).__name__}")
+    url = data.get("url")
+    expected_url = f"https://github.com/{repo}/issues/{number}"
+    if not isinstance(url, str) or not url.startswith(expected_url):
+        raise Stop("MALFORMED_ISSUE",
+                   f"issue url {url!r:.200} does not match {repo}#{number}")
+    if not isinstance(data.get("updatedAt"), str):
+        raise Stop("MALFORMED_ISSUE", f"issue #{number} updatedAt missing")
+
+
 def fetch_issue(runner: GhRunner, repo: str, number: int) -> dict[str, Any]:
     data = runner.gh_json(
         "issue", "view", str(number), "--repo", repo,
         "--json", "number,title,state,body,url,updatedAt,labels,author",
     )
-    if data.get("state") != "OPEN":
-        raise Stop("ISSUE_CLOSED", f"issue #{number} state is {data.get('state')!r}, only OPEN accepted")
+    validate_issue_data(data, repo)
     return data
 
 
@@ -144,6 +178,69 @@ def truncate_body(body: str) -> tuple[str, bool]:
 
 def current_sha(runner: GhRunner, repo_path: Path) -> str:
     return runner.git("-C", str(repo_path), "rev-parse", "HEAD")
+
+
+def guard_stale_sha(runner: GhRunner, repo_path: Path, base_sha: str) -> str:
+    """Re-verify the checkout HEAD still matches the contract base SHA."""
+    now = current_sha(runner, repo_path)
+    if now != base_sha:
+        raise Stop("STALE_SHA",
+                   f"checkout HEAD {now[:12]} != contract base {base_sha[:12]}; "
+                   "re-fetch the issue before continuing")
+    return now
+
+
+class InterprocessLock:
+    """OS-level advisory lock on <state-dir>/.lock.
+
+    The OS releases the lock if the holding process dies, so no stale lock
+    file can block a later run. fcntl on POSIX, msvcrt on Windows.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._fh = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # "a+": create if missing, never truncate and never write — a second
+        # opener must not touch bytes locked by the first handle.
+        fh = open(self.path, "a+")
+        try:
+            fh.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # lock byte 0 (may be past EOF)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            fh.close()
+            raise Stop("LOCKED",
+                       f"another kas_orchestrate process holds {self.path}") from exc
+        self._fh = fh
+
+    def release(self) -> None:
+        if self._fh is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self._fh.seek(0)
+                msvcrt.locking(self._fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._fh.close()
+            self._fh = None
+
+    def __enter__(self) -> "InterprocessLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.release()
 
 
 # ---------------------------------------------------------------- state store
@@ -265,17 +362,23 @@ def zcode_cli_command(contract: dict[str, Any], repo_path: Path, cli_path: Path,
     ]
 
 
+EXEC_RUNNER = subprocess.run  # module indirection so tests can inject failures
+
+
 def run_executor(contract: dict[str, Any], executor: str, runner: GhRunner,
                  store: TaskStore, repo_path: Path, zcode_cli: Path | None,
-                 zcode_electron: Path | None) -> str:
-    """Returns the exact command (dry-run) or canned/real executor output."""
+                 zcode_electron: Path | None) -> dict[str, Any]:
+    """Run (or print) the executor; return structured result, never fake success."""
     if executor == "dry-run":
         cmd = zcode_cli_command(contract, repo_path, zcode_cli or Path("<zcode.cjs>"),
                                 zcode_electron or Path("<ZCode.exe>"), store.handoff_file)
-        return "DRY-RUN (no execution):\n  " + " ".join(cmd)
+        return {"ok": None, "output": ("DRY-RUN (no execution; run with "
+                                       "ELECTRON_RUN_AS_NODE=1):\n  " + " ".join(cmd))}
     if executor == "mock":
-        return ("MOCK executor result: simulated REVIEW_READY for %s; "
-                "no model was called." % contract["task_id"])
+        return {"ok": True, "exit_code": 0,
+                "output": ("MOCK executor result: simulated success for %s; "
+                           "no model was called; NOT proof of full automation."
+                           % contract["task_id"])}
     if executor == "zcode-cli":
         if not zcode_cli or not zcode_cli.exists():
             raise Stop("EXECUTOR_MISSING", f"zcode.cjs not found at {zcode_cli}")
@@ -284,13 +387,20 @@ def run_executor(contract: dict[str, Any], executor: str, runner: GhRunner,
         cmd = zcode_cli_command(contract, repo_path, zcode_cli, zcode_electron, store.handoff_file)
         if cmd[cmd.index("--mode") + 1] != PLAN_MODE:
             raise Stop("UNSAFE_MODE", "executor command requested a mode outside plan")
+        env = dict(os.environ)
+        env["ELECTRON_RUN_AS_NODE"] = "1"  # required: ZCode.exe must act as node
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", timeout=EXECUTOR_TIMEOUT_S,
-                                  cwd=str(repo_path))
+            proc = EXEC_RUNNER(cmd, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=EXECUTOR_TIMEOUT_S,
+                               cwd=str(repo_path), env=env)
         except subprocess.TimeoutExpired:
             raise Stop("EXECUTOR_TIMEOUT", f"executor exceeded {EXECUTOR_TIMEOUT_S}s; killed")
-        return (proc.stdout + ("\n[stderr] " + proc.stderr if proc.stderr.strip() else "")).strip()
+        output = (proc.stdout or "") + ("\n[stderr] " + proc.stderr if (proc.stderr or "").strip() else "")
+        if proc.returncode != 0:
+            raise Stop("EXECUTOR_FAILED",
+                       f"executor exit code {proc.returncode}; no PASS can be claimed. "
+                       f"{_first_line(proc.stderr or proc.stdout)}")
+        return {"ok": True, "exit_code": 0, "output": output.strip()}
     raise Stop("BAD_EXECUTOR", f"unknown executor {executor!r}")
 
 
@@ -376,23 +486,25 @@ def main(argv: list[str] | None = None) -> int:
     result: dict[str, Any] = {"cmd": args.cmd, "repo": args.repo}
     try:
         guard_repo(args.repo)
-        if args.cmd == "fetch":
-            result.update(cmd_fetch(args, runner, store, repo_path))
-        elif args.cmd == "status":
-            task = store.load()
-            if not task:
-                raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
-            result.update({"task_id": task["task_id"], "state": task["state"],
-                           "base_sha": task["base_sha"]})
-        elif args.cmd == "dispatch":
-            result.update(cmd_dispatch(args, runner, store, repo_path))
-        elif args.cmd == "checkpoint":
-            result.update(cmd_checkpoint(args, runner, store))
-        elif args.cmd == "reset":
-            if not args.confirm:
-                raise Stop("CONFIRM_REQUIRED", "reset deletes local state; pass --confirm")
-            store.reset()
-            result["message"] = "state cleared"
+        # One active task across processes: everything below holds the lock.
+        with InterprocessLock(state_dir / ".lock"):
+            if args.cmd == "fetch":
+                result.update(cmd_fetch(args, runner, store, repo_path))
+            elif args.cmd == "status":
+                task = store.load()
+                if not task:
+                    raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
+                result.update({"task_id": task["task_id"], "state": task["state"],
+                               "base_sha": task["base_sha"]})
+            elif args.cmd == "dispatch":
+                result.update(cmd_dispatch(args, runner, store, repo_path))
+            elif args.cmd == "checkpoint":
+                result.update(cmd_checkpoint(args, runner, store, repo_path))
+            elif args.cmd == "reset":
+                if not args.confirm:
+                    raise Stop("CONFIRM_REQUIRED", "reset deletes local state; pass --confirm")
+                store.reset()
+                result["message"] = "state cleared"
     except Stop as stop:
         result.update({"result": "STOP", "stop_code": stop.code, "detail": stop.detail})
         print(json.dumps(result, ensure_ascii=False) if args.json else str(stop))
@@ -413,6 +525,7 @@ def cmd_fetch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     if active:
         store.reset()
     check_auth(runner)
+    check_account(runner, args.repo)
     issue = fetch_issue(runner, args.repo, args.issue)
     body, truncated = truncate_body(issue.get("body") or "")
     base_sha = current_sha(runner, repo_path)
@@ -435,21 +548,37 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
         raise Stop("DUPLICATE", f"task {task['task_id']} is already RUNNING; no parallel dispatch")
     if task["state"] in ("REVIEW_READY", "BLOCKED", "OWNER_DECISION"):
         raise Stop("DUPLICATE", f"task {task['task_id']} is {task['state']}; dispatch closed")
+    guard_stale_sha(runner, repo_path, task["base_sha"])
+    if args.executor == "dry-run":
+        # Nothing runs, so the task must not claim RUNNING.
+        with store.journal.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": "dispatch:dry-run",
+                                 "task_id": task["task_id"]}, ensure_ascii=False) + "\n")
+        out = run_executor(task, args.executor, runner, store, repo_path,
+                           Path(args.zcode_cli) if args.zcode_cli else None,
+                           Path(args.zcode_electron) if args.zcode_electron else None)
+        return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
+                "output": out["output"][:4000]}
     store.transition(task, "CLAIMED", f"dispatch:{args.executor}")
     store.transition(task, "RUNNING", f"executor:{args.executor}")
-    out = run_executor(task, args.executor, runner, store, repo_path,
-                       Path(args.zcode_cli) if args.zcode_cli else None,
-                       Path(args.zcode_electron) if args.zcode_electron else None)
-    if args.executor == "mock":
-        store.transition(task, "REVIEW_READY", "mock_result")
+    try:
+        res = run_executor(task, args.executor, runner, store, repo_path,
+                           Path(args.zcode_cli) if args.zcode_cli else None,
+                           Path(args.zcode_electron) if args.zcode_electron else None)
+    except Stop:
+        store.transition(task, "BLOCKED", f"executor:{args.executor}:failed")
+        raise
+    store.transition(task, "REVIEW_READY", f"executor:{args.executor}:ok")
     return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
-            "output": out[:4000]}
+            "exit_code": res["exit_code"], "output": res["output"][:4000]}
 
 
-def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore) -> dict[str, Any]:
+def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
+                   repo_path: Path) -> dict[str, Any]:
     task = store.load()
     if not task:
         raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
+    guard_stale_sha(runner, repo_path, task["base_sha"])
     if args.post:
         if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
             raise Stop("WRITE_NOT_ALLOWED",

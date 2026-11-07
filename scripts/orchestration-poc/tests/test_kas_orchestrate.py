@@ -56,6 +56,9 @@ class FakeRunner:
         body = json.dumps(issue if issue is not None else ISSUE_JSON)
         self.push(body)
 
+    def push_gh_user(self, login: str = "saymer-alt") -> None:
+        self.push(json.dumps({"login": login}))
+
     def push_auth_ok(self) -> None:
         self.push("github.com\n  Logged in to github.com account saymer-alt")
 
@@ -69,6 +72,7 @@ def make_store(tmp: Path) -> ko.TaskStore:
 
 def do_fetch(runner: FakeRunner, store: ko.TaskStore, issue: int = 430) -> dict:
     runner.push_auth_ok()
+    runner.push_gh_user()
     runner.push_gh_issue()
     runner.push_git_sha()
     task = {
@@ -98,6 +102,7 @@ class FetchTests(unittest.TestCase):
 
     def test_fetch_closed_issue_stops(self) -> None:
         self.runner.push_auth_ok()
+        self.runner.push_gh_user()
         self.runner.push_gh_issue({**ISSUE_JSON, "state": "CLOSED"})
         with self.assertRaises(ko.Stop) as cm:
             do_fetch(self.runner, self.store)
@@ -109,8 +114,34 @@ class FetchTests(unittest.TestCase):
             do_fetch(self.runner, self.store)
         self.assertEqual(cm.exception.code, "NO_AUTH")
 
+    def test_fetch_bad_account_stops(self) -> None:
+        self.runner.push_auth_ok()
+        self.runner.push_gh_user("someone-else")
+        with self.assertRaises(ko.Stop) as cm:
+            do_fetch(self.runner, self.store)
+        self.assertEqual(cm.exception.code, "BAD_ACCOUNT")
+
+    def test_fetch_malformed_issue_stops(self) -> None:
+        cases = [
+            ("number", {**ISSUE_JSON, "number": "430"}),
+            ("title", {**ISSUE_JSON, "title": "   "}),
+            ("body", {**ISSUE_JSON, "body": 42}),
+            ("url", {**ISSUE_JSON, "url": "https://github.com/other/repo/issues/430"}),
+            ("updatedAt", {**ISSUE_JSON, "updatedAt": None}),
+        ]
+        for name, payload in cases:
+            with self.subTest(field=name):
+                self.runner.queue.clear()
+                self.runner.push_auth_ok()
+                self.runner.push_gh_user()
+                self.runner.push_gh_issue(payload)
+                with self.assertRaises(ko.Stop) as cm:
+                    do_fetch(self.runner, self.store)
+                self.assertEqual(cm.exception.code, "MALFORMED_ISSUE")
+
     def test_fetch_network_error_stops(self) -> None:
         self.runner.push_auth_ok()
+        self.runner.push_gh_user()
         self.runner.push("", returncode=1, stderr="dial tcp: connection refused")
         with self.assertRaises(ko.Stop) as cm:
             do_fetch(self.runner, self.store)
@@ -119,6 +150,7 @@ class FetchTests(unittest.TestCase):
     def test_fetch_oversize_body_truncates(self) -> None:
         big = {**ISSUE_JSON, "body": "x" * (ko.MAX_ISSUE_BODY + 100)}
         self.runner.push_auth_ok()
+        self.runner.push_gh_user()
         self.runner.push_gh_issue(big)
         self.runner.push_git_sha()
         res = do_fetch(self.runner, self.store)
@@ -130,6 +162,7 @@ class FetchTests(unittest.TestCase):
         do_fetch(self.runner, self.store)
         self.runner.queue.clear()
         self.runner.push_auth_ok()
+        self.runner.push_gh_user()
         self.runner.push_gh_issue()
         with self.assertRaises(ko.Stop) as cm:
             do_fetch(self.runner, self.store)
@@ -152,47 +185,52 @@ class DispatchTests(unittest.TestCase):
             "json": False, "zcode_cli": None, "zcode_electron": None,
         }
 
-    def test_dry_run_never_yolo(self) -> None:
-        self.runner.push_auth_ok()
-        self.runner.push_gh_issue()
-        self.runner.push_git_sha()
+    def test_dry_run_never_yolo_and_never_claims_running(self) -> None:
         do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()  # guard_stale_sha at dispatch
         args = ko.parser_namespace(self.task)
         res = ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         cmd_line = res["output"]
         self.assertIn("--mode plan", cmd_line)
+        self.assertIn("ELECTRON_RUN_AS_NODE=1", cmd_line)
         self.assertNotIn("yolo", cmd_line.lower())
-        self.assertEqual(self.store.load()["state"], "RUNNING")
+        # dry-run executes nothing, so the task must not claim RUNNING
+        self.assertEqual(self.store.load()["state"], "READY")
 
     def test_duplicate_dispatch_stops(self) -> None:
-        self.runner.push_auth_ok()
-        self.runner.push_gh_issue()
-        self.runner.push_git_sha()
+        # dry-run never claims the task; the guard closes a REAL (mock) run
         do_fetch(self.runner, self.store)
-        args = ko.parser_namespace(self.task)
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({**self.task, "executor": "mock"})
         ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         with self.assertRaises(ko.Stop) as cm:
             ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertEqual(cm.exception.code, "DUPLICATE")
 
-    def test_mock_executor_reaches_review_ready(self) -> None:
-        self.runner.push_auth_ok()
-        self.runner.push_gh_issue()
-        self.runner.push_git_sha()
+    def test_dispatch_stale_sha_stops(self) -> None:
         do_fetch(self.runner, self.store)
+        self.runner.push_git_sha("f" * 40)  # checkout moved since fetch
+        args = ko.parser_namespace(self.task)
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "STALE_SHA")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_mock_executor_reaches_review_ready(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()  # guard_stale_sha at dispatch
         self.task["executor"] = "mock"
         args = ko.parser_namespace(self.task)
         res = ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertEqual(res["state"], "REVIEW_READY")
+        self.assertEqual(res["exit_code"], 0)
         journal = self.store.journal.read_text(encoding="utf-8").splitlines()
         states = [json.loads(line)["to"] for line in journal]
         self.assertEqual(states[:4], ["READY", "CLAIMED", "RUNNING", "REVIEW_READY"])
 
     def test_zcode_cli_missing_binary_stops(self) -> None:
-        self.runner.push_auth_ok()
-        self.runner.push_gh_issue()
-        self.runner.push_git_sha()
         do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()  # guard_stale_sha at dispatch
         self.task["executor"] = "zcode-cli"
         self.task["zcode_cli"] = str(self.tmp / "no-such-zcode.cjs")
         args = ko.parser_namespace(self.task)
@@ -204,6 +242,63 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(ko.PLAN_MODE, "plan")
         self.assertIn("yolo", ko.FORBIDDEN_MODES)
 
+    def setUp_executor_paths(self) -> tuple[Path, Path]:
+        cli = self.tmp / "zcode.cjs"
+        electron = self.tmp / "ZCode.exe"
+        cli.write_text("// stub", encoding="utf-8")
+        electron.write_text("stub", encoding="utf-8")
+        return cli, electron
+
+    def test_executor_failure_marks_blocked_no_false_pass(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        cli, electron = self.setUp_executor_paths()
+        seen: dict[str, object] = {}
+
+        def fake_exec(cmd, **kwargs):
+            seen["cmd"] = cmd
+            seen["env"] = kwargs.get("env") or {}
+            return subprocess.CompletedProcess([], 3, "partial stdout", "model exploded")
+
+        orig = ko.EXEC_RUNNER
+        ko.EXEC_RUNNER = fake_exec
+        try:
+            args = ko.parser_namespace({**self.task, "executor": "zcode-cli",
+                                        "zcode_cli": str(cli), "zcode_electron": str(electron)})
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        finally:
+            ko.EXEC_RUNNER = orig
+        self.assertEqual(cm.exception.code, "EXECUTOR_FAILED")
+        self.assertIn("3", cm.exception.detail)
+        # non-zero exit must never be reported as success
+        self.assertEqual(self.store.load()["state"], "BLOCKED")
+        self.assertEqual(seen["env"].get("ELECTRON_RUN_AS_NODE"), "1")
+        cmd = seen["cmd"]
+        self.assertIn("--mode", cmd)
+        self.assertEqual(cmd[cmd.index("--mode") + 1], "plan")
+        self.assertIn("--json", cmd)
+
+    def test_executor_timeout_marks_blocked(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        cli, electron = self.setUp_executor_paths()
+
+        def fake_exec(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, 900)
+
+        orig = ko.EXEC_RUNNER
+        ko.EXEC_RUNNER = fake_exec
+        try:
+            args = ko.parser_namespace({**self.task, "executor": "zcode-cli",
+                                        "zcode_cli": str(cli), "zcode_electron": str(electron)})
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        finally:
+            ko.EXEC_RUNNER = orig
+        self.assertEqual(cm.exception.code, "EXECUTOR_TIMEOUT")
+        self.assertEqual(self.store.load()["state"], "BLOCKED")
+
 
 class CheckpointTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -213,6 +308,7 @@ class CheckpointTests(unittest.TestCase):
         do_fetch(self.runner, self.store)
 
     def test_checkpoint_local_fields(self) -> None:
+        self.runner.push_git_sha()  # guard_stale_sha at checkpoint
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
             "status": "NOT_TESTED", "evidence": ["https://example.test/ev1"],
@@ -220,7 +316,7 @@ class CheckpointTests(unittest.TestCase):
             "head_sha": "", "post": False, "confirm": False,
             "state_dir": str(self.store.dir), "json": False,
         })
-        res = ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store)
+        res = ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertFalse(res["posted"])
         md = self.store.checkpoint_file.read_text(encoding="utf-8")
         rendered = {"base_sha": "base SHA", "head_sha": "head SHA",
@@ -231,6 +327,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertIn("https://example.test/ev1", md)
 
     def test_checkpoint_post_refused_without_optin(self) -> None:
+        self.runner.push_git_sha()  # guard_stale_sha at checkpoint
         self.calls_before_checkpoint = len(self.runner.calls)
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
@@ -239,20 +336,57 @@ class CheckpointTests(unittest.TestCase):
             "state_dir": str(self.store.dir), "json": False,
         })
         with self.assertRaises(ko.Stop) as cm:
-            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store)
+            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertEqual(cm.exception.code, "WRITE_NOT_ALLOWED")
         # no GitHub call was attempted during cmd_checkpoint itself
-        self.assertEqual(len(self.runner.calls), self.calls_before_checkpoint)
+        new_calls = self.runner.calls[self.calls_before_checkpoint:]
+        self.assertTrue(all(c[0] != "gh" for c in new_calls))
 
     def test_checkpoint_sets_owner_decision_on_pass(self) -> None:
+        self.runner.push_git_sha()  # guard_stale_sha at checkpoint
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
             "status": "PASS", "evidence": [], "blocker": "",
             "next_decision": "review", "head_sha": "", "post": False,
             "confirm": False, "state_dir": str(self.store.dir), "json": False,
         })
-        ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store)
+        ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
         self.assertEqual(self.store.load()["state"], "OWNER_DECISION")
+
+    def test_checkpoint_stale_sha_stops(self) -> None:
+        self.runner.push_git_sha("a" * 40)  # checkout moved since fetch
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "NOT_TESTED", "evidence": [], "blocker": "",
+            "next_decision": "", "head_sha": "", "post": False,
+            "confirm": False, "state_dir": str(self.store.dir), "json": False,
+        })
+        with self.assertRaises(ko.Stop) as cm:
+            ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "STALE_SHA")
+        self.assertEqual(self.store.load()["state"], "READY")
+
+
+class LockTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="kas-orch-test-"))
+
+    def test_lock_mutual_exclusion_and_release(self) -> None:
+        lock_path = self.tmp / ".lock"
+        with ko.InterprocessLock(lock_path):
+            second = ko.InterprocessLock(lock_path)
+            with self.assertRaises(ko.Stop) as cm:
+                second.acquire()
+            self.assertEqual(cm.exception.code, "LOCKED")
+        # after release, acquisition works again
+        ko.InterprocessLock(lock_path).acquire()
+
+    def test_stale_sha_helper_raises_on_mismatch(self) -> None:
+        runner = FakeRunner()
+        runner.push_git_sha("b" * 40)
+        with self.assertRaises(ko.Stop) as cm:
+            ko.guard_stale_sha(ko.GhRunner(runner), POC_DIR, "c" * 40)
+        self.assertEqual(cm.exception.code, "STALE_SHA")
 
 
 class StopContractTests(unittest.TestCase):

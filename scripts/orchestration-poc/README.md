@@ -48,10 +48,20 @@ owner pastes nothing).
 
 ## Safety properties
 
-- One active task; duplicate dispatch and re-fetch while active → `STOP_*`.
-- Repo owner allowlist; issue must be `OPEN`; stale base SHA detected on every
-  repo-bound operation via `git rev-parse`.
+- One active task; duplicate dispatch and re-fetch while active → `STOP_*`;
+  an OS-level interprocess lock (`fcntl`/`msvcrt`) serializes all commands per
+  state dir and is released automatically if a process dies (`STOP_LOCKED`).
+- GitHub account must equal the repository owner (`gh api user`) and the issue
+  payload schema is validated (number/title/body/url/updatedAt) — malformed
+  data fails closed (`STOP_BAD_ACCOUNT`, `STOP_MALFORMED_ISSUE`).
+- Repo owner allowlist; issue must be `OPEN`; the checkout HEAD is re-verified
+  against the contract base SHA before dispatch AND checkpoint
+  (`STOP_STALE_SHA`).
 - Issue body is capped at 50 KB with an explicit truncation marker.
+- `dry-run` never claims the task (state stays READY). Real executors run with
+  `ELECTRON_RUN_AS_NODE=1` and `--mode plan` only; a non-zero executor exit
+  code or timeout moves the task to BLOCKED (`STOP_EXECUTOR_FAILED` /
+  `STOP_EXECUTOR_TIMEOUT`) — a false PASS is impossible.
 - Posting a checkpoint to GitHub is double-locked
   (`--post` + `--confirm` + `KAS_ORCH_ALLOW_WRITE=1`) and additionally stopped
   in this POC build; the file is delivered manually.
@@ -62,6 +72,13 @@ owner pastes nothing).
 ```bash
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
+
+25 tests cover the happy path and the negative cases: stale SHA at dispatch
+and checkpoint, duplicate dispatch, malformed issue payloads, wrong GitHub
+account, missing auth, network failure, lock contention, executor failure and
+timeout (verifying `ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state),
+plus the no-opt-in posting guard. The `mock` executor proves the state machine
+only — it is NOT proof of full automation.
 
 ## Disable / uninstall
 
