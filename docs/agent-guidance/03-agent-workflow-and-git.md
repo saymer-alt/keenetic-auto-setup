@@ -53,6 +53,18 @@ Default working rules:
   to the saymer-alt/vps-gateway-bootstrap repository (docs/archaeology/) and are no longer
   part of this repository.
 
+## Issue → PR lifecycle
+
+**Source of truth:** Issue описывает пользовательскую проблему, условия воспроизведения и критерии завершения; PR содержит конкретный diff, доказательства и риск. Использовать уже открытые Issue/PR, не создавать дубликаты. Для небольшой автономной правки (например, опечатка) допустим PR без Issue с кратким объяснением; не раздувать backlog формальностями.
+
+1. **Issue:** записать ожидаемое/фактическое поведение, окружение, scope и отрицательные сценарии. Для полевых инцидентов явно указать условие закрытия (`FIELD PASS` на проверяемой модели/версии) и обезличивать логи. Issue не даёт разрешения на merge, release или доступ к устройству.
+2. **Topic branch / PR:** исходить из проверенного SHA, сослаться на Issue и заполнить существующий PR template. `Refs #N` — обычный безопасный вариант при незавершённой аппаратной приёмке, backport, релизе или других оставшихся условиях. `Fixes #N` / `Closes #N` — только если намеренно допустимо автоматическое закрытие полностью решённой Issue при merge в default branch GitHub.
+3. **Proof:** отдельно сообщить `IMPLEMENTED`, `CI PASS`, `EMULATOR PASS`, `FIELD PASS`, `MERGED`, `PUBLISHED` (либо `NOT TESTED`/`N/A`); ссылки на run и source SHA. `CI PASS` и merge **не равны** проверке на Keenetic. Для docs-only PR достаточно проверки ссылок/шаблона и релевантных лёгких тестов; не запускать тяжёлый QEMU без необходимости.
+4. **Merge:** только после ревью/CI и отдельного owner GO; `main` — dev, `stable` — production с собственными gate. Не включать auto-merge и не публиковать релиз из принятия Issue/PR.
+5. **Closure:** Issue закрывать только когда соблюдены **её** критерии готовности. Если merge состоялся, а FIELD/релиз/другой этап ещё не подтверждён, оставить Issue открытой и добавить PR/CI/field evidence и следующий шаг. Допускается несколько PR на одну Issue и один PR на несколько связанных Issue при осознанном небольшом scope.
+
+Ключевое исключение: если PR исправляет саму программу, но проверка на физическом Keenetic ещё впереди, **не ставить `Fixes #N` для преждевременного автозакрытия**. Использовать `Refs #N`, а Issue закрывать вручную после FIELD PASS или явно документированного изменения критериев владельцем.
+
 ## 8. Documentation
 
 - README.md is the concise Russian project entry point; `docs/EN/README.md` is its synchronized English counterpart. Keep both task-oriented and move detailed behavior to HOWTO/docs instead of duplicating long explanations in the entry pages.
