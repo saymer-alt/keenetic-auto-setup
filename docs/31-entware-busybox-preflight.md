@@ -19,7 +19,7 @@
 - `opt-sh` — есть ли и исполняется ли `/opt/bin/sh`;
 - `applet-<имя>` для chmod, ln, rm, cp, mv, ls, cat, grep, sed, awk, wget — отсутствующая ссылка на апплет, который **этот** busybox предоставляет, это FAIL (точное состояние «прерванного обновления»); dangling-ссылка — FAIL с объяснением, почему postinst её не чинит; настоящий файл чужого пакета — PASS (ownership не трогается);
 - `wget-capability` — WARN, если `/opt/bin/wget` — ссылка на busybox-апплет (нет HTTPS), FAIL, если wget отсутствует;
-- `opkg-view` — PASS, если `opkg status busybox` читаем и отвечает `install ok installed`; иначе UNKNOWN (база пакетов повреждена или посреди транзакции);
+- `opkg-view` — PASS, если `opkg status busybox` читаем и отвечает `install ok installed` либо Entware-формой `install user installed` / `install auto installed`; иначе UNKNOWN (база пакетов повреждена или посреди транзакции);
 - `poorbox-fallback` — информационный PASS при наличии `/opt/usr/bin/poorbox`.
 
 Коды возврата: `0` — нет FAIL/UNKNOWN; `1` — есть FAIL; `2` — нет FAIL, но есть UNKNOWN (нужно смотреть вручную).
@@ -50,3 +50,14 @@ sh /tmp/kas-entware-preflight.sh
 ```
 
 Тесты контракта: `tests/busybox-preflight-regression.py` (матрица состояний под dash и BusyBox ash: healthy, прерванное обновление, dangling-ссылка, не-исполняемый busybox, exec-отказ, wget→апплет, отсутствие opkg; статическая проверка read-only).
+
+
+### `opkg-view` в нативной Entware — узкий безопасный fallback (#356)
+
+В нативной QEMU-лаборатории Router Emulator Draft #56 `opkg list-installed` подтверждал установленный BusyBox 1.37, однако восстановленный `kas-entware-preflight.sh` возвращал `UNKNOWN opkg-view` (`RESTORED_PREFLIGHT_RC=2`) из-за несовпадения формата/результата `opkg status busybox`. Это было обнаружено в исследовательском workflow [41968076595](https://github.com/saymer-alt/router-emulator/actions/runs/41968076595). **Прямой вывод `opkg status` в лог не экспортировался**, поэтому конкретный формат ответа пока неизвестен.
+
+Причина установлена 2026-11-05 серией диагностических прогонов #56 (fixtures только с фиксированными категориями, без сырого вывода гостя; финальная структура — [42094270507](https://github.com/saymer-alt/router-emulator/actions/runs/42094270507)): у нативной Entware запись `opkg status busybox` существует, непуста, завершается с кодом 0, а её строка `Status:` состоит ровно из трёх слов `install <X> installed`, где среднее слово **не** входит в словарь dpkg (`ok` в записи отсутствует, `hold` отсутствует). Это грамматика форка opkg из OpenWrt: средний слот несёт маркер типа установки `user` (установлен явно) или `auto` (как зависимость) вместо dpkg-овского `ok`. Паттерн #421 `Status: install ok installed` на Entware поэтому не совпадает **никогда** — даже для полностью здоровой базы, и fallback по пустому ответу не срабатывает, поскольку ответ непуст.
+
+Обновлённый read-only-контракт: первичный `opkg status busybox` с точной строкой `Status: install ok installed` **или** эквивалентной формой Entware `Status: install user installed` / `Status: install auto installed` даёт `PASS`. Во всех трёх формах слово состояния должно быть ровно `installed`: запись вида `install user unpacked`, `install ok half-configured` и любые другие неполные состояния по-прежнему дают `UNKNOWN` (покрыто регрессией `user-unpacked`). **Только когда этот вызов успешно завершился, но не вернул вообще никаких данных**, разрешено прочесть `opkg list-installed` и, при успешном завершении и **ровно одной** строке `busybox - <непустая версия>`, вывести `PASS` с пометкой *limited package-view evidence*. Это подтверждает доступность инвентаризации, **не** целостность всей базы opkg и не разрешает никакие обновления. Если `status` вернул явно неполное/противоречивое состояние, остаётся `UNKNOWN` независимо от `list-installed`; когда строк нет, их несколько или команда завершается ошибкой, тоже `UNKNOWN`.
+
+Реализация использует только POSIX shell builtins для анализа строк (без зависимости от пропавших `/opt/bin/grep`, `awk`, `sed`, `wc`), ничего не меняет и оставляет `FAIL` для повреждённых ELF/`sh`/апплетов. В `tests/busybox-preflight-regression.py` добавлены позитивный и отрицательные сценарии для dash/BusyBox ash. Вне указанного формата ответа или при сомнении диагностический статус обязан оставаться `UNKNOWN`: нельзя сделать зелёный QEMU ценой обхода повреждённой базы.
