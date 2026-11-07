@@ -25,4 +25,3 @@
 Working instructions for AI agents (primarily ZCode): "before X, verify Y",
 "do not do Z without confirmation". Items without a label are confirmed by code, docs/,
 or Git history; "(proposal)" means an agent recommendation, not a repository rule.
-
