@@ -94,6 +94,16 @@ class StableReleaseGateTests(unittest.TestCase):
             self.assertEqual(evaluate(stage_expr, scenario), stage, 'stage for ' + scenario)
             self.assertEqual(evaluate(profile_expr, scenario), profile, 'profile for ' + scenario)
 
+    def test_release_reconciliation_precedes_native_gate(self):
+        self.assertIn('core-sync-evidence:', self.source)
+        self.assertIn('needs: core-sync-evidence', self.source)
+        self.assertIn('scripts/core-sync-check.py', self.source)
+        self.assertIn('tests/core-sync-guard-regression.py', self.source)
+        self.assertIn('report.json', self.source)
+        self.assertIn('identity.json', self.source)
+        self.assertIn('S00ubifs', self.source)
+        self.assertIn('actions/upload-artifact@v4', self.source)
+
     def test_sequential_dispatch_documented(self):
         self.assertIn('SEQUENTIAL DISPATCH REQUIRED', self.source)
 
