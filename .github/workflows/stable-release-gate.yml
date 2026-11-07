@@ -31,7 +31,69 @@ permissions:
   contents: read
 
 jobs:
+  # Automatic read-only release inventory for every pinned Core native gate.
+  core-sync-evidence:
+    name: Core release drift report (read-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main reporting tools
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare main with exact Core release candidate
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.kas_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Expected full lowercase SHA" >&2; exit 2; }
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/stable:refs/remotes/origin/stable'
+          if ! git cat-file -e "$CANDIDATE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$CANDIDATE_SHA"
+          fi
+          actual=$(git rev-parse "$CANDIDATE_SHA^{commit}")
+          [ "$actual" = "$CANDIDATE_SHA" ] || exit 2
+          report_dir="$RUNNER_TEMP/core-release-sync"
+          mkdir -p "$report_dir"
+          python3 tests/core-sync-guard-regression.py
+          python3 scripts/core-sync-check.py \
+            --main-ref refs/remotes/origin/main \
+            --stable-ref "$CANDIDATE_SHA" \
+            --config config/core-sync-baseline.json \
+            --json-out "$report_dir/report.json" | tee "$report_dir/report.md"
+          main_sha=$(git rev-parse refs/remotes/origin/main)
+          stable_sha=$(git rev-parse refs/remotes/origin/stable)
+          main_s00=$(git rev-parse refs/remotes/origin/main:S00ubifs 2>/dev/null || printf ABSENT)
+          candidate_s00=$(git rev-parse "$CANDIDATE_SHA:S00ubifs" 2>/dev/null || printf ABSENT)
+          s00_status=DIFF
+          [ "$main_s00" = "$candidate_s00" ] && s00_status=SYNC
+          {
+            printf '\n### Release candidate identity and additional runtime file\n\n'
+            printf -- '- main SHA: %s\n- candidate SHA: %s\n- stable tip: %s\n' "$main_sha" "$CANDIDATE_SHA" "$stable_sha"
+            printf '\n| File | Status | main blob | candidate blob |\n|---|---|---|---|\n'
+            printf '| S00ubifs | %s | %s | %s |\n' "$s00_status" "$main_s00" "$candidate_s00"
+            printf '\nREVIEW/DIFF requires explicit owner disposition in #401; never auto-promote.\n'
+          } | tee -a "$report_dir/report.md" "$GITHUB_STEP_SUMMARY"
+          printf '{"main_sha":"%s","candidate_sha":"%s","stable_tip_sha":"%s","S00ubifs":{"main_blob":"%s","candidate_blob":"%s","status":"%s"}}\n' \
+            "$main_sha" "$CANDIDATE_SHA" "$stable_sha" "$main_s00" "$candidate_s00" "$s00_status" > "$report_dir/identity.json"
+
+      - name: Upload Core release drift evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-release-sync-${{ github.run_id }}
+          path: ${{ runner.temp }}/core-release-sync/
+          if-no-files-found: warn
+          retention-days: 30
+
   native-gate:
+    needs: core-sync-evidence
     permissions:
       contents: read
     uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@c095a7f31378a2f0ceefed983633a07707ad2847
