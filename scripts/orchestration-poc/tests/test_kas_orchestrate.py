@@ -265,6 +265,31 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "ISSUE_CHANGED")
         self.assertEqual(self.store.load()["state"], "READY")
 
+    def test_zcode_cli_changed_issue_never_launches_process(self) -> None:
+        do_fetch(self.runner, self.store)
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue({**ISSUE_JSON,
+                                   "updatedAt": "2026-11-07T20:00:00Z"})
+        cli, electron = self.setUp_executor_paths()
+        observed = []
+
+        def refuse_launch(cmd, **kwargs):
+            observed.append(cmd)
+            raise AssertionError("ZCode must not launch on an edited Issue")
+
+        orig = ko.EXEC_RUNNER
+        ko.EXEC_RUNNER = refuse_launch
+        try:
+            args = ko.parser_namespace({**self.task, "executor": "zcode-cli",
+                                        "zcode_cli": str(cli), "zcode_electron": str(electron)})
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_dispatch(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        finally:
+            ko.EXEC_RUNNER = orig
+        self.assertEqual(cm.exception.code, "ISSUE_CHANGED")
+        self.assertFalse(observed, "zcode executor must never be called")
+        self.assertEqual(self.store.load()["state"], "READY")
+
     def test_dispatch_network_error_before_executor_stops(self) -> None:
         do_fetch(self.runner, self.store)
         self.runner.push_git_sha()
