@@ -219,6 +219,15 @@ pass "coexisting zRAM and external swap can never be silently downgraded"
 # KAS-SAFETY-001 constitutional contract, applied to policy and documentation.
 grep -Fq 'KAS-SAFETY-001' "$ROOT/docs/CONSTITUTION.md" || fail "dual swap critical invariant constitution missing"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/AGENTS.md" || fail "agents must read constitutional contract"
+# Keep top-level agent instructions below the default Codex 32 KiB project-doc limit
+# with generous headroom for global/home instructions; enforce critical anchors too.
+agent_startup_bytes=$(wc -c < "$ROOT/AGENTS.md" | tr -d '[:space:]')
+[ "$agent_startup_bytes" -le 20480 ] || fail "AGENTS.md exceeds 20 KiB bounded startup budget"
+grep -Fq 'KAS-SAFETY-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-SAFETY-001"
+grep -Fq 'KAS-AGENT-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-AGENT-001"
+grep -Fq 'main' "$ROOT/AGENTS.md" || fail "AGENTS startup missing main branch policy"
+grep -Fq 'stable' "$ROOT/AGENTS.md" || fail "AGENTS startup missing stable branch policy"
+[ -s "$ROOT/docs/AGENT-DETAILED-REFERENCE.md" ] || fail "extended agent guidance missing"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/.github/pull_request_template.md" || fail "PR checklist must enforce constitutional contract"
 grep -Fq 'Installer — ERROR, Doctor — FAIL, Updater — ERROR' "$ROOT/README.md" || fail "README must state critical dual-swap severity"
 grep -Fq 'Coexistence native zRAM + external swap — строго запрещённый профиль' "$ROOT/docs/20-process-swap-detection.md" || fail "scanner contract must forbid dual backend"
