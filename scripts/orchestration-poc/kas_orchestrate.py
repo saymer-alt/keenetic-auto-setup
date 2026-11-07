@@ -35,6 +35,8 @@ PLAN_MODE = "plan"  # the only headless mode this tool may ever request
 FORBIDDEN_MODES = ("yolo", "build", "edit")  # never pass these to an executor
 EXECUTOR_TIMEOUT_S = 15 * 60
 
+REAL_EXECUTOR = "zcode-cli"  # only this executor can earn a PASS checkpoint
+
 # Structured checkpoint fields required by issue #430 (Stage 1).
 CHECKPOINT_FIELDS = (
     "task_id",
@@ -426,6 +428,36 @@ def run_executor(contract: dict[str, Any], executor: str, runner: GhRunner,
 
 # ---------------------------------------------------------------- checkpoint
 
+def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
+    """A manually supplied `checkpoint --status PASS` is only accepted as
+    verified executor success when the record proves it: the task state must
+    be REVIEW_READY (set exclusively by a completed dispatch) and the
+    append-only journal must hold the success event of the real executor for
+    this exact task_id (task_id embeds the contract base SHA, re-verified
+    against the checkout by guard_stale_sha). Mock/dry-run runs and bare
+    manual declarations never earn PASS (issue #430 GO-A2 review fix)."""
+    if task.get("state") != "REVIEW_READY":
+        raise Stop("PASS_UNEARNED",
+                   f"PASS requires a completed real executor run for this exact task: "
+                   f"state is {task.get('state')!r}, need REVIEW_READY; "
+                   "use NOT_TESTED/FAIL/BLOCKED for everything else")
+    ok_event = f"executor:{REAL_EXECUTOR}:ok"
+    found = False
+    if store.journal.exists():
+        for line in store.journal.read_text(encoding="utf-8").splitlines():
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # audit trail: skip damaged lines, require positive evidence
+            if ev.get("task_id") == task.get("task_id") and ev.get("event") == ok_event:
+                found = True
+                break
+    if not found:
+        raise Stop("PASS_UNEARNED",
+                   f"no {ok_event} event for task {task.get('task_id')!r} in the journal; "
+                   "mock/dry-run success does not earn PASS")
+
+
 def build_checkpoint(task: dict[str, Any], status: str, head_sha: str,
                      evidence: list[str], blocker: str, next_decision: str) -> str:
     missing = [f for f in ("task_id", "issue", "repo", "base_sha") if not task.get(f)]
@@ -608,6 +640,8 @@ def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
             raise Stop("WRITE_NOT_ALLOWED",
                        "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
         post_checkpoint(runner, task["repo"], task["issue"], "")
+    if args.status == "PASS":
+        guard_earned_pass(store, task)
     md = build_checkpoint(task, args.status, args.head_sha, args.evidence,
                           args.blocker, args.next_decision)
     store.checkpoint_file.write_text(md, encoding="utf-8")
