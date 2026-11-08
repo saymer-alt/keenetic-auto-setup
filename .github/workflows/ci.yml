@@ -144,6 +144,9 @@ jobs:
       - name: Config import expected-source gate regression (dash and BusyBox ash)
         run: python3 tests/config-import-filter-gate-regression.py
 
+      - name: Proxy selection bounded sampling (mock Controller, sh and BusyBox ash)
+        run: python3 tests/proxy-selection-watch-regression.py
+
       - name: Network Doctor staged diagnostic regression (dash and BusyBox ash)
         run: python3 tests/network-doctor-regression.py
 
