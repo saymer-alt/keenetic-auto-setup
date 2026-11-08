@@ -79,7 +79,7 @@ class FakeTransport:
             return {"complete": False, "items": []}
         items = list(self.comments)
         if self.change_comments_at == self.comment_reads:
-            items.append({"body": "another user posted"})
+            items.append({"body": "another user posted", "author": {"login": "someone-else"}})
         return {"complete": self.complete, "items": items}
 
     def post_comment(self, repo, number, body):
@@ -87,7 +87,7 @@ class FakeTransport:
         if self.fail_post:
             raise OSError("timed out after attempting a write")
         if not self.drop_post:
-            self.comments.append({"body": body})
+            self.comments.append({"body": body, "author": {"login": "saymer-alt"}})
 
 
 class PublisherTests(unittest.TestCase):
@@ -113,7 +113,7 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.backend.calls, [])
 
     def test_duplicate_no_op(self):
-        self.backend.comments.append({"body": self.plan.body})
+        self.backend.comments.append({"body": self.plan.body, "author": {"login": "saymer-alt"}})
         out = cp.publish_mock(self.backend, self.plan, allow_mock_write=True)
         self.assertEqual(out, {"post_status": "already_posted", "posted": False})
 
@@ -121,19 +121,42 @@ class PublisherTests(unittest.TestCase):
         # GitHub may advance updatedAt when the original checkpoint is posted.
         # A verified identical marker must return a read-only idempotent no-op.
         self.backend.issued["updatedAt"] = "later"
-        self.backend.comments.append({"body": self.plan.body})
+        self.backend.comments.append({"body": self.plan.body, "author": {"login": "saymer-alt"}})
         out = cp.publish_mock(self.backend, self.plan, allow_mock_write=True)
         self.assertEqual(out["post_status"], "already_posted")
         self.assertNotIn("post", self.backend.calls)
 
     def test_same_run_different_content_stops(self):
-        self.backend.comments.append({"body": self.plan.marker + "\nother payload"})
+        self.backend.comments.append({"body": self.plan.marker + "\nother payload", "author": {"login": "saymer-alt"}})
         self.assert_stop("DUPLICATE_CONFLICT", lambda: cp.publish_mock(
             self.backend, self.plan, allow_mock_write=True))
 
     def test_multiple_same_run_comments_stops(self):
-        self.backend.comments = [{"body": self.plan.body}, {"body": self.plan.body}]
+        self.backend.comments = [
+            {"body": self.plan.body, "author": {"login": "saymer-alt"}},
+            {"body": self.plan.body, "author": {"login": "saymer-alt"}},
+        ]
         self.assert_stop("DUPLICATE_CONFLICT", lambda: cp.publish_mock(
+            self.backend, self.plan, allow_mock_write=True))
+
+    def test_foreign_author_cannot_impersonate_checkpoint(self):
+        self.backend.comments.append({
+            "body": self.plan.body, "author": {"login": "outside-user"},
+        })
+        self.assert_stop("MARKER_OWNER_MISMATCH", lambda: cp.publish_mock(
+            self.backend, self.plan, allow_mock_write=True))
+
+    def test_missing_author_refuses_comment_snapshot(self):
+        self.backend.comments.append({"body": "old comment"})
+        self.assert_stop("COMMENTS_MALFORMED", lambda: cp.publish_mock(
+            self.backend, self.plan, allow_mock_write=True))
+
+    def test_closed_issue_does_not_claim_duplicate(self):
+        self.backend.issued["state"] = "CLOSED"
+        self.backend.comments.append({
+            "body": self.plan.body, "author": {"login": "saymer-alt"},
+        })
+        self.assert_stop("ISSUE_CHANGED", lambda: cp.publish_mock(
             self.backend, self.plan, allow_mock_write=True))
 
     def test_wrong_account_stops(self):
