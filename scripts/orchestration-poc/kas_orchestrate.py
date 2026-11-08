@@ -641,31 +641,44 @@ def scan_post_payload(payload: str) -> None:
 
 
 def scan_comment_pages_for_marker(runner: GhRunner, repo: str, number: int,
-                                  marker: str) -> bool:
-    """Scan ALL issue comment pages for the idempotency marker.
+                                  marker: str, expected_body: str) -> bool:
+    """Read every page; only an exact owner-authored checkpoint deduplicates.
 
-    Any unavailable or incomplete read fails closed: a comment that cannot be
-    read might still hold the marker, so posting would risk a duplicate."""
+    A planted substring from another commenter is untrusted and must STOP,
+    not falsely suppress the legitimate writer. Conflicts and unreadable
+    pages are fatal, even if an earlier page contained the expected marker.
+    """
     path = f"repos/{repo}/issues/{number}/comments"
     page = 1
+    existing = False
     while True:
         data = runner.gh_json("api", f"{path}?per_page={COMMENTS_PAGE}&page={page}")
         if not isinstance(data, list):
             raise Stop("MARKERS_UNREADABLE", "unexpected comments payload; refusing to post")
         for comment in data:
             if not isinstance(comment, dict) or not isinstance(comment.get("body"), str):
-                raise Stop("MARKERS_UNREADABLE",
-                           "comment body missing or unreadable; marker scan incomplete, "
-                           "refusing to post (duplicate risk)")
-            if marker in comment["body"]:
-                return True
+                raise Stop("MARKERS_UNREADABLE", "malformed comment; scan incomplete")
+            author = comment.get("user")
+            login = author.get("login") if isinstance(author, dict) else None
+            if not isinstance(login, str) or not login:
+                raise Stop("MARKERS_UNREADABLE", "comment author missing; refusing to post")
+            body = comment["body"]
+            if marker in body:
+                if login != repo.split("/")[0]:
+                    raise Stop("MARKER_OWNER_MISMATCH",
+                               "untrusted account planted a checkpoint marker")
+                if body != expected_body:
+                    raise Stop("MARKER_CONFLICT",
+                               "marker exists with different body, refusing to post")
+                if existing:
+                    raise Stop("MARKER_CONFLICT", "multiple matching owner checkpoints")
+                existing = True
         if len(data) < COMMENTS_PAGE:
-            return False
+            return existing
         page += 1
         if page > MAX_COMMENT_PAGES:
             raise Stop("MARKERS_UNREADABLE",
-                       f"more than {MAX_COMMENT_PAGES} comment pages; scan incomplete, "
-                       "refusing to post")
+                       f"more than {MAX_COMMENT_PAGES} comment pages; scan incomplete")
 
 
 def guard_run_identity(store: TaskStore, task: dict[str, Any]) -> None:
@@ -736,33 +749,44 @@ class GhCommentWriter:
 def post_checkpoint_guarded(runner: GhRunner, writer: GhCommentWriter,
                             store: TaskStore, task: dict[str, Any], payload: str,
                             marker: str, repo_path: Path) -> dict[str, Any]:
-    """Single guarded write path (issue #454). All checks run immediately
-    before the write; TOCTOU windows are minimized, not eliminated — this is
-    explicitly NOT an atomic GitHub transaction. Any failure = STOP, and no
-    network uncertainty is ever auto-retried."""
+    """Fail-closed guarded post. GitHub cannot make this a cross-API transaction.
+
+    With owner GO-B a future live post still requires fresh checkout/Issue
+    identity, exact-owner marker scan, and post-write confirmation.
+    """
     if not LIVE_POST_ENABLED:
         raise Stop("LIVE_POST_NOT_ALLOWED",
-                   "live checkpoint posting is disabled until the owner grants GO-B "
-                   "(LIVE_POST_ENABLED=False); machinery is mock-tested only "
-                   "(MOCK_WRITER_PASS)")
-    # Local checks first (no network): payload shape and run identity.
+                   "live checkpoint posting is disabled until separate GO-B")
     scan_post_payload(payload)
     guard_run_identity(store, task)
-    # Machine state: the checkout must still be the contract base SHA.
     guard_stale_sha(runner, repo_path, task["base_sha"])
-    # Identity and destination, re-verified immediately before the write.
     check_auth(runner)
     check_account(runner, task["repo"])
     guard_repo(task["repo"])
     current = fetch_issue(runner, task["repo"], task["issue"])
-    if (current["updatedAt"] != task.get("issue_updated_at") or
-            current["title"] != task.get("intent")):
-        raise Stop("ISSUE_CHANGED",
-                   f"Issue #{task['issue']} changed before posting; re-fetch and re-run")
-    # Idempotency: exactly one comment per task_id+run_id+status.
-    if scan_comment_pages_for_marker(runner, task["repo"], task["issue"], marker):
+    if current["title"] != task.get("intent"):
+        raise Stop("ISSUE_CHANGED", "Issue title changed since fetch")
+
+    # Duplicate inspection can be valid after the publisher's OWN comment
+    # advanced the Issue timestamp; a new write still requires original UTC.
+    if scan_comment_pages_for_marker(runner, task["repo"], task["issue"],
+                                     marker, payload):
         return {"post_status": "already_posted", "url": ""}
-    return writer.post(task["repo"], task["issue"], payload)
+
+    if current["updatedAt"] != task.get("issue_updated_at"):
+        raise Stop("ISSUE_CHANGED", "Issue changed since fetch; refusing new write")
+
+    # Pagination may take a while: fence local HEAD and Issue a second time,
+    # as close as possible to the non-atomic GitHub write.
+    guard_stale_sha(runner, repo_path, task["base_sha"])
+    refreshed = fetch_issue(runner, task["repo"], task["issue"])
+    if (refreshed["updatedAt"] != task.get("issue_updated_at") or
+            refreshed["title"] != task.get("intent")):
+        raise Stop("ISSUE_CHANGED", "Issue changed while scanning comments")
+    result = writer.post(task["repo"], task["issue"], payload)
+    if result.get("post_status") != "posted":
+        raise Stop("POST_UNCERTAIN", "writer did not prove successful publication")
+    return result
 
 
 # ---------------------------------------------------------------- CLI
