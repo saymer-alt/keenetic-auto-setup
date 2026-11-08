@@ -152,6 +152,31 @@ class Tests(unittest.TestCase):
         for ttl in (-1, 1, 59, 3601, True):
             self.stop("BAD_TTL", self.c.claim, 454, "worker-A", ttl=ttl)
 
+    def test_local_clock_rollback_blocks_fencing(self):
+        a = self.c.claim(454, "worker-A")
+        self.clock[0] += 15
+        self.assertEqual(self.c.fence(a), a)
+        self.clock[0] -= 1
+        self.stop("CLOCK_UNCERTAIN", self.c.fence, a)
+
+    def test_forward_clock_jump_marks_expired(self):
+        a = self.c.claim(454, "worker-A", ttl=60)
+        self.clock[0] += 7200
+        self.stop("EXPIRED_NEEDS_OWNER", self.c.fence, a)
+        self.stop("EXPIRED_NEEDS_OWNER", self.c.claim, 454, "worker-B")
+
+    def test_clock_behind_stored_lease_fails_closed(self):
+        a = self.c.claim(454, "worker-A")
+        # Different instance simulates a host whose wall clock is behind
+        slow = m.Coordinator(self.store, self.issues, lambda: 999)
+        self.stop("CLOCK_UNCERTAIN", slow.fence, a)
+        self.stop("CLOCK_UNCERTAIN", slow.claim, 454, "worker-B")
+
+    def test_clock_invalid_values_refused(self):
+        for clock in (None, True, -1, 1.5, "1000"):
+            c = m.Coordinator(self.store, self.issues, lambda x=clock: x)
+            self.stop("CLOCK_UNCERTAIN", c.claim, 454, "worker-A")
+
     def test_renew_must_move_forward(self):
         a = self.c.claim(454, "worker-A", ttl=300)
         self.stop("NON_MONOTONIC", self.c.renew, a, ttl=60)
