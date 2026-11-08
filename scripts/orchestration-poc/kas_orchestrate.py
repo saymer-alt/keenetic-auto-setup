@@ -4,8 +4,11 @@
 Fetches exactly one GitHub Issue by number, validates source/repo/permissions/
 SHA, emits a compact task-contract handoff, and produces a structured
 checkpoint. Execution is DRY-RUN by default: no LLM agent is started without
-an explicit ``--executor`` choice, and any write to GitHub requires a double
-opt-in (``--post`` + ``--confirm`` + ``KAS_ORCH_ALLOW_WRITE=1``).
+an explicit ``--executor`` choice, and GitHub checkpoint posting requires a
+double opt-in (``--post`` + ``--confirm`` + ``KAS_ORCH_ALLOW_WRITE=1``) plus a
+strict allowlist (only BLOCKED/NOT_TESTED, issue #454). The live write is
+additionally gated by the module constant ``LIVE_POST_ENABLED`` (default
+False) until a separate owner GO-B for one test comment.
 
 Design constraints (issue #430, AGENTS.md):
 - reuse-first: `gh` CLI is the only GitHub backend; no new servers, daemons,
@@ -22,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -55,6 +59,48 @@ CHECKPOINT_FIELDS = (
 STATUSES = ("PASS", "FAIL", "BLOCKED", "NOT_TESTED")
 
 TASK_STATES = ("READY", "CLAIMED", "RUNNING", "REVIEW_READY", "BLOCKED", "OWNER_DECISION")
+
+# ------------------------------------------------------------- GitHub posting
+# Checkpoint publisher adapter (issue #454): the only GitHub write of this POC
+# is one `gh issue comment` via GhCommentWriter. Fail-closed by design.
+
+# P1-A publishes BLOCKED/NOT_TESTED only. PASS/FAIL stay local: a PASS claim
+# needs independent GitHub CI evidence and a separate Issue (never a local
+# string), FAIL stays local until separate model evidence (issue #454).
+POSTABLE_STATUSES = ("BLOCKED", "NOT_TESTED")
+
+# Any PASS-like claim token anywhere in the payload fails the post closed,
+# even if someone passed the string manually in evidence/blocker/next.
+FORBIDDEN_POST_TOKEN = re.compile(r"\bPASS\b")
+
+MAX_POST_BODY = 8000          # bytes; the posted checkpoint is short by design
+MAX_POST_FIELD = 500          # chars per blocker/next_decision in the payload
+MAX_EVIDENCE_ITEMS = 3        # bounded evidence links per payload
+MAX_EVIDENCE_ITEM_LEN = 200   # chars per evidence link
+COMMENTS_PAGE = 100           # comments per page while scanning for the marker
+MAX_COMMENT_PAGES = 20        # beyond this the scan is incomplete -> STOP
+POST_TIMEOUT_S = 60
+
+# Live GitHub write gate (issue #454): the writer machinery is mock-tested
+# only (MOCK_WRITER_PASS) until the owner grants GO-B for the single live
+# test comment. This constant is the only switch; no environment variable,
+# CLI flag or caller-supplied opt-in can enable a real write while it is
+# False. Flipping it is an explicit owner decision, never an agent action.
+LIVE_POST_ENABLED = False
+
+# Secret-looking payload patterns; a match fails the post closed locally.
+SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"), "GitHub token"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "GitHub fine-grained token"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access key id"),
+    (re.compile(r"\bxox[bposa]-[A-Za-z0-9-]{10,}\b"), "Slack token"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "API secret key"),
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"), "Google API key"),
+    (re.compile(r"\bBearer\s+[A-Za-z0-9._-]{15,}\b"), "Bearer token"),
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "private key block"),
+    (re.compile(r"\b(?:password|passwd|secret|token|api[_-]?key)\s*[=:]\s*"
+                r"['\"]?[A-Za-z0-9]{12,}['\"]?", re.IGNORECASE), "credential assignment"),
+)
 
 
 class Stop(Exception):
@@ -504,12 +550,219 @@ def build_checkpoint(task: dict[str, Any], status: str, head_sha: str,
 
 
 def post_checkpoint(runner: GhRunner, repo: str, number: int, body: str) -> None:
-    # Mechanism stub: real posting is intentionally NOT exercised in this POC.
-    # No gh call is made here; a future version wires `gh issue comment` only
-    # after a separate owner GO for GitHub writes.
+    # Mechanism stub kept for the #430 proof-before-post tests: the guarded
+    # pipeline below is reached only through post_checkpoint_guarded(); any
+    # direct legacy call is refused without touching the network.
     raise Stop("WRITE_NOT_ALLOWED",
-               "checkpoint posting is disabled in this POC; deliver the file manually "
-               "(mechanism present, exercised only after owner GO)")
+               "direct post_checkpoint calls are disabled; use the guarded "
+               "publisher path (owner GO required for any live write)")
+
+
+def checkpoint_marker(task: dict[str, Any], status: str) -> str:
+    """Stable idempotency marker: exactly one comment per task_id+run_id+status."""
+    return ("[KAS-ORCH: checkpoint marker task_id=%s run_id=%s status=%s]"
+            % (task.get("task_id"), task.get("run_id"), status))
+
+
+def build_post_payload(task: dict[str, Any], status: str, head_sha: str,
+                       evidence: list[str], blocker: str,
+                       next_decision: str) -> str:
+    """Short normalized checkpoint for GitHub (issue #454).
+
+    Fail-closed on invalid fields: no silent truncation, no silent rewriting.
+    The payload is explicitly marked as a local, unvalidated message — it is
+    NOT a CI result and grants no merge/release authority."""
+    if status not in POSTABLE_STATUSES:
+        raise Stop("POST_STATUS_FORBIDDEN",
+                   f"status {status!r} is not publishable; allowlist: "
+                   f"{', '.join(POSTABLE_STATUSES)} (PASS/FAIL stay local)")
+    missing = [f for f in ("task_id", "run_id", "issue", "repo", "base_sha")
+               if not task.get(f)]
+    if missing:
+        raise Stop("STATE_INCOMPLETE", f"active task lacks fields: {', '.join(missing)}")
+
+    def cell(text: str, limit: int, name: str) -> str:
+        normalized = " ".join((text or "").split())
+        if len(normalized) > limit:
+            raise Stop("PAYLOAD_INVALID", f"{name} exceeds {limit} chars in post payload")
+        return normalized or "none"
+
+    if len(evidence) > MAX_EVIDENCE_ITEMS:
+        raise Stop("PAYLOAD_INVALID",
+                   f"at most {MAX_EVIDENCE_ITEMS} evidence items are allowed in the payload")
+    evidence_cells = [cell(item, MAX_EVIDENCE_ITEM_LEN, "evidence item") for item in evidence]
+    status_cell = cell(status, 20, "status")
+    head = " ".join((head_sha or task["base_sha"]).split())
+    return "\n".join([
+        "## KAS checkpoint — local agent message, unvalidated (not CI) — issue #%s"
+        % task["issue"],
+        "",
+        "| field | value |",
+        "|---|---|",
+        "| task_id | %s |" % task["task_id"],
+        "| run_id | %s |" % task["run_id"],
+        "| issue | #%s (%s) |" % (task["issue"], task.get("issue_url", "")),
+        "| repo | %s |" % task["repo"],
+        "| base SHA | %s |" % task["base_sha"],
+        "| head SHA | %s |" % (head or task["base_sha"]),
+        "| status | %s |" % status_cell,
+        "| evidence_class | %s |" % status_cell,
+        "| evidence | %s |" % ("; ".join(evidence_cells) if evidence_cells else "none"),
+        "| blocker | %s |" % cell(blocker, MAX_POST_FIELD, "blocker"),
+        "| next owner decision | %s |" % cell(next_decision, MAX_POST_FIELD,
+                                              "next owner decision"),
+        "",
+        "Posted by kas_orchestrate as a local, unvalidated agent message.",
+        "Not a CI result: it does not authorize merge, release or any write",
+        "beyond this comment.",
+        checkpoint_marker(task, status),
+        "",
+    ])
+
+
+def scan_post_payload(payload: str) -> None:
+    """Fail closed on oversize, bad encoding, PASS-like claims and secrets."""
+    try:
+        size = len(payload.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise Stop("PAYLOAD_INVALID", f"payload is not encodable as UTF-8: {exc}") from exc
+    if size > MAX_POST_BODY:
+        raise Stop("PAYLOAD_TOO_LARGE", f"post payload is {size} bytes > {MAX_POST_BODY}")
+    if FORBIDDEN_POST_TOKEN.search(payload):
+        raise Stop("POST_FORBIDDEN_TOKEN",
+                   "payload contains a PASS-like claim token; PASS/CI PASS/FIELD PASS "
+                   "cannot be published by this local tool (independent GitHub CI plus "
+                   "a separate Issue would be required)")
+    for pattern, label in SECRET_PATTERNS:
+        if pattern.search(payload):
+            raise Stop("SECRETS_DETECTED",
+                       f"payload matches a secret-looking pattern ({label}); nothing was "
+                       "posted — remove the secret locally and re-run")
+
+
+def scan_comment_pages_for_marker(runner: GhRunner, repo: str, number: int,
+                                  marker: str) -> bool:
+    """Scan ALL issue comment pages for the idempotency marker.
+
+    Any unavailable or incomplete read fails closed: a comment that cannot be
+    read might still hold the marker, so posting would risk a duplicate."""
+    path = f"repos/{repo}/issues/{number}/comments"
+    page = 1
+    while True:
+        data = runner.gh_json("api", f"{path}?per_page={COMMENTS_PAGE}&page={page}")
+        if not isinstance(data, list):
+            raise Stop("MARKERS_UNREADABLE", "unexpected comments payload; refusing to post")
+        for comment in data:
+            if not isinstance(comment, dict) or not isinstance(comment.get("body"), str):
+                raise Stop("MARKERS_UNREADABLE",
+                           "comment body missing or unreadable; marker scan incomplete, "
+                           "refusing to post (duplicate risk)")
+            if marker in comment["body"]:
+                return True
+        if len(data) < COMMENTS_PAGE:
+            return False
+        page += 1
+        if page > MAX_COMMENT_PAGES:
+            raise Stop("MARKERS_UNREADABLE",
+                       f"more than {MAX_COMMENT_PAGES} comment pages; scan incomplete, "
+                       "refusing to post")
+
+
+def guard_run_identity(store: TaskStore, task: dict[str, Any]) -> None:
+    """The task record must carry the run_id of the latest `fetched` journal
+    event for its task_id; missing, stale or hand-edited run IDs fail closed."""
+    run_id = task.get("run_id")
+    if (not isinstance(run_id, str) or len(run_id) != 32 or
+            any(char not in "0123456789abcdef" for char in run_id)):
+        raise Stop("STATE_INCOMPLETE", "missing or malformed run_id; re-fetch the task")
+    latest: str | None = None
+    if store.journal.exists():
+        for line in store.journal.read_text(encoding="utf-8").splitlines():
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise Stop("STATE_INCOMPLETE",
+                           "journal contains invalid JSON; run identity is unreliable") from exc
+            if (isinstance(ev, dict) and ev.get("task_id") == task.get("task_id")
+                    and ev.get("event") == "fetched"):
+                latest = ev.get("run_id")
+    if latest is None:
+        raise Stop("STATE_INCOMPLETE", "no fetched journal event for this task_id")
+    if latest != run_id:
+        raise Stop("RUN_ID_STALE",
+                   "task run_id does not match the latest fetched journal event; re-fetch")
+
+
+class GhCommentWriter:
+    """The single GitHub write primitive of this POC: one `gh issue comment`
+    per call, body passed via stdin (never argv, so nothing leaks to process
+    listings). The writer is fail-closed while LIVE_POST_ENABLED is False,
+    independent of any caller-supplied opt-ins. Tests inject stand-ins at the
+    cmd_checkpoint/post_checkpoint_guarded boundary instead of this class."""
+
+    def __init__(self,
+                 run: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> None:
+        self._run = run or subprocess.run
+
+    def post(self, repo: str, number: int, body: str) -> dict[str, Any]:
+        if not LIVE_POST_ENABLED:
+            raise Stop("LIVE_POST_NOT_ALLOWED",
+                       "live checkpoint posting is disabled until the owner grants GO-B "
+                       "for the single live test comment; machinery is mock-tested only "
+                       "(MOCK_WRITER_PASS)")
+        cmd = ["gh", "issue", "comment", str(number), "--repo", repo, "--body-file", "-"]
+        try:
+            proc = self._run(cmd, capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=POST_TIMEOUT_S, input=body)
+        except subprocess.TimeoutExpired as exc:
+            raise Stop("POST_UNCERTAIN",
+                       f"gh issue comment timed out after {POST_TIMEOUT_S}s; the comment "
+                       "may or may not exist — verify manually, do not auto-retry") from exc
+        if proc.returncode != 0:
+            if _looks_like_network(proc.stderr):
+                raise Stop("POST_UNCERTAIN",
+                           f"gh issue comment failed with a network error: "
+                           f"{_first_line(proc.stderr)}; outcome unknown — verify manually, "
+                           "do not auto-retry")
+            raise Stop("POST_FAILED",
+                       f"gh issue comment failed (exit {proc.returncode}): "
+                       f"{_first_line(proc.stderr)}; verify manually, no auto-retry")
+        match = re.search(r"https://github\.com/\S+/issues/\d+#issuecomment-\d+",
+                          proc.stdout or "")
+        return {"post_status": "posted",
+                "url": match.group(0) if match else "NOT_PARSED"}
+
+
+def post_checkpoint_guarded(runner: GhRunner, writer: GhCommentWriter,
+                            store: TaskStore, task: dict[str, Any], payload: str,
+                            marker: str, repo_path: Path) -> dict[str, Any]:
+    """Single guarded write path (issue #454). All checks run immediately
+    before the write; TOCTOU windows are minimized, not eliminated — this is
+    explicitly NOT an atomic GitHub transaction. Any failure = STOP, and no
+    network uncertainty is ever auto-retried."""
+    if not LIVE_POST_ENABLED:
+        raise Stop("LIVE_POST_NOT_ALLOWED",
+                   "live checkpoint posting is disabled until the owner grants GO-B "
+                   "(LIVE_POST_ENABLED=False); machinery is mock-tested only "
+                   "(MOCK_WRITER_PASS)")
+    # Local checks first (no network): payload shape and run identity.
+    scan_post_payload(payload)
+    guard_run_identity(store, task)
+    # Machine state: the checkout must still be the contract base SHA.
+    guard_stale_sha(runner, repo_path, task["base_sha"])
+    # Identity and destination, re-verified immediately before the write.
+    check_auth(runner)
+    check_account(runner, task["repo"])
+    guard_repo(task["repo"])
+    current = fetch_issue(runner, task["repo"], task["issue"])
+    if (current["updatedAt"] != task.get("issue_updated_at") or
+            current["title"] != task.get("intent")):
+        raise Stop("ISSUE_CHANGED",
+                   f"Issue #{task['issue']} changed before posting; re-fetch and re-run")
+    # Idempotency: exactly one comment per task_id+run_id+status.
+    if scan_comment_pages_for_marker(runner, task["repo"], task["issue"], marker):
+        return {"post_status": "already_posted", "url": ""}
+    return writer.post(task["repo"], task["issue"], payload)
 
 
 # ---------------------------------------------------------------- CLI
@@ -544,7 +797,9 @@ def main(argv: list[str] | None = None) -> int:
     p_ckpt.add_argument("--blocker", default="")
     p_ckpt.add_argument("--next", dest="next_decision", default="await owner GO")
     p_ckpt.add_argument("--head-sha", default="")
-    p_ckpt.add_argument("--post", action="store_true", help="attempt to post to GitHub (requires opt-in)")
+    p_ckpt.add_argument("--post", action="store_true",
+                        help="attempt to post BLOCKED/NOT_TESTED to GitHub (triple "
+                             "opt-in; live write additionally gated by owner GO-B)")
     p_ckpt.add_argument("--confirm", action="store_true")
 
     p_reset = sub.add_parser("reset", help="clear local task state")
@@ -655,30 +910,49 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
 
 
 def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
-                   repo_path: Path) -> dict[str, Any]:
+                   repo_path: Path,
+                   writer: GhCommentWriter | None = None) -> dict[str, Any]:
     task = store.load()
     if not task:
         raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
     guard_stale_sha(runner, repo_path, task["base_sha"])
-    # Verify any earned PASS before an external posting attempt. The writer
-    # remains disabled until separate owner GO-B and evidence verification.
+    # Verify any earned PASS before an external posting attempt; even an
+    # earned PASS stays local in P1-A (POSTABLE_STATUSES has no PASS).
     if args.status == "PASS":
         guard_earned_pass(store, task)
     md = build_checkpoint(task, args.status, args.head_sha, args.evidence,
                           args.blocker, args.next_decision)
+    post_status = "not_requested"
+    post_url = ""
     if args.post:
         if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
             raise Stop("WRITE_NOT_ALLOWED",
                        "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
-        post_checkpoint(runner, task["repo"], task["issue"], md)
+        if args.status not in POSTABLE_STATUSES:
+            raise Stop("POST_STATUS_FORBIDDEN",
+                       f"status {args.status!r} cannot be published; allowlist: "
+                       f"{', '.join(POSTABLE_STATUSES)}; PASS/FAIL stay local")
+        payload = build_post_payload(task, args.status, args.head_sha, args.evidence,
+                                     args.blocker, args.next_decision)
+        marker = checkpoint_marker(task, args.status)
+        writer = writer or GhCommentWriter(runner)
+        post_res = post_checkpoint_guarded(runner, writer, store, task, payload,
+                                           marker, repo_path)
+        post_status = post_res["post_status"]
+        post_url = post_res.get("url", "")
     store.checkpoint_file.write_text(md, encoding="utf-8")
     store.transition(task, "OWNER_DECISION" if args.status in ("PASS", "FAIL")
                      else ("BLOCKED" if args.status == "BLOCKED" else "REVIEW_READY"),
                      f"checkpoint:{args.status}")
-    return {"task_id": task["task_id"], "run_id": task.get("run_id"),
-            "status": args.status,
-            "checkpoint": str(store.checkpoint_file), "posted": False,
-            "fields": list(CHECKPOINT_FIELDS)}
+    result = {"task_id": task["task_id"], "run_id": task.get("run_id"),
+              "status": args.status,
+              "checkpoint": str(store.checkpoint_file),
+              "posted": post_status == "posted",
+              "post_status": post_status,
+              "fields": list(CHECKPOINT_FIELDS)}
+    if post_url:
+        result["post_url"] = post_url
+    return result
 
 
 if __name__ == "__main__":

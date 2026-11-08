@@ -540,7 +540,10 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(self.store.load()["state"], "READY")
         self.assertFalse(self.store.checkpoint_file.exists())
 
-    def test_checkpoint_post_disabled_even_with_optin(self) -> None:
+    def test_checkpoint_post_live_gate_closed_even_with_all_optins(self) -> None:
+        # Issue #454: the guarded publisher machinery exists, but the live
+        # write gate is closed by default (LIVE_POST_ENABLED=False). Triple
+        # opt-in alone must not touch the network and must STOP.
         self.runner.push_git_sha()
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
@@ -551,9 +554,12 @@ class CheckpointTests(unittest.TestCase):
         with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}):
             with self.assertRaises(ko.Stop) as cm:
                 ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
-        self.assertEqual(cm.exception.code, "WRITE_NOT_ALLOWED")
+        self.assertEqual(cm.exception.code, "LIVE_POST_NOT_ALLOWED")
+        self.assertFalse(ko.LIVE_POST_ENABLED)
         self.assertEqual(self.store.load()["state"], "READY")
         self.assertFalse(self.store.checkpoint_file.exists())
+        # No gh call was attempted: only the initial git rev-parse ran.
+        self.assertTrue(all(c[0] == "git" for c in self.runner.calls[4:]))
     def test_checkpoint_pass_earned_after_real_executor_ok(self) -> None:
         # A recorded successful zcode-cli run earns PASS (guard stays silent).
         self.runner.push_git_sha()
@@ -642,6 +648,407 @@ class StopContractTests(unittest.TestCase):
         self.assertEqual(set(ko.TASK_STATES),
                          {"READY", "CLAIMED", "RUNNING", "REVIEW_READY", "BLOCKED",
                           "OWNER_DECISION"})
+
+
+class MockWriter:
+    """Test stand-in for GhCommentWriter; records posts, never touches gh."""
+
+    def __init__(self) -> None:
+        self.posted: list[tuple[str, int, str]] = []
+
+    def post(self, repo: str, number: int, body: str) -> dict:
+        self.posted.append((repo, number, body))
+        return {"post_status": "posted",
+                "url": ("https://github.com/saymer-alt/keenetic-auto-setup/"
+                        "issues/430#issuecomment-9999")}
+
+
+class CheckpointPostTests(unittest.TestCase):
+    """Issue #454 mock tests: guarded checkpoint publisher, fail-closed."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="kas-orch-post-"))
+        self.store = make_store(self.tmp)
+        self.runner = FakeRunner()
+        do_fetch(self.runner, self.store)
+        self.writer = MockWriter()
+        self.task = {
+            "cmd": "dispatch", "repo": ko.DEFAULT_REPO, "executor": "dry-run",
+            "repo_path": str(POC_DIR), "state_dir": str(self.store.dir),
+            "json": False, "zcode_cli": None, "zcode_electron": None,
+        }
+
+    # -- helpers -----------------------------------------------------------
+    def post_args(self, status: str = "NOT_TESTED", evidence: list | None = None,
+                  blocker: str = "live post not GOed yet",
+                  next_decision: str = "owner GO-B") -> argparse.Namespace:
+        return ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": status, "evidence": evidence if evidence is not None else
+            ["https://example.test/ev"],
+            "blocker": blocker, "next_decision": next_decision,
+            "head_sha": "", "post": True, "confirm": True,
+            "state_dir": str(self.store.dir), "json": False,
+        })
+
+    def queue_post_reads(self, comment_pages: list | None = None,
+                         issue: dict | None = None) -> None:
+        """Queue the reads of the guarded post path in order: sha (initial
+        cmd_checkpoint guard), sha (guarded-path re-verify), auth, user,
+        issue refetch, comment pages."""
+        self.runner.push_git_sha()
+        self.runner.push_git_sha()
+        self.runner.push_auth_ok()
+        self.runner.push_gh_user()
+        self.runner.push_gh_issue(issue)
+        for page in (comment_pages if comment_pages is not None else [[]]):
+            self.runner.push(json.dumps(page))
+
+    def run_post(self, args: argparse.Namespace, live: bool = True):
+        gh_runner = ko.GhRunner(self.runner)
+        env = {"KAS_ORCH_ALLOW_WRITE": "1"}
+        if live:
+            with patch.dict(ko.os.environ, env), \
+                    patch.object(ko, "LIVE_POST_ENABLED", True):
+                return ko.cmd_checkpoint(args, gh_runner, self.store, POC_DIR,
+                                         writer=self.writer)
+        with patch.dict(ko.os.environ, env):
+            return ko.cmd_checkpoint(args, gh_runner, self.store, POC_DIR,
+                                     writer=self.writer)
+
+    # -- gate wiring -------------------------------------------------------
+    def test_live_gate_closed_by_default_refuses_before_any_call(self) -> None:
+        self.runner.push_git_sha()  # initial cmd_checkpoint SHA guard only
+        args = self.post_args()
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}):
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store,
+                                  POC_DIR, writer=self.writer)
+        self.assertEqual(cm.exception.code, "LIVE_POST_NOT_ALLOWED")
+        self.assertFalse(ko.LIVE_POST_ENABLED)
+        self.assertEqual(self.writer.posted, [])
+        self.assertFalse(self.store.checkpoint_file.exists())
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_single_mocked_post_success(self) -> None:
+        self.queue_post_reads()
+        res = self.run_post(self.post_args())
+        self.assertEqual(res["post_status"], "posted")
+        self.assertTrue(res["posted"])
+        self.assertIn("#issuecomment-9999", res["post_url"])
+        self.assertEqual(len(self.writer.posted), 1)
+        repo, number, body = self.writer.posted[0]
+        self.assertEqual(repo, ko.DEFAULT_REPO)
+        self.assertEqual(number, 430)
+        task = self.store.load()
+        marker = ko.checkpoint_marker(task, "NOT_TESTED")
+        self.assertIn(marker, body)
+        self.assertIn(task["task_id"], body)
+        self.assertIn(task["run_id"], body)
+        self.assertIn(task["base_sha"], body)
+        self.assertIn("unvalidated", body)
+        self.assertIn("Not a CI result", body)
+        self.assertIn("NOT_TESTED", body)
+        self.assertEqual(self.runner.queue, [])  # exact scripted calls only
+        self.assertTrue(self.store.checkpoint_file.exists())
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+
+    def test_duplicate_marker_returns_already_posted_no_second_comment(self) -> None:
+        task = self.store.load()
+        marker = ko.checkpoint_marker(task, "NOT_TESTED")
+        self.queue_post_reads(comment_pages=[[{"body": "earlier note\n" + marker}]])
+        res = self.run_post(self.post_args())
+        self.assertEqual(res["post_status"], "already_posted")
+        self.assertFalse(res["posted"])
+        self.assertEqual(self.writer.posted, [])  # no second comment
+        self.assertTrue(self.store.checkpoint_file.exists())
+        self.assertEqual(self.store.load()["state"], "REVIEW_READY")
+
+    def test_marker_scan_pagination_finds_marker_on_later_page(self) -> None:
+        task = self.store.load()
+        marker = ko.checkpoint_marker(task, "NOT_TESTED")
+        page1 = [{"body": f"filler comment {i}"} for i in range(100)]
+        self.queue_post_reads(comment_pages=[page1, [{"body": marker}]])
+        res = self.run_post(self.post_args())
+        self.assertEqual(res["post_status"], "already_posted")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_no_post_by_default_makes_no_gh_calls(self) -> None:
+        self.runner.push_git_sha()
+        args = self.post_args()
+        args.post = False
+        args.confirm = False
+        res = ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(res["post_status"], "not_requested")
+        self.assertFalse(res["posted"])
+        self.assertTrue(all(c[0] != "gh" for c in self.runner.calls[4:]))
+        self.assertEqual(self.writer.posted, [])
+
+    def test_missing_optin_variants_stop_without_gh_calls(self) -> None:
+        cases = [("no_env", {}), ("no_confirm", {"KAS_ORCH_ALLOW_WRITE": "1"})]
+        for name, env in cases:
+            with self.subTest(case=name):
+                self.runner.queue.clear()
+                self.runner.push_git_sha()
+                args = self.post_args()
+                if name == "no_confirm":
+                    args.confirm = False
+                with patch.dict(ko.os.environ, env):
+                    with self.assertRaises(ko.Stop) as cm:
+                        ko.cmd_checkpoint(args, ko.GhRunner(self.runner),
+                                          self.store, POC_DIR, writer=self.writer)
+                self.assertEqual(cm.exception.code, "WRITE_NOT_ALLOWED")
+                self.assertEqual(self.writer.posted, [])
+                self.assertTrue(all(c[0] == "git" for c in self.runner.calls[4:]))
+
+    # -- pre-write verification ---------------------------------------------
+    def test_stale_sha_blocks_before_post_gate(self) -> None:
+        self.runner.push_git_sha("a" * 40)  # checkout moved since fetch
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "STALE_SHA")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_edited_issue_at_post_gate_stops_before_writer(self) -> None:
+        self.queue_post_reads(issue={**ISSUE_JSON,
+                                     "updatedAt": "2026-11-08T12:00:00Z"})
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "ISSUE_CHANGED")
+        self.assertEqual(self.writer.posted, [])
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_closed_issue_at_post_gate_stops_before_writer(self) -> None:
+        self.queue_post_reads(issue={**ISSUE_JSON, "state": "CLOSED"})
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "ISSUE_CLOSED")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_wrong_account_at_post_gate_stops(self) -> None:
+        self.runner.push_git_sha()
+        self.runner.push_git_sha()
+        self.runner.push_auth_ok()
+        self.runner.push_gh_user("someone-else")
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "BAD_ACCOUNT")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_wrong_repo_allowlist_at_post_gate_stops(self) -> None:
+        # gh account matches the task repo owner, but that repo is outside
+        # the owner allowlist: guard_repo must fire before any write.
+        task = self.store.load()
+        task["repo"] = "evil-org/keenetic-auto-setup"
+        self.store.save(task)
+        self.runner.push_git_sha()
+        self.runner.push_git_sha()
+        self.runner.push_auth_ok()
+        self.runner.push_gh_user("evil-org")
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "BAD_REPO")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_malformed_comments_payload_stops(self) -> None:
+        cases = [("not_a_list", {"unexpected": "payload"}),
+                 ("body_none", [{"id": 1, "body": None}]),
+                 ("body_number", [{"id": 1, "body": 7}])]
+        for name, page in cases:
+            with self.subTest(case=name):
+                self.runner.queue.clear()
+                self.queue_post_reads(comment_pages=[page])
+                with self.assertRaises(ko.Stop) as cm:
+                    self.run_post(self.post_args())
+                self.assertEqual(cm.exception.code, "MARKERS_UNREADABLE")
+                self.assertEqual(self.writer.posted, [])
+
+    def test_comments_unreachable_stops_without_posting(self) -> None:
+        self.runner.push_git_sha()
+        self.runner.push_git_sha()
+        self.runner.push_auth_ok()
+        self.runner.push_gh_user()
+        self.runner.push_gh_issue()
+        self.runner.push("", returncode=1, stderr="dial tcp: connection refused")
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "NETWORK")
+        self.assertEqual(self.writer.posted, [])
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_missing_run_id_stops(self) -> None:
+        task = self.store.load()
+        task.pop("run_id")
+        self.store.save(task)
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "STATE_INCOMPLETE")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_stale_run_id_stops(self) -> None:
+        task = self.store.load()
+        task["run_id"] = "f" * 32  # well-formed but not the journaled run
+        self.store.save(task)
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "RUN_ID_STALE")
+        self.assertEqual(self.writer.posted, [])
+
+    # -- payload hygiene -----------------------------------------------------
+    def test_oversized_fields_stop(self) -> None:
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args(blocker="x" * 501))
+        self.assertEqual(cm.exception.code, "PAYLOAD_INVALID")
+        self.assertEqual(self.writer.posted, [])
+        self.runner.queue.clear()
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args(evidence=["https://a", "https://b",
+                                                   "https://c", "https://d"]))
+        self.assertEqual(cm.exception.code, "PAYLOAD_INVALID")
+        with self.assertRaises(ko.Stop) as cm:
+            ko.scan_post_payload("x" * (ko.MAX_POST_BODY + 1))
+        self.assertEqual(cm.exception.code, "PAYLOAD_TOO_LARGE")
+
+    def test_secret_bearing_payload_stops(self) -> None:
+        cases = [
+            ("github_token", "https://x.test/t?k=ghp_" + "A" * 36),
+            ("aws_key", "AKIA" + "B" * 16),
+            ("bearer", "Bearer " + "c" * 20),
+            ("private_key", "-----BEGIN RSA PRIVATE KEY-----"),
+            ("assignment", "token: " + "d" * 12),
+        ]
+        for name, secret in cases:
+            with self.subTest(case=name):
+                self.runner.queue.clear()
+                self.runner.push_git_sha()
+                with self.assertRaises(ko.Stop) as cm:
+                    self.run_post(self.post_args(evidence=[secret]))
+                self.assertEqual(cm.exception.code, "SECRETS_DETECTED")
+                self.assertEqual(self.writer.posted, [])
+
+    def test_pass_like_tokens_fail_closed(self) -> None:
+        cases = [("evidence", ["run shows CI PASS"]),
+                 ("evidence_field", ["run shows FIELD PASS"]),
+                 ("blocker", "status was PASS"),
+                 ("next", "wait for CI PASS")]
+        for name, value in cases:
+            with self.subTest(case=name):
+                self.runner.queue.clear()
+                self.runner.push_git_sha()
+                if name.startswith("evidence"):
+                    args = self.post_args(evidence=value)
+                elif name == "blocker":
+                    args = self.post_args(blocker=value)
+                else:
+                    args = self.post_args(next_decision=value)
+                with self.assertRaises(ko.Stop) as cm:
+                    self.run_post(args)
+                self.assertEqual(cm.exception.code, "POST_FORBIDDEN_TOKEN")
+                self.assertEqual(self.writer.posted, [])
+
+    def test_fail_status_local_only_post_forbidden(self) -> None:
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args(status="FAIL"))
+        self.assertEqual(cm.exception.code, "POST_STATUS_FORBIDDEN")
+        self.assertEqual(self.writer.posted, [])
+
+    def test_earned_pass_stays_local_unpostable(self) -> None:
+        # Even a fully earned PASS (real executor ok event in journal) must
+        # never be published by this P1-A writer (#454: no PASS from locals).
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue()
+        cli, electron = self.tmp / "zcode.cjs", self.tmp / "ZCode.exe"
+        cli.write_text("// stub", encoding="utf-8")
+        electron.write_text("stub", encoding="utf-8")
+        orig = ko.EXEC_RUNNER
+        ko.EXEC_RUNNER = lambda cmd, **kw: subprocess.CompletedProcess([], 0, "ok", "")
+        try:
+            res = ko.cmd_dispatch(ko.parser_namespace({
+                **self.task, "executor": "zcode-cli",
+                "zcode_cli": str(cli), "zcode_electron": str(electron)}),
+                ko.GhRunner(self.runner), self.store, POC_DIR)
+        finally:
+            ko.EXEC_RUNNER = orig
+        self.assertEqual(res["state"], "REVIEW_READY")
+        self.runner.push_git_sha()
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args(status="PASS"))
+        self.assertEqual(cm.exception.code, "POST_STATUS_FORBIDDEN")
+        self.assertEqual(self.writer.posted, [])
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    # -- writer behaviour ------------------------------------------------------
+    def test_post_timeout_is_uncertain_and_never_retried(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            raise subprocess.TimeoutExpired(cmd, ko.POST_TIMEOUT_S)
+
+        self.queue_post_reads()
+        writer = ko.GhCommentWriter(run=fake_run)
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}), \
+                patch.object(ko, "LIVE_POST_ENABLED", True):
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_checkpoint(self.post_args(), ko.GhRunner(self.runner),
+                                  self.store, POC_DIR, writer=writer)
+        self.assertEqual(cm.exception.code, "POST_UNCERTAIN")
+        self.assertEqual(len(calls), 1, "no auto-retry after an uncertain post")
+        self.assertFalse(self.store.checkpoint_file.exists())
+        self.assertEqual(self.store.load()["state"], "READY")
+
+    def test_post_network_failure_is_uncertain(self) -> None:
+        self.queue_post_reads()
+        writer = ko.GhCommentWriter(
+            run=lambda cmd, **kw: subprocess.CompletedProcess(
+                [], 1, "", "dial tcp: lookup failed"))
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}), \
+                patch.object(ko, "LIVE_POST_ENABLED", True):
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_checkpoint(self.post_args(), ko.GhRunner(self.runner),
+                                  self.store, POC_DIR, writer=writer)
+        self.assertEqual(cm.exception.code, "POST_UNCERTAIN")
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_post_gh_failure_is_post_failed(self) -> None:
+        self.queue_post_reads()
+        writer = ko.GhCommentWriter(
+            run=lambda cmd, **kw: subprocess.CompletedProcess(
+                [], 1, "", "gh: permission denied"))
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}), \
+                patch.object(ko, "LIVE_POST_ENABLED", True):
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_checkpoint(self.post_args(), ko.GhRunner(self.runner),
+                                  self.store, POC_DIR, writer=writer)
+        self.assertEqual(cm.exception.code, "POST_FAILED")
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_real_writer_posts_via_stdin_not_argv(self) -> None:
+        self.runner.push("https://github.com/saymer-alt/keenetic-auto-setup/"
+                         "issues/430#issuecomment-123456")
+        writer = ko.GhCommentWriter(run=self.runner)
+        with patch.object(ko, "LIVE_POST_ENABLED", True):
+            res = writer.post(ko.DEFAULT_REPO, 430, "payload body")
+        self.assertEqual(res["post_status"], "posted")
+        self.assertIn("#issuecomment-123456", res["url"])
+        cmd = self.runner.calls[-1]  # the writer's gh call, not do_fetch's
+        self.assertEqual(cmd[:2], ["gh", "issue"])
+        self.assertIn("--body-file", cmd)
+        self.assertEqual(cmd[-1], "-", "body must travel via stdin")
+        self.assertNotIn("payload body", " ".join(cmd))
+
+    def test_real_writer_refuses_when_gate_closed(self) -> None:
+        writer = ko.GhCommentWriter(
+            run=lambda cmd, **kw: (_ for _ in ()).throw(
+                AssertionError("gh must not run while the live gate is closed")))
+        with self.assertRaises(ko.Stop) as cm:
+            writer.post(ko.DEFAULT_REPO, 430, "body")
+        self.assertEqual(cm.exception.code, "LIVE_POST_NOT_ALLOWED")
 
 
 if __name__ == "__main__":

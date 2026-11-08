@@ -81,10 +81,23 @@ is accepted under a separate GO, automatic result handoff remains NOT_VERIFIED.
   (`STOP_PASS_UNEARNED`). Missing/legacy run IDs, mock/dry-run or historical
   successes retained by reset cannot earn PASS. Executor exit 0 is not proof
   of validated implementation, CI or real-device FIELD PASS.
-- Earned-PASS validation executes **before** any prospective posting. GitHub
-  posting remains double-locked (`--post` + `--confirm` +
-  `KAS_ORCH_ALLOW_WRITE=1`) and fully **disabled** in this POC, even if all
-  switches are set. No write, webhook or CI dispatch is performed.
+- Earned-PASS validation executes **before** any prospective posting, and a
+  guarded publisher (issue #454) posts only `BLOCKED`/`NOT_TESTED` via one
+  `gh issue comment` (body via stdin, never argv): triple opt-in
+  (`--post` + `--confirm` + `KAS_ORCH_ALLOW_WRITE=1`), then a status
+  allowlist, then the module constant `LIVE_POST_ENABLED` (default **False**)
+  as the sole live-write switch until owner GO-B. Pre-write re-verification
+  covers auth, account, repo allowlist, Issue OPEN/exact URL/updatedAt,
+  task_id + run_id (matching the latest `fetched` journal event) and
+  `base_sha == HEAD`; a marker `[KAS-ORCH: checkpoint marker …]` scanned
+  across **all** comment pages makes re-runs idempotent (`already_posted`,
+  no second comment) and unreadable comments STOP the post. Payload is a
+  short normalized checkpoint explicitly marked "local agent message,
+  unvalidated — not CI", bounded in size, secret-scanned, and refused when
+  it contains any `PASS`/`CI PASS`/`FIELD PASS` token. Network uncertainty
+  after a post attempt → `STOP_POST_UNCERTAIN`, manual verification, no
+  auto-retries. Milestones stay separate: `MOCK_WRITER_PASS` (64 mock tests)
+  ≠ `LIVE_CHECKPOINT_POST_NOT_TESTED` (no live write has been performed).
 - Exit codes: `0` OK, `2` STOP (safe refusal), `1` internal error.
 
 ## Tests (no network, mock GitHub)
@@ -93,13 +106,20 @@ is accepted under a separate GO, automatic result handoff remains NOT_VERIFIED.
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
 
-The expanded 39-test mock suite covers the happy path and negative cases: stale SHA at
-dispatch/checkpoint; an Issue closed, edited, renumbered, or unreachable after
-fetch; strict URL matching; duplicate dispatch; malformed data; wrong GitHub
-account; missing auth; lock contention; executor failure and timeout (checking
-`ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state); unearned PASS claims (READY/mock/other run_id/legacy state), and proof-before-
-posting guards. The `mock` executor proves the state machine
-only — it is NOT proof of full automation.
+The 64-test mock suite (issue #454 expanded the 39-test set by 25) covers the
+happy path and negative cases: stale SHA at dispatch/checkpoint/post; an Issue
+closed, edited, renumbered, or unreachable after fetch and at the post gate;
+strict URL matching; duplicate dispatch; malformed data; wrong GitHub account
+and out-of-allowlist repo; missing auth; lock contention; executor failure and
+timeout (checking `ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state);
+unearned PASS claims (READY/mock/other run_id/legacy state); proof-before-
+posting guards; publisher gates (no post by default, missing opt-in, live gate
+closed, wrong account/repo, edited/closed Issue, malformed/unreadable comment
+pages, missing/stale run_id, oversized and secret-bearing payloads, PASS-like
+tokens fail-closed, FAIL local-only, earned PASS unpostable, duplicate marker
+no-op, timeout/network failure without retry). The `mock` executor proves the
+state machine only — it is NOT proof of full automation, and the guarded
+writer is NOT proof of a live GitHub post.
 
 ## Disable / uninstall
 
