@@ -22,8 +22,11 @@ profile остаются advisory для updater; имя `zram.swap` не дел
 `update-watchdog.sh` с канала: проверка кандидата, гигиена backup, atomic
 rename и cron-нормализация остаются в нём.
 
-Для старых установок, где локального `kas-update` ещё нет, первоначальный
-запуск — через GitHub:
+При скриптовой установке KAS (в том числе новой установки Core v1.8.8)
+`kas-update.sh` **не копируется автоматически в `/opt/bin`**: отсутствие
+`/opt/bin/kas-update` или `/opt/bin/kas-update.sh` — не ошибка установки.
+Для проверки скачайте временную копию из проверенного канала и запускайте
+`--check`; `--apply` — отдельная изменяющая операция:
 
 ```bash
 curl -fSsL -o /tmp/kas-update.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-update.sh && sh -n /tmp/kas-update.sh && sh /tmp/kas-update.sh --check
