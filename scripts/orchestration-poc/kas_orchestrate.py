@@ -567,8 +567,8 @@ def main(argv: list[str] | None = None) -> int:
                 task = store.load()
                 if not task:
                     raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
-                result.update({"task_id": task["task_id"], "state": task["state"],
-                               "base_sha": task["base_sha"]})
+                result.update({"task_id": task["task_id"], "run_id": task.get("run_id"),
+                               "state": task["state"], "base_sha": task["base_sha"]})
             elif args.cmd == "dispatch":
                 result.update(cmd_dispatch(args, runner, store, repo_path))
             elif args.cmd == "checkpoint":
@@ -607,7 +607,8 @@ def cmd_fetch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     store.transition(contract, "READY", "fetched")
     store.contract_file.write_text(json.dumps(contract, indent=2, ensure_ascii=False), encoding="utf-8")
     store.handoff_file.write_text(render_handoff(contract), encoding="utf-8")
-    return {"task_id": contract["task_id"], "state": "READY", "base_sha": base_sha,
+    return {"task_id": contract["task_id"], "run_id": contract["run_id"],
+            "state": "READY", "base_sha": base_sha,
             "body_truncated": truncated,
             "handoff": str(store.handoff_file), "contract": str(store.contract_file)}
 
@@ -630,11 +631,13 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
         # Nothing runs, so the task must not claim RUNNING.
         with store.journal.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": "dispatch:dry-run",
-                                 "task_id": task["task_id"]}, ensure_ascii=False) + "\n")
+                                 "task_id": task["task_id"], "run_id": task.get("run_id")},
+                                ensure_ascii=False) + "\n")
         out = run_executor(task, args.executor, runner, store, repo_path,
                            Path(args.zcode_cli) if args.zcode_cli else None,
                            Path(args.zcode_electron) if args.zcode_electron else None)
-        return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
+        return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+                "state": task["state"], "executor": args.executor,
                 "output": out["output"][:4000]}
     store.transition(task, "CLAIMED", f"dispatch:{args.executor}")
     store.transition(task, "RUNNING", f"executor:{args.executor}")
@@ -646,7 +649,8 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
         store.transition(task, "BLOCKED", f"executor:{args.executor}:failed")
         raise
     store.transition(task, "REVIEW_READY", f"executor:{args.executor}:ok")
-    return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
+    return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+            "state": task["state"], "executor": args.executor,
             "exit_code": res["exit_code"], "output": res["output"][:4000]}
 
 
@@ -669,7 +673,8 @@ def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     store.transition(task, "OWNER_DECISION" if args.status in ("PASS", "FAIL")
                      else ("BLOCKED" if args.status == "BLOCKED" else "REVIEW_READY"),
                      f"checkpoint:{args.status}")
-    return {"task_id": task["task_id"], "status": args.status,
+    return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+            "status": args.status,
             "checkpoint": str(store.checkpoint_file), "posted": False,
             "fields": list(CHECKPOINT_FIELDS)}
 
