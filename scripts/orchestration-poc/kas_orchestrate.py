@@ -567,50 +567,68 @@ def checkpoint_marker(task: dict[str, Any], status: str) -> str:
 def build_post_payload(task: dict[str, Any], status: str, head_sha: str,
                        evidence: list[str], blocker: str,
                        next_decision: str) -> str:
-    """Short normalized checkpoint for GitHub (issue #454).
-
-    Fail-closed on invalid fields: no silent truncation, no silent rewriting.
-    The payload is explicitly marked as a local, unvalidated message — it is
-    NOT a CI result and grants no merge/release authority."""
+    """Bounded, unverified status only. No raw transcripts or markdown injection."""
     if status not in POSTABLE_STATUSES:
         raise Stop("POST_STATUS_FORBIDDEN",
-                   f"status {status!r} is not publishable; allowlist: "
-                   f"{', '.join(POSTABLE_STATUSES)} (PASS/FAIL stay local)")
-    missing = [f for f in ("task_id", "run_id", "issue", "repo", "base_sha")
-               if not task.get(f)]
-    if missing:
-        raise Stop("STATE_INCOMPLETE", f"active task lacks fields: {', '.join(missing)}")
+                   "only BLOCKED and NOT_TESTED can be posted; PASS/FAIL stay local")
+    repo = task.get("repo")
+    issue = task.get("issue")
+    base = task.get("base_sha")
+    run_id = task.get("run_id")
+    task_id = task.get("task_id")
+    if (repo != DEFAULT_REPO or type(issue) is not int or issue <= 0 or
+            not isinstance(base, str) or not re.fullmatch(r"[a-f0-9]{40}", base) or
+            not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id) or
+            task_id != f"issue-{issue}-{base[:12]}" or
+            task.get("issue_url") != f"https://github.com/{repo}/issues/{issue}"):
+        raise Stop("STATE_INCOMPLETE", "task, run, repo or SHA identity invalid")
+    if head_sha and head_sha != base:
+        raise Stop("UNVERIFIED_HEAD", "changed head requires independent commit evidence")
 
-    def cell(text: str, limit: int, name: str) -> str:
-        normalized = " ".join((text or "").split())
-        if len(normalized) > limit:
-            raise Stop("PAYLOAD_INVALID", f"{name} exceeds {limit} chars in post payload")
-        return normalized or "none"
+    def safe_text(value: str, field: str, limit: int) -> str:
+        if not isinstance(value, str) or len(value.encode("utf-8")) > limit:
+            raise Stop("PAYLOAD_INVALID", f"{field} is invalid or too long")
+        if FORBIDDEN_POST_TOKEN.search(value):
+            raise Stop("POST_FORBIDDEN_TOKEN", "unverified PASS claim is forbidden")
+        for pattern, label in SECRET_PATTERNS:
+            if pattern.search(value):
+                raise Stop("SECRETS_DETECTED", f"{field} contains {label}")
+        if any(ord(ch) < 32 or ord(ch) == 127 or ch in "|<>@[]{}" for ch in value):
+            raise Stop("PAYLOAD_INVALID", f"{field} contains markup or controls")
+        return value.strip() or "none"
 
-    if len(evidence) > MAX_EVIDENCE_ITEMS:
-        raise Stop("PAYLOAD_INVALID",
-                   f"at most {MAX_EVIDENCE_ITEMS} evidence items are allowed in the payload")
-    evidence_cells = [cell(item, MAX_EVIDENCE_ITEM_LEN, "evidence item") for item in evidence]
-    status_cell = cell(status, 20, "status")
-    head = " ".join((head_sha or task["base_sha"]).split())
+    if not isinstance(evidence, list) or len(evidence) > MAX_EVIDENCE_ITEMS:
+        raise Stop("PAYLOAD_INVALID", "too many or invalid evidence values")
+    ev = []
+    for item in evidence:
+        url = safe_text(item, "evidence", MAX_EVIDENCE_ITEM_LEN)
+        # Same-repo canonical, plain HTTPS URLs only; no query/fragment/creds.
+        if not re.fullmatch(
+            r"https://github[.]com/" + re.escape(DEFAULT_REPO)
+            + r"/(?:issues/[1-9][0-9]*|pull/[1-9][0-9]*|"
+              r"actions/runs/[1-9][0-9]*|commit/[a-f0-9]{40})",
+            url,
+        ):
+            raise Stop("PAYLOAD_INVALID", "evidence must be canonical same-repo GitHub URL")
+        ev.append(url)
+    blocker_cell = safe_text(blocker, "blocker", MAX_POST_FIELD)
+    decision_cell = safe_text(next_decision, "next owner decision", MAX_POST_FIELD)
     return "\n".join([
-        "## KAS checkpoint — local agent message, unvalidated (not CI) — issue #%s"
-        % task["issue"],
+        f"## KAS checkpoint — local agent message, unvalidated (not CI) — issue #{issue}",
         "",
         "| field | value |",
         "|---|---|",
-        "| task_id | %s |" % task["task_id"],
-        "| run_id | %s |" % task["run_id"],
-        "| issue | #%s (%s) |" % (task["issue"], task.get("issue_url", "")),
-        "| repo | %s |" % task["repo"],
-        "| base SHA | %s |" % task["base_sha"],
-        "| head SHA | %s |" % (head or task["base_sha"]),
-        "| status | %s |" % status_cell,
-        "| evidence_class | %s |" % status_cell,
-        "| evidence | %s |" % ("; ".join(evidence_cells) if evidence_cells else "none"),
-        "| blocker | %s |" % cell(blocker, MAX_POST_FIELD, "blocker"),
-        "| next owner decision | %s |" % cell(next_decision, MAX_POST_FIELD,
-                                              "next owner decision"),
+        f"| task_id | {task_id} |",
+        f"| run_id | {run_id} |",
+        f"| issue | #{issue} ({task['issue_url']}) |",
+        f"| repo | {repo} |",
+        f"| base SHA | {base} |",
+        f"| head SHA | {base} |",
+        f"| status | {status} |",
+        f"| evidence_class | {status} |",
+        f"| evidence | {'; '.join(ev) if ev else 'none'} |",
+        f"| blocker | {blocker_cell} |",
+        f"| next owner decision | {decision_cell} |",
         "",
         "Posted by kas_orchestrate as a local, unvalidated agent message.",
         "Not a CI result: it does not authorize merge, release or any write",
