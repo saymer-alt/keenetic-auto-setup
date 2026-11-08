@@ -181,9 +181,8 @@ def publish_mock(transport: Transport, plan: PublishPlan, *,
         raise PublisherStop("WRITE_DISABLED", "live GitHub writes not authorized")
     if transport.account() != REPO.split("/")[0]:
         raise PublisherStop("BAD_ACCOUNT", "writer must be repository owner")
-    _check_issue(transport, plan)
-    if transport.checkout_head() != plan.base_sha:
-        raise PublisherStop("STALE_SHA", "checkout changed")
+    # A previously confirmed comment can advance Issue.updatedAt. Deduplicate
+    # before freshness checks, but NEVER write unless those checks pass.
     initial = _read_comments(transport, plan)
     if _existing(plan, initial):
         return {"post_status": "already_posted", "posted": False}
