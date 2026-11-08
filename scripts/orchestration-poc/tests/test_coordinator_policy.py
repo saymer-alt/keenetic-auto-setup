@@ -15,6 +15,7 @@ BASE = "a" * 40
 HEAD = "b" * 40
 RUN = "1" * 32
 CI_URL = "https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/42479954768"
+NATIVE_URL = "https://github.com/saymer-alt/keenetic-auto-setup/actions/runs/42479955052"
 
 
 def ready(**kw) -> cp.Observation:
@@ -45,6 +46,12 @@ def verified_ci(**kw) -> cp.Observation:
         "ci_verified": True,
         "ci_head_sha": HEAD,
         "ci_run_url": CI_URL,
+        "native_e2e_status": "SUCCESS",
+        "native_e2e_head_sha": HEAD,
+        "native_e2e_run_url": NATIVE_URL,
+        "native_e2e_verified": True,
+        "native_gates_outcome": "PASS",
+        "native_gates_verified": True,
         "review_status": "APPROVED",
         "review_verified": True,
     }
@@ -155,6 +162,90 @@ class C0PolicyTests(unittest.TestCase):
                                         "REVIEW_READY_OWNER_MERGE_GO_REQUIRED")
         self.assertEqual(decision.proposed_state, "OWNER_DECISION")
         self.assertTrue(decision.owner_decision_required)
+
+    def test_green_shell_ci_without_native_e2e_waits(self):
+        self.assert_decision(verified_ci(native_e2e_status="NOT_CHECKED"),
+                             "WAIT", "NATIVE_E2E_NOT_READY")
+
+    def test_pending_native_e2e_waits(self):
+        self.assert_decision(verified_ci(native_e2e_status="PENDING"),
+                             "WAIT", "NATIVE_E2E_NOT_READY")
+
+    def test_native_e2e_missing_provenance_stops(self):
+        for x in (verified_ci(native_e2e_verified=False),
+                  verified_ci(native_e2e_run_url=""),
+                  verified_ci(native_e2e_head_sha="")):
+            with self.subTest(x=x):
+                self.assert_decision(x, "STOP", "NATIVE_E2E_PROVENANCE_MISSING")
+
+    def test_native_e2e_wrong_pr_head_stops(self):
+        self.assert_decision(verified_ci(native_e2e_head_sha=BASE),
+                             "STOP", "NATIVE_E2E_HEAD_SHA_MISMATCH")
+
+    def test_native_error_no_automatic_retry(self):
+        self.assert_decision(verified_ci(native_e2e_status="ERROR"),
+                             "STOP", "NATIVE_E2E_ERROR_UNCERTAIN")
+
+    def test_real_458_case_shell_pass_native_workflow_failure(self):
+        # Reproduces the decision-category split shown by #458 run 42498853709:
+        # shell CI green cannot override native workflow failure.
+        result = self.assert_decision(
+            verified_ci(native_e2e_status="FAILURE"),
+            "OWNER_REVIEW", "NATIVE_E2E_FAILED")
+        self.assertEqual(result.proposed_state, "BLOCKED")
+        self.assertTrue(result.owner_decision_required)
+
+    def test_real_465_case_workflow_green_but_aggregate_gates_failed(self):
+        # A green workflow status is not a proof that gates.json has no FAIL.
+        result = self.assert_decision(
+            verified_ci(native_gates_outcome="FAIL"),
+            "OWNER_REVIEW", "NATIVE_GATES_FAILED")
+        self.assertEqual(result.proposed_state, "BLOCKED")
+        self.assertTrue(result.owner_decision_required)
+
+    def test_green_native_workflow_with_blocked_gates_is_not_full_pass(self):
+        # Reference #465: successful workflow and gates.json BLOCKED can coexist.
+        result = self.assert_decision(
+            verified_ci(native_gates_outcome="BLOCKED"),
+            "OWNER_REVIEW", "NATIVE_GATES_BLOCKED")
+        self.assertEqual(result.proposed_state, "BLOCKED")
+
+    def test_native_aggregate_missing_proof_stops(self):
+        self.assert_decision(verified_ci(native_gates_verified=False),
+                             "STOP", "NATIVE_GATES_PROVENANCE_MISSING")
+
+    def test_native_aggregate_not_tested_is_not_pass(self):
+        for state in ("NOT_TESTED", "NOT_CHECKED"):
+            with self.subTest(state=state):
+                self.assert_decision(verified_ci(native_gates_outcome=state),
+                                     "STOP", "NATIVE_GATES_NOT_PROVEN")
+
+    def test_invalid_native_workflow_url_or_sha_is_bad_observation(self):
+        for x in (verified_ci(native_e2e_run_url=NATIVE_URL + "?access_token=a"),
+                  verified_ci(native_e2e_run_url="https://github.com/other/repo/actions/runs/14"),
+                  verified_ci(native_e2e_head_sha="x" * 40),
+                  verified_ci(native_e2e_run_url=CI_URL)):
+            with self.subTest(x=x):
+                self.assert_decision(x, "STOP", "BAD_OBSERVATION")
+
+    def test_invalid_native_gate_claim_is_bad_observation(self):
+        for x in (verified_ci(native_gates_outcome="SUCCESS"),
+                  verified_ci(native_gates_verified="true"),
+                  verified_ci(native_e2e_verified=1),
+                  verified_ci(native_e2e_status="PASS")):
+            with self.subTest(x=x):
+                self.assert_decision(x, "STOP", "BAD_OBSERVATION")
+
+    def test_fixable_shell_failure_does_not_need_native_result(self):
+        # Native checks may not be run until after a fixable Shell failure.
+        self.assert_decision(verified_ci(
+            ci_status="FAILURE", ci_failure_fixable=True,
+            failure_signature="lint-1",
+            native_e2e_status="NOT_CHECKED",
+            native_e2e_verified=False, native_gates_verified=False,
+            native_e2e_run_url="", native_e2e_head_sha="",
+            native_gates_outcome="NOT_CHECKED"),
+            "PLAN_REWORK", "FIXABLE_CI_FAILURE_WITH_BOUNDED_RETRY")
 
     def test_review_changes_requested_refuses_auto_merge(self):
         self.assert_decision(verified_ci(review_status="CHANGES_REQUESTED"),
