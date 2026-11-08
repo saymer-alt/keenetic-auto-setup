@@ -68,11 +68,20 @@ install.sh): он распознаёт исторические управляе
 дубли прямых строк схлопываются в одну; прямая строка удаляется только если
 строка run-parts существует; любые другие записи crontab не трогаются.
 
-Проверить, какая схема запуска используется:
+Проверить, какая схема запуска используется — **прямая строка** или
+`run-parts` для каталога `cron.5mins`:
 
-```bash
-grep mihomo_watchdog /opt/etc/crontab
+```sh
+grep -E 'mihomo_watchdog|cron[.]5mins' /opt/etc/crontab
+sh /opt/etc/init.d/S10cron status
 ```
+
+`crontab -l` просматривает персональную таблицу пользователя root и может вывести
+`no crontab for root`, хотя системный файл Entware `/opt/etc/crontab`
+содержит исправное расписание. Если в нём есть строка
+`*/5 * * * * root /opt/bin/run-parts /opt/etc/cron.5mins`, она уже запускает
+обёртку `/opt/etc/cron.5mins/mihomo_watchdog`; **не добавляйте дублирующую
+строку только из-за отсутствия имени watchdog в crontab**.
 
 ---
 
@@ -484,23 +493,30 @@ sh -x /opt/etc/cron.5mins/mihomo_watchdog
 
 ### лог пустой
 
-Причины:
+Пустой `/opt/var/log/mihomo_watchdog.log` после установки **сам по себе не
+является признаком поломки**. Установщик создаёт файл заранее, а записи
+появляются только после фактических запусков Watchdog; здоровые проверки затем
+логируются не чаще одного раза в 20 минут. Нужно отличить ещё не выполненный
+цикл от действительно сломанного cron или расписания.
 
-* cron не работает
-* crontab не содержит ни управляемой прямой строки, ни строки run-parts
-  для `cron.5mins` (например, после ручной правки crontab)
+Безопасная проверка без принудительного запуска Watchdog:
 
-Проверка:
-
-```bash
-ps | grep cron
-grep mihomo_watchdog /opt/etc/crontab
+```sh
+sh /opt/etc/init.d/S10cron status
+ps | grep '[c]ron'
+grep -E 'mihomo_watchdog|cron[.]5mins' /opt/etc/crontab
+ls -l /opt/bin/mihomo_watchdog.sh /opt/etc/cron.5mins/mihomo_watchdog
+ls -l /opt/var/log/mihomo_watchdog.log
+tail -n 20 /opt/var/log/mihomo_watchdog.log
 ```
 
-Чинить так (supported path): `curl -fSsL
-https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-watchdog.sh | sh` —
-он нормализует планирование в канонический layout (и мигрирует исторические
-управляемые layout'ы).
+Если cron работает, присутствует ровно один распознанный маршрут (прямой или
+`run-parts`) и обёртка существует, **не переустанавливайте и не запускайте
+скрипт обновления из-за одного пустого лога**. При подтверждённом дефекте
+расписания используйте сначала `kas-update.sh --check` из
+[инструкции по обновлениям](12-updates.md), затем после отдельного решения —
+штатный транзакционный `update-watchdog.sh`. Не добавляйте записи в crontab
+вручную поверх уже работающего `run-parts`.
 
 ---
 
