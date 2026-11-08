@@ -29,6 +29,22 @@ python -m unittest discover -s scripts/orchestration-lease/tests -v
   recovery must verify the previous process stopped before allowing a new
   generation. `recover()` is disabled in Stage A.
 
+
+## Clock safety / evidence gates
+
+Stage A now rejects invalid/negative clock values, local clock rollback, and a
+lease whose issued-at timestamp lies in the local future. Clock jumps forward
+still fail closed when the lease is expired. **These are mock-only local guards;
+clock skew across two physical machines is not solved.** In Stage B, a real
+GitHub-backed transport must define authoritative time or a conservative
+skew-bounded lease protocol and must STOP whenever timing is uncertain. No
+automatic takeover of an expired claim.
+
+The CI workflow has a dedicated **Agent orchestration lease safety** step,
+which runs the `scripts/orchestration-lease/tests` suite only when its test
+file exists. This is distinct from generic shell/native CI; cite the exact
+workflow run/HEAD to prove these tests actually executed.
+
 ## GitHub transport design (future Stage B: separate GO)
 
 GitHub Issue comments/labels are **not atomic locks**. Future transport must
