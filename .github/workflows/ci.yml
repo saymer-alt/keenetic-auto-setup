@@ -34,6 +34,11 @@ jobs:
         if: ${{ hashFiles('scripts/orchestration-poc/kas_orchestrate.py') != '' }}
         run: python3 -m unittest discover -s scripts/orchestration-poc/tests -v
 
+      # Separate mock-only exclusive-lease suite. No GitHub API or LLM calls.
+      - name: Agent orchestration lease safety (no network or model)
+        if: ${{ hashFiles('scripts/orchestration-lease/tests/test_claim_lease.py') != '' }}
+        run: python3 -m unittest discover -s scripts/orchestration-lease/tests -v
+
       - name: Shell syntax
         shell: bash
         run: |
