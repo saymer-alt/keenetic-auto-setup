@@ -16,8 +16,8 @@
   "integrationBoundary": "Variant A (docs/35-web-autosetup-stage-a.md §4.1): classic <script defer>, global namespace window.KasMini, handoff only through the exported API; the panel never reads kas-mini DOM",
   "files": {
     "kas-mini.js": {
-      "sha256": "9aee661c967f3011c49aef6833502c77b64a35637e7488d9af8516d991effb19",
-      "bytes": 93196
+      "sha256": "e191ecf33da7419123cba44343b1bfe4784acb6eb80da2c312dd9b962f05da9d",
+      "bytes": 93186
     }
   },
   "updatePolicy": "Update only via an explicit sync PR that bumps sourceSha and regenerates this file with build-vendor.mjs --update-provenance; CI rebuilds from sourceSha and requires a byte-identical committed asset (web-control-center.yml)."

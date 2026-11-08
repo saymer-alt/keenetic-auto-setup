@@ -26,7 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const panelDir = path.resolve(here, '..', '..'); // web/control-center
+const panelDir = path.resolve(here, '..'); // web/control-center (flat kas-mini-vendor layout)
 const committedAsset = path.join(panelDir, 'web', 'kas-mini.js');
 const provenancePath = path.join(here, 'PROVENANCE.json');
 
@@ -85,19 +85,24 @@ if (srcDir) {
 // 2. esbuild at the version locked by the pinned tree (devDependency, package-lock.json).
 let esbuildVersion = 'ESBUILD_BIN override';
 let esbuildArgs = null;
-const esbuildJs = path.join(srcDir, 'node_modules', 'esbuild', 'bin', 'esbuild');
 if (process.env.ESBUILD_BIN) {
     esbuildArgs = [process.env.ESBUILD_BIN];
     const v = spawnSync(process.env.ESBUILD_BIN, ['--version'], { encoding: 'utf8' });
     if (v.status === 0 && String(v.stdout || '').trim()) esbuildVersion = String(v.stdout).trim() + ' (ESBUILD_BIN)';
 } else {
-    if (!existsSync(esbuildJs)) {
+    const esbuildPkgBin = path.join(srcDir, 'node_modules', '@esbuild', `${process.platform}-${process.arch}`, 'bin', 'esbuild' + (process.platform === 'win32' ? '.exe' : ''));
+    const esbuildShim = path.join(srcDir, 'node_modules', 'esbuild', 'bin', 'esbuild');
+    if (!existsSync(esbuildPkgBin) && !existsSync(esbuildShim)) {
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
         const res = spawnSync(npmCmd, ['ci', '--no-audit', '--no-fund'], { cwd: srcDir, stdio: 'inherit', shell: process.platform === 'win32' });
         if (res.status !== 0) fail(`npm ci failed in the pinned tree (exit ${res.status}); or set ESBUILD_BIN`);
     }
     esbuildVersion = JSON.parse(readFileSync(path.join(srcDir, 'node_modules', 'esbuild', 'package.json'), 'utf8')).version;
-    esbuildArgs = [process.execPath, esbuildJs];
+    // esbuild's postinstall replaces the JS shim with the native binary in newer
+    // versions — exec ELF/PE directly, run only a JS shim through node.
+    let binPath = existsSync(esbuildPkgBin) ? esbuildPkgBin : esbuildShim;
+    const magic = readFileSync(binPath).subarray(0, 2).toString('latin1');
+    esbuildArgs = (magic === 'ELF' || magic === 'MZ') ? [binPath] : [process.execPath, binPath];
 }
 
 // 3. KAS-owned adapter entries are compiled from inside the pinned tree.

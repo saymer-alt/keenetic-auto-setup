@@ -19,6 +19,9 @@ export {
     MINI_NOTES,
 } from './entry-kas-mini.js';
 export { mountKasMini } from './kas-mini-mount.js';
+// Explicit import AND re-export: `export … from` alone does not create a local
+// binding, and the guarded auto-mount below calls mountKasMini directly.
+import { mountKasMini } from './kas-mini-mount.js';
 
 // Embedded provenance: must equal PROVENANCE.json sourceSha (asserted by
 // tests/kas-mini-vendor.test.cjs and web/control-center/kas_mini_vendor_test.go).
