@@ -660,15 +660,17 @@ def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     if not task:
         raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
     guard_stale_sha(runner, repo_path, task["base_sha"])
-    if args.post:
-        if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
-            raise Stop("WRITE_NOT_ALLOWED",
-                       "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
-        post_checkpoint(runner, task["repo"], task["issue"], "")
+    # Verify any earned PASS before an external posting attempt. The writer
+    # remains disabled until separate owner GO-B and evidence verification.
     if args.status == "PASS":
         guard_earned_pass(store, task)
     md = build_checkpoint(task, args.status, args.head_sha, args.evidence,
                           args.blocker, args.next_decision)
+    if args.post:
+        if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
+            raise Stop("WRITE_NOT_ALLOWED",
+                       "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
+        post_checkpoint(runner, task["repo"], task["issue"], md)
     store.checkpoint_file.write_text(md, encoding="utf-8")
     store.transition(task, "OWNER_DECISION" if args.status in ("PASS", "FAIL")
                      else ("BLOCKED" if args.status == "BLOCKED" else "REVIEW_READY"),
