@@ -192,6 +192,9 @@ def publish_mock(transport: Transport, plan: PublishPlan, *,
     again = _read_comments(transport, plan)
     if again != initial:
         raise PublisherStop("CONCURRENT_CHANGE", "comments changed before posting")
+    # The Issue may change while comments are being paginated; check a second
+    # time immediately before attempting the non-atomic write.
+    _check_issue(transport, plan)
     try:
         transport.post_comment(plan.repo, plan.issue, plan.body)
     except Exception as exc:
