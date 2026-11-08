@@ -117,6 +117,15 @@ class PublisherTests(unittest.TestCase):
         out = cp.publish_mock(self.backend, self.plan, allow_mock_write=True)
         self.assertEqual(out, {"post_status": "already_posted", "posted": False})
 
+    def test_duplicate_after_own_comment_updates_issue_no_op(self):
+        # GitHub may advance updatedAt when the original checkpoint is posted.
+        # A verified identical marker must return a read-only idempotent no-op.
+        self.backend.issued["updatedAt"] = "later"
+        self.backend.comments.append({"body": self.plan.body})
+        out = cp.publish_mock(self.backend, self.plan, allow_mock_write=True)
+        self.assertEqual(out["post_status"], "already_posted")
+        self.assertNotIn("post", self.backend.calls)
+
     def test_same_run_different_content_stops(self):
         self.backend.comments.append({"body": self.plan.marker + "\nother payload"})
         self.assert_stop("DUPLICATE_CONFLICT", lambda: cp.publish_mock(
