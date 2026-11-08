@@ -693,16 +693,19 @@ class CheckpointPostTests(unittest.TestCase):
 
     def queue_post_reads(self, comment_pages: list | None = None,
                          issue: dict | None = None) -> None:
-        """Queue the reads of the guarded post path in order: sha (initial
-        cmd_checkpoint guard), sha (guarded-path re-verify), auth, user,
-        issue refetch, comment pages."""
+        """Queue initial SHA, guarded checks, all comments, then final fences."""
         self.runner.push_git_sha()
         self.runner.push_git_sha()
         self.runner.push_auth_ok()
         self.runner.push_gh_user()
         self.runner.push_gh_issue(issue)
         for page in (comment_pages if comment_pages is not None else [[]]):
+            if isinstance(page, list):
+                page = [{**c, "user": c.get("user", {"login": "saymer-alt"})}
+                        if isinstance(c, dict) else c for c in page]
             self.runner.push(json.dumps(page))
+        self.runner.push_git_sha()
+        self.runner.push_gh_issue(issue)
 
     def run_post(self, args: argparse.Namespace, live: bool = True):
         gh_runner = ko.GhRunner(self.runner)
@@ -756,7 +759,10 @@ class CheckpointPostTests(unittest.TestCase):
     def test_duplicate_marker_returns_already_posted_no_second_comment(self) -> None:
         task = self.store.load()
         marker = ko.checkpoint_marker(task, "NOT_TESTED")
-        self.queue_post_reads(comment_pages=[[{"body": "earlier note\n" + marker}]])
+        payload = ko.build_post_payload(task, "NOT_TESTED", "",
+                                        ["https://example.test/ev"],
+                                        "live post not GOed yet", "owner GO-B")
+        self.queue_post_reads(comment_pages=[[{"body": payload}]])
         res = self.run_post(self.post_args())
         self.assertEqual(res["post_status"], "already_posted")
         self.assertFalse(res["posted"])
@@ -768,7 +774,10 @@ class CheckpointPostTests(unittest.TestCase):
         task = self.store.load()
         marker = ko.checkpoint_marker(task, "NOT_TESTED")
         page1 = [{"body": f"filler comment {i}"} for i in range(100)]
-        self.queue_post_reads(comment_pages=[page1, [{"body": marker}]])
+        payload = ko.build_post_payload(task, "NOT_TESTED", "",
+                                        ["https://example.test/ev"],
+                                        "live post not GOed yet", "owner GO-B")
+        self.queue_post_reads(comment_pages=[page1, [{"body": payload}]])
         res = self.run_post(self.post_args())
         self.assertEqual(res["post_status"], "already_posted")
         self.assertEqual(self.writer.posted, [])
@@ -1029,18 +1038,69 @@ class CheckpointPostTests(unittest.TestCase):
         self.assertFalse(self.store.checkpoint_file.exists())
 
     def test_real_writer_posts_via_stdin_not_argv(self) -> None:
-        self.runner.push("https://github.com/saymer-alt/keenetic-auto-setup/"
-                         "issues/430#issuecomment-123456")
+        url = ("https://github.com/saymer-alt/keenetic-auto-setup/"
+               "issues/430#issuecomment-123456")
+        self.runner.push(url)
+        self.runner.push(json.dumps({
+            "id": 123456, "html_url": url,
+            "user": {"login": "saymer-alt"}, "body": "payload body"}))
         writer = ko.GhCommentWriter(run=self.runner)
         with patch.object(ko, "LIVE_POST_ENABLED", True):
             res = writer.post(ko.DEFAULT_REPO, 430, "payload body")
         self.assertEqual(res["post_status"], "posted")
-        self.assertIn("#issuecomment-123456", res["url"])
-        cmd = self.runner.calls[-1]  # the writer's gh call, not do_fetch's
+        self.assertEqual(res["url"], url)
+        cmd = self.runner.calls[-2]  # write, then independent read-back
         self.assertEqual(cmd[:2], ["gh", "issue"])
         self.assertIn("--body-file", cmd)
-        self.assertEqual(cmd[-1], "-", "body must travel via stdin")
+        self.assertEqual(cmd[-1], "-")
         self.assertNotIn("payload body", " ".join(cmd))
+        self.assertEqual(self.runner.calls[-1][1], "api")
+
+    def test_writer_rejects_bad_readback(self) -> None:
+        url = ("https://github.com/saymer-alt/keenetic-auto-setup/"
+               "issues/430#issuecomment-123456")
+        for payload in (
+            {"id": 123456, "html_url": url,
+             "user": {"login": "other-user"}, "body": "payload body"},
+            {"id": 123456, "html_url": url,
+             "user": {"login": "saymer-alt"}, "body": "tampered"},
+            {"id": 99999, "html_url": url,
+             "user": {"login": "saymer-alt"}, "body": "payload body"}
+        ):
+            calls = []
+            def fake(cmd, **kw):
+                calls.append(cmd)
+                return subprocess.CompletedProcess([], 0, url if len(calls) == 1
+                                                   else json.dumps(payload), "")
+            writer = ko.GhCommentWriter(run=fake)
+            with self.subTest(payload=payload), patch.object(ko, "LIVE_POST_ENABLED", True):
+                with self.assertRaises(ko.Stop) as cm:
+                    writer.post(ko.DEFAULT_REPO, 430, "payload body")
+                self.assertEqual(cm.exception.code, "POST_UNCERTAIN")
+                self.assertEqual(len(calls), 2)
+
+    def test_foreign_marker_not_idempotent(self) -> None:
+        task = self.store.load()
+        payload = ko.build_post_payload(task, "NOT_TESTED", "",
+                                        ["https://example.test/ev"],
+                                        "live post not GOed yet", "owner GO-B")
+        self.queue_post_reads(comment_pages=[[{
+            "body": payload, "user": {"login": "untrusted-user"}}]])
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "MARKER_OWNER_MISMATCH")
+        self.assertFalse(self.writer.posted)
+
+    def test_comment_conflict_not_idempotent(self) -> None:
+        task = self.store.load()
+        payload = ko.build_post_payload(task, "NOT_TESTED", "",
+                                        ["https://example.test/ev"],
+                                        "live post not GOed yet", "owner GO-B")
+        self.queue_post_reads(comment_pages=[[{"body": payload + "\nchanged"}]])
+        with self.assertRaises(ko.Stop) as cm:
+            self.run_post(self.post_args())
+        self.assertEqual(cm.exception.code, "MARKER_CONFLICT")
+        self.assertFalse(self.writer.posted)
 
     def test_real_writer_refuses_when_gate_closed(self) -> None:
         writer = ko.GhCommentWriter(
