@@ -1,0 +1,3 @@
+# Byte-identity contract (Stage B1, issue #425): the vendored kas-mini bundle is hashed
+# in PROVENANCE.json and rebuilt byte-identically in CI — never line-ending-converted.
+web/kas-mini.js -text

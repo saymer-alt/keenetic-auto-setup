@@ -1,0 +1,24 @@
+{
+  "asset": "web/control-center/web/kas-mini.js",
+  "sourceRepo": "https://github.com/saymer-alt/web4core",
+  "sourceSha": "519da90a6bc75049498169f0fcd7a02054f7e104",
+  "sourcePull": 28,
+  "sourceContext": "branch poc/kas-mini-mihomo-425 (PR saymer-alt/web4core#28, Phase 0), issue saymer-alt/keenetic-auto-setup#425",
+  "upstreamEntry": "kas-mini/entry-kas-mini.js (unchanged upstream source)",
+  "kasEntries": [
+    "vendor-entry.js",
+    "kas-mini-mount.js"
+  ],
+  "esbuild": {
+    "version": "0.27.2 (ESBUILD_BIN)",
+    "flags": "--bundle --format=iife --global-name=KasMini --platform=browser --minify --charset=utf8"
+  },
+  "integrationBoundary": "Variant A (docs/35-web-autosetup-stage-a.md §4.1): classic <script defer>, global namespace window.KasMini, handoff only through the exported API; the panel never reads kas-mini DOM",
+  "files": {
+    "kas-mini.js": {
+      "sha256": "e191ecf33da7419123cba44343b1bfe4784acb6eb80da2c312dd9b962f05da9d",
+      "bytes": 93186
+    }
+  },
+  "updatePolicy": "Update only via an explicit sync PR that bumps sourceSha and regenerates this file with build-vendor.mjs --update-provenance; CI rebuilds from sourceSha and requires a byte-identical committed asset (web-control-center.yml)."
+}
