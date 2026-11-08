@@ -34,8 +34,9 @@ python scripts/orchestration-poc/kas_orchestrate.py --repo-path . \
   --state-dir "$TEMP/kas-orch" reset --confirm
 ```
 
-`--json` makes every command machine-readable (ChatGPT reads the file, the
-owner pastes nothing).
+`--json` makes every command machine-readable **on the local PC**. The output
+is not automatically visible to ChatGPT: until a safe GitHub checkpoint writer
+is accepted under a separate GO, automatic result handoff remains NOT_VERIFIED.
 
 ## Executors
 
@@ -47,11 +48,15 @@ owner pastes nothing).
   (`account-provider:account:<providerId>:identity`), which this machine does
   not have — the CLI falls back to the first personal provider rule or fails
   with "Select a model". Any credential fix is a separate owner GO — see the
-  docs file for the GO-A/GO-A2 evidence.
+  docs file and Issue #430 for GO-A/GO-A2. GO-A3 ended `FAILED_AUTH_TIMEOUT`
+  without completing OAuth sign-in or changing saved credentials. No further
+  login/credential edits or API usage are authorized by this POC.
 
 ## Safety properties
 
-- One active task; duplicate dispatch and re-fetch while active → `STOP_*`;
+- One active task; each fresh fetch generates a unique random `run_id` even
+  when the deterministic `task_id` and base SHA repeat; duplicate dispatch
+  and re-fetch while active → `STOP_*`;
   an OS-level interprocess lock (`fcntl`/`msvcrt`) serializes all commands per
   state dir and is released automatically if a process dies (`STOP_LOCKED`).
 - GitHub account must equal the repository owner (`gh api user`) and the issue
@@ -71,12 +76,15 @@ owner pastes nothing).
   `ELECTRON_RUN_AS_NODE=1` and `--mode plan` only; a non-zero executor exit
   code or timeout moves the task to BLOCKED (`STOP_EXECUTOR_FAILED` /
   `STOP_EXECUTOR_TIMEOUT`). Manual `checkpoint --status PASS` additionally
-  requires REVIEW_READY and a same-task journal record of successful real
-  `zcode-cli` execution **after the most recent fetch** (`STOP_PASS_UNEARNED`);
-  mock/dry-run or old successes retained by reset cannot earn PASS.
-- Posting a checkpoint to GitHub is double-locked
-  (`--post` + `--confirm` + `KAS_ORCH_ALLOW_WRITE=1`) and additionally stopped
-  in this POC build; the file is delivered manually.
+  requires REVIEW_READY and a matching task_id **and run_id** journal record
+  of successful real `zcode-cli` execution after the corresponding fetch
+  (`STOP_PASS_UNEARNED`). Missing/legacy run IDs, mock/dry-run or historical
+  successes retained by reset cannot earn PASS. Executor exit 0 is not proof
+  of validated implementation, CI or real-device FIELD PASS.
+- Earned-PASS validation executes **before** any prospective posting. GitHub
+  posting remains double-locked (`--post` + `--confirm` +
+  `KAS_ORCH_ALLOW_WRITE=1`) and fully **disabled** in this POC, even if all
+  switches are set. No write, webhook or CI dispatch is performed.
 - Exit codes: `0` OK, `2` STOP (safe refusal), `1` internal error.
 
 ## Tests (no network, mock GitHub)
@@ -85,11 +93,12 @@ owner pastes nothing).
 python -m unittest discover -s scripts/orchestration-poc/tests -v
 ```
 
-The expanded 35-test mock suite covers the happy path and negative cases: stale SHA at
+The expanded 39-test mock suite covers the happy path and negative cases: stale SHA at
 dispatch/checkpoint; an Issue closed, edited, renumbered, or unreachable after
 fetch; strict URL matching; duplicate dispatch; malformed data; wrong GitHub
 account; missing auth; lock contention; executor failure and timeout (checking
-`ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state); unearned PASS claims (READY/mock), and posting guards. The `mock` executor proves the state machine
+`ELECTRON_RUN_AS_NODE=1`, `--mode plan` and BLOCKED state); unearned PASS claims (READY/mock/other run_id/legacy state), and proof-before-
+posting guards. The `mock` executor proves the state machine
 only — it is NOT proof of full automation.
 
 ## Disable / uninstall

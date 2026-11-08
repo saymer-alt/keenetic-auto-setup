@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -40,6 +41,7 @@ REAL_EXECUTOR = "zcode-cli"  # only this executor can earn a PASS checkpoint
 # Structured checkpoint fields required by issue #430 (Stage 1).
 CHECKPOINT_FIELDS = (
     "task_id",
+    "run_id",
     "issue",
     "repo",
     "base_sha",
@@ -300,7 +302,8 @@ class TaskStore:
         with self.journal.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event,
                                  "from": old, "to": new_state,
-                                 "task_id": task.get("task_id")}, ensure_ascii=False) + "\n")
+                                 "task_id": task.get("task_id"),
+                                 "run_id": task.get("run_id")}, ensure_ascii=False) + "\n")
 
     def reset(self) -> None:
         for f in (self.task_file, self.contract_file, self.handoff_file, self.checkpoint_file):
@@ -319,6 +322,7 @@ def build_contract(repo: str, issue: dict[str, Any], base_sha: str, body: str,
     return {
         "schema": "kas-orchestration-poc/1",
         "task_id": f"issue-{number}-{base_sha[:12]}",
+        "run_id": uuid.uuid4().hex,
         "issue": number,
         "issue_url": issue.get("url", ""),
         "issue_updated_at": issue["updatedAt"],
@@ -347,6 +351,7 @@ def render_handoff(contract: dict[str, Any]) -> str:
     return (
         "# KAS orchestration handoff — task {task_id}\n\n"
         "- Issue: {issue} ({issue_url})\n"
+        "- Run ID: {run_id}\n"
         "- Issue last updated: {issue_updated_at}\n"
         "- Repo: {repo}\n"
         "- Base SHA: {base_sha}\n"
@@ -378,7 +383,7 @@ def zcode_cli_command(contract: dict[str, Any], repo_path: Path, cli_path: Path,
         "-p",
         ("Read the handoff file {handoff} and follow it: read the task via "
          "`gh issue view {issue} --repo {repo}` (task_id {task_id}, "
-         "base_sha {base_sha}). Work in plan mode; produce a structured "
+         "base_sha {base_sha}, run_id {run_id}). Work in plan mode; produce a structured "
          "checkpoint; STOP on any stop condition. Do not write to "
          "main/stable.").format(handoff=handoff_path, **contract),
     ]
@@ -433,18 +438,21 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
     verified executor success when the record proves it: the task state must
     be REVIEW_READY (set exclusively by a completed dispatch) and the
     append-only journal must hold the success event of the real executor
-    after the latest fetch event for this task_id (which can repeat after
-    reset at the same SHA). Mock/dry-run runs, historical success, and bare
-    manual declarations never earn PASS (issue #430 GO-A2 review fix)."""
+    in the same unique fetch/run cycle after its fetched event. A task_id
+    can repeat after reset at the same SHA; run_id never repeats under normal
+    generation. Local journal does NOT verify implementation, CI or FIELD."""
+    run_id = task.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) != 32 or any(
+            char not in "0123456789abcdef" for char in run_id):
+        raise Stop("PASS_UNEARNED", "missing or malformed run_id; re-fetch this task")
     if task.get("state") != "REVIEW_READY":
         raise Stop("PASS_UNEARNED",
                    f"PASS requires a completed real executor run for this exact task: "
                    f"state is {task.get('state')!r}, need REVIEW_READY; "
                    "use NOT_TESTED/FAIL/BLOCKED for everything else")
     ok_event = f"executor:{REAL_EXECUTOR}:ok"
-    # task_id is deterministic for an Issue and base SHA. A reset preserves
-    # the audit journal, so a past executor success must NOT earn PASS for a
-    # newly fetched task with the same task_id.
+    # Reset preserves the journal. Do not use an old fetch/exec cycle, even
+    # if the deterministic task_id and base_sha are exactly the same.
     fetch_seen = False
     success_since_fetch = False
     if store.journal.exists():
@@ -455,7 +463,8 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
                 raise Stop("PASS_UNEARNED", "journal contains invalid JSON; proof is unreliable") from exc
             if not isinstance(ev, dict):
                 raise Stop("PASS_UNEARNED", "journal event is not a JSON object")
-            if ev.get("task_id") != task.get("task_id"):
+            if (ev.get("task_id") != task.get("task_id") or
+                    ev.get("run_id") != run_id):
                 continue
             if ev.get("event") == "fetched":
                 fetch_seen = True
@@ -480,6 +489,7 @@ def build_checkpoint(task: dict[str, Any], status: str, head_sha: str,
         "| field | value |",
         "|---|---|",
         "| task_id | %s |" % task["task_id"],
+        "| run_id | %s |" % task.get("run_id", "NOT_AVAILABLE"),
         "| issue | #%s (%s) |" % (task["issue"], task.get("issue_url", "")),
         "| repo | %s |" % task["repo"],
         "| base SHA | %s |" % task["base_sha"],
@@ -557,8 +567,8 @@ def main(argv: list[str] | None = None) -> int:
                 task = store.load()
                 if not task:
                     raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
-                result.update({"task_id": task["task_id"], "state": task["state"],
-                               "base_sha": task["base_sha"]})
+                result.update({"task_id": task["task_id"], "run_id": task.get("run_id"),
+                               "state": task["state"], "base_sha": task["base_sha"]})
             elif args.cmd == "dispatch":
                 result.update(cmd_dispatch(args, runner, store, repo_path))
             elif args.cmd == "checkpoint":
@@ -597,7 +607,8 @@ def cmd_fetch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     store.transition(contract, "READY", "fetched")
     store.contract_file.write_text(json.dumps(contract, indent=2, ensure_ascii=False), encoding="utf-8")
     store.handoff_file.write_text(render_handoff(contract), encoding="utf-8")
-    return {"task_id": contract["task_id"], "state": "READY", "base_sha": base_sha,
+    return {"task_id": contract["task_id"], "run_id": contract["run_id"],
+            "state": "READY", "base_sha": base_sha,
             "body_truncated": truncated,
             "handoff": str(store.handoff_file), "contract": str(store.contract_file)}
 
@@ -620,11 +631,13 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
         # Nothing runs, so the task must not claim RUNNING.
         with store.journal.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": "dispatch:dry-run",
-                                 "task_id": task["task_id"]}, ensure_ascii=False) + "\n")
+                                 "task_id": task["task_id"], "run_id": task.get("run_id")},
+                                ensure_ascii=False) + "\n")
         out = run_executor(task, args.executor, runner, store, repo_path,
                            Path(args.zcode_cli) if args.zcode_cli else None,
                            Path(args.zcode_electron) if args.zcode_electron else None)
-        return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
+        return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+                "state": task["state"], "executor": args.executor,
                 "output": out["output"][:4000]}
     store.transition(task, "CLAIMED", f"dispatch:{args.executor}")
     store.transition(task, "RUNNING", f"executor:{args.executor}")
@@ -636,7 +649,8 @@ def cmd_dispatch(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
         store.transition(task, "BLOCKED", f"executor:{args.executor}:failed")
         raise
     store.transition(task, "REVIEW_READY", f"executor:{args.executor}:ok")
-    return {"task_id": task["task_id"], "state": task["state"], "executor": args.executor,
+    return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+            "state": task["state"], "executor": args.executor,
             "exit_code": res["exit_code"], "output": res["output"][:4000]}
 
 
@@ -646,20 +660,23 @@ def cmd_checkpoint(args: argparse.Namespace, runner: GhRunner, store: TaskStore,
     if not task:
         raise Stop("NO_ACTIVE_TASK", "no task in state dir; run `fetch --issue N` first")
     guard_stale_sha(runner, repo_path, task["base_sha"])
-    if args.post:
-        if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
-            raise Stop("WRITE_NOT_ALLOWED",
-                       "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
-        post_checkpoint(runner, task["repo"], task["issue"], "")
+    # Verify any earned PASS before an external posting attempt. The writer
+    # remains disabled until separate owner GO-B and evidence verification.
     if args.status == "PASS":
         guard_earned_pass(store, task)
     md = build_checkpoint(task, args.status, args.head_sha, args.evidence,
                           args.blocker, args.next_decision)
+    if args.post:
+        if os.environ.get("KAS_ORCH_ALLOW_WRITE") != "1" or not args.confirm:
+            raise Stop("WRITE_NOT_ALLOWED",
+                       "posting requires KAS_ORCH_ALLOW_WRITE=1 AND --confirm AND owner GO")
+        post_checkpoint(runner, task["repo"], task["issue"], md)
     store.checkpoint_file.write_text(md, encoding="utf-8")
     store.transition(task, "OWNER_DECISION" if args.status in ("PASS", "FAIL")
                      else ("BLOCKED" if args.status == "BLOCKED" else "REVIEW_READY"),
                      f"checkpoint:{args.status}")
-    return {"task_id": task["task_id"], "status": args.status,
+    return {"task_id": task["task_id"], "run_id": task.get("run_id"),
+            "status": args.status,
             "checkpoint": str(store.checkpoint_file), "posted": False,
             "fields": list(CHECKPOINT_FIELDS)}
 

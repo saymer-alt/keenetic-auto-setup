@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 POC_DIR = Path(__file__).resolve().parents[1]
@@ -93,12 +94,15 @@ class FetchTests(unittest.TestCase):
         res = do_fetch(self.runner, self.store)
         self.assertEqual(res["state"], "READY")
         self.assertTrue(res["task_id"].startswith("issue-430-db36be0"))
+        self.assertEqual(len(res["run_id"]), 32)
+        self.assertTrue(all(c in "0123456789abcdef" for c in res["run_id"]))
         contract = json.loads(self.store.contract_file.read_text(encoding="utf-8"))
         for field in ("task_id", "issue", "issue_updated_at", "repo", "base_sha", "intent",
                       "DoD", "required_gates", "stop_conditions", "status"):
             self.assertIn(field, contract)
         handoff = self.store.handoff_file.read_text(encoding="utf-8")
         self.assertIn("gh issue view 430 --repo saymer-alt/keenetic-auto-setup", handoff)
+        self.assertIn(f"Run ID: {res['run_id']}", handoff)
 
     def test_fetch_closed_issue_stops(self) -> None:
         self.runner.push_auth_ok()
@@ -473,9 +477,11 @@ class CheckpointTests(unittest.TestCase):
         old = self.store.load()
         self.store.transition(old, "REVIEW_READY", "executor:zcode-cli:ok")
         previous_id = old["task_id"]
+        previous_run_id = old["run_id"]
         self.store.reset()
         do_fetch(self.runner, self.store)
         self.assertEqual(self.store.load()["task_id"], previous_id)
+        self.assertNotEqual(self.store.load()["run_id"], previous_run_id)
         self.runner.push_git_sha()
         self.runner.push_gh_issue()  # #446 freshness guard on new mock dispatch
         ko.cmd_dispatch(ko.parser_namespace({
@@ -494,6 +500,60 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(self.store.load()["state"], "REVIEW_READY")
         self.assertFalse(self.store.checkpoint_file.exists())
 
+    def test_checkpoint_rejects_success_from_other_run_id(self) -> None:
+        # Matching task_id and current REVIEW_READY do not authorize a different run.
+        task = self.store.load()
+        original_run_id = task["run_id"]
+        self.store.transition(task, "REVIEW_READY", "executor:zcode-cli:ok")
+        task["run_id"] = "f" * 32
+        self.store.save(task)
+        with self.assertRaises(ko.Stop) as cm:
+            ko.guard_earned_pass(self.store, task)
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+        self.assertNotEqual(original_run_id, task["run_id"])
+
+    def test_checkpoint_rejects_missing_run_id_even_with_old_journal(self) -> None:
+        task = self.store.load()
+        self.store.transition(task, "REVIEW_READY", "executor:zcode-cli:ok")
+        task.pop("run_id")
+        self.store.save(task)
+        with self.assertRaises(ko.Stop) as cm:
+            ko.guard_earned_pass(self.store, task)
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+
+    def test_checkpoint_post_optin_cannot_bypass_unearned_pass(self) -> None:
+        # Even when write knobs are provided, proof must run before posting.
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "PASS", "evidence": [], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": True,
+            "confirm": True, "state_dir": str(self.store.dir), "json": False,
+        })
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}):
+            with patch.object(ko, "post_checkpoint",
+                              side_effect=AssertionError("no write on unearned PASS")) as writer:
+                with self.assertRaises(ko.Stop) as cm:
+                    ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+                writer.assert_not_called()
+        self.assertEqual(cm.exception.code, "PASS_UNEARNED")
+        self.assertEqual(self.store.load()["state"], "READY")
+        self.assertFalse(self.store.checkpoint_file.exists())
+
+    def test_checkpoint_post_disabled_even_with_optin(self) -> None:
+        self.runner.push_git_sha()
+        args = ko.parser_namespace({
+            "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
+            "status": "NOT_TESTED", "evidence": [], "blocker": "",
+            "next_decision": "review", "head_sha": "", "post": True,
+            "confirm": True, "state_dir": str(self.store.dir), "json": False,
+        })
+        with patch.dict(ko.os.environ, {"KAS_ORCH_ALLOW_WRITE": "1"}):
+            with self.assertRaises(ko.Stop) as cm:
+                ko.cmd_checkpoint(args, ko.GhRunner(self.runner), self.store, POC_DIR)
+        self.assertEqual(cm.exception.code, "WRITE_NOT_ALLOWED")
+        self.assertEqual(self.store.load()["state"], "READY")
+        self.assertFalse(self.store.checkpoint_file.exists())
     def test_checkpoint_pass_earned_after_real_executor_ok(self) -> None:
         # A recorded successful zcode-cli run earns PASS (guard stays silent).
         self.runner.push_git_sha()
