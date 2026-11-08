@@ -129,6 +129,17 @@ class Coordinator:
     def __init__(self, store: Store, issues: IssueReader,
                  now: Callable[[], int]) -> None:
         self.store, self.issues, self.now = store, issues, now
+        # Local conservative clock rollback guard. NOT a cross-host time authority.
+        self._last_clock: int | None = None
+
+    def _time(self) -> int:
+        stamp = self.now()
+        if type(stamp) is not int or stamp < 0:
+            raise LeaseStop("CLOCK_UNCERTAIN", "clock must return nonnegative integer seconds")
+        if self._last_clock is not None and stamp < self._last_clock:
+            raise LeaseStop("CLOCK_UNCERTAIN", "local clock moved backwards; STOP")
+        self._last_clock = stamp
+        return stamp
 
     def _issue_open(self, issue: int) -> None:
         data = self.issues.read(REPO, issue)
@@ -162,7 +173,9 @@ class Coordinator:
         self._ttl(ttl)
         self._issue_open(issue)
         old = self._read(issue)
-        stamp = self.now()
+        stamp = self._time()
+        if old is not None and stamp < old.lease.issued_at:
+            raise LeaseStop("CLOCK_UNCERTAIN", "stored lease timestamp is in the future")
         if old is not None:
             prev = old.lease
             if prev.state == "ACTIVE":
@@ -188,14 +201,17 @@ class Coordinator:
             raise LeaseStop("STALE_LEASE", "claim ref/generation/run changed")
         if current.lease.state != "ACTIVE":
             raise LeaseStop("NOT_ACTIVE", "released claim cannot perform work")
-        if self.now() >= current.lease.expires_at:
+        stamp = self._time()
+        if stamp < current.lease.issued_at:
+            raise LeaseStop("CLOCK_UNCERTAIN", "lease timestamp is in the future")
+        if stamp >= current.lease.expires_at:
             raise LeaseStop("EXPIRED_NEEDS_OWNER", "cannot act after expiry")
         return current
 
     def renew(self, claimed: Snapshot, ttl: int = 300) -> Snapshot:
         self._ttl(ttl)
         current = self.fence(claimed)
-        stamp = self.now()
+        stamp = self._time()
         updated = replace(current.lease, expires_at=stamp + ttl)
         if updated.expires_at <= current.lease.expires_at:
             raise LeaseStop("NON_MONOTONIC", "renewal must move expiration forward")
@@ -212,7 +228,10 @@ class Coordinator:
         current = self._read(issue)
         if current is None or current.lease.state == "RELEASED":
             return "AVAILABLE"
-        if self.now() >= current.lease.expires_at:
+        stamp = self._time()
+        if stamp < current.lease.issued_at:
+            raise LeaseStop("CLOCK_UNCERTAIN", "stored lease timestamp is in the future")
+        if stamp >= current.lease.expires_at:
             return "EXPIRED_NEEDS_OWNER"
         return "CLAIMED"
 
