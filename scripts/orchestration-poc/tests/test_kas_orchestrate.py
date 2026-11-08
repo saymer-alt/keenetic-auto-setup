@@ -407,7 +407,7 @@ class CheckpointTests(unittest.TestCase):
         self.runner.push_git_sha()  # guard_stale_sha at checkpoint
         args = ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
-            "status": "NOT_TESTED", "evidence": ["https://example.test/ev1"],
+            "status": "NOT_TESTED", "evidence": ["https://github.com/saymer-alt/keenetic-auto-setup/issues/4301"],
             "blocker": "no verified executor path yet", "next_decision": "owner GO for dispatch",
             "head_sha": "", "post": False, "confirm": False,
             "state_dir": str(self.store.dir), "json": False,
@@ -420,7 +420,7 @@ class CheckpointTests(unittest.TestCase):
         for field in ko.CHECKPOINT_FIELDS:
             self.assertIn(rendered.get(field, field), md)
         self.assertIn("NOT_TESTED", md)
-        self.assertIn("https://example.test/ev1", md)
+        self.assertIn("https://github.com/saymer-alt/keenetic-auto-setup/issues/4301", md)
 
     def test_checkpoint_post_refused_without_optin(self) -> None:
         self.runner.push_git_sha()  # guard_stale_sha at checkpoint
@@ -685,7 +685,7 @@ class CheckpointPostTests(unittest.TestCase):
         return ko.parser_namespace({
             "cmd": "checkpoint", "repo": ko.DEFAULT_REPO,
             "status": status, "evidence": evidence if evidence is not None else
-            ["https://example.test/ev"],
+            ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430"],
             "blocker": blocker, "next_decision": next_decision,
             "head_sha": "", "post": True, "confirm": True,
             "state_dir": str(self.store.dir), "json": False,
@@ -760,7 +760,7 @@ class CheckpointPostTests(unittest.TestCase):
         task = self.store.load()
         marker = ko.checkpoint_marker(task, "NOT_TESTED")
         payload = ko.build_post_payload(task, "NOT_TESTED", "",
-                                        ["https://example.test/ev"],
+                                        ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430"],
                                         "live post not GOed yet", "owner GO-B")
         self.queue_post_reads(comment_pages=[[{"body": payload}]])
         res = self.run_post(self.post_args())
@@ -775,7 +775,7 @@ class CheckpointPostTests(unittest.TestCase):
         marker = ko.checkpoint_marker(task, "NOT_TESTED")
         page1 = [{"body": f"filler comment {i}"} for i in range(100)]
         payload = ko.build_post_payload(task, "NOT_TESTED", "",
-                                        ["https://example.test/ev"],
+                                        ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430"],
                                         "live post not GOed yet", "owner GO-B")
         self.queue_post_reads(comment_pages=[page1, [{"body": payload}]])
         res = self.run_post(self.post_args())
@@ -1079,10 +1079,34 @@ class CheckpointPostTests(unittest.TestCase):
                 self.assertEqual(cm.exception.code, "POST_UNCERTAIN")
                 self.assertEqual(len(calls), 2)
 
+    def test_deny_markdown_injection_and_other_repo_evidence(self) -> None:
+        examples = [
+            ("blocker", "some text | fake row"),
+            ("blocker", "<script>alert(1)</script>"),
+            ("next", "@everyone please merge"),
+            ("evidence", ["https://evil.example.com/changes"]),
+            ("evidence", ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430?token=oops"]),
+        ]
+        for field, value in examples:
+            with self.subTest(field=field, value=value):
+                self.runner.queue.clear()
+                self.runner.push_git_sha()
+                args = self.post_args()
+                if field == "next":
+                    args.next_decision = value
+                elif field == "evidence":
+                    args.evidence = value
+                else:
+                    args.blocker = value
+                with self.assertRaises(ko.Stop) as cm:
+                    self.run_post(args)
+                self.assertEqual(cm.exception.code, "PAYLOAD_INVALID")
+                self.assertEqual(self.writer.posted, [])
+
     def test_foreign_marker_not_idempotent(self) -> None:
         task = self.store.load()
         payload = ko.build_post_payload(task, "NOT_TESTED", "",
-                                        ["https://example.test/ev"],
+                                        ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430"],
                                         "live post not GOed yet", "owner GO-B")
         self.queue_post_reads(comment_pages=[[{
             "body": payload, "user": {"login": "untrusted-user"}}]])
@@ -1094,7 +1118,7 @@ class CheckpointPostTests(unittest.TestCase):
     def test_comment_conflict_not_idempotent(self) -> None:
         task = self.store.load()
         payload = ko.build_post_payload(task, "NOT_TESTED", "",
-                                        ["https://example.test/ev"],
+                                        ["https://github.com/saymer-alt/keenetic-auto-setup/issues/430"],
                                         "live post not GOed yet", "owner GO-B")
         self.queue_post_reads(comment_pages=[[{"body": payload + "\nchanged"}]])
         with self.assertRaises(ko.Stop) as cm:
