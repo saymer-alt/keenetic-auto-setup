@@ -135,37 +135,51 @@ def prepare(task: dict[str, Any], *, status: str, evidence: list[str] | None = N
                        run, base, status, marker, body)
 
 
-def _check_issue(transport: Transport, plan: PublishPlan) -> None:
+def _check_issue(transport: Transport, plan: PublishPlan, *,
+                 allow_comment_timestamp_change: bool = False) -> None:
     issue = transport.issue(plan.repo, plan.issue)
     if not isinstance(issue, dict) or (issue.get("number") != plan.issue
             or issue.get("url") != plan.issue_url or issue.get("state") != "OPEN"):
         raise PublisherStop("ISSUE_CHANGED", "issue changed, closed or replaced")
-    if issue.get("updatedAt") != plan.issue_updated_at or issue.get("title") != plan.issue_title:
+    if issue.get("title") != plan.issue_title:
+        raise PublisherStop("ISSUE_CHANGED", "issue title changed since task fetch")
+    # Posting a comment itself may advance updatedAt. Ignore this only while
+    # discovering a verified, already-posted identical owner-authored comment.
+    if (not allow_comment_timestamp_change
+            and issue.get("updatedAt") != plan.issue_updated_at):
         raise PublisherStop("ISSUE_CHANGED", "issue edited since original fetch")
 
 
-def _read_comments(transport: Transport, plan: PublishPlan) -> list[str]:
+def _read_comments(transport: Transport, plan: PublishPlan) -> list[tuple[str, str]]:
     result = transport.list_comments(plan.repo, plan.issue)
     if not isinstance(result, dict) or result.get("complete") is not True:
         raise PublisherStop("COMMENTS_INCOMPLETE", "must read every comments page")
     items = result.get("items")
     if not isinstance(items, list) or len(items) > 1000:
         raise PublisherStop("COMMENTS_INCOMPLETE", "missing/oversized comment list")
-    bodies = []
+    comments: list[tuple[str, str]] = []
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("body"), str):
             raise PublisherStop("COMMENTS_MALFORMED", "comment without text body")
-        bodies.append(item["body"])
-    return bodies
+        author = item.get("author")
+        login = author.get("login") if isinstance(author, dict) else None
+        if not isinstance(login, str) or not login:
+            raise PublisherStop("COMMENTS_MALFORMED", "comment author missing")
+        comments.append((item["body"], login))
+    return comments
 
 
-def _existing(plan: PublishPlan, bodies: list[str]) -> bool:
+def _existing(plan: PublishPlan, comments: list[tuple[str, str]]) -> bool:
     prefix = f"<!-- {MARKER_PREFIX} task={plan.task_id} run={plan.run_id}"
-    matches = [body for body in bodies if body.startswith(prefix)]
+    matches = [(body, author) for body, author in comments if body.startswith(prefix)]
     if len(matches) > 1:
         raise PublisherStop("DUPLICATE_CONFLICT", "multiple comments for same run")
     if matches:
-        if matches[0] != plan.body:
+        body, author = matches[0]
+        if author != REPO.split("/")[0]:
+            raise PublisherStop("MARKER_OWNER_MISMATCH",
+                                "checkpoint marker in a non-owner comment is untrusted")
+        if body != plan.body:
             raise PublisherStop("DUPLICATE_CONFLICT", "same run already has different payload")
         return True
     return False
@@ -181,8 +195,10 @@ def publish_mock(transport: Transport, plan: PublishPlan, *,
         raise PublisherStop("WRITE_DISABLED", "live GitHub writes not authorized")
     if transport.account() != REPO.split("/")[0]:
         raise PublisherStop("BAD_ACCOUNT", "writer must be repository owner")
-    # A previously confirmed comment can advance Issue.updatedAt. Deduplicate
-    # before freshness checks, but NEVER write unless those checks pass.
+    # A previously confirmed comment can advance Issue.updatedAt. Permit
+    # idempotent no-op only for an OPEN, matching Issue and owner-authored marker.
+    # NEVER write unless a second STRICT freshness check passes.
+    _check_issue(transport, plan, allow_comment_timestamp_change=True)
     initial = _read_comments(transport, plan)
     if _existing(plan, initial):
         return {"post_status": "already_posted", "posted": False}
