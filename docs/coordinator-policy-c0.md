@@ -29,7 +29,11 @@
 | CI нельзя независимо связать с точным head SHA/разрешённым run URL | `STOP` | Никаких |
 | CI FAILURE, причина исправима, проверен SHA, бюджет есть и было менее двух разных попыток | `PLAN_REWORK` | **Только план** |
 | Повтор идентичного CI failure после исправления или две попытки исчерпаны | `OWNER_REVIEW` | Никаких |
-| CI SUCCESS + отдельное подтверждённое ревью APPROVED | `OWNER_REVIEW` с `OWNER_DECISION` | Merge не выполняется |
+| CI SUCCESS, но Native E2E ещё не проверен | `WAIT` | Никаких |
+| Shell CI SUCCESS, Native E2E FAILURE | `OWNER_REVIEW` / `NATIVE_E2E_FAILED` | Никаких, требуется разбор |
+| Native workflow SUCCESS, но `gates.json` содержит FAIL | `OWNER_REVIEW` / `NATIVE_GATES_FAILED` | Никаких |
+| Native workflow SUCCESS, но совокупный `gates.json` BLOCKED | `OWNER_REVIEW` / `NATIVE_GATES_BLOCKED` | Никаких, явно обозначить ограничения |
+| Shell CI SUCCESS + Native workflow SUCCESS + независимо подтверждённый `gates.json` PASS + ревью APPROVED | `OWNER_REVIEW` с `OWNER_DECISION` | Merge не выполняется |
 | REVIEW blocked/changes requested | `OWNER_REVIEW` | Никаких |
 
 **Никакой путь не возвращает команду `merge`, `release`, `deploy`, shell-команду или право на изменение роутеров.**
@@ -44,6 +48,29 @@ python3 -m unittest discover -s scripts/orchestration-poc/tests -v
 
 Тесты `tests/test_coordinator_policy.py` проверяют стоп-условия, исчерпание бюджета, лимиты,
 подмену CI SHA, неподтверждённый PASS, ограничения повторов и отдельный owner GO.
+
+## C0 evidence split — обязательная проверка Native E2E после инцидента #465
+
+В PR #458 Shell CI был SUCCESS, а Native E2E FAILURE из-за `KAS_FOREIGN_RESOURCES = FAIL`
+(`native_rules_not_ready`). В сравнительном запуске #463 GitHub Actions Native E2E завершился SUCCESS,
+но загруженный `gates.json` имел общий outcome BLOCKED. **Workflow success ≠ aggregate acceptance PASS**.
+Обычная строка из вывода агента «тесты прошли» также не служит доказательством.
+
+В `Observation` раздельно описаны `ci_*` (Shell contracts) и `native_e2e_*` (Native E2E),
+а также `native_gates_outcome` и `native_gates_verified`. Ветвь `REVIEW_READY` не может
+перейти в `OWNER_DECISION` при одном только Shell CI SUCCESS. Для полного предложения
+`REVIEW_READY_OWNER_MERGE_GO_REQUIRED` требуются **два независимых URL GitHub Actions**
+с совпадающими `head SHA`, результаты SUCCESS обоих workflow и отдельно подтверждённый
+`gates.json` outcome PASS. `FAIL` / `BLOCKED` в агрегате передаются владельцу
+с отдельной причиной, не превращаясь в CI/FIELD PASS.
+
+**Доверительная граница:** эти поля по-прежнему передаются как *недоверенный вход*.
+`native_gates_verified=True` не доказывает подлинность артефакта. Для следующей стадии
+необходим самостоятельный read-only verifier, который сверяет run ID, commit SHA,
+тип workflow, загруженный артефакт `gates.json` и его содержимое (включая отдельные
+FAIL/BLOCKED gates) с указанным запуском. В этой C0-ветке ни verifier, ни настоящая
+публикация, ни автоматический merge **не реализованы**. Причину
+`native_rules_not_ready` в эмуляторе по #465 эта правка не исправляет.
 
 ## Что НЕ готово
 
