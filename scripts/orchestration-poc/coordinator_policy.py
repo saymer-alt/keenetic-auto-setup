@@ -20,6 +20,9 @@ TASK_STATES = frozenset(("READY", "CLAIMED", "RUNNING", "REVIEW_READY",
 CI_STATES = frozenset(("NOT_CHECKED", "PENDING", "SUCCESS", "FAILURE", "ERROR"))
 REVIEW_STATES = frozenset(("NOT_CHECKED", "APPROVED",
                            "CHANGES_REQUESTED", "BLOCKED"))
+# GitHub Actions workflow status != actual acceptance-gate outcome.
+# An E2E workflow can be SUCCESS even when its uploaded gates.json is BLOCKED.
+NATIVE_GATE_OUTCOMES = frozenset(("NOT_CHECKED", "PASS", "BLOCKED", "FAIL", "NOT_TESTED"))
 MAX_REWORKS = 2
 
 
@@ -59,6 +62,17 @@ class Observation:
     ci_head_sha: str = ""
     ci_run_url: str = ""
     ci_verified: bool = False
+
+    # A second independently verified Actions run plus aggregate gates.json.
+    # Every value here remains a CLAIM until a future read-only verifier
+    # reads GitHub workflow metadata and the exact run's gates artifact.
+    native_e2e_status: str = "NOT_CHECKED"
+    native_e2e_head_sha: str = ""
+    native_e2e_run_url: str = ""
+    native_e2e_verified: bool = False
+    native_gates_outcome: str = "NOT_CHECKED"
+    native_gates_verified: bool = False
+
     ci_failure_fixable: bool = False
     failure_signature: str = ""
     previous_failure_signature: str = ""
@@ -109,13 +123,16 @@ def _valid_input(s: Observation) -> bool:
         return False
     if s.state not in TASK_STATES or s.ci_status not in CI_STATES:
         return False
+    if (s.native_e2e_status not in CI_STATES
+            or s.native_gates_outcome not in NATIVE_GATE_OUTCOMES):
+        return False
     if s.review_status not in REVIEW_STATES:
         return False
     for flag in (
         s.kill_switch, s.issue_open, s.issue_fresh, s.scope_allowed,
         s.transport_ready, s.executor_ready, s.executor_authorized,
         s.quota_verified, s.ci_verified, s.ci_failure_fixable,
-        s.review_verified,
+        s.native_e2e_verified, s.native_gates_verified, s.review_verified,
     ):
         if type(flag) is not bool:
             return False
@@ -146,6 +163,18 @@ def _valid_input(s: Observation) -> bool:
     if s.ci_run_url and not re.fullmatch(
             r"https://github[.]com/saymer-alt/keenetic-auto-setup/actions/runs/[1-9][0-9]*",
             s.ci_run_url):
+        return False
+    if (not isinstance(s.native_e2e_head_sha, str) or
+            (s.native_e2e_head_sha and not SHA.fullmatch(s.native_e2e_head_sha))):
+        return False
+    if not isinstance(s.native_e2e_run_url, str):
+        return False
+    if s.native_e2e_run_url and not re.fullmatch(
+            r"https://github[.]com/saymer-alt/keenetic-auto-setup/actions/runs/[1-9][0-9]*",
+            s.native_e2e_run_url):
+        return False
+    if s.native_e2e_run_url and s.native_e2e_run_url == s.ci_run_url:
+        # KAS Shell contracts and Native E2E are distinct required workflows.
         return False
     return True
 
@@ -219,7 +248,30 @@ def decide(s: Observation) -> Decision:
                                  "BLOCKED", True)
             return _decision("PLAN_REWORK", "FIXABLE_CI_FAILURE_WITH_BOUNDED_RETRY",
                              "CLAIMED")
-        # Successful CI is still not FIELD success or merge authorization.
+        # Shell CI SUCCESS alone is insufficient: require the separately
+        # proven Native E2E run and its gate artifact for the SAME PR head.
+        if s.native_e2e_status in ("NOT_CHECKED", "PENDING"):
+            return _decision("WAIT", "NATIVE_E2E_NOT_READY", "REVIEW_READY")
+        if (not s.native_e2e_verified or not s.native_e2e_head_sha
+                or not s.native_e2e_run_url):
+            return _decision("STOP", "NATIVE_E2E_PROVENANCE_MISSING", "BLOCKED")
+        if s.native_e2e_head_sha != s.head_sha:
+            return _decision("STOP", "NATIVE_E2E_HEAD_SHA_MISMATCH", "BLOCKED")
+        if s.native_e2e_status == "ERROR":
+            return _decision("STOP", "NATIVE_E2E_ERROR_UNCERTAIN", "BLOCKED")
+        if s.native_e2e_status == "FAILURE":
+            return _decision("OWNER_REVIEW", "NATIVE_E2E_FAILED", "BLOCKED", True)
+        # The workflow may be green while its gates.json outcome is BLOCKED;
+        # report this honestly, never convert it to an unqualified PASS.
+        if not s.native_gates_verified:
+            return _decision("STOP", "NATIVE_GATES_PROVENANCE_MISSING", "BLOCKED")
+        if s.native_gates_outcome == "FAIL":
+            return _decision("OWNER_REVIEW", "NATIVE_GATES_FAILED", "BLOCKED", True)
+        if s.native_gates_outcome == "BLOCKED":
+            return _decision("OWNER_REVIEW", "NATIVE_GATES_BLOCKED", "BLOCKED", True)
+        if s.native_gates_outcome != "PASS":
+            return _decision("STOP", "NATIVE_GATES_NOT_PROVEN", "BLOCKED")
+        # Proven CI+E2E/gates success still is not FIELD PASS or merge authority.
         if not s.review_verified or s.review_status == "NOT_CHECKED":
             return _decision("WAIT", "REVIEW_NOT_VERIFIED", "REVIEW_READY")
         if s.review_status in ("BLOCKED", "CHANGES_REQUESTED"):
