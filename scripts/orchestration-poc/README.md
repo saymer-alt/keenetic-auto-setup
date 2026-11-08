@@ -107,3 +107,34 @@ Nothing is installed or resident. To remove the POC: delete the branch /
 `scripts/orchestration-poc/` and `docs/agent-orchestration-poc.md`, then
 `reset --confirm` or delete the state directory. No registry, autostart,
 hook or Actions change is made by this tool.
+
+
+## P1-A checkpoint publisher safety adapter (Issue #454, Draft)
+
+The optional checkpoint publisher prototype is in
+[checkpoint_publisher.py](checkpoint_publisher.py). Its tests are
+[tests/test_checkpoint_publisher.py](tests/test_checkpoint_publisher.py).
+
+- The adapter prepares only bounded **BLOCKED/NOT_TESTED** payloads with an
+  explicit **UNVERIFIED** label. PASS / CI PASS / FIELD PASS cannot be posted.
+- It rejects suspicious secrets/claims, unexpected GitHub evidence URLs,
+  missing per-fetch run IDs, invalid task/Issue/SHA identity, and changed head
+  SHA without independently verified commit provenance.
+- It enforces owner identity, original open Issue freshness, local exact SHA,
+  complete paginated comment snapshot, stable comments before mock posting,
+  deduplication by task+run+status marker, and post-attempt verification.
+  Ambiguous outcomes never auto-retry.
+- An injectable transport provides **mock-only publishing** and regression
+  tests. No network code, real GitHub publisher implementation, CLI integration,
+  model invocation, changes to Actions or production devices are included.
+- **Live write remains disabled**: even with --post, --confirm and
+  KAS_ORCH_ALLOW_WRITE=1 the existing CLI still rejects posting. Separate
+  owner GO-B, auditable gh transport, live one-comment field test, and a separate
+  merge GO are required. MOCK_WRITER_PASS is never LIVE_CHECKPOINT_POST_PASS.
+
+Run the full mock suite without network or model calls:
+
+    python3 -m unittest discover -s scripts/orchestration-poc/tests -v
+
+Disable/remove: delete the standalone checkpoint_publisher.py module and its
+test, without touching the existing CLI or router runtime.
