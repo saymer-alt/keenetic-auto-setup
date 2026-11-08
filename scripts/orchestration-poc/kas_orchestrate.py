@@ -576,7 +576,9 @@ def build_post_payload(task: dict[str, Any], status: str, head_sha: str,
     base = task.get("base_sha")
     run_id = task.get("run_id")
     task_id = task.get("task_id")
-    if (repo != DEFAULT_REPO or type(issue) is not int or issue <= 0 or
+    if repo != DEFAULT_REPO:
+        raise Stop("BAD_REPO", "posting outside exact repository allowlist")
+    if (type(issue) is not int or issue <= 0 or
             not isinstance(base, str) or not re.fullmatch(r"[a-f0-9]{40}", base) or
             not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id) or
             task_id != f"issue-{issue}-{base[:12]}" or
