@@ -438,18 +438,21 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
     verified executor success when the record proves it: the task state must
     be REVIEW_READY (set exclusively by a completed dispatch) and the
     append-only journal must hold the success event of the real executor
-    after the latest fetch event for this task_id (which can repeat after
-    reset at the same SHA). Mock/dry-run runs, historical success, and bare
-    manual declarations never earn PASS (issue #430 GO-A2 review fix)."""
+    in the same unique fetch/run cycle after its fetched event. A task_id
+    can repeat after reset at the same SHA; run_id never repeats under normal
+    generation. Local journal does NOT verify implementation, CI or FIELD."""
+    run_id = task.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) != 32 or any(
+            char not in "0123456789abcdef" for char in run_id):
+        raise Stop("PASS_UNEARNED", "missing or malformed run_id; re-fetch this task")
     if task.get("state") != "REVIEW_READY":
         raise Stop("PASS_UNEARNED",
                    f"PASS requires a completed real executor run for this exact task: "
                    f"state is {task.get('state')!r}, need REVIEW_READY; "
                    "use NOT_TESTED/FAIL/BLOCKED for everything else")
     ok_event = f"executor:{REAL_EXECUTOR}:ok"
-    # task_id is deterministic for an Issue and base SHA. A reset preserves
-    # the audit journal, so a past executor success must NOT earn PASS for a
-    # newly fetched task with the same task_id.
+    # Reset preserves the journal. Do not use an old fetch/exec cycle, even
+    # if the deterministic task_id and base_sha are exactly the same.
     fetch_seen = False
     success_since_fetch = False
     if store.journal.exists():
@@ -460,7 +463,8 @@ def guard_earned_pass(store: TaskStore, task: dict[str, Any]) -> None:
                 raise Stop("PASS_UNEARNED", "journal contains invalid JSON; proof is unreliable") from exc
             if not isinstance(ev, dict):
                 raise Stop("PASS_UNEARNED", "journal event is not a JSON object")
-            if ev.get("task_id") != task.get("task_id"):
+            if (ev.get("task_id") != task.get("task_id") or
+                    ev.get("run_id") != run_id):
                 continue
             if ev.get("event") == "fetched":
                 fetch_seen = True
@@ -485,6 +489,7 @@ def build_checkpoint(task: dict[str, Any], status: str, head_sha: str,
         "| field | value |",
         "|---|---|",
         "| task_id | %s |" % task["task_id"],
+        "| run_id | %s |" % task.get("run_id", "NOT_AVAILABLE"),
         "| issue | #%s (%s) |" % (task["issue"], task.get("issue_url", "")),
         "| repo | %s |" % task["repo"],
         "| base SHA | %s |" % task["base_sha"],
