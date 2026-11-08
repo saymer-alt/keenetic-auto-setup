@@ -13,7 +13,7 @@
 | Symphony (openai) | Linear-centric spec | PR/reference | — | Codex App Server | — | долгоживущий supervisor | OVERKILL для 1 исполнителя, не исследовался глубже (по условию) |
 | Gas Town | мультиагентная память | свой daemon | — | — | — | постоянная инфраструктура | OVERKILL, отвергнут |
 
-Вывод: минимум ручных переносов уже достигается связкой **Issue → `gh` (чтение) → contract → dry-run executor → checkpoint → ChatGPT читает GitHub**. Все переходы состояний `READY → CLAIMED → RUNNING → REVIEW_READY/BLOCKED → OWNER_DECISION` реализованы и покрыты тестами.
+Вывод: POC обеспечивает только локальную цепочку **Issue → `gh` (чтение) → contract → dry-run executor → checkpoint-файл**. Автоматическая публикация в GitHub и чтение результата ChatGPT без ручного переноса пока **NOT_VERIFIED**, поскольку `--post` отключён. Все переходы состояний `READY → CLAIMED → RUNNING → REVIEW_READY/BLOCKED → OWNER_DECISION` реализованы и покрыты тестами.
 
 ## 2. Проверенные факты (доказательства, 07.11.2026)
 
@@ -66,3 +66,11 @@
 ## 6. Границы
 
 POC не содержит: авто-merge, тегов/релизов, изменений `main`/`stable`, Actions/webhooks/серверов, доступа к роутерам, секретов. ChatGPT в контуре только читает GitHub сам и даёт владельцу развилку решений; LLM↔LLM-циклов нет. Публикация raw-транскриптов исключена: в checkpoint попадают только поля-факты.
+
+## 6. Isolated run IDs and GO-A3 result (08.11.2026; candidate)
+
+- **GO-A3 fact:** ZCode CLI v0.17.1 on Windows 10 first failed at the official CLI provider-config bootstrap path. Using both documented runtime provider-path environment variables reached official OAuth, but the browser flow timed out (`FAILED_AUTH_TIMEOUT`). Original credential/config/cache files stayed unchanged, identity-pointer was not created, and **0 model calls** occurred. No further login, handmade pointer, auth URL processing, or billable fallback is authorized here. [Full owner-approved GO-A3 report](https://github.com/saymer-alt/keenetic-auto-setup/issues/430#issuecomment-6712955646).
+- **POC run identity:** Every `fetch` generates an independent random UUID4 hex `run_id`, even when Issue and SHA produce identical `task_id`. The contract, journal, status, handoff and checkpoint record the run identity. `checkpoint PASS` now requires a real `zcode-cli` success in the same `task_id` AND `run_id` cycle, following its `fetched` event. Old or malformed local state fails closed. The JSONL journal is **not tamper-proof**, and executor exit 0 is NOT independent CI/FIELD proof.
+- **Ordering:** earned-PASS validation and local checkpoint rendering occur before a proposed GitHub posting attempt. The posting stub remains disabled even with `--post --confirm` and `KAS_ORCH_ALLOW_WRITE=1`; no GitHub write is enabled.
+- **Offline test scope:** 39 mock-only unittest tests (previous 35), including mismatch/missing run IDs and proof-before-post tests. Full CI/E2E for this candidate is **NOT TESTED until GitHub completes checks on its exact PR head**.
+- **Reuse-first option:** OpenCode officially supports selecting a Z.AI Coding Plan provider ([docs](https://opencode.ai/docs/providers)) and has GitHub Issue/PR automation ([docs](https://opencode.ai/docs/github)). It could reduce manual forwarding without custom agent runtime. Actual current-plan accounting in hosted Actions, key scope, permission safety and token use remain unverified. Installing Actions, provisioning secrets or running billable requests needs separate owner GO.
