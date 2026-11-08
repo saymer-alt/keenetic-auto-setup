@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -40,6 +41,7 @@ REAL_EXECUTOR = "zcode-cli"  # only this executor can earn a PASS checkpoint
 # Structured checkpoint fields required by issue #430 (Stage 1).
 CHECKPOINT_FIELDS = (
     "task_id",
+    "run_id",
     "issue",
     "repo",
     "base_sha",
@@ -300,7 +302,8 @@ class TaskStore:
         with self.journal.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event,
                                  "from": old, "to": new_state,
-                                 "task_id": task.get("task_id")}, ensure_ascii=False) + "\n")
+                                 "task_id": task.get("task_id"),
+                                 "run_id": task.get("run_id")}, ensure_ascii=False) + "\n")
 
     def reset(self) -> None:
         for f in (self.task_file, self.contract_file, self.handoff_file, self.checkpoint_file):
@@ -319,6 +322,7 @@ def build_contract(repo: str, issue: dict[str, Any], base_sha: str, body: str,
     return {
         "schema": "kas-orchestration-poc/1",
         "task_id": f"issue-{number}-{base_sha[:12]}",
+        "run_id": uuid.uuid4().hex,
         "issue": number,
         "issue_url": issue.get("url", ""),
         "issue_updated_at": issue["updatedAt"],
@@ -347,6 +351,7 @@ def render_handoff(contract: dict[str, Any]) -> str:
     return (
         "# KAS orchestration handoff — task {task_id}\n\n"
         "- Issue: {issue} ({issue_url})\n"
+        "- Run ID: {run_id}\n"
         "- Issue last updated: {issue_updated_at}\n"
         "- Repo: {repo}\n"
         "- Base SHA: {base_sha}\n"
@@ -378,7 +383,7 @@ def zcode_cli_command(contract: dict[str, Any], repo_path: Path, cli_path: Path,
         "-p",
         ("Read the handoff file {handoff} and follow it: read the task via "
          "`gh issue view {issue} --repo {repo}` (task_id {task_id}, "
-         "base_sha {base_sha}). Work in plan mode; produce a structured "
+         "base_sha {base_sha}, run_id {run_id}). Work in plan mode; produce a structured "
          "checkpoint; STOP on any stop condition. Do not write to "
          "main/stable.").format(handoff=handoff_path, **contract),
     ]
