@@ -720,30 +720,51 @@ class GhCommentWriter:
     def post(self, repo: str, number: int, body: str) -> dict[str, Any]:
         if not LIVE_POST_ENABLED:
             raise Stop("LIVE_POST_NOT_ALLOWED",
-                       "live checkpoint posting is disabled until the owner grants GO-B "
-                       "for the single live test comment; machinery is mock-tested only "
-                       "(MOCK_WRITER_PASS)")
+                       "live posting disabled pending explicit owner GO-B")
+        if repo != DEFAULT_REPO or type(number) is not int or number <= 0:
+            raise Stop("BAD_REPO", "writer target outside exact allowlist")
         cmd = ["gh", "issue", "comment", str(number), "--repo", repo, "--body-file", "-"]
         try:
             proc = self._run(cmd, capture_output=True, text=True, encoding="utf-8",
                              errors="replace", timeout=POST_TIMEOUT_S, input=body)
-        except subprocess.TimeoutExpired as exc:
-            raise Stop("POST_UNCERTAIN",
-                       f"gh issue comment timed out after {POST_TIMEOUT_S}s; the comment "
-                       "may or may not exist — verify manually, do not auto-retry") from exc
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise Stop("POST_UNCERTAIN", "post outcome unknown; no auto retry") from exc
         if proc.returncode != 0:
             if _looks_like_network(proc.stderr):
                 raise Stop("POST_UNCERTAIN",
-                           f"gh issue comment failed with a network error: "
-                           f"{_first_line(proc.stderr)}; outcome unknown — verify manually, "
-                           "do not auto-retry")
-            raise Stop("POST_FAILED",
-                       f"gh issue comment failed (exit {proc.returncode}): "
-                       f"{_first_line(proc.stderr)}; verify manually, no auto-retry")
-        match = re.search(r"https://github\.com/\S+/issues/\d+#issuecomment-\d+",
-                          proc.stdout or "")
-        return {"post_status": "posted",
-                "url": match.group(0) if match else "NOT_PARSED"}
+                           "network error after attempted write; verify manually")
+            raise Stop("POST_FAILED", "GitHub rejected comment; verify manually")
+
+        # A zero exit status alone is not successful publication.
+        exact = (r"https://github[.]com/" + re.escape(repo)
+                 + r"/issues/" + str(number) + r"#issuecomment-([1-9][0-9]*)")
+        match = re.fullmatch(exact, (proc.stdout or "").strip())
+        if not match:
+            raise Stop("POST_UNCERTAIN",
+                       "gh did not return canonical issue-comment URL; no retry")
+        url = match.group(0)
+        comment_id = match.group(1)
+        check_cmd = ["gh", "api", f"repos/{repo}/issues/comments/{comment_id}"]
+        try:
+            check = self._run(check_cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=POST_TIMEOUT_S)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise Stop("POST_UNCERTAIN", "cannot read comment back; no retry") from exc
+        if check.returncode != 0:
+            raise Stop("POST_UNCERTAIN", "read-back failed; verify manually, no retry")
+        try:
+            confirmed = json.loads(check.stdout)
+        except (TypeError, ValueError) as exc:
+            raise Stop("POST_UNCERTAIN", "malformed comment confirmation; no retry") from exc
+        owner = confirmed.get("user") if isinstance(confirmed, dict) else None
+        login = owner.get("login") if isinstance(owner, dict) else None
+        if (not isinstance(confirmed, dict) or login != repo.split("/")[0]
+                or confirmed.get("body") != body
+                or confirmed.get("id") != int(comment_id)
+                or confirmed.get("html_url") != url):
+            raise Stop("POST_UNCERTAIN",
+                       "read-back author/body/identity mismatch; no auto retry")
+        return {"post_status": "posted", "url": url}
 
 
 def post_checkpoint_guarded(runner: GhRunner, writer: GhCommentWriter,
