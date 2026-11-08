@@ -99,10 +99,12 @@ if (process.env.ESBUILD_BIN) {
     }
     esbuildVersion = JSON.parse(readFileSync(path.join(srcDir, 'node_modules', 'esbuild', 'package.json'), 'utf8')).version;
     // esbuild's postinstall replaces the JS shim with the native binary in newer
-    // versions — exec ELF/PE directly, run only a JS shim through node.
+    // versions — exec ELF (ELF, 4-byte magic) / PE (MZ) directly, run only a
+    // JS shim through node.
     let binPath = existsSync(esbuildPkgBin) ? esbuildPkgBin : esbuildShim;
-    const magic = readFileSync(binPath).subarray(0, 2).toString('latin1');
-    esbuildArgs = (magic === 'ELF' || magic === 'MZ') ? [binPath] : [process.execPath, binPath];
+    const magic = readFileSync(binPath).subarray(0, 4);
+    const isBinary = (magic[0] === 0x7f && magic.toString('latin1', 1) === 'ELF') || magic.toString('latin1', 0, 2) === 'MZ';
+    esbuildArgs = isBinary ? [binPath] : [process.execPath, binPath];
 }
 
 // 3. KAS-owned adapter entries are compiled from inside the pinned tree.
