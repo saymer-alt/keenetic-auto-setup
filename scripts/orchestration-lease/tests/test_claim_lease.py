@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 PATH = Path(__file__).resolve().parents[1] / "claim_lease.py"
 spec = importlib.util.spec_from_file_location("kas_claim_lease", PATH)
@@ -45,6 +47,28 @@ class Tests(unittest.TestCase):
         b = m.replace(a, worker="worker-B", run_id="b"*32)
         self.store.cas(454, None, a)
         self.stop("CLAIM_RACE", self.store.cas, 454, None, b)
+
+    def test_true_concurrent_claim_only_one_winner(self):
+        barrier = Barrier(2)
+        class RacingStore(m.MemoryCASStore):
+            def read(self, issue):
+                snap = super().read(issue)
+                if snap is None:
+                    barrier.wait(timeout=3)
+                return snap
+        self.store = RacingStore()
+        self.c = m.Coordinator(self.store, self.issues, lambda: self.clock[0])
+        def try_claim(name):
+            try:
+                return ("OK", self.c.claim(454, name))
+            except m.LeaseStop as e:
+                return (e.code, None)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(try_claim, w) for w in ("worker-A", "worker-B")]
+            results = [f.result(timeout=4) for f in futures]
+        self.assertEqual(sorted(x[0] for x in results), ["CLAIM_RACE", "OK"])
+        winner = next(x[1] for x in results if x[0] == "OK")
+        self.assertEqual(self.store.read(454), winner)
 
     def test_release_and_second_generation(self):
         a = self.c.claim(454, "worker-A")
