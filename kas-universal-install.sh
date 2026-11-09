@@ -12,7 +12,7 @@ WEB_TAG=v0.1.0-beta.8
 WEB_PKG_VER=0.1.0.beta.8-1
 GITHUB=https://github.com/saymer-alt/keenetic-auto-setup
 RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup
-MODE=\${1:-check}
+MODE=${1:-check}
 
 msg() { printf '[KAS] %s\n' "$*"; }
 fail() { printf '[KAS][ERROR] %s\n' "$*" >&2; exit 1; }
@@ -112,7 +112,7 @@ if [ "$MODE" = all ] || [ "$MODE" = web ]; then
     if [ -n "$CURRENT" ] && opkg compare-versions "$CURRENT" '>' "$WEB_PKG_VER"; then
       fail "Installed Web $CURRENT is newer than requested $WEB_PKG_VER; downgrade refused."
     fi
-    ASSET="kas-control-center_\${WEB_PKG_VER}_\${ABI}.ipk"
+    ASSET="kas-control-center_${WEB_PKG_VER}_${ABI}.ipk"
     URL="$GITHUB/releases/download/$WEB_TAG/$ASSET"
     msg "Downloading verified IPK: $ASSET"
     GOT=0
