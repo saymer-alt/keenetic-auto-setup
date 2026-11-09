@@ -18,7 +18,12 @@
 set -eu
 
 ENTWARE_OPKG_URL='https://bin.entware.net/x64-k3.2/installer/opkg'
-ENTWARE_OPKG_SHA256='08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38'
+# Re-pin 2026-11-09: documented owner trust decision (Issue #488, Option A,
+# owner GO comment 6747639647), not a cryptographic attestation. Entware does
+# not sign installer artifacts; the pinned binary is opkg 2025.11.05~80503d94-1
+# and is byte-identical to ./opt/bin/opkg of the versioned feed package
+# opkg_2025.11.05~80503d94-1_x64-3.2.ipk (feed SHA256sum e2b254f5...74e89).
+ENTWARE_OPKG_SHA256='49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10'
 
 usage() {
     echo "usage: $0 --output PATH [--url URL] [--sha256 HEX] [--source FILE] [--no-elf-check]" >&2

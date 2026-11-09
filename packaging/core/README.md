@@ -87,7 +87,7 @@ Download official Entware opkg to a scratch path and verify:
 
 ```text
 https://bin.entware.net/x64-k3.2/installer/opkg
-SHA256: 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38
+SHA256: 49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10
 ```
 
 ```sh

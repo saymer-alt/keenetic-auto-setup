@@ -19,7 +19,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "verify-entware-opkg.sh"
-CANONICAL_PIN = "08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38"
+# Re-pin 2026-11-09: documented owner trust decision (Issue #488, Option A,
+# owner GO comment 6747639647), not a cryptographic attestation.
+CANONICAL_PIN = "49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10"
 CANONICAL_URL = "https://bin.entware.net/x64-k3.2/installer/opkg"
 
 ELF_PAYLOAD = b"\x7fELF" + b"\x02\x01\x01\x00" + b"KAS trusted fixture payload\n"
