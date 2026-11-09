@@ -90,3 +90,17 @@ test('unknown warning and older version have no invented remedy',()=>{
  assert.match(message,/История и стабильность watchdog/);assert.match(message,/<img src=x onerror=alert\(1\)>/);
  assert.doesNotMatch(message,/Сравните новые события|Сопоставьте время|Сейчас процесс может работать/);
 });
+test('KeeneticOS versions with single spaces stay bounded and honest (#484 KN-1010 5.2 Beta 3)',()=>{
+ const setOs=text=>parse(text).facts.os;
+ // FIELD KN-1010 release-line variants keep their real representation.
+ assert.equal(setOs(report.replace('KeeneticOS: 5.1.8','KeeneticOS: 5.2 Beta 3')),'5.2 Beta 3');
+ assert.equal(setOs(report.replace('KeeneticOS: 5.1.8','KeeneticOS: 5.02.B.3.0-2')),'5.02.B.3.0-2');
+ assert.equal(setOs(report.replace('KeeneticOS: 5.1.8','KeeneticOS: 5.1.8')),'5.1.8');
+ // Negatives: leading/trailing/double spaces, 65+ chars, foreign prefixes and
+ // control bytes never become a displayable version.
+ for(const bad of ['KeeneticOS:  5.2 Beta 3','KeeneticOS: 5.2 Beta 3 ','KeeneticOS: 5.2  Beta 3',
+  'KeeneticOS: 5.'+'1'.repeat(64),'KeeneticOS: v5.2 Beta 3','KeeneticOS: 5.2 Beta 3\n[INFO] KeeneticOS: 5.2 Beta 3',
+  'KeeneticOS: 5.2 Beta 3\x7f'])assert.equal(setOs(report.replace('KeeneticOS: 5.1.8',bad)),undefined,bad);
+ // A control byte anywhere in the report still fails the whole overview.
+ assert.equal(parse(report.replace('KeeneticOS: 5.1.8','KeeneticOS: 5.2 Beta 3').replace('=== Mihomo Doctor','===\x01 Mihomo Doctor')).supported,false);
+});
