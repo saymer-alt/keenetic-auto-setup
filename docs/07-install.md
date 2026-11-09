@@ -78,12 +78,15 @@ Development C6: каждый parser выбирает ровно один URL с 
 1. GitHub API;
 2. резервный разбор ответа/страницы release;
 3. скачивание найденного asset; большие `.ipk` используют отдельный bounded transfer window 180 секунд на попытку, тогда как metadata/project scripts сохраняют короткий 20-секундный лимит;
-4. `opkg install <downloaded.ipk>`;
-5. если весь GitHub-путь не дал успешной установки — last resort
+4. Если обычная загрузка Release IPK через curl/wget провалилась, но GitHub API ранее вернул строго выбранный asset с валидными `id`/`size`, ещё один bounded путь получает **тот же IPK** через `GET /releases/assets/{id}` (`Accept: application/octet-stream`; возможен redirect). До `opkg` сверяются точный размер с metadata и SHA256, если digest доступен; неполный файл, JSON вместо IPK или ошибочный digest удаляются. При отсутствии проверяемого ID этот шаг пропускается.
+5. `opkg install <downloaded.ipk>`;
+6. если ни один проектный путь не дал успешной установки — last resort
    `opkg install mihomo` из настроенного Entware feed.
 
 Переход к Entware feed всегда виден как WARN: версия там может отставать от
-`entware-go:latest`. Информационный `mihomo -v` выполняется только при
+`entware-go:latest`, а распакованный ELF может оказаться значительно крупнее
+проектного UPX-варианта (особенно заметно на внутреннем UBIFS `/opt`).
+**Размер распакованного ELF не равен размеру скачанного сжатого IPK.** Информационный `mihomo -v` выполняется только при
 подтверждённо остановленном daemon; иначе probe пропускается по one-Mihomo invariant.
 
 ## Bootstrap config.yaml
