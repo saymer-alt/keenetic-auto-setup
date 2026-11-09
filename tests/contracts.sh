@@ -419,7 +419,7 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
-grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
+grep -Fq 'download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the bounded small-transfer helper with transport classification (#483/#169)"
 grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper staging must be process-unique via shell PID $$"
 ! grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must not use a literal single-dollar staging suffix"
 grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
@@ -691,6 +691,10 @@ pass "installer project-script downloads use validated curl/wget/API fallbacks a
 
 grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
 grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
+grep -q '^download_small_file_bounded()' "$ROOT/install.sh" || fail "installer must keep a dedicated bounded small-transfer downloader with explicit failure classification (#483/#169)"
+grep -Fq 'DNS resolution failed (curl 6' "$ROOT/install.sh" || fail "small-transfer downloader must name curl 6 DNS failures explicitly (FIELD #483)"
+grep -Fq -- '--max-time "$SMALL_TRANSFER_MAX_TIME"' "$ROOT/install.sh" || fail "small-transfer downloader must stay on the bounded metadata budget"
+grep -Fq -- '-4 --curves X25519' "$ROOT/install.sh" || fail "small-transfer downloader must keep one documented IPv4/X25519 compatibility attempt"
 grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/install.sh" || fail "installer must give large assets a separate bounded transfer window"
 grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
 grep -Fq 'wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"' "$ROOT/install.sh" || fail "installer large-file wget fallback must remain bounded"
