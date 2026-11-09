@@ -39,6 +39,11 @@ jobs:
         if: ${{ hashFiles('scripts/orchestration-lease/tests/test_claim_lease.py') != '' }}
         run: python3 -m unittest discover -s scripts/orchestration-lease/tests -v
 
+      # Isolated C1 evidence classifier; untrusted inputs, no live GitHub attestations.
+      - name: Agent orchestration evidence safety (offline mock only)
+        if: ${{ hashFiles('scripts/orchestration-evidence/tests/test_evidence_contract.py') != '' }}
+        run: python3 -m unittest discover -s scripts/orchestration-evidence/tests -v
+
       - name: Shell syntax
         shell: bash
         run: |
