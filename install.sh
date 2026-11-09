@@ -1323,14 +1323,13 @@ download_url_file() {
         rm -f "$_duf_dst" 2>/dev/null || true
         installer_asset_feedback "Download ${_duf_dst##*/}: IPv4/X25519 attempt 1/1"
         if [ -t 2 ]; then
-            curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst"
-            _duf_comp_rc=$?
+            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst"; then
+                [ -s "$_duf_dst" ] && return 0
+            fi
         else
-            curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null
-            _duf_comp_rc=$?
-        fi
-        if [ "$_duf_comp_rc" -eq 0 ]; then
-            [ -s "$_duf_dst" ] && return 0
+            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
+                [ -s "$_duf_dst" ] && return 0
+            fi
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
     fi
