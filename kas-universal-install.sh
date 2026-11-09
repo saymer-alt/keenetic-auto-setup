@@ -8,6 +8,16 @@ export PATH
 umask 077
 
 CORE_REF=v1.8.8
+# Tag v1.8.8 is a lightweight tag resolving to this commit; a tag can be
+# retargeted, a commit cannot. The digests below are SHA256 of the exact
+# bootstrap.sh / mihomo-doctor.sh bytes served for that commit, verified
+# through two independent channels (GitHub Contents API base64 and
+# raw.githubusercontent.com, byte-identical) before being pinned here.
+CORE_COMMIT=c80e47c7050a31f70f65312dcd8999bfb13c9bef
+CORE_BOOTSTRAP_SHA256=853e4badf57ee3a2065953a87caed300093adc68c971294a973d93f531dc697c
+CORE_DOCTOR_SHA256=10cb06803ed712cb50cc1be44a8d3fa75ce5a58dbbcf65ed99a60f671f5e0fb1
+# Ceiling for launcher-fetched scripts; the pinned Doctor is ~170 KiB.
+SCRIPT_MAX_BYTES=1048576
 WEB_TAG=v0.1.0-beta.8
 WEB_PKG_VER=0.1.0.beta.8-1
 GITHUB=https://github.com/saymer-alt/keenetic-auto-setup
@@ -41,7 +51,7 @@ case "$ABI" in
 esac
 
 msg "Entware ABI: $ABI"
-msg "Core tag: $CORE_REF; Web tag: $WEB_TAG"
+msg "Core tag: $CORE_REF; pinned commit: $CORE_COMMIT; Web tag: $WEB_TAG"
 msg "Storage status (no changes):"
 df -h /opt /tmp || true
 msg "Existing packages:"
@@ -91,12 +101,19 @@ if [ "$MODE" = all ] || [ "$MODE" = core ]; then
     msg "Saved existing Mihomo YAML: $BACKUP"
   fi
 
-  msg 'Downloading tagged KAS Core bootstrap...'
+  # Pre-execution authenticity for the scripts THIS launcher downloads and
+  # runs: the URL pins the immutable commit and the bytes must match the
+  # pinned SHA256 before anything executes (marker and sh -n stay as cheap
+  # secondary checks). This authenticates only these two first-stage
+  # scripts: bootstrap.sh later fetches setup.sh with the forwarded tag ref
+  # and marker+syntax checks only, and setup.sh fetches deeper assets the
+  # same way; that wider chain is tracked as a separate follow-up (PR #482).
+  msg 'Downloading pinned KAS Core bootstrap...'
   GOT=0
   for TRY in 1 2 3; do
     rm -f "$WORK/bootstrap.sh"
-    if curl -fSsL --connect-timeout 7 --max-time 45 \
-      "$RAW/$CORE_REF/bootstrap.sh" -o "$WORK/bootstrap.sh"; then
+    if curl -fSsL --connect-timeout 7 --max-time 45 --max-filesize "$SCRIPT_MAX_BYTES" \
+      "$RAW/$CORE_COMMIT/bootstrap.sh" -o "$WORK/bootstrap.sh"; then
       GOT=1
       break
     fi
@@ -105,7 +122,15 @@ if [ "$MODE" = all ] || [ "$MODE" = core ]; then
   done
   [ "$GOT" -eq 1 ] || fail 'Core bootstrap download failed after three attempts.'
   [ -s "$WORK/bootstrap.sh" ] || fail 'Empty bootstrap.'
+  BYTES=$(wc -c < "$WORK/bootstrap.sh" | tr -d ' ')
+  [ "$BYTES" -gt 0 ] && [ "$BYTES" -le "$SCRIPT_MAX_BYTES" ] \
+    || fail 'Bootstrap is empty or over the size limit; refused.'
+  if grep -Eqi '<html|<!doctype|404: not found' "$WORK/bootstrap.sh"; then
+    fail 'Bootstrap payload is an HTML/404 error page, not the pinned script.'
+  fi
   grep -Fq 'KAS_FIRSTFETCH_V1' "$WORK/bootstrap.sh" || fail 'Unexpected bootstrap payload.'
+  printf '%s  %s\n' "$CORE_BOOTSTRAP_SHA256" "$WORK/bootstrap.sh" | sha256sum -c - \
+    || fail 'Bootstrap SHA-256 mismatch with pinned v1.8.8 content; execution refused.'
   sh -n "$WORK/bootstrap.sh" || fail 'Bootstrap syntax invalid.'
   msg 'Running pinned Core installer. If importer offers YAML input, type s and Enter to skip.'
   KAS_BOOTSTRAP_REF="$CORE_REF" KEENETIC_AUTO_SETUP_REF="$CORE_REF" \
@@ -154,11 +179,21 @@ if [ "$MODE" = all ] || [ "$MODE" = web ]; then
 fi
 
 if [ "$MODE" = doctor ]; then
-  msg 'Downloading tagged read-only Doctor...'
-  curl -fSsL --connect-timeout 7 --max-time 45 \
-    "$RAW/$CORE_REF/mihomo-doctor.sh" -o "$WORK/doctor.sh" \
+  # Same pre-execution pinning as the Core bootstrap: immutable commit URL
+  # plus SHA256 before any bytes run. Read-only behavior is unchanged.
+  msg 'Downloading pinned read-only Doctor...'
+  curl -fSsL --connect-timeout 7 --max-time 45 --max-filesize "$SCRIPT_MAX_BYTES" \
+    "$RAW/$CORE_COMMIT/mihomo-doctor.sh" -o "$WORK/doctor.sh" \
     || fail 'Doctor download failed.'
   [ -s "$WORK/doctor.sh" ] || fail 'Empty Doctor script.'
+  BYTES=$(wc -c < "$WORK/doctor.sh" | tr -d ' ')
+  [ "$BYTES" -gt 0 ] && [ "$BYTES" -le "$SCRIPT_MAX_BYTES" ] \
+    || fail 'Doctor script is empty or over the size limit; refused.'
+  if grep -Eqi '<html|<!doctype|404: not found' "$WORK/doctor.sh"; then
+    fail 'Doctor payload is an HTML/404 error page, not the pinned script.'
+  fi
+  printf '%s  %s\n' "$CORE_DOCTOR_SHA256" "$WORK/doctor.sh" | sha256sum -c - \
+    || fail 'Doctor SHA-256 mismatch with pinned v1.8.8 content; execution refused.'
   sh -n "$WORK/doctor.sh" || fail 'Doctor syntax invalid.'
   sh "$WORK/doctor.sh"
 fi
