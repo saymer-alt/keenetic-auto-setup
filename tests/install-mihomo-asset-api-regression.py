@@ -25,14 +25,14 @@ DATA = "project-mihomo-ipk-payload"
 SHA = hashlib.sha256(DATA.encode()).hexdigest()
 
 
-def metadata(*, asset_id=321, size=None, digest=None, url=SELECTED, duplicate=False, tag="latest"):
+def metadata(*, asset_id=321, size=None, digest="auto", url=SELECTED, duplicate=False, tag="latest"):
     asset = {
         "id": asset_id,
         "state": "uploaded",
         "name": SELECTED.rsplit("/", 1)[-1],
         "browser_download_url": url,
         "size": len(DATA) if size is None else size,
-        "digest": "sha256:" + SHA if digest is None else digest,
+        "digest": "sha256:" + SHA if digest == "auto" else digest,
     }
     return {"tag_name": tag, "assets": [asset, dict(asset)] if duplicate else [asset]}
 
@@ -176,7 +176,7 @@ for shell in (["sh"], ["busybox", "ash"]):
         ("wrong browser URL", "good", metadata(url=SELECTED.replace("github.com", "evil.invalid")), False, 0),
         ("wrong release tag", "good", metadata(tag="foreign"), False, 0),
         ("malformed digest", "good", metadata(digest="sha256:not-hex"), False, 0),
-        ("absent digest still size-checked", "good", metadata(digest=""), True, 1),
+        ("null digest still size-checked", "good", metadata(digest=None), True, 1),
     ]
     for name, mode, source, ok, count in scenarios:
         exercise(shell, mode, source, ok, count, name)
