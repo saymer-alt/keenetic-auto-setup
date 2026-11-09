@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# mihomo-proxy-selection-watch.sh v1.3.0
+# mihomo-proxy-selection-watch.sh v1.3.1
 #
 # Watches the selected Mihomo proxy-group chain.
 # This script does NOT inspect or change Keenetic/Linux routing tables.
@@ -47,8 +47,8 @@
 #      the doctor will tell you)
 #   3  HTTP 401/403 - secret required or wrong
 #   4  start group not found in /proxies
-#   5  selection anomaly (cycle, depth cap, unknown "now",
-#      malformed JSON response)
+#   5  selection anomaly (cycle, depth cap, unknown "now") or
+#      malformed / unusable Controller JSON response
 #
 # Dependencies: curl, jq (both already project-standard).
 # No files are written; everything goes to stdout/stderr.
@@ -65,7 +65,7 @@ MAX_HOPS=32
 
 usage() {
     cat <<'USAGE'
-mihomo-proxy-selection-watch.sh v1.3.0
+mihomo-proxy-selection-watch.sh v1.3.1
 
 What it does:
   Reads Mihomo Controller GET /proxies and follows the selected proxy-group
@@ -113,8 +113,9 @@ Typical output:
 
 Read-only contract: the only HTTP request ever made is GET /proxies.
 Exit codes: 0 ok, 1 usage/missing tool, 2 Controller unreachable,
-3 auth (401/403), 4 start group not found, 5 selection anomaly,
-6 incomplete bounded observations. Selection is NOT proof of actual egress.
+3 auth (401/403), 4 start group not found, 5 anomaly or malformed
+response, 6 incomplete bounded observations. Selection is NOT proof of
+actual egress.
 USAGE
 }
 
@@ -139,7 +140,7 @@ while [ $# -gt 0 ]; do
                      SAMPLES=$2; SAMPLES_SET=1; shift 2 ;;
         --samples=*) SAMPLES=${1#--samples=}; SAMPLES_SET=1; shift ;;
         -h|--help)   usage; exit 0 ;;
-        -V|--version) echo "mihomo-proxy-selection-watch.sh v1.3.0"; exit 0 ;;
+        -V|--version) echo "mihomo-proxy-selection-watch.sh v1.3.1"; exit 0 ;;
         --)          shift; break ;;
         *)           usage_err "unknown option: $1" ;;
     esac
@@ -173,7 +174,7 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 # fetch_state(): one GET /proxies; sets FETCH_STATE and PROXIES_JSON.
-# Classification is by curl exit code and HTTP status only.
+# Classification is by curl exit code, HTTP status and body shape only.
 fetch_state() {
     set --
     if [ -n "$SECRET" ]; then
@@ -194,7 +195,13 @@ fetch_state() {
         404) FETCH_STATE="notfound"; return 0 ;;
         *)   FETCH_STATE="http"; return 0 ;;
     esac
-    PROXIES_JSON=$(printf '%s' "$BODY" | jq -c '.proxies // empty' 2>/dev/null)
+    # .proxies must be a JSON object (Mihomo returns a map of proxies).
+    # select() prints nothing for a missing or non-object value, so a
+    # syntactically valid but corrupted snapshot ({"proxies":[]}, a
+    # string, null, malformed JSON) is classified as badjson instead of
+    # leaking an array/string into node_exists(), where has($n) would
+    # misreport it as an absent group.
+    PROXIES_JSON=$(printf '%s' "$BODY" | jq -c '.proxies | select(type == "object")' 2>/dev/null)
     if [ -z "$PROXIES_JSON" ]; then
         FETCH_STATE="badjson"
         return 0
@@ -290,7 +297,7 @@ if [ -z "$WATCH" ]; then
             echo "[proxy-selection-watch] unexpected HTTP status from the controller: $CODE" >&2
             exit 2 ;;
         badjson)
-            echo "[proxy-selection-watch] controller returned malformed JSON" >&2
+            echo "[proxy-selection-watch] controller returned malformed or unusable JSON response" >&2
             exit 5 ;;
     esac
     resolve "$GROUP"
