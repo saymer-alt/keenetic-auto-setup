@@ -26,7 +26,13 @@ function parse(data){
   const value=row[2];let m;
   if(section==='1'){
    if((m=value.match(/^Router: (?:model: )?(.{1,160})$/)))put('model',m[1]);
-   if((m=value.match(/^KeeneticOS: ([0-9][A-Za-z0-9.+~-]{0,63})$/)))put('os',m[1]);
+   // FIELD KN-1010 KeeneticOS 5.2 Beta 3 (#484): display-only relaxation.
+   // A version may contain single spaces between word characters (the capture
+   // unit is an optional leading space plus one allowed character), so the
+   // value stays bounded to 64 characters, starts with a digit, never has a
+   // leading/trailing/double space, and control bytes are already rejected
+   // globally. Rendering uses text nodes; duplicates fail closed via put().
+   if((m=value.match(/^KeeneticOS: ([0-9](?:[ ]?[A-Za-z0-9.+~-]){0,63})$/)))put('os',m[1]);
    if((m=value.match(/^Entware \/opt mount: source=([^;]{1,160}); mountpoint=([^;]{1,160}); filesystem=([a-z0-9]{1,20}); class=(internal|external|ram|unknown)$/)))put('storage',{source:m[1],mountpoint:m[2],filesystem:m[3],class:m[4]});
    if((m=value.match(/^RAM total: (\d{1,10}) MB, available: (\d{1,10}) MB$/)))put('ram',amount(m[2],m[1]));
    if((m=value.match(/^Swap: (\d{1,10}) MB \(free (\d{1,10}) MB\)$/)))put('swap',amount(m[2],m[1]));
