@@ -1244,6 +1244,56 @@ fetch_url_text() {
     return 1
 }
 
+# Only interactive terminals receive per-attempt feedback. Unattended logs
+# retain one status line per exhausted transport rather than each curl error.
+installer_asset_feedback() {
+    [ -t 2 ] || return 0
+    printf '[setup] %s\n' "$*" >&2
+}
+
+installer_asset_retry_curl() {
+    _iar_url="$1"
+    _iar_dest="$2"
+    if [ ! -t 2 ]; then
+        retry_silent curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"
+        return $?
+    fi
+    _iar_attempt=1
+    while [ "$_iar_attempt" -le 3 ]; do
+        installer_asset_feedback "IPK download: curl attempt $_iar_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds); percent shown while receiving bytes"
+        if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"; then
+            [ -s "$_iar_dest" ] && return 0
+        fi
+        installer_asset_feedback "IPK download: curl attempt $_iar_attempt/3 failed"
+        rm -f "$_iar_dest" || return 1
+        [ "$_iar_attempt" -ge 3 ] || sleep 2
+        _iar_attempt=$((_iar_attempt + 1))
+    done
+    return 1
+}
+
+installer_asset_retry_wget() {
+    _irw_url="$1"
+    _irw_dest="$2"
+    if [ ! -t 2 ]; then
+        retry_silent wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"
+        return $?
+    fi
+    _irw_attempt=1
+    while [ "$_irw_attempt" -le 3 ]; do
+        installer_asset_feedback "IPK download: wget attempt $_irw_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds)"
+        # BusyBox wget has no portable --progress=bar; permit its native output.
+        if wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
+            [ -s "$_irw_dest" ] && return 0
+        fi
+        installer_asset_feedback "IPK download: wget attempt $_irw_attempt/3 failed"
+        rm -f "$_irw_dest" || return 1
+        [ "$_irw_attempt" -ge 3 ] || sleep 2
+        _irw_attempt=$((_irw_attempt + 1))
+    done
+    return 1
+}
+
 download_url_file() {
     _duf_url="$1"
     _duf_dst="$2"
@@ -1251,11 +1301,19 @@ download_url_file() {
     rm -f "$_duf_dst" 2>/dev/null || true
 
     if command -v curl >/dev/null 2>&1; then
-        if retry_silent curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"; then
+        if installer_asset_retry_curl "$_duf_url" "$_duf_dst"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
-        if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
+        installer_asset_feedback "IPK download: IPv4/X25519 attempt 1/1"
+        if [ -t 2 ]; then
+            curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst"
+            _duf_comp_rc=$?
+        else
+            curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null
+            _duf_comp_rc=$?
+        fi
+        if [ "$_duf_comp_rc" -eq 0 ]; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
@@ -1263,7 +1321,7 @@ download_url_file() {
 
     if command -v wget >/dev/null 2>&1; then
         warn "curl download failed after 3 attempts; trying wget fallback"
-        if retry_silent wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"; then
+        if installer_asset_retry_wget "$_duf_url" "$_duf_dst"; then
             [ -s "$_duf_dst" ] && return 0
         fi
         rm -f "$_duf_dst" 2>/dev/null || true
