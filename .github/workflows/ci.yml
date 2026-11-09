@@ -185,6 +185,7 @@ jobs:
       - name: Mihomo rolling-feed selection (dash and BusyBox ash)
         run: |
           python3 tests/ipk-selection-regression.py
+          python3 tests/install-mihomo-asset-api-regression.py
           python3 tests/ipk-package-release-regression.py
           python3 tests/doctor-package-selection-regression.py
 
