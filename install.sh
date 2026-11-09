@@ -1272,6 +1272,83 @@ download_url_file() {
     return 1
 }
 
+# GitHub Release browser downloads may fail on a router/CDN path even when the
+# Release API metadata was reachable. Try the SAME selected IPK by its API asset
+# ID before accepting the larger/different Entware feed package.
+# Never use a caller-provided URL or an unverified ID; only the exact release
+# metadata asset selected by the shared ABI/version/URL selector is eligible.
+download_mihomo_release_asset_api() {
+    _dma_selected="$1"
+    _dma_dst="$2"
+    [ -n "$ASSETS_JSON" ] || return 1
+    _dma_name=$(basename "$_dma_selected")
+
+    _dma_meta=$(printf '%s\n' "$ASSETS_JSON" | jq -er \
+        --arg selected "$_dma_selected" --arg filename "$_dma_name" '
+        if type != "object" or (.tag_name != "latest") or (.assets | type) != "array"
+        then error("release metadata") else . end
+        | [.assets[] | select(
+            .browser_download_url == $selected and .name == $filename
+            and .state == "uploaded"
+            and (.id | type) == "number" and (.id > 0) and (.id == (.id | floor))
+            and (.size | type) == "number" and (.size > 0) and (.size == (.size | floor))
+            and ((.digest == null) or
+                 ((.digest | type) == "string" and (.digest | test("^sha256:[0-9a-f]{64}$"))))
+        )] as $matches
+        | if ($matches | length) == 1 then $matches[0] else error("asset identity") end
+        | "\(.id) \(.size) \(.digest // "-")"
+    ' 2>/dev/null) || return 1
+
+    # jq validated these fields as decimal integers or a strict SHA256 digest.
+    # Word splitting is intentional; no field can contain whitespace/globs.
+    set -- $_dma_meta
+    [ "$#" -eq 3 ] || return 1
+    _dma_id="$1"
+    _dma_size="$2"
+    _dma_digest="$3"
+    case "$_dma_id:$_dma_size" in *[!0-9:]*|:*|*:) return 1 ;; esac
+
+    _dma_api="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/assets/$_dma_id"
+    rm -f "$_dma_dst" || return 1
+
+    if ! curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+        -H "Accept: application/octet-stream" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "$_dma_api" -o "$_dma_dst" 2>/dev/null; then
+        # Discard partial data before retrying with the router TLS workaround.
+        rm -f "$_dma_dst" || return 1
+        if ! curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+            -4 --curves X25519 \
+            -H "Accept: application/octet-stream" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$_dma_api" -o "$_dma_dst" 2>/dev/null; then
+            rm -f "$_dma_dst"
+            return 1
+        fi
+    fi
+
+    _dma_actual=$(wc -c < "$_dma_dst" 2>/dev/null | tr -d '[:space:]') || _dma_actual=""
+    if [ "$_dma_actual" != "$_dma_size" ]; then
+        rm -f "$_dma_dst"
+        return 1
+    fi
+
+    if [ "$_dma_digest" != "-" ]; then
+        if ! command -v sha256sum >/dev/null 2>&1; then
+            rm -f "$_dma_dst"
+            return 1
+        fi
+        _dma_actual_sha=$(sha256sum "$_dma_dst" 2>/dev/null | awk '{print $1}') || _dma_actual_sha=""
+        _dma_expected_sha=$(printf '%s' "$_dma_digest" | cut -c 8-)
+        if [ "$_dma_actual_sha" != "$_dma_expected_sha" ]; then
+            rm -f "$_dma_dst"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 # ---------------------------
 # SYSTEM INFO
 # ---------------------------
@@ -1570,7 +1647,19 @@ else
     else
         log "Found: $(basename "$DOWNLOAD_URL")"
         log "Downloading..."
+        MIHOMO_PROJECT_IPK_READY=0
         if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then
+            MIHOMO_PROJECT_IPK_READY=1
+        else
+            warn "Release download failed; trying the same project Mihomo IPK via GitHub Asset API..."
+            if download_mihomo_release_asset_api "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then
+                MIHOMO_PROJECT_IPK_READY=1
+                log "Project Mihomo IPK downloaded via GitHub Asset API"
+            else
+                warn "Failed to download project Mihomo IPK via Release URL and Asset API"
+            fi
+        fi
+        if [ "$MIHOMO_PROJECT_IPK_READY" -eq 1 ]; then
             log "Installing package..."
             if opkg install "$TMP_DIR/mihomo.ipk"; then
                 MIHOMO_INSTALLED=1
@@ -1578,15 +1667,14 @@ else
             else
                 warn "Mihomo install from the downloaded GitHub package failed"
             fi
-        else
-            warn "Failed to download mihomo ipk"
         fi
     fi
 
     rm -f "$TMP_DIR/mihomo.ipk"
 
     if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
-        warn "GitHub Mihomo package unavailable, trying Entware feed fallback..."
+        warn "GitHub Mihomo package unavailable; using last-resort opkg install mihomo from Entware feed"
+        warn "Entware feed Mihomo may install a much larger ELF than project UPX build (especially relevant for internal UBIFS /opt)"
         opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
         MIHOMO_RESTART_NEEDED=1
         log "Mihomo installed from Entware feed fallback (version may be older than the GitHub release build)"
