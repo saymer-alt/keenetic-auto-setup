@@ -340,6 +340,9 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
 ASSET_DOWNLOAD_MAX_TIME=180
+# Small metadata/script transfers (Issues #483/#169): bounded budget separate
+# from the large .ipk window.
+SMALL_TRANSFER_MAX_TIME=20
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -1440,6 +1443,116 @@ download_mihomo_release_asset_api() {
     return 0
 }
 
+# BEGIN SMALL TRANSFER RESILIENCE v1 (Issues #483/#169)
+# FIELD KN-1010: an intermittent resolver failed every silent attempt of the
+# MagiTrickle repository helper download and the installer aborted without
+# naming the cause. This helper is for small script/metadata payloads only:
+# bounded 20s attempts, per-attempt feedback on interactive terminals only
+# (persistent logs stay quiet per attempt per docs/18-output-colors.md), at
+# most ONE documented IPv4/X25519 compatibility attempt, and an explicit
+# final transport classification (DNS/TLS/HTTP/timeout/truncated/empty).
+# Never downgrades TLS, never uses HTTP, never touches resolver configuration
+# or adds unverified mirrors; the caller keeps authenticity validation
+# (sh -n) before executing any downloaded script.
+small_transfer_reason() {
+    _str_rc="$1"
+    case "$_str_rc" in
+        6)  echo "DNS resolution failed (curl 6; intermittent resolver, wrong resolver or no route to the resolver)" ;;
+        7)  echo "connection refused (curl 7)" ;;
+        22) echo "HTTP error >= 400 (curl 22)" ;;
+        28) echo "timed out (curl 28)" ;;
+        18) echo "transfer truncated (curl 18; partial payload only)" ;;
+        35|51|58|60|64|66|77|80|82|83|90|91) echo "TLS/certificate error (curl $_str_rc); do NOT retry with -k, check ca-bundle and time" ;;
+        52) echo "empty reply from server (curl 52)" ;;
+        *)  echo "transport error (curl exit $_str_rc)" ;;
+    esac
+}
+
+small_transfer_attempt_feedback() {
+    # Interactive terminals see per-attempt progress; redirects and persistent
+    # logs keep the quiet-per-attempt download contract.
+    [ -t 2 ] || return 0
+    printf '[setup] %s\n' "$*" >&2
+}
+
+download_small_file_bounded() {
+    _dsf_url="$1"
+    _dsf_dst="$2"
+    _dsf_last_reason=""
+    _dsf_curl_reason=""
+
+    rm -f "$_dsf_dst" 2>/dev/null || true
+
+    if command -v curl >/dev/null 2>&1; then
+        _dsf_try=1
+        while [ "$_dsf_try" -le 3 ]; do
+            small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: curl attempt $_dsf_try/3 (budget ${SMALL_TRANSFER_MAX_TIME}s)"
+            rm -f "$_dsf_dst" 2>/dev/null || true
+            _dsf_rc=0
+            curl -fLsS --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" \
+                "$_dsf_url" -o "$_dsf_dst" 2>/dev/null || _dsf_rc=$?
+            if [ "$_dsf_rc" -eq 0 ] && [ -s "$_dsf_dst" ]; then
+                return 0
+            fi
+            if [ "$_dsf_rc" -eq 0 ]; then
+                _dsf_last_reason="transport returned an empty payload"
+                _dsf_curl_reason="$_dsf_last_reason"
+            else
+                _dsf_last_reason=$(small_transfer_reason "$_dsf_rc")
+                _dsf_curl_reason="$_dsf_last_reason"
+                small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: attempt $_dsf_try/3 failed - $_dsf_last_reason"
+            fi
+            [ "$_dsf_try" -ge 3 ] || sleep 2
+            _dsf_try=$((_dsf_try + 1))
+        done
+        # One documented compatibility retry for OpenSSL 3.5+ hybrid-PQ
+        # ClientHello paths (same convention as project_script_curl_retry).
+        small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: IPv4/X25519 attempt 1/1"
+        rm -f "$_dsf_dst" 2>/dev/null || true
+        _dsf_rc=0
+        curl -fLsS --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" -4 --curves X25519 \
+            "$_dsf_url" -o "$_dsf_dst" 2>/dev/null || _dsf_rc=$?
+        if [ "$_dsf_rc" -eq 0 ] && [ -s "$_dsf_dst" ]; then
+            return 0
+        fi
+        if [ "$_dsf_rc" -eq 0 ]; then
+            _dsf_last_reason="transport returned an empty payload"
+            _dsf_curl_reason="$_dsf_last_reason"
+        else
+            _dsf_last_reason=$(small_transfer_reason "$_dsf_rc")
+            _dsf_curl_reason="$_dsf_last_reason"
+        fi
+        rm -f "$_dsf_dst" 2>/dev/null || true
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: wget fallback (3 attempts)"
+        _dsf_wtry=1
+        while [ "$_dsf_wtry" -le 3 ]; do
+            rm -f "$_dsf_dst" 2>/dev/null || true
+            if wget -qO "$_dsf_dst" -T "$SMALL_TRANSFER_MAX_TIME" "$_dsf_url" 2>/dev/null &&
+               [ -s "$_dsf_dst" ]; then
+                return 0
+            fi
+            [ "$_dsf_wtry" -ge 3 ] || sleep 2
+            _dsf_wtry=$((_dsf_wtry + 1))
+        done
+        # Keep the explicit curl classification as the primary cause; the wget
+        # result is appended, never a replacement.
+        if [ -n "$_dsf_curl_reason" ]; then
+            _dsf_last_reason="$_dsf_curl_reason; wget fallback also failed"
+        else
+            _dsf_last_reason="wget fallback failed (wget exit codes are not portable across BusyBox/Entware)"
+        fi
+        rm -f "$_dsf_dst" 2>/dev/null || true
+    fi
+
+    rm -f "$_dsf_dst" 2>/dev/null || true
+    warn "Download of ${_dsf_dst##*/} failed: ${_dsf_last_reason:-transport error}"
+    return 1
+}
+# END SMALL TRANSFER RESILIENCE v1
+
 # ---------------------------
 # SYSTEM INFO
 # ---------------------------
@@ -2307,7 +2420,10 @@ log "Ensuring MagiTrickle package repository..."
 # reminder. install.sh performs that step itself, so suppress helper stdout to avoid
 # telling users to repeat an action that is already automated. Keep stderr visible.
 rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
-if ! download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
+# Small script payload: bounded metadata budget with explicit transport
+# classification (Issues #483/#169). The helper below keeps the downloaded
+# bytes unexecuted; sh -n below remains the authenticity gate.
+if ! download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
     err "Failed to download MagiTrickle repository helper through curl/wget"
 fi
 if ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
