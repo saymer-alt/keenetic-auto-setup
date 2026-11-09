@@ -79,6 +79,11 @@ jobs:
       - name: Contract smoke test
         run: sh tests/contracts.sh
 
+      # Mock-only Controller sampling: independent of the networked Entware
+      # verification (#488), so it reports before the Candidate-build gate.
+      - name: Proxy selection bounded sampling (mock Controller, sh and BusyBox ash)
+        run: python3 tests/proxy-selection-watch-regression.py
+
       - name: Owner experience — safe first-run errors
         run: python3 tests/owner-experience-gate.py
 
