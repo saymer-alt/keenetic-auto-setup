@@ -56,10 +56,19 @@ fi
 
 # The canonical installer itself checks RAM/swap, mount type, KeeneticOS
 # dependencies, one-Mihomo invariant, and installation ownership.
-if ! command -v curl >/dev/null 2>&1; then
-  msg 'Installing missing curl through Entware...'
-  opkg update || fail 'opkg update failed.'
-  opkg install curl || fail 'Could not install curl.'
+# check and doctor are read-only diagnostics: neither may run opkg
+# update/install. Only installing modes may bootstrap a missing curl
+# through Entware; doctor instead requires a working curl for its single
+# diagnostic download and refuses with instructions when it is absent.
+if [ "$MODE" = doctor ]; then
+  command -v curl >/dev/null 2>&1 || \
+    fail 'Doctor mode is read-only: it does not install packages. Install curl first, e.g. "opkg update && opkg install curl", then rerun doctor.'
+elif [ "$MODE" = all ] || [ "$MODE" = core ] || [ "$MODE" = web ]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    msg 'Installing missing curl through Entware...'
+    opkg update || fail 'opkg update failed.'
+    opkg install curl || fail 'Could not install curl.'
+  fi
 fi
 command -v mktemp >/dev/null 2>&1 || fail 'mktemp is required.'
 WORK=$(mktemp -d /tmp/kas-universal.XXXXXXXX) || fail 'Cannot create private /tmp workdir.'
