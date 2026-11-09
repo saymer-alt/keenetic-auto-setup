@@ -19,7 +19,7 @@
 - df values must be pure integers with `0 < total <= 9999999999` kB and `free <= total`; anything else (negative, decimal, overflow, zero total) -> `UNKNOWN`, numbers are not emitted.
 - A `PASS` reading always carries `mount_class`, `fstype`, `mount_point`, `source` (`df+proc_mounts` / `df` / `proc_mounts` / `none`) and `observed_utc`; non-PASS blocks carry no numbers and a plain-language reason in `note`.
 - The device source identifier (e.g. `/dev/ubi0_0`) is deliberately **not** reported; kernel-escaped mount points are decoded for display (`\040` -> space).
-- Web rendering of this block is **Stage B, intentionally deferred** (serial with the canonical Web #491 changes); this PR changes no Web UI.
+- Web rendering of this block is **Stage B** (issue #497): the stage A PR itself changed no Web UI; in the Night B integration branch the "Entware storage (/opt)" card in the KAS Web Diagnostics view renders the `storage` block of the same one-shot /api/metrics snapshot - no new request, no polling, textContent-only output. Numbers only for a validated `PASS` (kB -> MiB, with overflow/malformed guards: outside the guards the card shows "Unavailable" instead of numbers); the storage class only when reliably known (`internal`/`external`/`ram`); `PASS` with an ambiguous mount (rule above) shows free/total **without** claiming internal/external; `UNKNOWN` and `N/A` are distinct texts and never fabricate zeros; old 0.1.0 collector responses without the block stay valid with an honest message. UI tests: `web/control-center/tests/opt-storage-card.test.cjs`.
 
 ## What the collector does not do
 
