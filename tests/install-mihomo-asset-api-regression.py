@@ -13,10 +13,17 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "install.sh").read_text(encoding="utf-8")
-FUNCTION = "download_mihomo_release_asset_api() {"
-START = SOURCE.index(FUNCTION)
-END = SOURCE.index("\n}\n", START) + len("\n}")
-HELPER = SOURCE[START:END]
+def extract(name):
+    start = SOURCE.index(name + "() {")
+    end = SOURCE.index("\n}\n", start) + len("\n}")
+    return SOURCE[start:end]
+
+
+HELPER = "\n".join(extract(name) for name in (
+    "installer_asset_feedback",
+    "installer_asset_api_curl",
+    "download_mihomo_release_asset_api",
+))
 SELECTED = (
     "https://github.com/saymer-alt/entware-go/releases/download/latest/"
     "mihomo_1.19.33-2_aarch64-3.10.ipk"
