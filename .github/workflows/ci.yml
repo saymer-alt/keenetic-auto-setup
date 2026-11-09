@@ -88,6 +88,12 @@ jobs:
       - name: Reusable WEB Release publisher dry-run (offline, no GitHub mutations)
         run: python3 tests/web-beta-publish-dryrun.py
 
+      - name: Small-transfer download resilience and classification regression
+        run: python3 tests/install-magitrickle-download-regression.py
+
+      # Known red while Issue #488 upstream-pin drift is unresolved: every
+      # step after this one is skipped, so offline regressions that must run
+      # on every PR stay above it.
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py
 
@@ -99,8 +105,6 @@ jobs:
 
       - name: Internal wget fallback timeout and cleanup regression
         run: python3 tests/setup-wget-regression.py
-      - name: Small-transfer download resilience and classification regression
-        run: python3 tests/install-magitrickle-download-regression.py
 
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
