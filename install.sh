@@ -1254,17 +1254,25 @@ installer_asset_feedback() {
 installer_asset_retry_curl() {
     _iar_url="$1"
     _iar_dest="$2"
-    if [ ! -t 2 ]; then
-        retry_silent curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"
-        return $?
-    fi
     _iar_attempt=1
     while [ "$_iar_attempt" -le 3 ]; do
         installer_asset_feedback "IPK download: curl attempt $_iar_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds); percent shown while receiving bytes"
-        if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"; then
-            [ -s "$_iar_dest" ] && return 0
+        _iar_ok=1
+        if [ -t 2 ]; then
+            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"; then
+                _iar_ok=0
+            fi
+        else
+            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest" 2>/dev/null; then
+                _iar_ok=0
+            fi
+        fi
+        if [ "$_iar_ok" -eq 0 ] && [ -s "$_iar_dest" ]; then
+            installer_asset_feedback "IPK download: curl completed"
+            return 0
         fi
         installer_asset_feedback "IPK download: curl attempt $_iar_attempt/3 failed"
+        # Each attempt starts with a clean destination, even for a non-TTY.
         rm -f "$_iar_dest" || return 1
         [ "$_iar_attempt" -ge 3 ] || sleep 2
         _iar_attempt=$((_iar_attempt + 1))
@@ -1275,16 +1283,24 @@ installer_asset_retry_curl() {
 installer_asset_retry_wget() {
     _irw_url="$1"
     _irw_dest="$2"
-    if [ ! -t 2 ]; then
-        retry_silent wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"
-        return $?
-    fi
     _irw_attempt=1
     while [ "$_irw_attempt" -le 3 ]; do
         installer_asset_feedback "IPK download: wget attempt $_irw_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds)"
-        # BusyBox wget has no portable --progress=bar; permit its native output.
-        if wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
-            [ -s "$_irw_dest" ] && return 0
+        _irw_ok=1
+        # BusyBox wget lacks portable --progress=bar. Its native TTY
+        # progress is shown when available; redirected output stays quiet.
+        if [ -t 2 ]; then
+            if wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
+                _irw_ok=0
+            fi
+        else
+            if wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url" 2>/dev/null; then
+                _irw_ok=0
+            fi
+        fi
+        if [ "$_irw_ok" -eq 0 ] && [ -s "$_irw_dest" ]; then
+            installer_asset_feedback "IPK download: wget completed"
+            return 0
         fi
         installer_asset_feedback "IPK download: wget attempt $_irw_attempt/3 failed"
         rm -f "$_irw_dest" || return 1
