@@ -105,7 +105,7 @@ fi
             master, slave = pty.openpty()
             try:
                 kwargs["stderr"] = slave
-                p = subprocess.run(shell + ["-s", "download-test", tmp, mode], **kwargs)
+                p = subprocess.run(shell + ["-s", tmp, mode], **kwargs)
             finally:
                 os.close(slave)
             err = bytearray()
@@ -120,7 +120,7 @@ fi
             os.close(master)
             stderr = err.decode("utf-8", "replace")
         else:
-            p = subprocess.run(shell + ["-s", "download-test", tmp, mode],
+            p = subprocess.run(shell + ["-s", tmp, mode],
                                input=script, text=True, capture_output=True, timeout=15)
             stderr = p.stderr
 
