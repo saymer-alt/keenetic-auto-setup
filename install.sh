@@ -1335,6 +1335,18 @@ download_url_file() {
 # ID before accepting the larger/different Entware feed package.
 # Never use a caller-provided URL or an unverified ID; only the exact release
 # metadata asset selected by the shared ABI/version/URL selector is eligible.
+installer_asset_api_curl() {
+    _iac_dest="$1"
+    shift
+    if [ -t 2 ]; then
+        curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+            "$@" -o "$_iac_dest"
+    else
+        curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+            "$@" -o "$_iac_dest" 2>/dev/null
+    fi
+}
+
 download_mihomo_release_asset_api() {
     _dma_selected="$1"
     _dma_dst="$2"
@@ -1369,17 +1381,20 @@ download_mihomo_release_asset_api() {
     _dma_api="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/assets/$_dma_id"
     rm -f "$_dma_dst" || return 1
 
-    if ! curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+    installer_asset_feedback "$_dma_name: GitHub Asset API attempt 1/2"
+    if ! installer_asset_api_curl "$_dma_dst" \
         -H "Accept: application/octet-stream" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
-        "$_dma_api" -o "$_dma_dst" 2>/dev/null; then
+        "$_dma_api"; then
+        installer_asset_feedback "$_dma_name: Asset API attempt 1/2 failed; trying IPv4/X25519"
         # Discard partial data before retrying with the router TLS workaround.
         rm -f "$_dma_dst" || return 1
-        if ! curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
-            -4 --curves X25519 \
+        installer_asset_feedback "$_dma_name: GitHub Asset API attempt 2/2 (IPv4/X25519)"
+        if ! installer_asset_api_curl "$_dma_dst" -4 --curves X25519 \
             -H "Accept: application/octet-stream" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$_dma_api" -o "$_dma_dst" 2>/dev/null; then
+            "$_dma_api"; then
+            installer_asset_feedback "$_dma_name: GitHub Asset API attempt 2/2 failed"
             rm -f "$_dma_dst"
             return 1
         fi
@@ -1387,6 +1402,7 @@ download_mihomo_release_asset_api() {
 
     _dma_actual=$(wc -c < "$_dma_dst" 2>/dev/null | tr -d '[:space:]') || _dma_actual=""
     if [ "$_dma_actual" != "$_dma_size" ]; then
+        installer_asset_feedback "$_dma_name: downloaded size does not match asset metadata"
         rm -f "$_dma_dst"
         return 1
     fi
@@ -1399,11 +1415,13 @@ download_mihomo_release_asset_api() {
         _dma_actual_sha=$(sha256sum "$_dma_dst" 2>/dev/null | awk '{print $1}') || _dma_actual_sha=""
         _dma_expected_sha=$(printf '%s' "$_dma_digest" | cut -c 8-)
         if [ "$_dma_actual_sha" != "$_dma_expected_sha" ]; then
+            installer_asset_feedback "$_dma_name: downloaded SHA256 does not match asset metadata"
             rm -f "$_dma_dst"
             return 1
         fi
     fi
 
+    installer_asset_feedback "$_dma_name: project IPK verified"
     return 0
 }
 
