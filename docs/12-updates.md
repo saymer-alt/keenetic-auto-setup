@@ -171,6 +171,8 @@ opkg/project metadata не подменяет runtime truth. Запущенны�
 
 ### IPK, UPX и свободное место на внутренней UBIFS (FIELD 25.09 и 09.11.2026)
 
+Сводные выводы установки на KN-3811 от 09.11.2026 (включая причинную цепочку fallback, WEB и CI): [FIELD-отчёт](field/2026-11-09-kn-3811-kas-clean-install-findings.md).
+
 **Это уже проверено на реальном оборудовании.** На дачном Keenetic Giga
 KN-1012 GSM с внутренней UBIFS `/opt` 25.09.2026 старый неиспользуемый
 `/opt/sbin/meta-backup/mihomo` занимал место. После его удаления свободное
