@@ -95,7 +95,7 @@ Source-level причина: контракт `router-metrics/v1` в `kas-sys-me
 ## 8. Дальнейшие работы и stop conditions
 
 1. **P1:** ревью Draft PR #479 и exact-SHA CI, проверить обработку ошибок/redirect, partial/size/digest и одинаковую семантику TTY/non-TTY. Не создавать бесконечные retries; не объявлять GitHub Asset API гарантированным обходом CDN.
-2. **P1 (отдельный сбой CI):** расследовать внешний Entware `opkg` SHA mismatch — не менять доверенный pin вслепую и не считать падение теста новой функции доказанным.
+2. **P1 (отдельный сбой CI):** [Issue #488](https://github.com/saymer-alt/keenetic-auto-setup/issues/488) — расследовать внешний Entware `opkg` SHA mismatch; не менять доверенный pin вслепую и не считать падение теста новой функции доказанным.
 3. **P2:** #476 добавить /opt в Web System Metrics (internal UBIFS/external EXT4, UNKNOWN). Не трогать текущую WEB beta.8 на рабочем объекте.
 4. **R&D:** #481 опубликовать доверенные project IPK/manifest в GitLab, проверить анонимную доступность и только затем подключать зеркало к installer.
 5. **Optional regression:** на offline fixture воспроизвести `Existing Mihomo config left untouched` для свежего фидового conffile, не перезаписывая пользовательский YAML. Не фиксировать догадку как root cause.
