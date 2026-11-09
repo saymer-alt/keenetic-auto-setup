@@ -1673,7 +1673,7 @@ else
     rm -f "$TMP_DIR/mihomo.ipk"
 
     if [ "$MIHOMO_INSTALLED" -eq 0 ]; then
-        warn "GitHub Mihomo package unavailable; using last-resort opkg install mihomo from Entware feed"
+        warn "GitHub Mihomo package unavailable, trying Entware feed fallback (last resort)..."
         warn "Entware feed Mihomo may install a much larger ELF than project UPX build (especially relevant for internal UBIFS /opt)"
         opkg install mihomo || err "Mihomo install failed: GitHub package unavailable and Entware feed fallback failed"
         MIHOMO_RESTART_NEEDED=1
