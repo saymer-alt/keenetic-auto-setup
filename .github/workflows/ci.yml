@@ -62,6 +62,12 @@ jobs:
           python3 tests/install-ipk-progress-regression.py
           python3 tests/install-mihomo-asset-api-regression.py
 
+      # KAS universal launcher offline suite (PR #482): hermetic mock curl/opkg,
+      # pinned commit URL + SHA256 gates, fail-closed negatives. Previously
+      # unregistered; wired as its own early offline step per Issue #496.
+      - name: KAS universal installer launcher regression (offline, hermetic mocks)
+        run: python3 tests/kas-universal-installer-regression.py
+
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
       - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
