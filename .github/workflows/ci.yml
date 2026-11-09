@@ -99,6 +99,8 @@ jobs:
 
       - name: Internal wget fallback timeout and cleanup regression
         run: python3 tests/setup-wget-regression.py
+      - name: Small-transfer download resilience and classification regression
+        run: python3 tests/install-magitrickle-download-regression.py
 
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
