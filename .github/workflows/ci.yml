@@ -57,6 +57,11 @@ jobs:
           git ls-files '*.sh' | while IFS= read -r file; do busybox ash -n "$file"; done
           busybox ash -n S00ubifs
 
+      - name: Installer Mihomo IPK downloads (mocked progress / fallback)
+        run: |
+          python3 tests/install-ipk-progress-regression.py
+          python3 tests/install-mihomo-asset-api-regression.py
+
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
       - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
@@ -185,7 +190,6 @@ jobs:
       - name: Mihomo rolling-feed selection (dash and BusyBox ash)
         run: |
           python3 tests/ipk-selection-regression.py
-          python3 tests/install-mihomo-asset-api-regression.py
           python3 tests/ipk-package-release-regression.py
           python3 tests/doctor-package-selection-regression.py
 
