@@ -15,6 +15,9 @@ function parse(data){
  const versionLines=[...text.matchAll(/^\[INFO\] Doctor version: (\S+)$/gm)];
  if(versionLines.length!==1||!versions.has(versionLines[0][1]))return unknown;
  const facts={},findings=[],seen=new Set();let section='other';
+ // KeeneticOS must be stated exactly once anywhere in the report; duplicates or
+ // conflicting statements keep the fact unknown instead of picking a side (#484).
+ const osUnique=text.match(/^\[[A-Z]{2,4}\] +KeeneticOS: /gm)?.length===1;
  const put=(key,value)=>{if(seen.has(key)){delete facts[key];return;}seen.add(key);if(value!==undefined)facts[key]=value;};
  const amount=(free,total)=>Number.isSafeInteger(+free)&&Number.isSafeInteger(+total)&&+free>=0&&+free<=+total&&+total<=1000000000?{free:+free,total:+total}:undefined;
  for(const line of text.split('\n')){
@@ -26,7 +29,10 @@ function parse(data){
   const value=row[2];let m;
   if(section==='1'){
    if((m=value.match(/^Router: (?:model: )?(.{1,160})$/)))put('model',m[1]);
-   if((m=value.match(/^KeeneticOS: ([0-9][A-Za-z0-9.+~-]{0,63})$/)))put('os',m[1]);
+   // Bounded value (≤64 chars, unchanged): single space-separated tokens, each
+   // alphanumeric-led, no leading/trailing/double spaces, no control chars or
+   // markup. Accepts 5.1.8, 5.02.B.3.0-2 and the FIELD 5.2 Beta 3 (#484).
+   if(osUnique&&(m=value.match(/^KeeneticOS: (?=.{1,64}$)([0-9][A-Za-z0-9.+~-]*(?: [A-Za-z0-9][A-Za-z0-9.+~-]*){0,3})$/)))put('os',m[1]);
    if((m=value.match(/^Entware \/opt mount: source=([^;]{1,160}); mountpoint=([^;]{1,160}); filesystem=([a-z0-9]{1,20}); class=(internal|external|ram|unknown)$/)))put('storage',{source:m[1],mountpoint:m[2],filesystem:m[3],class:m[4]});
    if((m=value.match(/^RAM total: (\d{1,10}) MB, available: (\d{1,10}) MB$/)))put('ram',amount(m[2],m[1]));
    if((m=value.match(/^Swap: (\d{1,10}) MB \(free (\d{1,10}) MB\)$/)))put('swap',amount(m[2],m[1]));
