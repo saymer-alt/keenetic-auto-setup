@@ -90,3 +90,45 @@ test('unknown warning and older version have no invented remedy',()=>{
  assert.match(message,/История и стабильность watchdog/);assert.match(message,/<img src=x onerror=alert\(1\)>/);
  assert.doesNotMatch(message,/Сравните новые события|Сопоставьте время|Сейчас процесс может работать/);
 });
+
+// #484 FIELD: the real KN-1010 (KeeneticOS 5.2 Beta 3) report states the OS
+// with spaces; the overview must show it instead of an honest-looking unknown.
+test('FIELD KeeneticOS values with spaces render; release-formats stay intact',()=>{
+ const field=report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: 5.2 Beta 3');
+ assert.equal(parse(field).facts.os,'5.2 Beta 3');
+ assert.equal(parse(report).facts.os,'5.1.8');
+ assert.equal(parse(report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: 5.02.B.3.0-2')).facts.os,'5.02.B.3.0-2');
+ assert.equal(parse(field.replace('1.2.19','1.2.22')).facts.os,'5.2 Beta 3');
+ // 64-char values stay inside the pre-existing bound; 65 do not.
+ assert.equal(parse(report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: '+'5'+'1'.repeat(63))).facts.os,'5'+'1'.repeat(63));
+ assert.equal(parse(report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: '+'5'+'1'.repeat(64))).facts.os,undefined);
+});
+test('KeeneticOS fact fails closed on malformed, injected and duplicated lines',()=>{
+ const withOS=v=>report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: '+v);
+ for(const bad of ['','5.2  Beta 3','5.2 Beta 3 ',' 5.2 Beta 3','5.2\tBeta 3','5.2<script>alert(1)</script>','5.2 Beta 3 extra4 extra5','5.2 -Beta','beta 5.2','5.2\u00a0Beta'])
+  assert.equal(parse(withOS(bad)).facts.os,undefined,'must reject '+JSON.stringify(bad));
+ // Conflicting statements (any section, any severity) keep the fact unknown
+ // while the rest of the overview stays parseable.
+ const bothSections=withOS('5.2 Beta 3').replace('===== 5. Service =====','===== 5. Service =====\n[INFO] KeeneticOS: 5.1.8');
+ assert.equal(parse(bothSections).supported,true);assert.equal(parse(bothSections).facts.os,undefined);
+ const duplicated=withOS('5.2 Beta 3').replace('[INFO] KeeneticOS: 5.2 Beta 3','[INFO] KeeneticOS: 5.2 Beta 3\n[INFO] KeeneticOS: 5.2 Beta 3');
+ assert.equal(parse(duplicated).facts.os,undefined);
+ const forgedSeverity=withOS('5.2 Beta 3').replace('===== 5. Service =====','===== 5. Service =====\n[OK] KeeneticOS: 9.9.9');
+ assert.equal(parse(forgedSeverity).supported,true);assert.equal(parse(forgedSeverity).facts.os,undefined);
+ // Case of the label itself is significant; only the exact "KeeneticOS:" line is a fact.
+ assert.equal(parse(withOS('5.2 Beta 3').replace('KeeneticOS: 5.2','keeneticOS: 5.2')).facts.os,undefined);
+});
+test('KeeneticOS value renders bilingually and unknown stays honest',()=>{
+ const field=report.replace('[INFO] KeeneticOS: 5.1.8','[INFO] KeeneticOS: 5.2 Beta 3');
+ for(const lang of ['ru','en']){
+  class Node{constructor(doc){this.ownerDocument=doc;this.children=[];this.textContent='';}replaceChildren(){this.children=[];}appendChild(n){this.children.push(n);}set innerHTML(_){throw Error('HTML insertion forbidden');}}
+  const doc={createElement:()=>new Node(doc)};
+  const shown=new Node(doc);api.render(shown,{details:field,exit_code:0,summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}},lang);
+  const text=n=>[n.textContent,...n.children.map(text)].join(' ');
+  assert.ok(text(shown).includes('5.2 Beta 3'));assert.ok(!text(shown).includes(api.labels[lang].unknown));
+  const unknown=new Node(doc);api.render(unknown,{details:withOSConflict(),exit_code:0,summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}},lang);
+  assert.ok(text(unknown).includes(api.labels[lang].unknown));
+  assert.ok(!text(unknown).includes('5.2'));
+ }
+ function withOSConflict(){return report.replace('===== 5. Service =====','===== 5. Service =====\n[INFO] KeeneticOS: 5.1.8');}
+});
