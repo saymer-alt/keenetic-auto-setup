@@ -15,7 +15,7 @@
 
 ## Безопасный путь к публикации
 
-1. Review Draft PR: точно 7 upstream IPK, проверенные official release SHA, источник tag `9337c101...`; без редактирования `AGENTS.md`, `install.sh`, router конфигов или `stable`.
+1. Review Draft PR: точно 3 upstream `_kn` IPK, проверенные official release SHA, источник tag `9337c101...`; без редактирования `AGENTS.md`, `install.sh`, router конфигов или `stable`.
 2. Merge **после review и нужного GO** в `main`. Пока workflow отсутствует в default branch, обычный manual dispatcher на GitHub может быть недоступен.
 3. В GitHub Actions выбрать `MagiTrickle official IPK mirror (manual)`, operation `verify`. Проверить CI отчёт, `SHA256SUMS`, license/source. Данный запуск **ничего не публикует**.
 4. Только после explicit approval запустить operation `publish` **из main**. Workflow повторно проверит staged файлы, создаст **отдельный** релиз `thirdparty-magitrickle-0.8.2-2` c `--latest=false` и тремя IPK `_kn`, SHA256SUMS и соответствующим source archive. Если релиз уже существует, задача прервётся вместо перезаписи.
