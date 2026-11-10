@@ -28,7 +28,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Download and inspect seven pinned upstream IPKs
+      - name: Download and inspect three pinned upstream Keenetic _kn IPKs
         run: |
           python3 scripts/verify_magitrickle_mirror.py \
             --manifest mirrors/magitrickle/0.8.2-2.lock.json \
@@ -110,6 +110,6 @@ jobs:
             mirror-stage/SOURCE.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Third-party mirror: official MagiTrickle 0.8.2-2 (7 Entware IPKs)" \
+            --title "Third-party mirror: official MagiTrickle 0.8.2-2 (3 Keenetic _kn IPKs)" \
             --notes-file mirrors/magitrickle/RELEASE_NOTES.md \
             --latest=false
