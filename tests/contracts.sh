@@ -667,7 +667,9 @@ grep -Fq 'MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)' "$ROOT/install.sh" || f
 grep -Fq 'MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)' "$ROOT/install.sh" || fail "installer must capture repository configuration after the MagiTrickle helper"
 grep -Fq 'if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then' "$ROOT/install.sh" || fail "second opkg update must be gated on an actual repository-config change"
 grep -Fq 'initial opkg update already refreshed its metadata' "$ROOT/install.sh" || fail "unchanged MagiTrickle repo must skip the duplicate metadata refresh"
-grep -Fq 'retry opkg update || err "opkg update after changing the MagiTrickle repository failed"' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still refresh metadata reliably"
+grep -Fq 'if ! retry opkg update; then' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still attempt bounded metadata refresh"
+grep -Fq 'warn "MT feed refresh failed; pinned backup may be used for first install"' "$ROOT/install.sh" || fail "failed MagiTrickle refresh must be explicit and enter verified backup path"
+grep -Fq 'mt_verified_kn_fallback ||' "$ROOT/install.sh" || fail "missing/invalid upstream MagiTrickle feed must use pinned _kn-only backup or fail closed"
 pass "MagiTrickle helper avoids duplicate opkg update when repository configuration is unchanged"
 
 # Project-managed helper delivery must survive a transient/raw-host failure without
