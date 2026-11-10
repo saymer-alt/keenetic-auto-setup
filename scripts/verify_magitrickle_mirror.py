@@ -56,13 +56,13 @@ def main():
             or lock.get("upstream_release_tag") != "0.8.2-rev2"
             or lock.get("package_version") != "0.8.2-2"
             or lock.get("source_commit") != "9337c101ca2245886f9dfff1d2660f6abae3013a"
-            or len(lock.get("packages", [])) != 7):
+            or len(lock.get("packages", [])) != 3):
         raise ValueError("invalid/unreviewed upstream manifest")
     args.output.mkdir(parents=True, exist_ok=True)
     seen = set()
     for item in lock["packages"]:
         arch, name = item["architecture"], item["name"]
-        if not re.fullmatch(r"[a-z0-9._-]+", arch) or name != f"magitrickle_0.8.2-2_entware_{arch}.ipk":
+        if arch not in {"aarch64-3.10_kn", "mips-3.4_kn", "mipsel-3.4_kn"} or name != f"magitrickle_0.8.2-2_entware_{arch}.ipk":
             raise ValueError("invalid filename or architecture")
         if name in seen:
             raise ValueError("duplicate package")
@@ -96,7 +96,7 @@ def main():
             temp.write_bytes(data)
             temp.replace(dest)
         print(f"PASS {name} {sha}", flush=True)
-    print("PASS all seven official MagiTrickle IPK assets (offline package inspection)")
+    print("PASS all three Keenetic _kn MagiTrickle IPK assets (offline package inspection)")
 
 
 if __name__ == "__main__":
