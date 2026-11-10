@@ -66,7 +66,7 @@ jobs:
       # pinned commit URL + SHA256 gates, fail-closed negatives. Previously
       # unregistered; wired as its own early offline step per Issue #496.
       - name: KAS universal installer launcher regression (offline, hermetic mocks)
-        run: python3 tests/kas-universal-installer-regression.py
+        run: sudo python3 tests/kas-universal-installer-regression.py
 
       - name: Lifecycle behavioural regression (dash and BusyBox ash)
         run: python3 tests/lifecycle-regression.py
