@@ -65,6 +65,7 @@ jobs:
         run: |
           python3 tests/independent-verification.py selftest
           python3 tests/independent-verification.py run --report "$RUNNER_TEMP/kas-independent-verification.json"
+          python3 tests/production-mutation-smoke.py
 
       - name: Preserve independent verification evidence
         if: always()
