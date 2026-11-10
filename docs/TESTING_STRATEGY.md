@@ -6,6 +6,7 @@
 
 | Task | Read first |
 | --- | --- |
+| AI-agent independence, evidence status, fault/mutation/field | [Independent verification and evidence policy](INDEPENDENT-VERIFICATION.md) (KAS-VERIFY-001) |
 | Safety invariants and stateful changes | [High-consequence invariants](#high-consequence-invariants), [test-budget rule](#test-budget-rule) |
 | Router acceptance / permission and evidence limits | [Real-hardware testing](#real-hardware-testing), [MCP cross-validation](#mcp-cross-validation-as-an-independent-live-oracle) |
 | BusyBox and external CLI assumptions | [BusyBox portability gate](#busybox--runtime-portability-gate), [external output parsing](#external-command-output-is-an-input-protocol) |
