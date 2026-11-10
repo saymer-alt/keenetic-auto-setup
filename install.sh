@@ -2105,10 +2105,112 @@ mt_confirm_after_start() {
 # ---------------------------
 # MAGITRICKLE
 # ---------------------------
-# Keep running the upstream helper on every installer run so future feed-layout
-# changes can still be applied. A second full opkg update is needed only when
-# that helper actually changes the opkg repository configuration: otherwise the
-# initial opkg update above has already refreshed the existing MagiTrickle feeds.
+# BEGIN MAGITRICKLE KN FALLBACK v1 (issue #505)
+# Strictly use official Entware _kn builds. GitHub is 0.8.2-2 and GitLab
+# is 0.8.2-1: same upstream core version, DIFFERENT package revisions.
+# Never replace or downgrade an existing MagiTrickle during fallback.
+mt_select_kn_arch() {
+    MT_KN_ARCH=""
+    _mt_arch_list=$(opkg print-architecture 2>/dev/null) || return 1
+    while read -r _mt_type _mt_candidate _mt_prio _mt_extra; do
+        [ "$_mt_type" = arch ] && [ -z "$_mt_extra" ] || continue
+        case "$_mt_candidate" in
+            aarch64-3.10_kn|mips-3.4_kn|mipsel-3.4_kn)
+                [ -z "$MT_KN_ARCH" ] || return 1
+                MT_KN_ARCH=$_mt_candidate ;;
+        esac
+    done <<EOF
+$_mt_arch_list
+EOF
+    [ -n "$MT_KN_ARCH" ]
+}
+
+mt_verify_installed_kn() {
+    _mt_status=$(opkg status magitrickle 2>/dev/null) || return 1
+    _mt_inst_arch=$(printf '%s\n' "$_mt_status" |
+        awk -F ': ' '$1 == "Architecture" { print $2; exit }')
+    [ "$_mt_inst_arch" = "$MT_KN_ARCH" ]
+}
+
+mt_verified_kn_fallback() {
+    # Only for clean installs; opkg failure/partial transaction is a hard stop.
+    pkg_is_installed magitrickle && return 1
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    _mt_dir=$(mktemp -d "$TMP_DIR/kas-mt-kn.XXXXXXXX") || return 1
+    _mt_ipk="$_mt_dir/magitrickle.ipk"
+    case "$MT_KN_ARCH" in
+        aarch64-3.10_kn)
+            _mt_github_sha=d3423385f542b012fb583f1135ce9c10ff90b4570a03af4bc2e272fa18d783ef
+            _mt_github_size=2548308
+            _mt_gitlab_sha=9ae3df3c33f8c836aa1adc34f79c5de4fd620dee5da96cef26015b0cec186c9b
+            _mt_gitlab_size=2547127 ;;
+        mips-3.4_kn)
+            _mt_github_sha=4fe3a712196e7498e336589c65240c0f109f63b3be4bc50473344c043a68b10b
+            _mt_github_size=2379639
+            _mt_gitlab_sha=21eb0d8e2a97fbe571998cdcc963c771c314d1bb4ea3e044e4951711162de9ea
+            _mt_gitlab_size=2380080 ;;
+        mipsel-3.4_kn)
+            _mt_github_sha=ad2732a4ab3d25abbf38a65ab8306d22138a959173234f6b2deb5326923fcd93
+            _mt_github_size=2418194
+            _mt_gitlab_sha=5a10083cc063731536d8c7820c008348e99a16cf821534f51f1a415f50421c0e
+            _mt_gitlab_size=2418259 ;;
+        *) rmdir "$_mt_dir" 2>/dev/null || true; return 1 ;;
+    esac
+    _mt_ok=1
+    for _mt_source in github gitlab; do
+        rm -f "$_mt_ipk"
+        case "$_mt_source" in
+            github)
+                _mt_expected=$_mt_github_sha
+                _mt_size=$_mt_github_size
+                _mt_revision=0.8.2-2
+                _mt_url="https://github.com/MagiTrickle/MagiTrickle/releases/download/0.8.2-rev2/magitrickle_0.8.2-2_entware_$MT_KN_ARCH.ipk" ;;
+            gitlab)
+                _mt_expected=$_mt_gitlab_sha
+                _mt_size=$_mt_gitlab_size
+                _mt_revision=0.8.2-1
+                _mt_url="https://gitlab.com/api/v4/projects/69165954/packages/generic/magitrickle/0.8.2/magitrickle_0.8.2-1_entware_$MT_KN_ARCH.ipk" ;;
+        esac
+        log "MT backup $_mt_source: $_mt_revision for $MT_KN_ARCH"
+        if command -v curl >/dev/null 2>&1; then
+            if ! curl -fSsL --connect-timeout 7 --max-time 50 "$_mt_url" -o "$_mt_ipk"; then
+                warn "MT backup $_mt_source download failed"
+                continue
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if ! wget -q -T 50 -O "$_mt_ipk" "$_mt_url"; then
+                warn "MT backup $_mt_source download failed"
+                continue
+            fi
+        else
+            warn "MT backup needs curl or wget"
+            break
+        fi
+        _mt_actual_size=$(wc -c < "$_mt_ipk" 2>/dev/null) || _mt_actual_size=""
+        _mt_actual_sha=$(sha256sum "$_mt_ipk" 2>/dev/null | awk '{print $1}') || _mt_actual_sha=""
+        if [ "$_mt_actual_size" != "$_mt_size" ] || [ "$_mt_actual_sha" != "$_mt_expected" ]; then
+            warn "MT backup $_mt_source SHA256/size mismatch; refusing unverified IPK"
+            continue
+        fi
+        log "MT backup $_mt_source hash OK; installing verified $MT_KN_ARCH IPK"
+        if opkg install "$_mt_ipk" && pkg_is_installed magitrickle &&
+           mt_verify_installed_kn; then
+            _mt_ok=0
+        else
+            warn "MT backup opkg/architecture failure: inspect partial package state"
+        fi
+        # Never retry a different package revision after an opkg transaction.
+        break
+    done
+    rm -f "$_mt_ipk"
+    rmdir "$_mt_dir" 2>/dev/null || true
+    return "$_mt_ok"
+}
+# END MAGITRICKLE KN FALLBACK v1
+
+mt_select_kn_arch ||
+    err "No unique supported Keenetic Entware _kn architecture; generic MagiTrickle IPKs are forbidden"
+
 opkg_repo_snapshot() {
     for _opkg_conf in /opt/etc/opkg/*.conf; do
         [ -f "$_opkg_conf" ] || continue
@@ -2122,40 +2224,62 @@ if [ -e /opt/etc/opkg/magitrickle.conf ] || [ -L /opt/etc/opkg/magitrickle.conf 
     _kas_mt_repo_existed=1
 fi
 MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)
+_mt_repo_usable=1
 
 log "Ensuring MagiTrickle package repository..."
-# The upstream helper prints an interactive "do not forget to install magitrickle"
-# reminder. install.sh performs that step itself, so suppress helper stdout to avoid
-# telling users to repeat an action that is already automated. Keep stderr visible.
 rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 if ! download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
-    err "Failed to download MagiTrickle repository helper through curl/wget"
-fi
-if ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
-    err "Downloaded MagiTrickle repository helper failed shell syntax validation"
-fi
-if ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
-    err "Failed to add MagiTrickle package repository"
+    warn "MT upstream helper unavailable; pinned backup may be used for first install"
+    _mt_repo_usable=0
+elif ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
+    warn "MT helper failed shell validation; refusing to execute"
+    _mt_repo_usable=0
+elif ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
+    warn "MT repository helper failed; pinned backup may be used for first install"
+    _mt_repo_usable=0
 fi
 rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 
-MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
-if [ "$_kas_mt_repo_existed" -eq 0 ] &&
-   [ -f /opt/etc/opkg/magitrickle.conf ] && [ ! -L /opt/etc/opkg/magitrickle.conf ]; then
-    kas_ledger_record owned repository magitrickle.conf ||
-        err "Cannot journal newly created MagiTrickle OPKG source."
+if [ "$_mt_repo_usable" -eq 1 ]; then
+    MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
+    if [ "$_kas_mt_repo_existed" -eq 0 ] &&
+       [ -f /opt/etc/opkg/magitrickle.conf ] && [ ! -L /opt/etc/opkg/magitrickle.conf ]; then
+        kas_ledger_record owned repository magitrickle.conf ||
+            err "Cannot journal newly created MagiTrickle OPKG source."
+    fi
+    if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
+        log "MagiTrickle repository changed - refreshing OPKG..."
+        if ! retry opkg update; then
+            warn "MT feed refresh failed; pinned backup may be used for first install"
+            _mt_repo_usable=0
+        fi
+    else
+        log "MagiTrickle repository unchanged - existing OPKG metadata retained"
+    fi
 fi
-if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
-    log "MagiTrickle repository configuration changed - refreshing package metadata..."
-    retry opkg update || err "opkg update after changing the MagiTrickle repository failed"
+
+if pkg_is_installed magitrickle; then
+    mt_verify_installed_kn ||
+        err "Installed MagiTrickle architecture does not match Keenetic _kn; no automatic replacement"
+    log "MagiTrickle already installed with matching Keenetic _kn architecture"
 else
-    log "MagiTrickle repository configuration unchanged - initial opkg update already refreshed its metadata"
+    if [ "$_mt_repo_usable" -eq 1 ]; then
+        log "Installing MagiTrickle from official OPKG feed..."
+        if ! opkg install magitrickle; then
+            err "MT official OPKG install failed; refusing revision-switch after possible partial transaction"
+        fi
+        pkg_is_installed magitrickle ||
+            err "MagiTrickle OPKG install returned success but package is absent"
+        mt_verify_installed_kn ||
+            err "Official feed selected non-_kn MagiTrickle; refusing to mark installation successful"
+    else
+        log "Trying pinned Keenetic MagiTrickle GitHub, then GitLab backup..."
+        mt_verified_kn_fallback ||
+            err "No verified _kn MagiTrickle backup could be installed"
+    fi
 fi
 
-log "Installing MagiTrickle package..."
-pkg_ensure magitrickle
-
-pkg_is_installed magitrickle || err "MagiTrickle package is not present after installation"
+pkg_is_installed magitrickle || err "MagiTrickle is absent after installation"
 if kas_package_was_absent magitrickle; then
     kas_ledger_record owned package magitrickle || err "Cannot journal new MagiTrickle package installation."
 fi
@@ -2163,9 +2287,6 @@ fi
 
 log "Starting MagiTrickle..."
 /opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
-# FIELD #427: the init script result alone is not runtime proof; the
-# confirmation gate below is read-only (exactly one managed start above,
-# never an automatic retry that could race the upstream startup loop).
 magitrickle_dns_port
 mt_confirm_after_start || true
 
