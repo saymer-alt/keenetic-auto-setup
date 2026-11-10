@@ -1,0 +1,115 @@
+name: MagiTrickle official IPK mirror (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Verify only; publish requires an explicit owner dispatch from main
+        required: true
+        type: choice
+        default: verify
+        options:
+          - verify
+          - publish
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magitrickle-ipk-official-mirror
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify official 0.8.2-2 IPKs and source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and inspect seven pinned upstream IPKs
+        run: |
+          python3 scripts/verify_magitrickle_mirror.py \
+            --manifest mirrors/magitrickle/0.8.2-2.lock.json \
+            --output mirror-stage
+      - name: Package corresponding source from pinned upstream commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 0.8.2-rev2 \
+            https://github.com/MagiTrickle/MagiTrickle.git /tmp/kas-mt-upstream
+          test "$(git -C /tmp/kas-mt-upstream rev-parse HEAD)" = \
+            "9337c101ca2245886f9dfff1d2660f6abae3013a"
+          git -C /tmp/kas-mt-upstream archive --format=tar \
+            --prefix=magitrickle-0.8.2-rev2/ HEAD | gzip -n \
+            > mirror-stage/magitrickle-source-0.8.2-rev2.tar.gz
+          test -s mirror-stage/magitrickle-source-0.8.2-rev2.tar.gz
+          cat > mirror-stage/SOURCE.txt <<'EOF'
+          Official MagiTrickle 0.8.2-2 IPK archive (unchanged upstream bytes)
+          Upstream repository: https://github.com/MagiTrickle/MagiTrickle
+          Primary source: https://gitlab.com/magitrickle/magitrickle
+          Official release: https://github.com/MagiTrickle/MagiTrickle/releases/tag/0.8.2-rev2
+          Source tag: 0.8.2-rev2
+          Source commit: 9337c101ca2245886f9dfff1d2660f6abae3013a
+          License: GPL-3.0-or-later; corresponding source archive supplied alongside.
+          Independent KAS mirror; NOT a new upstream release and NOT a full OPKG feed.
+          EOF
+          (
+            cd mirror-stage
+            sha256sum ./*.ipk ./magitrickle-source-0.8.2-rev2.tar.gz > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+      - name: Save independently inspectable verified mirror bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: magitrickle-official-0.8.2-2-verified
+          path: mirror-stage/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish isolated third-party mirror release
+    needs: verify
+    if: ${{ inputs.operation == 'publish' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: magitrickle-official-0.8.2-2-verified
+          path: mirror-stage
+      - name: Recheck staged official binaries and source checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_magitrickle_mirror.py \
+            --manifest mirrors/magitrickle/0.8.2-2.lock.json \
+            --output mirror-stage --offline
+          (cd mirror-stage && sha256sum -c SHA256SUMS)
+          test -s mirror-stage/SOURCE.txt
+          test -s mirror-stage/magitrickle-source-0.8.2-rev2.tar.gz
+      - name: Publish a non-latest, immutable third-party mirror
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="thirdparty-magitrickle-0.8.2-2"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Mirror release already exists; refusing overwrite"
+            exit 1
+          fi
+          gh release create "$TAG" \
+            mirror-stage/*.ipk \
+            mirror-stage/magitrickle-source-0.8.2-rev2.tar.gz \
+            mirror-stage/SHA256SUMS \
+            mirror-stage/SOURCE.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Third-party mirror: official MagiTrickle 0.8.2-2 (7 Entware IPKs)" \
+            --notes-file mirrors/magitrickle/RELEASE_NOTES.md \
+            --latest=false
