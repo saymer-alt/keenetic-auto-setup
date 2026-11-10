@@ -1,0 +1,22 @@
+name: MagiTrickle Keenetic fallback contract
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - tests/magitrickle-kn-fallback-regression.py
+      - .github/workflows/magitrickle-kn-fallback.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-kn-fallback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax (install.sh)
+        run: sh -n install.sh
+      - name: Offline/isolated fallback contract tests
+        run: python3 tests/magitrickle-kn-fallback-regression.py -v
