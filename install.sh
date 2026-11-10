@@ -2248,7 +2248,7 @@ if [ "$_mt_repo_usable" -eq 1 ]; then
             err "Cannot journal newly created MagiTrickle OPKG source."
     fi
     if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
-        log "MagiTrickle repository changed - refreshing OPKG..."
+        log "MagiTrickle repository configuration changed - refreshing package metadata..."
         if ! retry opkg update; then
             warn "MT feed refresh failed; pinned backup may be used for first install"
             _mt_repo_usable=0
