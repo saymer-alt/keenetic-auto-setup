@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 INSTALL = Path(__file__).resolve().parents[1] / "install.sh"
-BEGIN = "# BEGIN MAGITRICKLE KN FALLBACK v1"
+BEGIN = "# BEGIN MAGITRICKLE KN FALLBACK v1 (issue #505)"
 END = "# END MAGITRICKLE KN FALLBACK v1"
 SCRIPT = INSTALL.read_text(encoding="utf-8")
 assert SCRIPT.count(BEGIN) == SCRIPT.count(END) == 1
