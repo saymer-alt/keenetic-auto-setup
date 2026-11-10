@@ -102,7 +102,7 @@ if mt_verified_kn_fallback; then echo 'fallback-success'; else echo 'fallback-fa
             run = subprocess.run(["sh", "-s"], input=code, text=True,
                                  env=env, capture_output=True, timeout=12)
             trace = (Path(d) / "trace")
-            return run.returncode, run.stdout, (trace.read_text() if trace.exists() else "")
+            return run.returncode, run.stdout + ("\nSTDERR: " + run.stderr if run.returncode else ""), (trace.read_text() if trace.exists() else "")
 
     def test_github_first_and_one_install(self):
         rc, out, trace = self.runner(github="ok")
