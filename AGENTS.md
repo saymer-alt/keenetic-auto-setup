@@ -19,6 +19,8 @@ KAS is a KeeneticOS + Entware toolkit for Mihomo/ProxyN, MagiTrickle, bypass rul
 
 ## Never weaken these safety contracts
 
+- **KAS-VERIFY-001:** NOT_TESTED/UNKNOWN/SKIPPED/UNSUPPORTED and agent opinions never become PASS. Preserve independent behavior contracts, exact-SHA evidence, negative checks, and distinct MOCK/CI/EMULATOR/FIELD claims; never weaken tests or skip a required gate to obtain green CI. See [verification policy](docs/INDEPENDENT-VERIFICATION.md).
+
 - **KAS-SAFETY-001:** verified native zRAM **together with** external storage-backed SWAP is prohibited: installer ERROR before mutation, Doctor FAIL, updater ERROR before service/binary mutation. No downgrade to WARN, overrides, automatic backend changes or exceptions. See [docs/CONSTITUTION.md](docs/CONSTITUTION.md).
 - Preserve RAM/storage gates: 512 MB new installs need native zRAM OR valid external swap; new external /opt requires EXT4 plus `ext`/`ext-utils`; internal /opt needs verified S00ubifs/tmpfs. Never auto-format or alter swap. Detailed 128/256/512 MB rules: [docs/06-s00ubifs.md](docs/06-s00ubifs.md).
 - Preserve lifecycle lock, one-Mihomo discipline, atomic same-filesystem commit, rollback, config backup, process identity and prior service state in installers/updaters/import/migration. Unknown safety evidence => STOP that mutation, not optimistic success.
