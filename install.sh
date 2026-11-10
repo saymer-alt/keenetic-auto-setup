@@ -2254,7 +2254,7 @@ if [ "$_mt_repo_usable" -eq 1 ]; then
             _mt_repo_usable=0
         fi
     else
-        log "MagiTrickle repository unchanged - existing OPKG metadata retained"
+        log "MagiTrickle repository configuration unchanged - initial opkg update already refreshed its metadata"
     fi
 fi
 
