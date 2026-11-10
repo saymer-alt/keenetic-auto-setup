@@ -22,6 +22,7 @@ class FallbackRegression(unittest.TestCase):
 set -eu
 TMP_DIR="$TEST_TMP"
 FAKE_INSTALLED=0
+FAKE_SOURCE=""
 TRACE="$TEST_TMP/trace"
 log() { :; }
 warn() { :; }
@@ -50,29 +51,37 @@ curl() {
     case "$_url" in
         *github.com*)
             printf 'github\n' >> "$TRACE"
-            [ "$TEST_GITHUB" = ok ] || return 1 ;;
+            [ "$TEST_GITHUB" = ok ] || return 1
+            FAKE_SOURCE=github ;;
         *gitlab.com*)
             printf 'gitlab\n' >> "$TRACE"
-            [ "$TEST_GITLAB" = ok ] || return 1 ;;
+            [ "$TEST_GITLAB" = ok ] || return 1
+            FAKE_SOURCE=gitlab ;;
         *) return 1 ;;
     esac
     printf 'dummy' > "$_output"
 }
 wc() {
-    case "$TEST_ARCH" in
-        aarch64-3.10_kn) echo 2548308 ;;
-        mips-3.4_kn) echo 2379639 ;;
-        mipsel-3.4_kn) echo 2418194 ;;
+    case "$FAKE_SOURCE:$TEST_ARCH" in
+        github:aarch64-3.10_kn) echo 2548308 ;;
+        github:mips-3.4_kn) echo 2379639 ;;
+        github:mipsel-3.4_kn) echo 2418194 ;;
+        gitlab:aarch64-3.10_kn) echo 2547127 ;;
+        gitlab:mips-3.4_kn) echo 2380080 ;;
+        gitlab:mipsel-3.4_kn) echo 2418259 ;;
         *) echo 0 ;;
     esac
 }
 sha256sum() {
     if [ "$TEST_SHA" = wrong ]; then echo '0000000000000000000000000000000000000000000000000000000000000000  file'
     else
-        case "$TEST_ARCH" in
-            aarch64-3.10_kn) echo 'd3423385f542b012fb583f1135ce9c10ff90b4570a03af4bc2e272fa18d783ef  file' ;;
-            mips-3.4_kn) echo '4fe3a712196e7498e336589c65240c0f109f63b3be4bc50473344c043a68b10b  file' ;;
-            mipsel-3.4_kn) echo 'ad2732a4ab3d25abbf38a65ab8306d22138a959173234f6b2deb5326923fcd93  file' ;;
+        case "$FAKE_SOURCE:$TEST_ARCH" in
+            github:aarch64-3.10_kn) echo 'd3423385f542b012fb583f1135ce9c10ff90b4570a03af4bc2e272fa18d783ef  file' ;;
+            github:mips-3.4_kn) echo '4fe3a712196e7498e336589c65240c0f109f63b3be4bc50473344c043a68b10b  file' ;;
+            github:mipsel-3.4_kn) echo 'ad2732a4ab3d25abbf38a65ab8306d22138a959173234f6b2deb5326923fcd93  file' ;;
+            gitlab:aarch64-3.10_kn) echo '9ae3df3c33f8c836aa1adc34f79c5de4fd620dee5da96cef26015b0cec186c9b  file' ;;
+            gitlab:mips-3.4_kn) echo '21eb0d8e2a97fbe571998cdcc963c771c314d1bb4ea3e044e4951711162de9ea  file' ;;
+            gitlab:mipsel-3.4_kn) echo '5a10083cc063731536d8c7820c008348e99a16cf821534f51f1a415f50421c0e  file' ;;
         esac
     fi
 }
