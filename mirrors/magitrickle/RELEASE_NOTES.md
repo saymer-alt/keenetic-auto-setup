@@ -1,6 +1,6 @@
 ## Независимое зеркало официального MagiTrickle 0.8.2-2
 
-Здесь размещаются **без изменений** семь Entware IPK из [официального GitHub-релиза 0.8.2-rev2](https://github.com/MagiTrickle/MagiTrickle/releases/tag/0.8.2-rev2). Это резервная копия артефактов upstream, **не новый выпуск MagiTrickle**, не собственная сборка и **не OPKG-репозиторий** (`Packages.gz` здесь нет).
+Здесь размещаются **без изменений** три Keenetic-специфичных Entware IPK (только суффикс `_kn`) из [официального GitHub-релиза 0.8.2-rev2](https://github.com/MagiTrickle/MagiTrickle/releases/tag/0.8.2-rev2). Это резервная копия артефактов upstream, **не новый выпуск MagiTrickle**, не собственная сборка и **не OPKG-репозиторий** (`Packages.gz` здесь нет).
 
 Вложения: семь IPK по архитектурам, `SHA256SUMS`, `SOURCE.txt`, полный архив исходников pinned upstream tag `0.8.2-rev2` / commit `9337c101ca2245886f9dfff1d2660f6abae3013a` (GPL-3.0-or-later). Контрольные суммы бинарников проверены относительно зафиксированных upstream release digests; автоматически отслеживать новые релизы этот выпуск не будет.
 
