@@ -2264,6 +2264,18 @@ if pkg_is_installed magitrickle; then
     log "MagiTrickle already installed with matching Keenetic _kn architecture"
 else
     if [ "$_mt_repo_usable" -eq 1 ]; then
+        # With both generic and _kn feeds present, an unqualified
+        # "opkg install magitrickle" may not choose the Keenetic variant.
+        # Trust the feed only if its package metadata lists exactly one
+        # eligible architecture. Otherwise use pinned _kn artifacts.
+        _mt_candidates=$(opkg info magitrickle 2>/dev/null |
+            awk -F ': ' '$1 == "Architecture" { print $2 }') || _mt_candidates=""
+        if [ "$_mt_candidates" != "$MT_KN_ARCH" ]; then
+            warn "MagiTrickle OPKG candidate is missing/ambiguous/non-_kn; using pinned _kn backup instead"
+            _mt_repo_usable=0
+        fi
+    fi
+    if [ "$_mt_repo_usable" -eq 1 ]; then
         log "Installing MagiTrickle from official OPKG feed..."
         if ! opkg install magitrickle; then
             err "MT official OPKG install failed; refusing revision-switch after possible partial transaction"
