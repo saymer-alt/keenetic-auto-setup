@@ -1,5 +1,5 @@
 #!/bin/sh
-# lib.sh — shared lab helpers for Agent D independent QA.
+# lib.sh — shared lab helpers for the independent offline QA suite.
 # POSIX sh; runs under dash, BusyBox ash and bash. No network, no router.
 #
 # Independence rules implemented here:

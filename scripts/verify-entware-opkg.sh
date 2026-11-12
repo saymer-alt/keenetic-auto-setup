@@ -70,8 +70,7 @@ verify_payload() {
     # The digest is computed before every early-return: report_mismatch runs
     # under set -u and must always see OBSERVED, otherwise the empty and
     # non-ELF payload paths used to die on "OBSERVED: parameter not set"
-    # (exit 2, no observed-digest diagnostics) instead of a full rc=1 report
-    # (independent review, issue #156; same fix as the local 5f7253d there).
+    # (exit 2, no observed-digest diagnostics) instead of a full rc=1 report.
     # GNU coreutils prints a leading "\" marker for filenames needing
     # escapes (Windows-style paths); the digest value itself follows it.
     OBSERVED=$(sha256sum "$verify_payload_file" | awk '{print $1}' | sed 's/^\\//')

@@ -164,8 +164,7 @@ def main():
     finally:
         fixture.unlink(missing_ok=True)
 
-    # Strengthened per the independent review of PR #162 (round 2) for the
-    # defect agent B found in issue #156: the empty and non-ELF early-returns
+    # Strengthened per independent review: the empty and non-ELF early-returns
     # used to leave OBSERVED unset, so report_mismatch died under set -u
     # ("OBSERVED: parameter not set", exit 2 from the usage class) before any
     # diagnostics. These paths must now behave exactly like a digest
@@ -293,7 +292,7 @@ def main():
             "failed verification must remove the .part file",
         )
 
-    # Agent C follow-up (issue #157 P1): a download transport failure must
+    # A download transport failure must
     # fail closed exactly like a digest mismatch — no artifact, no .part
     # leftover, an explicit infra-failure diagnosis instead of a silent pass.
     with tempfile.TemporaryDirectory(prefix="verify-opkg-net-") as directory:
