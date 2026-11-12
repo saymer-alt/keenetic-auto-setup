@@ -157,8 +157,22 @@ def main():
                 ['magitrickled', '-c', 'while :; do sleep 60; done'],
                 executable=str(exe))
             children.append(child)
-            (proc / str(child.pid)).symlink_to('/proc/%d' % child.pid)
+            daemon_pointer = proc / str(child.pid)
+            daemon_pointer.symlink_to('/proc/%d' % child.pid)
             check('no pidof, real daemon via exe/comm', h + '\nmt_runtime_state\n', 0)
+            # A different process may be unreadable to a restricted user.
+            # Its unknown identity must not override a positively identified
+            # magitrickled; this is the independent QA BB-MT-2 regression.
+            foreign = proc / '999999'
+            foreign.mkdir()
+            (foreign / 'stat').write_text('999999 (other) S 0 0 0 0 0 0 0\n')
+            check('no pidof, daemon wins over unrelated unknown proc',
+                  h + '\nmt_runtime_state\n', 0)
+            # Without the positively identified daemon, the SAME uncertain
+            # foreign entry must remain UNKNOWN, never falsely STOPPED.
+            daemon_pointer.unlink()
+            check('no pidof, foreign uninspectable -> unknown (no daemon)',
+                  h + '\nmt_runtime_state\n', 2)
         finally:
             for child in children:
                 child.kill()

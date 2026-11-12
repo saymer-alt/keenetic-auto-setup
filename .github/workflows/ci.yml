@@ -14,10 +14,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: public-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 jobs:
   checks:
     name: Shell contracts
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -70,6 +75,26 @@ jobs:
 
       - name: Stable release gate workflow contract
         run: python3 tests/stable-release-gate-regression.py
+
+
+      # Tests travel with the reviewed public source snapshot; no private repo access.
+      - name: IPK download progress (mock transports)
+        run: python3 tests/install-ipk-progress-regression.py
+
+      - name: MagiTrickle download fallback (offline)
+        run: python3 tests/install-magitrickle-download-regression.py
+
+      - name: Mihomo release asset fallback (offline)
+        run: python3 tests/install-mihomo-asset-api-regression.py
+
+      - name: Universal KAS installer (offline)
+        run: sudo python3 tests/kas-universal-installer-regression.py
+
+      - name: Proxy selection bounded sampling (mock controller)
+        run: python3 tests/proxy-selection-watch-regression.py
+
+      - name: Entware opkg integrity verifier (offline)
+        run: python3 tests/verify-entware-opkg-regression.py
 
       - name: Contract smoke test
         run: sh tests/contracts.sh

@@ -58,7 +58,16 @@ if "api.ipify.org" in url:
         print("mockcurl: (28) egress observation timed out", file=sys.stderr)
         sys.exit(28)
     via_socks = "--socks5-hostname" in args
-    addr = plan.get("egress_socks", "198.51.100.9") if via_socks else plan.get("egress_direct", "203.0.113.10")
+    bound = args[args.index("--interface") + 1] if "--interface" in args else None
+    if bound:
+        per_if = plan.get("egress_by_interface", {})
+        action = per_if.get(bound, per_if.get("*", "pass"))
+        if action == "bind_error":
+            print("mockcurl: (45) could not set interface bind", file=sys.stderr)
+            sys.exit(45)
+        addr = action
+    else:
+        addr = plan.get("egress_socks", "198.51.100.9") if via_socks else plan.get("egress_direct", "203.0.113.10")
     outfile = args[args.index("-o") + 1] if "-o" in args else None
     if outfile:
         Path(outfile).write_text(addr + "\n")
@@ -212,6 +221,33 @@ plan = json.loads((lab / "plan.json").read_text())
 sys.exit(0 if plan.get("magitrickle_running", True) else 1)
 """
 
+MOCK_IP = r"""#!/usr/bin/env python3
+# Read-only mock of the `ip` applet for the interface-vantage fixtures
+# (issue #323). Supports exactly what kas-network-doctor.sh queries:
+# addr show (discovery) and route get (read-only route evidence).
+import json, os, sys
+from pathlib import Path
+lab = Path(os.environ["LAB"])
+plan = json.loads((lab / "plan.json").read_text())
+cfg = plan.get("ip", {})
+args = sys.argv[1:]
+if "-4" in args and "-o" in args and "addr" in args:
+    dev = args[args.index("dev") + 1] if "dev" in args else ""
+    scope_global = "scope" in args and "global" in args
+    lines = cfg.get("addr", {}).get(dev, [])
+    if scope_global:
+        lines = [l for l in lines if "scope global" in l]
+    for line in lines:
+        print(line)
+    sys.exit(0)
+if "route" in args and "get" in args:
+    out = cfg.get("route_get", "")
+    if out:
+        print(out)
+    sys.exit(0)
+sys.exit(0)
+"""
+
 MOCKS = (
     ("curl", MOCK_CURL),
     ("nslookup", MOCK_NSLOOKUP),
@@ -219,6 +255,7 @@ MOCKS = (
     ("jq", MOCK_JQ),
     ("ndmc", MOCK_NDMC),
     ("pgrep", MOCK_PGREP),
+    ("ip", MOCK_IP),
 )
 
 
@@ -309,6 +346,182 @@ def json_case(shell, title, plan, cli_args):
         assert total == len(data["checks"]), (title, counts, len(data["checks"]))
         print("PASS", " ".join(shell), title, "(json ok, %d checks)" % len(ids_seen))
         return data, ids_seen, text
+
+
+def make_vantage_sysfs(lab, plan):
+    """Fake /sys/class/net tree driven by plan['sysfs']: {dev: state}."""
+    root = lab / "sysfs" / "net"
+    root.mkdir(parents=True)
+    for dev, state in (plan.get("sysfs") or {}).items():
+        d = root / dev
+        d.mkdir()
+        (d / "operstate").write_text(state + "\n")
+    return root
+
+
+def test_vantage_group(shell):
+    """Issue #323 stage A/B fixtures: interface vantage selection with
+    honest route proof. Positive: a second WAN with a distinct egress
+    address proves the bound path (egress-distinct). Negative: missing
+    interface, bind error, same-egress ambiguity, Mihomo-TUN/service
+    devices excluded from ALL, budget scaling reported, --list-vantages
+    probeless, and the static no-route-mutation guard."""
+    if not shutil.which("python3") and not shutil.which("python"):
+        print("SKIP vantage group (python3 required for the mocks)")
+        return
+    target_args = ["--target", "target.example"]
+
+    # V1 — --list-vantages: discovery only, no probes, works without --target.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up", "wan2": "up", "mihomo-tun0": "up",
+                          "lo": "unknown", "docker0": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"],
+                                "wan2": ["3: wan2 inet 203.0.113.2/24 scope global wan2"],
+                                "mihomo-tun0": ["5: mihomo-tun0 inet 198.18.0.1/16 scope global mihomo-tun0"]}}}
+        fakebin = make_lab(lab, plan)
+        sysfs = make_vantage_sysfs(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(sysfs)
+        r = run_tool(shell, ["--list-vantages"], env)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, (r.returncode, out[-800:])
+        assert "if:eth0" in out and "if:wan2" in out, out[-800:]
+        assert "mihomo-tun0" not in out and "docker0" not in out, out[-800:]
+        assert not (lab / "curl_calls.json").exists(), "list-vantages must not probe"
+        print("PASS", " ".join(shell), "v1 list-vantages discovery probeless")
+
+    # V2 — distinct egress: the bound path proves a different route.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up", "wan2": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"],
+                                "wan2": ["3: wan2 inet 203.0.113.2/24 scope global wan2"]},
+                       "route_get": "203.0.113.0/24 dev wan2 scope link src 203.0.113.2"},
+                "egress_direct": "198.51.100.1",
+                "egress_by_interface": {"203.0.113.2": "203.0.113.9"}}
+        jf = lab / "report.json"
+        fakebin = make_lab(lab, plan)
+        sysfs = make_vantage_sysfs(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(sysfs)
+        args = target_args + ["--vantage", "if:wan2", "--json", str(jf)]
+        r = run_tool(shell, args, env)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, (r.returncode, out[-1200:])
+        data = json.loads(jf.read_text())
+        assert len(data.get("vantages", [])) == 1, data.get("vantages")
+        v = data["vantages"][0]
+        assert v["dev"] == "wan2" and v["route_proof"] == "egress-distinct", v
+        assert v["egress"] == "203.0.113.9", v
+        ids = [c["id"] for c in data["checks"]]
+        for needed in ("vantage.if.wan2.discovery", "vantage.if.wan2.route.get",
+                       "dns.vantage.if.wan2", "tcp.vantage.if.wan2",
+                       "tls.vantage.if.wan2", "http.vantage.if.wan2",
+                       "egress.vantage.if.wan2"):
+            assert needed in ids, (needed, ids)
+        assert data["budget"]["requests_limit"] == 20, data["budget"]
+        # the default chain evidence stays untouched by the vantage slice
+        assert data["egress"]["direct"] == "198.51.100.1", data["egress"]
+        assert any(c["id"] == "dns.router" and c["status"] == "PASS"
+                   for c in data["checks"])
+        # the bound probes carry --interface in the curl call log
+        calls = json.loads((lab / "curl_calls.json").read_text())
+        assert any("--interface" in c and "203.0.113.2" in c for c in calls), calls[:4]
+        print("PASS", " ".join(shell), "v2 bound vantage egress-distinct (json ok)")
+
+    # V3 — same egress as default: the ambiguity is reported, never a PASS.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up", "wan2": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"],
+                                "wan2": ["3: wan2 inet 203.0.113.2/24 scope global wan2"]},
+                       "route_get": "default dev wan2 src 203.0.113.2"},
+                "egress_direct": "198.51.100.1",
+                "egress_by_interface": {"203.0.113.2": "198.51.100.1"}}
+        jf = lab / "report.json"
+        fakebin = make_lab(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(make_vantage_sysfs(lab, plan))
+        r = run_tool(shell, target_args + ["--vantage", "if:wan2", "--json", str(jf)], env)
+        data = json.loads(jf.read_text())
+        assert data["vantages"][0]["route_proof"] == "egress-same-as-default", data["vantages"]
+        print("PASS", " ".join(shell), "v3 same-egress reported as ambiguous")
+
+    # V4 — missing interface: FAIL discovery, run still completes honestly.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"]}}}
+        jf = lab / "report.json"
+        fakebin = make_lab(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(make_vantage_sysfs(lab, plan))
+        r = run_tool(shell, target_args + ["--vantage", "if:eth9", "--json", str(jf)], env)
+        assert r.returncode == 0, (r.returncode, (r.stdout + r.stderr)[-800:])
+        data = json.loads(jf.read_text())
+        ids = [c["id"] for c in data["checks"]]
+        assert "vantage.if.eth9.discovery" in ids, ids
+        rec = next(c for c in data["checks"] if c["id"] == "vantage.if.eth9.discovery")
+        assert rec["status"] == "FAIL", rec
+        assert data["vantages"][0]["route_proof"] == "unproven", data["vantages"]
+        print("PASS", " ".join(shell), "v4 missing interface fails the vantage record only")
+
+    # V5 — bind error: the egress observation is UNKNOWN, route proof unproven.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up", "wan2": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"],
+                                "wan2": ["3: wan2 inet 203.0.113.2/24 scope global wan2"]},
+                       "route_get": "203.0.113.0/24 dev wan2 scope link src 203.0.113.2"},
+                "egress_direct": "198.51.100.1",
+                "egress_by_interface": {"203.0.113.2": "bind_error"}}
+        jf = lab / "report.json"
+        fakebin = make_lab(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(make_vantage_sysfs(lab, plan))
+        r = run_tool(shell, target_args + ["--vantage", "if:wan2", "--json", str(jf)], env)
+        data = json.loads(jf.read_text())
+        ids = [c["id"] for c in data["checks"]]
+        rec = next(c for c in data["checks"] if c["id"] == "egress.vantage.if.wan2")
+        assert rec["status"] == "UNKNOWN", rec
+        assert data["vantages"][0]["route_proof"] == "unproven", data["vantages"]
+        print("PASS", " ".join(shell), "v5 bind error keeps route proof unproven")
+
+    # V6 — ALL mode: service devices excluded, budget scaled per vantage.
+    with tempfile.TemporaryDirectory(prefix="kas-netdoc-van-") as tmp:
+        lab = Path(tmp)
+        plan = {"sysfs": {"eth0": "up", "wan2": "up", "mihomo-tun0": "up",
+                          "lo": "unknown", "docker0": "up", "veth9": "up"},
+                "ip": {"addr": {"eth0": ["2: eth0 inet 198.51.100.2/24 scope global eth0"],
+                                "wan2": ["3: wan2 inet 203.0.113.2/24 scope global wan2"],
+                                "mihomo-tun0": ["5: mihomo-tun0 inet 198.18.0.1/16 scope global mihomo-tun0"]},
+                       "route_get": "default dev wan2 src 203.0.113.2"},
+                "egress_direct": "198.51.100.1",
+                "egress_by_interface": {"203.0.113.2": "203.0.113.9"}}
+        jf = lab / "report.json"
+        fakebin = make_lab(lab, plan)
+        env = base_env(lab, fakebin)
+        env["KAS_DOCTOR_SYSFS_NET"] = str(make_vantage_sysfs(lab, plan))
+        r = run_tool(shell, target_args + ["--vantage", "all", "--json", str(jf)], env)
+        data = json.loads(jf.read_text())
+        devs = [v["dev"] for v in data.get("vantages", [])]
+        assert devs == ["eth0", "wan2"], devs
+        assert data["budget"]["requests_limit"] == 28, data["budget"]
+        print("PASS", " ".join(shell), "v6 all mode excludes service devices, scales budget")
+
+    # V7 — static guard: the tool reads routes, never writes them.
+    # Code lines only: the honest-limit comments legitimately mention the
+    # out-of-scope mechanisms by name.
+    code = [l for l in TOOL.read_text().splitlines()
+            if not l.lstrip().startswith("#")]
+    for banned in ("ip rule", "ip route add", "ip route del", "ip route replace",
+                   "ip route flush", "ip route change", "iptables ", "nft ",
+                   "ip -6 rule"):
+        hits = [l for l in code if banned in l]
+        assert not hits, ("route mutation found", banned, hits[:1])
+    assert "ip route get" in TOOL.read_text(), "route.get evidence is expected (read-only)"
+    print("PASS", " ".join(shell), "v7 static no-route-mutation guard")
 
 
 def main():
@@ -725,6 +938,8 @@ def main():
                 print("PASS", " ".join(shell), "dns_probe_time_limited")
         else:
             print("SKIP", " ".join(shell), "dns_probe_time_limited (no timeout binary)")
+
+        test_vantage_group(shell)
 
         # JSON contract on the happy path and on a failure path
         data, ids, text = json_case(shell, "json_happy", {}, target_args)

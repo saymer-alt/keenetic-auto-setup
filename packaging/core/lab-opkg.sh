@@ -46,7 +46,7 @@ case "$OPKG" in /*) ;; *) fail 'absolute verified opkg path required';; esac
 safe_path "$OPKG"
 [ -f "$OPKG" ] && [ -x "$OPKG" ] || fail 'opkg unavailable'
 actual=$(sha256sum "$OPKG" | awk '{print $1}')
-[ "$actual" = 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 ] || fail 'unexpected host Entware opkg binary'
+[ "$actual" = 49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10 ] || fail 'unexpected host Entware opkg binary'
 # Everything above is read-only. Fixed arguments below cannot be overridden by
 # caller-supplied opkg flags or an inherited package-hook offline-root variable.
 unset IPKG_INSTROOT PKG_ROOT
