@@ -222,6 +222,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The PATH-honoring apt busybox is a hard precondition of the
+      # uninstall/config-import regressions below: their PATH shims (pidof,
+      # opkg) are only used when ash resolves external commands from PATH.
+      # The runner image ships a busybox whose ash does not, which silently
+      # turns the expected-failure scenarios into passes.
+      - name: Install apt busybox for shim-based regressions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
+
       - name: Uninstall read-only preflight and blocked removal regression
         run: python3 tests/uninstall-audit-regression.py
 
