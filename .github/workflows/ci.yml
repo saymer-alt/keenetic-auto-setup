@@ -266,3 +266,37 @@ jobs:
 
       - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
         run: python3 tests/candidate-build-dryrun.py
+
+  # The branch ruleset "Solo PR and verified CI" still requires the pre-split
+  # check context "Shell contracts". This aggregate job reports that context
+  # for the three parallel jobs above without re-running any test: it starts
+  # after all of them settle (including FAILED/SKIPPED/CANCELLED) and is green
+  # only when every dependency finished SUCCESS.
+  shell-contracts:
+    name: Shell contracts
+    needs: [contracts, import-uninstall, release-dryruns]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every CI contract job succeeded
+        env:
+          CONTRACTS_RESULT: ${{ needs.contracts.result }}
+          IMPORT_UNINSTALL_RESULT: ${{ needs.import-uninstall.result }}
+          RELEASE_DRYRUNS_RESULT: ${{ needs.release-dryruns.result }}
+        run: |
+          set -euo pipefail
+          status=0
+          for pair in \
+            "contracts:${CONTRACTS_RESULT}" \
+            "import-uninstall:${IMPORT_UNINSTALL_RESULT}" \
+            "release-dryruns:${RELEASE_DRYRUNS_RESULT}"; do
+            job="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$job -> $result"
+            if [ "$result" != "success" ]; then
+              echo "Required CI job '$job' finished with '$result' (expected 'success')" >&2
+              status=1
+            fi
+          done
+          exit "$status"
