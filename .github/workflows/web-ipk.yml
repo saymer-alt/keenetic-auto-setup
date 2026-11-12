@@ -2,6 +2,11 @@ name: Optional experimental Control Center IPKs
 
 on:
   workflow_dispatch:
+    inputs:
+      kas_ref:
+        description: 'Exact 40-hex source commit for manual full suite (empty uses selected branch head)'
+        required: false
+        type: string
   pull_request:
     paths:
       - 'web/control-center/**'
@@ -10,6 +15,7 @@ on:
       - 'tests/test_panel_ipk_service.sh'
       - 'tests/test_panel_selfupdate_service.sh'
       - '.github/workflows/web-ipk.yml'
+      - '!web/control-center/**/*.md'
   push:
     branches:
       - 'feat/kas-web-ipk-panel'
@@ -20,20 +26,26 @@ on:
       - 'tests/test_panel_ipk_service.sh'
       - 'tests/test_panel_selfupdate_service.sh'
       - '.github/workflows/web-ipk.yml'
+      - '!web/control-center/**/*.md'
 
 permissions:
   contents: read
 
+# Cancel superseded PR smoke tests; never cancel manually approved full suites.
+concurrency:
+  group: web-ipk-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 jobs:
   package-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       - name: Inspect actual archives and isolated maintainer hooks
         run: |
-          # Verify pinned Entware digest and ELF identity before use.
           scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           KAS_TEST_OPKG="$RUNNER_TEMP/entware-opkg" python3 tests/test_ipk.py -v
@@ -43,15 +55,17 @@ jobs:
             dash -n "$file"
           done
   service-lifecycle:
+    # Manual-only: expensive native/IPK release qualification, not PR smoke.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: package-tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
@@ -60,7 +74,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           (cd web/control-center && go generate ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/kas-control-center-native" .)
-          # Verify pinned Entware digest and ELF identity before use.
           scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
           chmod 700 "$RUNNER_TEMP/entware-opkg"
       - name: Actual opkg MT update, no-op and modified conffiles (disposable offline root)
@@ -73,15 +86,17 @@ jobs:
             sh tests/test_panel_ipk_service.sh \
             "$RUNNER_TEMP/kas-control-center-native" "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA"
   selfupdate-lifecycle:
+    # Manual-only: expensive native/IPK release qualification, not PR smoke.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: package-tests
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
@@ -112,6 +127,8 @@ jobs:
             "$RUNNER_TEMP/entware-opkg" "$SOURCE_SHA" \
             "$RUNNER_TEMP/kas-panel-stable"
   crossbuild:
+    # Manual-only: expensive native/IPK release qualification, not PR smoke.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: [package-tests, service-lifecycle, selfupdate-lifecycle]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -120,11 +137,11 @@ jobs:
       matrix:
         arch: [aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4]
     env:
-      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.kas_ref || github.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'

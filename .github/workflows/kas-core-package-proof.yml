@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded PR qualification runs; keep push and dispatch runs going.
+concurrency:
+  group: core-package-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
 jobs:
   offline-opkg:
     runs-on: ubuntu-latest
@@ -57,7 +62,8 @@ jobs:
               python3 tests/test_core_activation.py -v
           done
           python3 tests/download-regression.py
-          for file in packaging/core/*.sh ./*.sh ./S00ubifs; do
+          python3 tests/verify-entware-opkg-regression.py
+          for file in packaging/core/*.sh ./*.sh ./scripts/*.sh ./S00ubifs; do
             sh -n "$file"
             dash -n "$file"
           done

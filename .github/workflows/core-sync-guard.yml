@@ -13,9 +13,13 @@ on:
       - '.github/workflows/core-sync-guard.yml'
   push:
     branches: [main]
-  schedule:
-    - cron: '17 7 * * *'
   workflow_dispatch:
+
+# No daily schedule: recurring no-change advisory runs are dropped (manual
+# dispatch covers drift checks on demand).
+concurrency:
+  group: core-sync-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -24,6 +28,7 @@ jobs:
   core-sync:
     name: Core runtime drift (advisory)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
