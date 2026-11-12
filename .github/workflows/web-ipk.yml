@@ -102,7 +102,7 @@ jobs:
           curl --fail --location --connect-timeout 15 --max-time 120 \
             --retry 2 --retry-delay 5 --retry-all-errors \
             https://bin.entware.net/aarch64-k3.10/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
-          printf '%s  %s\n' 1c59274bd25080b869f376788795f5319d0d22e91f325f74ce98a7d596f68015 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          printf '%s  %s\n' 4095ae3e7364a9553811ddea90c11ca44a9e9b54f15c200b6c20fd1525ffcbd2 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
           chmod 700 "$RUNNER_TEMP/entware-opkg"
       - name: Full panel self-update cycle on disposable aarch64 VM (not router or firmware acceptance)
         run: |

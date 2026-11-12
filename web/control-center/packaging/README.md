@@ -141,7 +141,9 @@ metadata, свежая установка, upgrade ownership, отказ от р
 прошёл install → upgrade → remove в offline-root с `--force-postinstall`: исполнялись
 также hooks. Этот тест выявил и закрепил три требования Entware: gzip-tar внешний
 контейнер вместо Debian ar; явные directory members внутри data tar; `PKG_ROOT`
-для offline hooks. SHA256 installer: `08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38`.
+для offline hooks. SHA256 installer (re-pin 2026-11-09, owner GO Option A,
+происхождение пакета проверено; opkg 2025.11.05~80503d94-1; Entware не подписывает installer):
+`49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10`.
 CI скачивает его по HTTPS и проверяет закреплённый SHA256 перед запуском.
 
 Локально тест реального Entware `opkg --offline-root` выполняется при наличии
