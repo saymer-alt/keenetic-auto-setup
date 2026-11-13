@@ -251,7 +251,7 @@ function publicVersion(raw){
  if(typeof raw!=='string')return raw;
  const value=raw.trim();
  if(/^[vV]/.test(value)||!/^[0-9]/.test(value))return value;
- return 'v'+value.replace(/-\d+$/,'').split('~').join('-');
+ return 'v'+value.replace(/-\d+$/,'').split('~').join('-').replace(/\.beta\.(?=\d)/,'-beta.');
 }
 // Sidebar stage badge follows the running build identity, so a future final
 // release never keeps claiming to be a beta. Unknown or corrupted identity

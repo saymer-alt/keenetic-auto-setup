@@ -1,0 +1,94 @@
+name: KAS Web beta.9 KN-1010 field IPK (no release)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/web-beta9-kn1010-field-ipk.yml'
+permissions:
+  contents: read
+concurrency:
+  group: kas-web-beta9-field-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-mipsel-field-ipk:
+    if: github.repository == 'saymer-alt/keenetic-auto-setup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PACKAGE_VERSION: '0.1.0.beta.9-1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: web/control-center/go.sum
+      - name: Validate exact source and IPK safety contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python3 tests/test_panel_manifest.py -v
+          python3 tests/test_ipk.py -v
+      - name: Confirm version ordering using real Entware opkg
+        run: |
+          set -euo pipefail
+          scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
+          chmod 700 "$RUNNER_TEMP/entware-opkg"
+          mkdir -p "$RUNNER_TEMP/opkg-compare/opt/tmp"
+          printf 'dest root /\n' > "$RUNNER_TEMP/opkg-compare.conf"
+          OPKG="$RUNNER_TEMP/entware-opkg"
+          args=(-f "$RUNNER_TEMP/opkg-compare.conf" --offline-root "$RUNNER_TEMP/opkg-compare" --tmp-dir "$RUNNER_TEMP/opkg-compare/opt/tmp")
+          "$OPKG" "${args[@]}" compare-versions "$PACKAGE_VERSION" '>>' '0.1.0.beta.8-1'
+          "$OPKG" "${args[@]}" compare-versions "$PACKAGE_VERSION" '>>' '0.1.0~beta.9-1'
+          if "$OPKG" "${args[@]}" compare-versions '0.1.0.beta.8-1' '>>' "$PACKAGE_VERSION"; then
+            echo 'ERROR: published beta.8 compares newer than beta.9' >&2
+            exit 1
+          fi
+          echo 'PASS: published beta.8 and original KN-1010 beta.9 field test both upgrade to corrected beta.9'
+      - name: Build and inspect actual beta.9 MIPSel IPK
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python3 web/control-center/packaging/build-ipk.py \
+            --arch mipsel-3.4 --version "$PACKAGE_VERSION" \
+            --channel experimental --source-sha "$SOURCE_SHA" \
+            --output "$RUNNER_TEMP/beta9-ipk"
+          cd "$RUNNER_TEMP/beta9-ipk"
+          set -- ./*.ipk
+          test "$#" -eq 1 && test -f "$1"
+          sha256sum "$1" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          mkdir verify
+          tar -xzf "$1" -C verify
+          tar -xzf verify/control.tar.gz -C verify
+          tar -xzf verify/data.tar.gz -C verify
+          grep -Fx 'Package: kas-control-center' verify/control
+          grep -Fx "Version: $PACKAGE_VERSION" verify/control
+          grep -Fx 'Architecture: mipsel-3.4' verify/control
+          grep -Fx "Source: $SOURCE_SHA" verify/control
+          grep -Fx "Version=$PACKAGE_VERSION" verify/opt/share/kas-control-center/BUILD_INFO
+          grep -Fx "KAS_SOURCE_SHA=$SOURCE_SHA" verify/opt/share/kas-control-center/BUILD_INFO
+          grep -Fx 'Channel=experimental' verify/opt/share/kas-control-center/BUILD_INFO
+          grep -Fx 'GOARCH=mipsle' verify/opt/share/kas-control-center/BUILD_INFO
+          grep -Fx 'GOMIPS=softfloat' verify/opt/share/kas-control-center/BUILD_INFO
+          test "$(sha256sum verify/opt/bin/kas-control-center | cut -d' ' -f1)" = "$(sed -n 's/^Binary_SHA256=//p' verify/opt/share/kas-control-center/BUILD_INFO)"
+          go version -m verify/opt/bin/kas-control-center | tee BUILD_INFO
+          grep -F 'GOARCH=mipsle' BUILD_INFO
+          grep -F 'GOMIPS=softfloat' BUILD_INFO
+          readelf -h verify/opt/bin/kas-control-center | tee ELF_INFO
+          grep -F 'MIPS' ELF_INFO
+          grep -F 'little endian' ELF_INFO
+          rm -rf verify
+      - name: Upload field IPK only (no release, no router)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kas-web-beta9-mipsel-field-${{ env.SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/beta9-ipk/*.ipk
+            ${{ runner.temp }}/beta9-ipk/SHA256SUMS
+            ${{ runner.temp }}/beta9-ipk/BUILD_INFO
+            ${{ runner.temp }}/beta9-ipk/ELF_INFO
+          if-no-files-found: error
+          retention-days: 14
