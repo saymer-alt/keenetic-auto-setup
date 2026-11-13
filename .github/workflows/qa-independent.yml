@@ -1,0 +1,56 @@
+name: Independent KAS offline QA
+
+on:
+  pull_request:
+    paths:
+      - 'install.sh'
+      - 'mihomo-watchdog.sh'
+      - 'migrate-mihomo-tun.sh'
+      - 'tests/qa-independent/**'
+      - '.github/workflows/qa-independent.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'install.sh'
+      - 'mihomo-watchdog.sh'
+      - 'migrate-mihomo-tun.sh'
+      - 'tests/qa-independent/**'
+      - '.github/workflows/qa-independent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+jobs:
+  offline-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Confirm exact source SHA
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Install BusyBox for isolated shell fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y busybox
+      - name: Validate fail-closed evidence gates
+        run: python3 tests/qa-independent/test_evidence_gate.py
+      - name: Run offline black-box and mutation QA
+        run: sh tests/qa-independent/run-all.sh --out-dir "$RUNNER_TEMP/kas-independent-qa"
+      - name: Upload synthetic QA results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-qa-${{ github.sha }}
+          path: ${{ runner.temp }}/kas-independent-qa/
+          if-no-files-found: warn
+          retention-days: 3

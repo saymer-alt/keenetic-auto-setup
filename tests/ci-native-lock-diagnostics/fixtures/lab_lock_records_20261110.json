@@ -1,0 +1,35 @@
+{
+  "provenance": {
+    "extracted_from": "public saymer-alt/router-emulator, lab/entware.lock.json (read-only)",
+    "emulator_ref": "9e59e0bff1319acbd191867dac1f5ace2df0655f",
+    "upstream_lock_blob_sha256": "1c51a73bdcc44c1c5b8ef72e520ccbbd31524cef9682e5450f43b78c384cd951",
+    "build_entware_blob_sha256": "4536e13438c50f9ff2526c98c8139ca90a546ed2dd412a6ad143fe865876e968",
+    "extracted_at_utc": "2026-11-10T18:56:52Z",
+    "verified_by": [
+      "Public router-emulator source and pinned lock hashes were inspected",
+      "Synthetic negative tests prove stale digests are rejected before cache writes",
+      "Original observed drift matched official Entware metadata at extraction time"
+    ],
+    "reviewed_repin_context": "This fixture is historical negative-test evidence; it is not a current or automatically approved upstream pin."
+  },
+  "upstream_installer_record": {
+    "artifact": "EN_aarch64-installer.tar.gz",
+    "url": "https://bin.entware.net/aarch64-k3.10/installer/EN_aarch64-installer.tar.gz",
+    "sha256": "aa2e5850c47bf54360a74bab2092f5c2db01c9f001c2038c44d0559bfb3d7531"
+  },
+  "live_state_at_extraction": {
+    "url": "https://bin.entware.net/aarch64-k3.10/installer/EN_aarch64-installer.tar.gz",
+    "sha256": "50f0ead4ef223a5a4d5c88755068fd8d4f175636e1f42be7f43b175083f9ace3",
+    "size_bytes": 2941995,
+    "last_modified_gmt": "Fri, 06 Nov 2026 12:54:15 GMT",
+    "etag": "\"6aedcdf7-2ce42b\""
+  },
+  "stale_digests_never_resurrect": [
+    "aa2e5850c47bf54360a74bab2092f5c2db01c9f001c2038c44d0559bfb3d7531",
+    "123882cd0063342b8cd058ea97541601d793ef1f847920e1da6be4c3a0b8da8b",
+    "872821cc70fdd3b550b4458c056ad1a5c61edbfb9981b73b68c4b6644085cd73",
+    "00b2005611370cc20b432292dc06e0bce6b4d666b62e78ca96242d5bfa0bd6a4",
+    "49b5fec159c948b3a75a839299c327e1e6d8d1556c58462bd597253ca98e8b50",
+    "a35f675f2999a86806160a795128193e4d9a8a6af8e0be4eee55c639bdae06a8"
+  ]
+}
