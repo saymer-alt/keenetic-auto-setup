@@ -37,7 +37,7 @@ jobs:
           scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           mkdir -p "$RUNNER_TEMP/opkg-compare/opt/tmp"
-          printf 'dest root /\\n' > "$RUNNER_TEMP/opkg-compare.conf"
+          printf 'dest root /\n' > "$RUNNER_TEMP/opkg-compare.conf"
           OPKG="$RUNNER_TEMP/entware-opkg"
           args=(-f "$RUNNER_TEMP/opkg-compare.conf" --offline-root "$RUNNER_TEMP/opkg-compare" --tmp-dir "$RUNNER_TEMP/opkg-compare/opt/tmp")
           "$OPKG" "${args[@]}" compare-versions "$PACKAGE_VERSION" '>>' '0.1.0.beta.8-1'
