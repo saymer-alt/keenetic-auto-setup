@@ -14,10 +14,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: public-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+# The former single 14-minute Shell contracts job is split into three
+# parallel jobs measured against the per-step log timings of the exact-head
+# run 43253323104: contracts+doctor ~180s, import/uninstall ~315s, release
+# dry-runs ~355s. Wall time per push drops roughly in half; total compute
+# stays within the same free public tier (three extra checkouts).
 jobs:
-  checks:
-    name: Shell contracts
+  contracts:
+    name: CI contracts & doctor
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -57,19 +67,30 @@ jobs:
           git ls-files '*.sh' | while IFS= read -r file; do busybox ash -n "$file"; done
           busybox ash -n S00ubifs
 
-      - name: Lifecycle behavioural regression (dash and BusyBox ash)
-        run: python3 tests/lifecycle-regression.py
-      - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
-        run: python3 tests/watchdog-diagnostics-regression.py
-      - name: Unified KAS Core updater regression (dash and BusyBox ash)
-        run: |
-          git fetch origin --no-tags \
-            'refs/tags/v1.8.6:refs/tags/v1.8.6' \
-            'refs/tags/v1.8.7:refs/tags/v1.8.7'
-          python3 tests/kas-update-regression.py
-
       - name: Stable release gate workflow contract
         run: python3 tests/stable-release-gate-regression.py
+
+      # Tests travel with the reviewed public source snapshot; no private repo access.
+      - name: IPK download progress (mock transports)
+        run: python3 tests/install-ipk-progress-regression.py
+
+      - name: MagiTrickle download fallback (offline)
+        run: python3 tests/install-magitrickle-download-regression.py
+
+      - name: Mihomo release asset fallback (offline)
+        run: python3 tests/install-mihomo-asset-api-regression.py
+
+      - name: Universal KAS installer (offline)
+        run: sudo python3 tests/kas-universal-installer-regression.py
+
+      - name: Proxy selection bounded sampling (mock controller)
+        run: python3 tests/proxy-selection-watch-regression.py
+
+      - name: Entware opkg integrity verifier (offline)
+        run: python3 tests/verify-entware-opkg-regression.py
+
+      - name: Entware native lock digest gate oracle (offline)
+        run: python3 tests/ci-native-lock-diagnostics/test_digest_gate_oracle.py
 
       - name: Contract smoke test
         run: sh tests/contracts.sh
@@ -81,15 +102,6 @@ jobs:
       # and their dry-run suites were retired on 2026-11-02 after the staged
       # beta.4 publication completed (docs/github-cleanup-plan-20261030.md);
       # tests/_publication_testkit.py keeps the shared fixtures alive.
-
-      - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
-        run: python3 tests/pages-deploy-dryrun.py
-
-      - name: Reusable WEB Release publisher dry-run (offline, no GitHub mutations)
-        run: python3 tests/web-beta-publish-dryrun.py
-
-      - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
-        run: python3 tests/candidate-build-dryrun.py
 
       - name: First-fetch bootstrap mocked-network and BusyBox acceptance
         run: python3 tests/bootstrap-regression.py
@@ -103,26 +115,22 @@ jobs:
       - name: Ownership journal atomicity and old-install regression (sh/BusyBox ash)
         run: python3 tests/ownership-ledger-regression.py
 
+      - name: Lifecycle behavioural regression (dash and BusyBox ash)
+        run: python3 tests/lifecycle-regression.py
+      - name: Watchdog incident diagnostics regression (dash and BusyBox ash)
+        run: python3 tests/watchdog-diagnostics-regression.py
+      - name: Unified KAS Core updater regression (dash and BusyBox ash)
+        run: |
+          git fetch origin --no-tags \
+            'refs/tags/v1.8.6:refs/tags/v1.8.6' \
+            'refs/tags/v1.8.7:refs/tags/v1.8.7'
+          python3 tests/kas-update-regression.py
+
       - name: Doctor Mihomo init classification (dash and BusyBox ash)
         run: python3 tests/doctor-init-regression.py
 
       - name: MagiTrickle post-install runtime health regression (issue #427)
         run: python3 tests/magitrickle-runtime-regression.py
-
-      - name: Uninstall read-only preflight and blocked removal regression
-        run: python3 tests/uninstall-audit-regression.py
-
-      - name: Minimal OPKG-only partial uninstall regression (sh and BusyBox ash)
-        run: python3 tests/uninstall-packages-regression.py
-
-      - name: Native service stop and simple uninstall regression (sh and BusyBox ash)
-        run: python3 tests/uninstall-packages-service-regression.py
-
-      - name: Config import PTY reader regression (dash and BusyBox ash)
-        run: python3 tests/config-import-pty-regression.py .
-
-      - name: Config import full-script recovery E2E (root, disposable /opt)
-        run: sudo python3 tests/config-import-pty-regression.py .
 
       - name: Mihomo updater opkg-staleness warning regression (dash and BusyBox ash)
         run: python3 tests/update-opkg-staleness-regression.py
@@ -140,9 +148,6 @@ jobs:
 
       - name: Rollback fault regression (dash and BusyBox ash)
         run: python3 tests/rollback-regression.py
-
-      - name: Config import expected-source gate regression (dash and BusyBox ash)
-        run: python3 tests/config-import-filter-gate-regression.py
 
       - name: Network Doctor staged diagnostic regression (dash and BusyBox ash)
         run: python3 tests/network-doctor-regression.py
@@ -208,3 +213,90 @@ jobs:
               git show --check --oneline "${{ github.sha }}"
               ;;
           esac
+
+  import-uninstall:
+    name: CI import & uninstall
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The PATH-honoring apt busybox is a hard precondition of the
+      # uninstall/config-import regressions below: their PATH shims (pidof,
+      # opkg) are only used when ash resolves external commands from PATH.
+      # The runner image ships a busybox whose ash does not, which silently
+      # turns the expected-failure scenarios into passes.
+      - name: Install apt busybox for shim-based regressions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox
+
+      - name: Uninstall read-only preflight and blocked removal regression
+        run: python3 tests/uninstall-audit-regression.py
+
+      - name: Minimal OPKG-only partial uninstall regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-regression.py
+
+      - name: Native service stop and simple uninstall regression (sh and BusyBox ash)
+        run: python3 tests/uninstall-packages-service-regression.py
+
+      - name: Config import PTY reader regression (dash and BusyBox ash)
+        run: python3 tests/config-import-pty-regression.py .
+
+      - name: Config import full-script recovery E2E (root, disposable /opt)
+        run: sudo python3 tests/config-import-pty-regression.py .
+
+      - name: Config import expected-source gate regression (dash and BusyBox ash)
+        run: python3 tests/config-import-filter-gate-regression.py
+
+  release-dryruns:
+    name: CI release dry-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pages deploy dry-run (mock GitHub and Pages, real step scripts)
+        run: python3 tests/pages-deploy-dryrun.py
+
+      - name: Reusable WEB Release publisher dry-run (offline, no GitHub mutations)
+        run: python3 tests/web-beta-publish-dryrun.py
+
+      - name: Candidate-build dry-run (real beta.4 artifacts, build-ipk --binary)
+        run: python3 tests/candidate-build-dryrun.py
+
+  # The branch ruleset "Solo PR and verified CI" still requires the pre-split
+  # check context "Shell contracts". This aggregate job reports that context
+  # for the three parallel jobs above without re-running any test: it starts
+  # after all of them settle (including FAILED/SKIPPED/CANCELLED) and is green
+  # only when every dependency finished SUCCESS.
+  shell-contracts:
+    name: Shell contracts
+    needs: [contracts, import-uninstall, release-dryruns]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every CI contract job succeeded
+        env:
+          CONTRACTS_RESULT: ${{ needs.contracts.result }}
+          IMPORT_UNINSTALL_RESULT: ${{ needs.import-uninstall.result }}
+          RELEASE_DRYRUNS_RESULT: ${{ needs.release-dryruns.result }}
+        run: |
+          set -euo pipefail
+          status=0
+          for pair in \
+            "contracts:${CONTRACTS_RESULT}" \
+            "import-uninstall:${IMPORT_UNINSTALL_RESULT}" \
+            "release-dryruns:${RELEASE_DRYRUNS_RESULT}"; do
+            job="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$job -> $result"
+            if [ "$result" != "success" ]; then
+              echo "Required CI job '$job' finished with '$result' (expected 'success')" >&2
+              status=1
+            fi
+          done
+          exit "$status"
