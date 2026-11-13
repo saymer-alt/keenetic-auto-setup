@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
       - 'mihomo-doctor.sh'
       - 'config-import.sh'
       - 'update-mihomo.sh'
@@ -16,6 +17,7 @@ on:
       - 'feat/kas-control-center-stage1'
     paths:
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
       - 'mihomo-doctor.sh'
       - 'config-import.sh'
       - 'update-mihomo.sh'
@@ -23,6 +25,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: web-control-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   web-prototype:

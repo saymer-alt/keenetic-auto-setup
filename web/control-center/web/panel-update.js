@@ -101,7 +101,7 @@
   if(typeof raw!=='string')return raw;
   const value=raw.trim();
   if(/^[vV]/.test(value)||!/^[0-9]/.test(value))return value;
-  return 'v'+value.replace(/-\d+$/,'').split('~').join('-');
+  return 'v'+value.replace(/-\d+$/,'').split('~').join('-').replace(/\.beta\.(?=\d)/,'-beta.');
  }
  function mount(options){
   const el=id=>document.getElementById(id);

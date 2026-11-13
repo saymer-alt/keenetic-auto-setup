@@ -19,6 +19,9 @@ test('beta IPK versions render the agreed public v-form',()=>{
  assert.equal(publicVersion('0.1.0~beta.2-1'),'v0.1.0-beta.2');
  assert.equal(publicVersion('0.1.0~beta.3-1'),'v0.1.0-beta.3'); // next beta: no hardcoding
  assert.equal(publicVersion('0.1.0~beta.2'),'v0.1.0-beta.2');
+ assert.equal(publicVersion('0.1.0.beta.8-1'),'v0.1.0-beta.8'); // released beta.8 used dotted prerelease
+ assert.equal(publicVersion('0.1.0.beta.9-1'),'v0.1.0-beta.9'); // opkg-monotonic field beta.9
+
  assert.equal(publicVersion('0.0.1~test44.9c715283d525-1'),'v0.0.1-test44.9c715283d525'); // test builds stay faithful
 });
 test('stable and future versions render without the packaging revision',()=>{
