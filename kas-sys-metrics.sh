@@ -1,43 +1,58 @@
 #!/bin/sh
 
-# kas-sys-metrics.sh v0.1.0
+# kas-sys-metrics.sh v0.2.0
 #
-# Optional read-only router metrics collector (issue #309). Gathers, from
-# standard kernel interfaces only:
+# Optional read-only router metrics collector (issues #309; /opt storage). Gathers,
+# from standard kernel interfaces only:
 #   - CPU/SoC temperature: /sys/class/thermal/thermal_zone*/{type,temp}
 #     and /sys/class/hwmon/hwmon*/{name,temp*_input}
 #   - load average 1/5/15 min: /proc/loadavg (this is LOAD AVERAGE, never
 #     a CPU-percentage reading)
 #   - uptime seconds: /proc/uptime
 #   - memory and swap totals: /proc/meminfo (summary level only)
+#   - Entware /opt storage (stage A): mount class/filesystem and
+#     free/total kB from df + /proc/mounts; filesystem-level capacity, never
+#     a raw flash size, never /tmp tmpfs or swap/zRAM confusion
 #
-# Design rules (issue #309 decision, 2026-10-31):
+# Design rules (issue #309 decision, 2026-10-31; stage A, 2026-11-09):
 #   - read-only; one-shot; no daemons, no cron, no network, no packages;
 #   - a missing, unreadable, ambiguous or implausible sensor is reported
 #     as UNKNOWN/N-A - never a fake value, never a FAIL/WARN;
 #   - NO temperature thresholds: vendor limits are not known per model,
 #     so this collector reports observations, not overheating verdicts;
 #   - load average is never converted into a CPU-percentage claim;
-#   - no secrets or hardware identifiers are emitted.
+#   - storage: absent/ambiguous/unreadable /opt is UNKNOWN (or N/A when no
+#     /opt mount is observed at all), never zeros, never a health verdict;
+#   - no secrets or hardware identifiers are emitted (the /opt device
+#     source identifier is deliberately not reported).
 #
 # Test injection: KAS_SYSFS_ROOT / KAS_PROC_ROOT override the /sys and
-# /proc trees (fixture tests); unset in normal operation.
+# /proc trees (fixture tests); KAS_OPT_ROOT / KAS_MOUNTS_SRC / KAS_DF_BIN
+# override /opt, the mount table and the df binary; unset in normal
+# operation.
 #
 # Output: human report plus optional router-metrics/v1 JSON (--json FILE).
 #
 # Exit codes: 0 = at least one metric observed; 1 = nothing could be
-# observed (all UNKNOWN); 2 = usage error.
+# observed (all UNKNOWN); 2 = usage error. The exit code reflects the four
+# core readings only; storage is an additive observation and never changes
+# it.
 
 set -u
 
 PROG_NAME="kas-sys-metrics.sh"
-PROG_VERSION="0.1.0"
+PROG_VERSION="0.2.0"
 SCHEMA="router-metrics/v1"
 SYS_ROOT="${KAS_SYSFS_ROOT:-/sys}"
 PROC_ROOT="${KAS_PROC_ROOT:-/proc}"
+OPT_ROOT="${KAS_OPT_ROOT:-/opt}"
+MOUNTS_SRC="${KAS_MOUNTS_SRC:-/proc/mounts}"
+DF_BIN="${KAS_DF_BIN:-df}"
 JSON_FILE=""
 MAX_ZONES=8
 MAX_HWMON=8
+MAX_MOUNTS=128
+STORAGE_MAX_TOTAL_KB=9999999999
 
 COLOR_RESET=""
 COLOR_GREEN=""
@@ -60,8 +75,10 @@ usage() {
 $PROG_NAME v$PROG_VERSION
 
 Read-only one-shot router metrics: SoC/CPU temperature (sysfs), load
-average, uptime, memory/swap summary. No thresholds are asserted and no
-verdicts about overheating are made; unobservable values are UNKNOWN/N-A.
+average, uptime, memory/swap summary, and the Entware /opt storage
+filesystem (class, filesystem, free/total; df + /proc/mounts). No
+thresholds are asserted and no verdicts about overheating or storage
+health are made; unobservable values are UNKNOWN/N-A.
 
 Usage:
   sh $PROG_NAME [--json <file>]
@@ -71,6 +88,8 @@ Options:
   -h, --help     this help
 
 Exit codes: 0 at least one metric observed; 1 nothing observed; 2 usage.
+The exit code reflects the four core readings only; the /opt storage
+observation is additive and never changes it.
 USAGE
 }
 
@@ -280,8 +299,197 @@ else
 fi
 
 # ---------------------------------------------------------------
+# Storage: Entware /opt filesystem (stage A). One-shot
+# read-only df + /proc/mounts classification mirroring the main
+# Doctor: internal (UBIFS/squashfs or ubi*/mtd* source), external
+# (known ext-class filesystem on /dev/sd*|/dev/nvme*|/tmp/mnt/*),
+# RAM-backed (tmpfs/ramfs) or unknown. The deepest mount carrying
+# $OPT_ROOT wins; equally deep conflicting entries are ambiguous and
+# classify as unknown. Capacity is filesystem-level df data, never a
+# raw flash size, and never /tmp tmpfs or swap/zRAM: only $OPT_ROOT
+# is probed. Absent/ambiguous/unreadable data is UNKNOWN or N/A -
+# never zeros, never a health verdict. The device source identifier
+# is deliberately not emitted. Test injection: KAS_OPT_ROOT,
+# KAS_MOUNTS_SRC, KAS_DF_BIN.
+# ---------------------------------------------------------------
+printf '\n=== Storage: Entware /opt ===\n'
+STORAGE_STATUS="UNKNOWN"
+STORAGE_REASON="not yet observed"
+OPT_CLASS="unknown"; OPT_FSTYPE="unknown"; OPT_MP="unknown"
+OPT_FREE=""; OPT_TOTAL=""; OPT_SOURCE="none"
+ST_MOUNTS_OK=0
+ST_BEST_LEN=-1; ST_BEST_MP=""; ST_BEST_FST=""; ST_BEST_SRC=""; ST_AMBIG=0
+
+if [ -r "$MOUNTS_SRC" ]; then
+    ST_MOUNTS_OK=1
+    _st_lines=0
+    while read -r _st_src _st_mp _st_fst _st_rest; do
+        _st_lines=$((_st_lines+1))
+        [ "$_st_lines" -le "$MAX_MOUNTS" ] || break
+        [ -n "$_st_mp" ] || continue
+        # the root mount "/" covers every path; the "$mp"/* glob form would
+        # expand to "//*" for it and never match, so test it explicitly
+        if [ "$_st_mp" = "/" ]; then
+            _st_cover=yes
+        else
+            _st_cover=no
+            case "$OPT_ROOT" in
+                "$_st_mp") _st_cover=yes ;;
+                *) case "$OPT_ROOT" in
+                       "$_st_mp"/*) _st_cover=yes ;;
+                   esac ;;
+            esac
+        fi
+        [ "$_st_cover" = yes ] || continue
+        _st_len=${#_st_mp}
+        if [ "$_st_len" -gt "$ST_BEST_LEN" ]; then
+            ST_BEST_LEN=$_st_len; ST_BEST_MP=$_st_mp; ST_BEST_FST=$_st_fst; ST_BEST_SRC=$_st_src
+            ST_AMBIG=0
+        elif [ "$_st_len" -eq "$ST_BEST_LEN" ]; then
+            # equally deep second cover: ambiguous unless identical
+            if [ "$_st_fst" != "$ST_BEST_FST" ] || [ "$_st_src" != "$ST_BEST_SRC" ]; then
+                ST_AMBIG=1
+            fi
+        fi
+    done < "$MOUNTS_SRC"
+else
+    printf 'mounts source: %s not readable\n' "$MOUNTS_SRC"
+fi
+
+if [ "$ST_MOUNTS_OK" -eq 1 ] && [ "$ST_BEST_LEN" -ge 0 ]; then
+    if [ "$ST_AMBIG" -eq 1 ]; then
+        OPT_CLASS="unknown"; OPT_FSTYPE="unknown"; OPT_MP="unknown"
+    else
+        # kernel-escaped mount point: decode the common \040 space escape
+        # for display; other escapes are shown in their kernel form
+        OPT_MP=$(printf '%s' "$ST_BEST_MP" | awk '{ gsub(/\\040/, " "); print }')
+        case "$OPT_MP" in
+            ''|*[[:cntrl:]]*) OPT_MP="unknown" ;;
+        esac
+        [ "${#OPT_MP}" -le 200 ] || OPT_MP="unknown"
+        _st_fst=$(printf '%s' "$ST_BEST_FST" | tr 'A-Z' 'a-z')
+        case "$_st_fst" in
+            ''|*[!a-z0-9._-]*) _st_fst="unknown" ;;
+        esac
+        [ "${#_st_fst}" -le 32 ] || _st_fst="unknown"
+        OPT_FSTYPE=$_st_fst
+        case "$OPT_FSTYPE" in
+            ubifs|squashfs) OPT_CLASS="internal" ;;
+            tmpfs|ramfs)    OPT_CLASS="ram" ;;
+            *)
+                case "$ST_BEST_SRC" in
+                    ubi*|mtd*) OPT_CLASS="internal" ;;
+                    *)
+                        case "$OPT_FSTYPE" in
+                            ext2|ext3|ext4|btrfs|f2fs|xfs|vfat|fat|exfat|ntfs|ntfs3|fuseblk)
+                                case "$ST_BEST_SRC" in
+                                    /dev/sd*|/dev/nvme*|/tmp/mnt/*) OPT_CLASS="external" ;;
+                                    *) OPT_CLASS="unknown" ;;
+                                esac ;;
+                            *) OPT_CLASS="unknown" ;;
+                        esac ;;
+                esac ;;
+        esac
+    fi
+fi
+
+# df: POSIX format first (single line, no wrapping), then plain -k for
+# BusyBox builds without -P. A missing or erroring df yields empty output.
+ST_DF_OUT=""
+ST_DF_OUT=$("$DF_BIN" -kP "$OPT_ROOT" 2>/dev/null) || ST_DF_OUT=""
+if [ -z "$ST_DF_OUT" ]; then
+    ST_DF_OUT=$("$DF_BIN" -k "$OPT_ROOT" 2>/dev/null) || ST_DF_OUT=""
+fi
+ST_DF_TOTAL=""
+ST_DF_AVAIL=""
+if [ -n "$ST_DF_OUT" ]; then
+    _st_df=$(printf '%s\n' "$ST_DF_OUT" | awk 'NR==2 { print $2 " " $4 }')
+    ST_DF_TOTAL=${_st_df%% *}
+    ST_DF_AVAIL=${_st_df#* }
+    [ "$ST_DF_TOTAL" != "$_st_df" ] || { ST_DF_TOTAL=""; ST_DF_AVAIL=""; }
+    case "$ST_DF_TOTAL" in ''|*[!0-9]*) ST_DF_TOTAL="" ;; esac
+    case "$ST_DF_AVAIL" in ''|*[!0-9]*) ST_DF_AVAIL="" ;; esac
+fi
+
+ST_PLAUSIBLE=no
+if [ -n "$ST_DF_TOTAL" ] && [ -n "$ST_DF_AVAIL" ]; then
+    if awk -v t="$ST_DF_TOTAL" -v a="$ST_DF_AVAIL" \
+        'BEGIN { exit !(t+0 > 0 && t+0 <= '"$STORAGE_MAX_TOTAL_KB"' && a+0 <= t+0) }' 2>/dev/null; then
+        ST_PLAUSIBLE=yes
+    fi
+fi
+
+if [ "$ST_MOUNTS_OK" -ne 1 ]; then
+    # neither the mount table nor anything else can classify /opt
+    if [ "$ST_PLAUSIBLE" = "yes" ]; then
+        OPT_FREE=$ST_DF_AVAIL; OPT_TOTAL=$ST_DF_TOTAL; OPT_SOURCE="df"
+        STORAGE_STATUS="PASS"
+        STORAGE_REASON=""
+        ok_out "storage /opt: ${OPT_FREE} kB free of ${OPT_TOTAL} kB (filesystem ${OPT_FSTYPE}, class ${OPT_CLASS}; df filesystem-level capacity, not raw flash size)"
+    else
+        STORAGE_STATUS="UNKNOWN"
+        STORAGE_REASON="mount table unreadable and df unavailable or malformed"
+        unk_out "storage /opt: UNKNOWN (${STORAGE_REASON})"
+    fi
+elif [ "$ST_BEST_LEN" -lt 0 ]; then
+    # readable mount table with no entry covering $OPT_ROOT
+    if [ "$ST_PLAUSIBLE" = "yes" ]; then
+        STORAGE_STATUS="UNKNOWN"
+        STORAGE_REASON="df reported capacity but no mount entry covers ${OPT_ROOT}"
+        unk_out "storage /opt: UNKNOWN (${STORAGE_REASON})"
+    elif [ -d "$OPT_ROOT" ]; then
+        STORAGE_STATUS="UNKNOWN"
+        STORAGE_REASON="directory present but no mount entry covers ${OPT_ROOT}"
+        unk_out "storage /opt: UNKNOWN (${STORAGE_REASON})"
+    else
+        STORAGE_STATUS="N/A"
+        STORAGE_REASON=""
+        info_out "storage /opt: N/A - no /opt mount or directory observed (Entware may not be installed)"
+    fi
+else
+    # a mount covering $OPT_ROOT is known
+    if [ "$ST_PLAUSIBLE" = "yes" ]; then
+        OPT_FREE=$ST_DF_AVAIL; OPT_TOTAL=$ST_DF_TOTAL; OPT_SOURCE="df+proc_mounts"
+        if [ "$ST_AMBIG" -eq 1 ]; then
+            OPT_SOURCE="df"
+            STORAGE_STATUS="PASS"
+            STORAGE_REASON=""
+            ok_out "storage /opt: ${OPT_FREE} kB free of ${OPT_TOTAL} kB (filesystem unknown, class unknown; equally deep conflicting mount entries; df filesystem-level capacity, not raw flash size)"
+        else
+            STORAGE_STATUS="PASS"
+            STORAGE_REASON=""
+            ok_out "storage /opt: ${OPT_FREE} kB free of ${OPT_TOTAL} kB (filesystem ${OPT_FSTYPE}, class ${OPT_CLASS}; df filesystem-level capacity, not raw flash size)"
+        fi
+    elif [ -n "$ST_DF_TOTAL" ] || [ -n "$ST_DF_AVAIL" ]; then
+        OPT_SOURCE="proc_mounts"
+        STORAGE_STATUS="UNKNOWN"
+        STORAGE_REASON="df output outside the plausible range (total must be >0, free <= total, total <= ${STORAGE_MAX_TOTAL_KB} kB)"
+        unk_out "storage /opt: UNKNOWN (${STORAGE_REASON})"
+    else
+        OPT_SOURCE="proc_mounts"
+        STORAGE_STATUS="UNKNOWN"
+        STORAGE_REASON="df unavailable or malformed for ${OPT_ROOT}"
+        unk_out "storage /opt: UNKNOWN (filesystem ${OPT_FSTYPE}, class ${OPT_CLASS}; ${STORAGE_REASON})"
+    fi
+fi
+if [ "$STORAGE_STATUS" != "PASS" ]; then
+    OPT_FREE=""; OPT_TOTAL=""
+fi
+if [ "$STORAGE_STATUS" = "PASS" ]; then
+    ST_NOTE="filesystem-level df capacity of the /opt filesystem, not raw flash size; /tmp tmpfs, swap/zRAM and RAM are separate readings; device source intentionally not reported"
+else
+    ST_NOTE="no reliable /opt filesystem capacity observation; /tmp tmpfs, swap/zRAM and RAM are separate readings; device source intentionally not reported"
+    if [ -n "$STORAGE_REASON" ]; then
+        ST_NOTE="$ST_NOTE; reason: $STORAGE_REASON"
+    fi
+fi
+
+# ---------------------------------------------------------------
 # Summary + JSON
 # ---------------------------------------------------------------
+NOW_UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || true)
+[ -n "$NOW_UTC" ] || NOW_UTC="unknown"
+
 printf '\n=== Summary ===\n'
 info_out "Read-only one-shot collection; no thresholds asserted, no overheating verdicts made."
 OBSERVED=0
@@ -292,17 +500,20 @@ if [ "$OBSERVED" -gt 0 ]; then
     ok_out "metrics observed: ${OBSERVED} of 4 core readings (temperature, load, uptime, memory)"
     FINAL_RC=0
 else
-    unk_out "no core metric could be observed on this system; report is all-UNKNOWN"
+    if [ "$STORAGE_STATUS" = "PASS" ]; then
+        unk_out "no core metric could be observed on this system; the /opt storage reading is an additive observation and does not change the exit code"
+    else
+        unk_out "no core metric could be observed on this system; report is all-UNKNOWN"
+    fi
     FINAL_RC=1
 fi
+info_out "storage /opt (${STORAGE_STATUS}) is an additive stage A observation; it never alters the exit code, never /tmp tmpfs or swap/zRAM"
 
 if [ -n "$JSON_FILE" ]; then
     case "$JSON_FILE" in
         */*) JSON_DIR=${JSON_FILE%/*}
              [ -d "$JSON_DIR" ] || { printf '[ERROR] json directory does not exist: %s\n' "$JSON_DIR" >&2; exit 2; } ;;
     esac
-    NOW_UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || true)
-    [ -n "$NOW_UTC" ] || NOW_UTC="unknown"
     {
         printf '{\n'
         printf '  "schema": "%s",\n' "$SCHEMA"
@@ -338,6 +549,18 @@ if [ -n "$JSON_FILE" ]; then
         printf '    "status": "%s",\n' "$SWAP_STATUS"
         printf '    "total_kb": "%s",\n' "$SWAP_TOTAL"
         printf '    "free_kb": "%s"\n' "$SWAP_FREE"
+        printf '  },\n'
+        printf '  "storage": {\n'
+        printf '    "status": "%s",\n' "$STORAGE_STATUS"
+        printf '    "path": "%s",\n' "$(json_escape "$OPT_ROOT")"
+        printf '    "mount_class": "%s",\n' "$OPT_CLASS"
+        printf '    "fstype": "%s",\n' "$OPT_FSTYPE"
+        printf '    "mount_point": "%s",\n' "$(json_escape "$OPT_MP")"
+        printf '    "free_kb": "%s",\n' "$OPT_FREE"
+        printf '    "total_kb": "%s",\n' "$OPT_TOTAL"
+        printf '    "source": "%s",\n' "$OPT_SOURCE"
+        printf '    "observed_utc": "%s",\n' "$NOW_UTC"
+        printf '    "note": "%s"\n' "$(json_escape "$ST_NOTE")"
         printf '  }\n'
         printf '}\n'
     } > "$JSON_FILE" 2>/dev/null || { printf '[ERROR] cannot write: %s\n' "$JSON_FILE" >&2; exit 2; }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""#478: interactive progress/attempt visibility for installer downloads.
+"""Interactive progress/attempt visibility for installer downloads.
 
 Runs the exact shell functions extracted from install.sh with mocked transports,
 including a pseudo-TTY. Does not contact networks or change any router files.
@@ -62,42 +62,68 @@ curl() {
     printf 'partial-data' > "$_dest"
     return 28
 }
-wget() {
-    _dest=""
-    _next=0
-    _quiet=0
-    for _a in "$@"; do
-        if [ "$_next" -eq 1 ]; then _dest="$_a"; _next=0; continue; fi
-        case "$_a" in
-          -O|-qO) _next=1; [ "$_a" = -qO ] && _quiet=1 ;;
-        esac
+# The mock wget must be a REAL executable on PATH, not only a shell function:
+# the wall-clock wrapper (timeout applet) can only run binaries, so direct
+# calls and wrapped calls must observe identical behavior through one stub.
+# LAB and MODE travel through the environment for the same reason.
+export LAB
+export MODE
+mkdir -p "$LAB/bin"
+cat > "$LAB/bin/wget" <<'WSTUB'
+#!/bin/sh
+_dest=""
+_next=0
+_quiet=0
+for _a in "$@"; do
+    if [ "$_next" -eq 1 ]; then _dest="$_a"; _next=0; continue; fi
+    case "$_a" in
+      -O|-qO) _next=1; [ "$_a" = -qO ] && _quiet=1 ;;
+    esac
+done
+[ -n "$_dest" ] || exit 91
+_count=0
+[ ! -f "$LAB/wget-count" ] || _count=$(cat "$LAB/wget-count")
+_count=$((_count + 1))
+printf '%s' "$_count" > "$LAB/wget-count"
+printf 'wget:%s:%s\n' "$_count" "$_quiet" >> "$LAB/events"
+if [ "$MODE" = wget-retry ] && [ "$_count" -eq 2 ]; then
+    [ ! -e "$_dest" ] || { printf 'STALE' >> "$LAB/events"; exit 92; }
+    printf '%s' project-ipk > "$_dest"
+    exit 0
+fi
+if [ "$MODE" = trickle ]; then
+    printf 'trickle' > "$_dest"
+    _i=0
+    while [ "$_i" -lt 300 ]; do
+        # Real sleep: bytes keep arriving, so the wget -T read timeout never
+        # fires and only the wall-clock budget (timeout applet) can end the
+        # attempt; the stub dies on TERM exactly like real wget.
+        sleep 1
+        _i=$((_i + 1))
     done
-    [ -n "$_dest" ] || return 91
-    _count=0
-    [ ! -f "$LAB/wget-count" ] || _count=$(cat "$LAB/wget-count")
-    _count=$((_count + 1))
-    printf '%s' "$_count" > "$LAB/wget-count"
-    printf 'wget:%s:%s\n' "$_count" "$_quiet" >> "$LAB/events"
-    if [ "$MODE" = wget-retry ] && [ "$_count" -eq 2 ]; then
-        [ ! -e "$_dest" ] || { printf 'STALE' >> "$LAB/events"; return 92; }
-        printf '%s' project-ipk > "$_dest"
-        return 0
-    fi
-    printf 'partial-data' > "$_dest"
-    return 28
-}
+    exit 28
+fi
+printf 'partial-data' > "$_dest"
+exit 28
+WSTUB
+chmod +x "$LAB/bin/wget"
+PATH="$LAB/bin:$PATH"
+export PATH
+wget() { "$LAB/bin/wget" "$@"; }
 '''
 
 
-def check(shell, mode, tty):
+def check(shell, mode, tty, max_time=None):
     with tempfile.TemporaryDirectory(prefix="kas-progress-") as tmp:
         lab = Path(tmp)
         script = HARNESS + "\n" + FUNCTIONS + '\n'
+        if max_time is not None:
+            script += "ASSET_DOWNLOAD_MAX_TIME=%d\n" % max_time
         script += '''
 if download_url_file "$URL" "$LAB/mihomo.ipk"; then
-    printf 'RESULT=OK\n'
+    printf 'RESULT=OK\\n'
 else
-    printf 'RESULT=FAIL\n'
+    printf 'RESULT=FAIL\\n'
 fi
 '''
         kwargs = dict(input=script, text=True, stdout=subprocess.PIPE, timeout=15)
@@ -143,6 +169,14 @@ fi
                 assert "wget attempt 1/3" in stderr and "wget attempt 2/3" in stderr
                 assert "curl attempt 3/3" in stderr
                 assert events[-2:] == ["wget:1:0", "wget:2:0"]
+            if mode == "trickle":
+                # Every attempt must die at the wall-clock budget, not by the
+                # read timeout the trickle never triggers; three bounded
+                # attempts, then cleanup, then FAIL.
+                budget = max_time if max_time is not None else 180
+                assert "wall-clock budget %d seconds" % budget in stderr, stderr
+                assert events == ["curl:1:1", "curl:2:1", "curl:3:1", "curl:4:1",
+                                  "wget:1:0", "wget:2:0", "wget:3:0"], events
         else:
             assert "attempt 1/3" not in stderr
             if mode == "curl-retry":
@@ -155,4 +189,6 @@ for shell in (["sh"], ["busybox", "ash"]):
     for interactive in (False, True):
         for mode in ("curl-retry", "wget-retry", "all-fail"):
             check(shell, mode, interactive)
-    print("PASS", shell, "interactive progress and numbered attempts; non-TTY quiet; cleanup and fallback")
+        check(shell, "trickle", interactive, max_time=2)
+    print("PASS", shell, "interactive progress and numbered attempts; non-TTY quiet; cleanup and fallback;"
+          " trickling wget bounded by the wall-clock budget")
