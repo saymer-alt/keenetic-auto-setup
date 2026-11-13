@@ -250,7 +250,7 @@ mp_pids() {
 }
 # END MIHOMO PROCESS STATE v1
 
-# BEGIN MIHOMO INIT RESOLUTION v1 (guarded init resolution)
+# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
 # Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
 # saymer-alt/entware-go e573954 installs S99mihomo the same way.
 # Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
