@@ -49,7 +49,9 @@ LAB="$1"
 MODE="$2"
 REPO_OWNER=saymer-alt
 REPO_NAME=entware-go
-ASSET_DOWNLOAD_MAX_TIME=180
+ASSET_DOWNLOAD_MAX_TIME=1800
+ASSET_DOWNLOAD_LOW_SPEED_LIMIT=1024
+ASSET_DOWNLOAD_LOW_SPEED_TIME=120
 curl() {
     _seen_api=0
     _seen_accept=0
@@ -68,6 +70,29 @@ curl() {
         esac
     done
     [ "$_seen_api" -eq 1 ] && [ "$_seen_accept" -eq 1 ] && [ -n "$_dest" ] || return 91
+    _arg_type=""
+    _curl_cap=""
+    _curl_limit=""
+    _curl_window=""
+    for _a in "$@"; do
+        if [ -n "$_arg_type" ]; then
+            case "$_arg_type" in
+                cap) _curl_cap="$_a" ;;
+                limit) _curl_limit="$_a" ;;
+                window) _curl_window="$_a" ;;
+            esac
+            _arg_type=""
+            continue
+        fi
+        case "$_a" in
+            --max-time) _arg_type=cap ;;
+            --speed-limit) _arg_type=limit ;;
+            --speed-time) _arg_type=window ;;
+        esac
+    done
+    [ "$_curl_cap" = "$ASSET_DOWNLOAD_MAX_TIME" ] &&
+    [ "$_curl_limit" = "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" ] &&
+    [ "$_curl_window" = "$ASSET_DOWNLOAD_LOW_SPEED_TIME" ] || return 94
     _count=0
     [ ! -e "$LAB/calls" ] || _count=$(cat "$LAB/calls")
     _count=$((_count + 1))

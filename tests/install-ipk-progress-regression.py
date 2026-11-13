@@ -28,7 +28,9 @@ FUNCTIONS = "\n".join(func(n) for n in (
 HARNESS = r'''
 LAB="$1"
 MODE="$2"
-ASSET_DOWNLOAD_MAX_TIME=180
+ASSET_DOWNLOAD_MAX_TIME=1800
+ASSET_DOWNLOAD_LOW_SPEED_LIMIT=1024
+ASSET_DOWNLOAD_LOW_SPEED_TIME=120
 URL="https://github.com/saymer-alt/entware-go/releases/download/latest/mihomo_1.19.33-2_aarch64-3.10.ipk"
 warn() { printf '[WARN] %s\n' "$1"; }
 sleep() { :; }
@@ -46,6 +48,31 @@ curl() {
         esac
     done
     [ -n "$_dest" ] || return 91
+
+    _speed_key=""
+    _seen_limit=""
+    _seen_window=""
+    _seen_budget=""
+    for _a in "$@"; do
+        if [ -n "$_speed_key" ]; then
+            case "$_speed_key" in
+                limit) _seen_limit="$_a" ;;
+                window) _seen_window="$_a" ;;
+                budget) _seen_budget="$_a" ;;
+            esac
+            _speed_key=""
+            continue
+        fi
+        case "$_a" in
+            --speed-limit) _speed_key=limit ;;
+            --speed-time) _speed_key=window ;;
+            --max-time) _speed_key=budget ;;
+        esac
+    done
+    [ "$_seen_limit" = "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" ] &&
+    [ "$_seen_window" = "$ASSET_DOWNLOAD_LOW_SPEED_TIME" ] &&
+    [ "$_seen_budget" = "$ASSET_DOWNLOAD_MAX_TIME" ] ||
+        { printf 'BAD_SPEED_GUARD\n' >> "$LAB/events"; return 93; }
     _count=0
     [ ! -f "$LAB/curl-count" ] || _count=$(cat "$LAB/curl-count")
     _count=$((_count + 1))
@@ -68,6 +95,7 @@ curl() {
 # LAB and MODE travel through the environment for the same reason.
 export LAB
 export MODE
+export ASSET_DOWNLOAD_LOW_SPEED_TIME
 mkdir -p "$LAB/bin"
 cat > "$LAB/bin/wget" <<'WSTUB'
 #!/bin/sh
@@ -81,6 +109,13 @@ for _a in "$@"; do
     esac
 done
 [ -n "$_dest" ] || exit 91
+_read_timeout=""
+_read_next=0
+for _a in "$@"; do
+    if [ "$_read_next" -eq 1 ]; then _read_timeout="$_a"; _read_next=0; continue; fi
+    [ "$_a" = "-T" ] && _read_next=1
+done
+[ "$_read_timeout" = "$ASSET_DOWNLOAD_LOW_SPEED_TIME" ] || exit 93
 _count=0
 [ ! -f "$LAB/wget-count" ] || _count=$(cat "$LAB/wget-count")
 _count=$((_count + 1))
