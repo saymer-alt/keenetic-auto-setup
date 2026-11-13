@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline regressions for the small-transfer download helper (#483/#169).
+"""Offline regressions for the small-transfer download helper (small-transfer tracking).
 
 FIELD KN-1010: an intermittent resolver (curl 6) failed every silent attempt
 of the MagiTrickle add_repo.sh download and the installer aborted without
@@ -43,6 +43,7 @@ SMALL_TRANSFER_MAX_TIME=20
 sleep() { :; }
 warn() { printf 'WARN:%s\n' "$1"; }
 curl() {
+    _curl_policy="$*"
     _dest=
     _prev=
     for _a in "$@"; do
@@ -50,18 +51,27 @@ curl() {
         _prev=$_a
     done
     [ -n "$_dest" ] || return 90
+    [ ! -e "$_dest" ] || touch "$LAB/stale-destination"
     _n=$(($(cat "$LAB/curlcount" 2>/dev/null || echo 0) + 1))
     printf '%s' "$_n" > "$LAB/curlcount"
     _entry=$(sed -n "${_n}p" "$LAB/curlplan")
     [ -n "$_entry" ] || return 91
     _rc=${_entry%%:*}
     _data=${_entry#*:}
-    if [ "$_rc" = 0 ] && [ -n "$_data" ]; then
+    if [ "$_rc" = redirect ]; then
+        case "$_curl_policy" in
+            *'--proto-redir =https '*) return 1 ;;
+        esac
+        _rc=0
+    fi
+    if [ -n "$_data" ]; then
         printf '%b' "$_data" > "$_dest"
     fi
     return "$_rc"
 }
 wget() {
+    case "$*" in *--version) return 0 ;; esac
+    _wget_policy="$*"
     _dest=
     _prev=
     for _a in "$@"; do
@@ -69,13 +79,20 @@ wget() {
         _prev=$_a
     done
     [ -n "$_dest" ] || return 90
+    [ ! -e "$_dest" ] || touch "$LAB/stale-destination"
     _n=$(($(cat "$LAB/wgetcount" 2>/dev/null || echo 0) + 1))
     printf '%s' "$_n" > "$LAB/wgetcount"
     _entry=$(sed -n "${_n}p" "$LAB/wgetplan")
     [ -n "$_entry" ] || return 91
     _rc=${_entry%%:*}
     _data=${_entry#*:}
-    if [ "$_rc" = 0 ] && [ -n "$_data" ]; then
+    if [ "$_rc" = redirect ]; then
+        case "$_wget_policy" in
+            *'--max-redirect=0 '*) return 8 ;;
+        esac
+        _rc=0
+    fi
+    if [ -n "$_data" ]; then
         printf '%b' "$_data" > "$_dest"
     fi
     return "$_rc"
@@ -109,6 +126,7 @@ def run_scenario(name, curl_plan, wget_plan, shell, stale=False):
             "else",
             '  printf "RESULT=FAIL\\n"',
             "fi",
+            '[ ! -e "$LAB/stale-destination" ] || printf "STALE_DESTINATION\\n"',
             'printf "CURLCALLS=%s\\n" "$(cat "$LAB/curlcount" 2>/dev/null || echo 0)"',
             'printf "WGETCALLS=%s\\n" "$(cat "$LAB/wgetcount" 2>/dev/null || echo 0)"',
         ])
@@ -146,6 +164,11 @@ def scenario(shell, name, curl_plan, wget_plan, ok, curl_calls, wget_calls,
         f"CURLCALLS={curl_calls}" in proc.stdout
         and f"WGETCALLS={wget_calls}" in proc.stdout,
         f"calls={proc.stdout!r}",
+    )
+    check(
+        f"{shell[0]}:{name} clean stage before each transfer",
+        "STALE_DESTINATION" not in proc.stdout,
+        proc.stdout,
     )
     if expect_reason is not None:
         check(
@@ -212,8 +235,15 @@ def main():
             expect_reason="timed out (curl 28",
         )
         scenario(
-            shell, "truncated-classified", ["18:"] * 4, ["1:"] * 3, False, 4, 3,
+            shell, "truncated-classified", ["18:partial-curl"] * 4, ["1:partial-wget"] * 3, False, 4, 3,
             expect_reason="transfer truncated (curl 18",
+        )
+
+        # Simulate an HTTPS response redirecting to an HTTP payload for every
+        # curl attempt and every wget attempt.
+        scenario(
+            shell, "http-redirect-rejected", [f"redirect:{PAYLOAD}"] * 4,
+            [f"redirect:{PAYLOAD}"] * 3, False, 4, 3,
         )
 
         # rc 0 with an empty body is a failure, not success.

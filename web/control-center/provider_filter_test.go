@@ -1,5 +1,5 @@
 package main
-import("bytes";"strings";"testing")
+import("bytes";"encoding/json";"net/http";"net/http/httptest";"strings";"testing")
 const inputFilterFixture=`mixed-port: 7890
 secret: "SENSITIVE_NOT_TO_LEAK"
 proxy-providers:
@@ -36,7 +36,7 @@ func TestFilterReplaceExistingAndUnrelatedUnchanged(t *testing.T){
 func TestFilterFailClosedComplexAndInvalid(t *testing.T){
  cases:=[]string{"proxy-providers:\n  P: {type: http}\n","proxy-providers:\n  P: &alias\n    type: http\n","proxy-providers:\n  P:\n    type: http\n    exclude-filter: |\n      hello\n","proxy-providers:\n  P:\n    type: http\n    exclude-filter: x\n    exclude-filter: y\n","proxy-providers:\n  P:\n    <<: *common\n    type: http\n","proxy-providers:\n  P:\n    << : *common\n    type: http\n","proxy-providers:\n  P:\n    type: file\n"}
  for i,s:=range cases{if _,_,_,err:=patchProviderFilter([]byte(s),"P",[]string{"X"},false);err==nil{t.Fatalf("accepted case %d",i)}}
- // FIELD #428: valid-looking but ambiguous or dangerous plain key shapes
+ // FIELD (plain YAML key safety): valid-looking but ambiguous or dangerous plain key shapes
  // must keep failing closed at discovery, before any patch is possible.
  unsupported:=[]string{
   "proxy-providers:\n  RZ Gist:\n    type: http\n  RZ Gist:\n    type: http\n",
@@ -61,7 +61,7 @@ func TestFilterNoOpsAndSourceDigest(t *testing.T){
  if err!=nil||!bytes.Equal(got,[]byte(inputFilterFixture)){t.Fatal("unexpected clear mutation",err)}
  if filterSourceDigest([]byte("a"))==filterSourceDigest([]byte("b")){t.Fatal("hash collision")}
 }
-// FIELD #428: plain YAML mapping keys with internal spaces (RZ Gist,
+// FIELD (plain YAML key safety): plain YAML mapping keys with internal spaces (RZ Gist,
 // Geodema RZ) are valid and must be discovered and patched without renaming.
 const plainKeysFilterFixture=`mixed-port: 7890
 secret: "SENSITIVE_NOT_TO_LEAK"
@@ -109,4 +109,67 @@ func TestFilterPlainUnicodeKey(t *testing.T){
  if want:="proxy-providers:\n  Провайдер Сети:\n    exclude-filter: \"^(?:Node)$\"\n    type: http\n";!bytes.Equal(got,[]byte(want)){t.Fatalf("got %q",string(got))}
  clear,_,_,err:=patchProviderFilter(got,"Провайдер Сети",nil,true)
  if err!=nil||!bytes.Equal(clear,[]byte(unicodeFilterFixture)){t.Fatal("not byte-for-byte restored",err)}
+}
+// FIELD (plain YAML key safety) independent HTTP-level regression: plain YAML keys with internal
+// spaces must pass the real /api/filter handlers (discovery and preview)
+// without UNSUPPORTED_PROVIDER_YAML, keep private config out of responses,
+// and keep failing closed for unknown providers through the same endpoints.
+func TestFilterHTTPPlainSpaceKeysEndToEnd(t *testing.T){
+ const spacedHTTPFixture=`mixed-port: 7890
+secret: "SENSITIVE_NOT_TO_LEAK"
+proxy-providers:
+  Provider Example A:
+    type: http
+    url: "https://private.invalid/sub?token=SECRET"
+  Provider Example B:
+    type: http
+    exclude-filter: "(?i)russia"
+proxy-groups:
+  - name: MAIN
+    type: select
+    use:
+      - Provider Example A
+      - Provider Example B
+`
+ a:=newApp("127.0.0.1:18081",nil)
+ source:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path!="/providers/proxies"{t.Error("unexpected upstream",r.URL.Path);w.WriteHeader(404);return}
+  _,_=w.Write([]byte(`{"providers":{"Provider Example A":{"proxies":[{"name":"Node Alpha"}]},"Provider Example B":{"proxies":[{"name":"Node Alpha"}]}}}`))
+ }))
+ defer source.Close()
+ a.providers=&providerNamesExporter{sources:[]string{source.URL+"/providers/proxies"},client:source.Client()}
+ a.filterConfigReader=func()([]byte,error){return []byte(spacedHTTPFixture),nil}
+ digest:=filterSourceDigest([]byte(spacedHTTPFixture))
+ inspect:=func()(*httptest.ResponseRecorder,string){
+  r:=httptest.NewRequest("GET","http://127.0.0.1:18081/api/filter/providers",nil)
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,r);return w,w.Body.String()
+ }
+ w,body:=inspect()
+ if w.Code!=200{t.Fatalf("discovery failed for plain spaced keys: %d %s",w.Code,body)}
+ if strings.Contains(body,"UNSUPPORTED_PROVIDER_YAML"){t.Fatal("discovery reported UNSUPPORTED_PROVIDER_YAML for valid plain spaced keys")}
+ if !strings.Contains(body,"Provider Example A")||!strings.Contains(body,"Provider Example B"){t.Fatal("spaced provider names not discovered: "+body)}
+ for _,v:=range []string{"SENSITIVE_NOT_TO_LEAK","private.invalid","SECRET"}{
+  if strings.Contains(body,v){t.Fatalf("private config leaked: %s",v)}
+ }
+ invoke:=func(provider string,names []string,sha string)*httptest.ResponseRecorder{
+  reqBody,_:=json.Marshal(filterEditRequest{Provider:provider,Names:names,SourceSHA:sha})
+  r:=httptest.NewRequest("POST","http://127.0.0.1:18081/api/filter/preview",bytes.NewReader(reqBody))
+  r.Header.Set("Origin","http://127.0.0.1:18081");r.Header.Set("Content-Type","application/json");r.Header.Set("X-KAS-Confirm","preview")
+  w:=httptest.NewRecorder();a.handler().ServeHTTP(w,r);return w
+ }
+ w=invoke("Provider Example A",[]string{"Node Alpha"},digest)
+ if w.Code!=200{t.Fatalf("preview rejected valid spaced provider: %d %s",w.Code,w.Body.String())}
+ var result filterPreviewResponse
+ if err:=json.Unmarshal(w.Body.Bytes(),&result);err!=nil{t.Fatal(err)}
+ if result.Provider!="Provider Example A"||result.Applied||result.Proposed==""||result.Existing!=""{t.Fatalf("%+v",result)}
+ if strings.Contains(w.Body.String(),"private.invalid")||strings.Contains(w.Body.String(),"SENSITIVE_NOT_TO_LEAK"){t.Fatal("YAML leaked in preview response")}
+ // Unknown provider: the runtime snapshot check fails closed first.
+ if w=invoke("Provider Example C",[]string{"Node Alpha"},digest);w.Code!=422||!strings.Contains(w.Body.String(),"PROVIDER_NOT_LOADED"){t.Fatalf("unknown spaced provider not rejected by runtime check: %d %s",w.Code,w.Body.String())}
+ // Truly unsupported YAML shape keeps the UNSUPPORTED_PROVIDER_YAML label over HTTP.
+ a.filterConfigReader=func()([]byte,error){return []byte("proxy-providers:\n  &a RZ Gist:\n    type: http\n"),nil}
+ if w,body:=inspect();w.Code!=422||!strings.Contains(body,"UNSUPPORTED_PROVIDER_YAML"){t.Fatalf("anchor key not rejected over HTTP: %d %s",w.Code,body)}
+ a.filterConfigReader=func()([]byte,error){return []byte(spacedHTTPFixture),nil}
+ if w=invoke("Provider Example B",[]string{"Node Alpha"},digest);w.Code!=200{t.Fatalf("replacement preview rejected for spaced key with existing filter: %d",w.Code)}
+ if err:=json.Unmarshal(w.Body.Bytes(),&result);err!=nil{t.Fatal(err)}
+ if result.Existing!=`"(?i)russia"`{t.Fatalf("existing filter not reported: %q",result.Existing)}
 }

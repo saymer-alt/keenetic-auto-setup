@@ -13,7 +13,7 @@ let browser;
 // sticky sidebar and the skip-link render at the current scroll offset.
 const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();});await page.screenshot({path:path.join(previews,name),fullPage:true});};
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];let statusScenario=null;let coreScenario="present";let doctorScenario=null;
+ let panelOperation=null,panelTarget=false,panelLoseResponse=false,panelServedNewBundle=false;let updateOperation=null;let filtered=false,operation=null,acceptDialog=false,settingsReadFail=false,portConflict=false;let settings={port:18081,auth_mode:'none',login:'',password_set:false};const requests=[];let statusScenario=null;let coreScenario="present";let doctorScenario=null;let metricsScenario=null;
  page.on('dialog',d=>acceptDialog?d.accept():d.dismiss());
  const names=['Sweden Reality 8443','Sweden XHTTP 2053','Sweden gRPC 2096','Sweden Hy2 2083','Estonia Reality 8443','Estonia XHTTP 2053','Estonia gRPC 2096','Estonia Trojan 9443','Estonia Hy2 2083','Sweden2 Reality 8443','Sweden2 XHTTP 2053','Sweden2 gRPC 2096','Sweden2 Hy2 2083','Moscow Hy2 2083'];
  await page.route('http://kas.test/**',async route=>{
@@ -43,6 +43,7 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
     else data=statusScenario||{timestamp:new Date().toISOString(),mihomo_binary:true,magitrickle_binary:true,runtime:{mihomo:{state:'running',version:'1.19.33',version_source:'api'},magitrickle:{state:'running',version:'0.8.2-1',version_source:'package'}}};
    }
   if(url.pathname==='/api/doctor')data=doctorScenario||{timestamp:'2026-10-29T07:00:00Z',exit_code:0,details:fs.readFileSync(path.join(root,'web/control-center/tests/fixtures/doctor-kn1010.txt'),'utf8'),summary:{verdict:'OK',ok:37,warn:0,fail:0,info:65}};
+  if(url.pathname==='/api/metrics'){if(metricsScenario==='FAIL'){status=503;data={error_code:'METRICS_UNAVAILABLE'};}else data=metricsScenario;}
   if(url.pathname==='/api/access')data={home_only:false};
   if(url.pathname==='/api/settings'){
    data=settings;
@@ -74,7 +75,7 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
   assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
   statusScenario={timestamp:'2020-01-01T00:00:00Z',runtime:{mihomo:{state:'running'}}};await page.locator('#refresh').click();
   // A stale/unverifiable snapshot renders the readable refresh prompt; the raw
-  // machine token never reaches the UI (issue #395).
+  // machine token never reaches the UI.
   await page.waitForFunction(()=>document.getElementById('status-text').textContent.includes('устарел или не распознан'));
   assert.doesNotMatch(await page.locator('#status-text').innerText(),/INVALID_OR_STALE_RESPONSE/);
   assert.equal(await page.locator('#mihomo-file').getAttribute('data-state'),'unverified');
@@ -131,7 +132,79 @@ const shot=async name=>{await page.evaluate(()=>{window.scrollTo(0,0);if(documen
  await page.waitForFunction(()=>document.getElementById('mt-state').textContent.includes('служба запущена'));
  assert.equal(requests.filter(r=>r.path==='/api/updates/magitrickle').length,1);
  await shot('overview-desktop.png');
- await page.locator('#nav-diagnostics').click();await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('ошибок и предупреждений нет'));
+ await page.locator('#nav-diagnostics').click();
+ // /opt storage card (stage B): synthetic one-shot metrics in a
+ // real browser. Only the explicit button requests a snapshot; no polling.
+ const metricsCalls=()=>requests.filter(r=>r.path==='/api/metrics').length;
+ const metricsBase={schema:'router-metrics/v1',tool:'kas-sys-metrics.sh',temperature:{status:'PASS',celsius:'48.5',type:'SoC',zone:'0'},load:{status:'PASS',one_min:'0.42',five_min:'0.35',fifteen_min:'0.30'},uptime:{status:'PASS',seconds:'90000'},memory:{status:'PASS',mem_available_kb:'262144',mem_total_kb:'524288'},swap:{status:'INFO',total_kb:'131072',free_kb:'98304'}};
+ const storageOf=storage=>({...metricsBase,storage});
+ const optText=()=>page.locator('#opt-values').innerText();
+ assert.equal(await page.locator('#opt-state').getAttribute('aria-live'),'polite');
+ assert.match(await page.locator('#opt-state').innerText(),/ещё не запрашивался/);
+ assert.equal(await page.locator('#opt-values').isHidden(),true);
+ assert.equal(metricsCalls(),0,'no metrics request before the explicit button');
+ metricsScenario='FAIL';await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('METRICS_UNAVAILABLE'));
+ assert.equal(await page.locator('#opt-values').isHidden(),true);
+ assert.equal(metricsCalls(),1);
+ metricsScenario=storageOf({status:'PASS',mount_class:'internal',fstype:'ubifs',mount_point:'/',free_kb:'14458880',total_kb:'14532608',observed_utc:'2026-11-11T17:00:00Z'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('Снимок /opt получен'));
+ assert.match(await optText(),/14120\.0 MiB \/ 14192\.0 MiB/);
+ assert.match(await optText(),/внутренний накопитель роутера/);
+ assert.match(await optText(),/ubifs/);
+ assert.match(await optText(),/Время снимка/);
+ assert.doesNotMatch(await optText(),/(tmpfs|zRAM)/);
+ await page.waitForTimeout(1200);assert.equal(metricsCalls(),2,'one request per explicit click, no polling');
+ // Keyboard path presses the same button.
+ await page.locator('#metrics-refresh').focus();await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('Снимок /opt получен')&&document.getElementById('opt-values').innerText.includes('Время снимка'));
+ assert.equal(metricsCalls(),3);
+ // EN locale: localized class and localized snapshot time, still one shot.
+ await page.locator('#en').click();
+ assert.match(await optText(),/router internal storage/);
+ assert.match(await page.locator('#opt-state').innerText(),/snapshot obtained/i);
+ await page.locator('#ru').click();
+ // UNKNOWN mount class shows numbers but never claims internal/external/RAM.
+ metricsScenario=storageOf({status:'PASS',mount_class:'unknown',fstype:'unknown',mount_point:'unknown',free_kb:'1024',total_kb:'2048',observed_utc:'unknown'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-values').innerText.includes('1.0 MiB / 2.0 MiB'));
+ assert.match(await optText(),/Не удалось определить/);
+ assert.doesNotMatch(await optText(),/внутренний накопитель|внешний носитель|RAM-backed/);
+ // Unknown snapshot time stays an honest localized unknown.
+ assert.match(await optText(),/Не удалось определить/);
+ // tmpfs /opt is RAM-backed, never presented as flash capacity.
+ metricsScenario=storageOf({status:'PASS',mount_class:'ram',fstype:'tmpfs',mount_point:'/tmp/opt',free_kb:'4096',total_kb:'8192',observed_utc:'2026-11-11T18:30:00Z'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-values').innerText.includes('RAM-backed'));
+ assert.match(await optText(),/tmpfs/);
+ // Hostile markup in untrusted fields renders as text only, executes nothing.
+ metricsScenario=storageOf({status:'PASS',mount_class:'internal',fstype:'ubifs',mount_point:'/<img src=x onerror=window.__pwned=1><script>window.__pwned=1<\/script>',free_kb:'1024',total_kb:'2048',observed_utc:'2026-11-11T17:00:00Z'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-values').innerText.includes('img src=x'));
+ assert.equal(await page.evaluate(()=>window.__pwned),undefined,'XSS payload executed');
+ assert.equal(await page.locator('#opt-values img,#opt-values script').count(),0,'hostile markup created elements');
+ // Malformed numbers, free>total and negatives degrade to unknown, never zeros.
+ for(const bad of [{free_kb:'99999999999',total_kb:'2048'},{free_kb:'4096',total_kb:'2048'},{free_kb:'-1',total_kb:'2048'},{free_kb:'',total_kb:'2048'}]){
+  metricsScenario=storageOf({status:'PASS',mount_class:'external',fstype:'ext4',mount_point:'/mnt/sda1',...bad,observed_utc:'2026-11-11T17:00:00Z'});
+  await page.locator('#metrics-refresh').click();
+  await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('Не удалось определить'));
+  assert.match(await optText(),/Не удалось определить/);
+ }
+ // Old collector without storage: card explains, no fabricated rows.
+ metricsScenario={...metricsBase};
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('не передаёт данные /opt'));
+ assert.equal(await page.locator('#opt-values').isHidden(),true);
+ // Absent /opt is an honest N/A, not an error and not zeros.
+ metricsScenario=storageOf({status:'N/A'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('/opt не обнаружен'));
+ // Leave a valid internal snapshot for the diagnostics capture.
+ metricsScenario=storageOf({status:'PASS',mount_class:'internal',fstype:'ubifs',mount_point:'/',free_kb:'14458880',total_kb:'14532608',observed_utc:'2026-11-11T17:00:00Z'});
+ await page.locator('#metrics-refresh').click();
+ await page.waitForFunction(()=>document.getElementById('opt-state').textContent.includes('Снимок /opt получен'));
+ await page.locator('#run').click();await page.waitForFunction(()=>document.getElementById('doctor-state').textContent.includes('ошибок и предупреждений нет'));
  assert.doesNotMatch(await page.locator('#doctor-state').innerText(),/код выхода|не завершилась/);
  assert.match(await page.locator('#doctor-summary').innerText(),/Внешний накопитель[\s\S]*14115 из 14190 МБ/);
  const doctorCalls=requests.filter(r=>r.path==='/api/doctor').length;

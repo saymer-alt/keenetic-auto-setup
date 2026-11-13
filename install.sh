@@ -250,7 +250,7 @@ mp_pids() {
 }
 # END MIHOMO PROCESS STATE v1
 
-# BEGIN MIHOMO INIT RESOLUTION v1 (issue #355)
+# BEGIN MIHOMO INIT RESOLUTION v1 (guarded init resolution)
 # Entware/entware-go ee4b689 installs S28mihomo with INSTALL_BIN.
 # saymer-alt/entware-go e573954 installs S99mihomo the same way.
 # Both use blob e285472a1f4c3a84b3da14e3f69574dbd55bb5c5 (#!/bin/sh).
@@ -340,7 +340,7 @@ PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
 ASSET_DOWNLOAD_MAX_TIME=180
-# Small metadata/script transfers (Issues #483/#169): bounded budget separate
+# Small metadata/script transfers (small-transfer tracking): bounded budget separate
 # from the large .ipk window.
 SMALL_TRANSFER_MAX_TIME=20
 
@@ -1287,17 +1287,30 @@ installer_asset_retry_wget() {
     _irw_url="$1"
     _irw_dest="$2"
     _irw_attempt=1
+    # wget -T bounds connect/read gaps only: a trickling server keeps one
+    # attempt alive indefinitely because every read arrives before -T fires.
+    # When the BusyBox/GNU timeout applet exists, each attempt additionally
+    # runs under a hard wall-clock budget; without it the per-read timeout
+    # stays the only bound and the feedback says so honestly (issue #89).
+    _irw_wrap=""
+    if command -v timeout >/dev/null 2>&1; then
+        _irw_wrap="timeout $ASSET_DOWNLOAD_MAX_TIME"
+    fi
     while [ "$_irw_attempt" -le 3 ]; do
-        installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds)"
+        if [ -n "$_irw_wrap" ]; then
+            installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (wall-clock budget $ASSET_DOWNLOAD_MAX_TIME seconds)"
+        else
+            installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (per-read timeout $ASSET_DOWNLOAD_MAX_TIME seconds; no wall-clock cap available)"
+        fi
         _irw_ok=1
         # BusyBox wget lacks portable --progress=bar. Its native TTY
         # progress is shown when available; redirected output stays quiet.
         if [ -t 2 ]; then
-            if wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
+            if $_irw_wrap wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
                 _irw_ok=0
             fi
         else
-            if wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url" 2>/dev/null; then
+            if $_irw_wrap wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url" 2>/dev/null; then
                 _irw_ok=0
             fi
         fi
@@ -1443,7 +1456,7 @@ download_mihomo_release_asset_api() {
     return 0
 }
 
-# BEGIN SMALL TRANSFER RESILIENCE v1 (Issues #483/#169)
+# BEGIN SMALL TRANSFER RESILIENCE v1 (small-transfer tracking)
 # FIELD KN-1010: an intermittent resolver failed every silent attempt of the
 # MagiTrickle repository helper download and the installer aborted without
 # naming the cause. This helper is for small script/metadata payloads only:
@@ -1452,11 +1465,11 @@ download_mihomo_release_asset_api() {
 # most ONE documented IPv4/X25519 compatibility attempt, and an explicit
 # final transport classification (DNS/TLS/HTTP/timeout/truncated/empty).
 # Never downgrades TLS, never uses HTTP, never touches resolver configuration
-# or adds unverified mirrors; the caller keeps authenticity validation
-# (sh -n) before executing any downloaded script.
+# or adds unverified mirrors; the caller checks shell syntax before execution.
 small_transfer_reason() {
     _str_rc="$1"
     case "$_str_rc" in
+        1)  echo "unsupported or disallowed protocol (curl 1)" ;;
         6)  echo "DNS resolution failed (curl 6; intermittent resolver, wrong resolver or no route to the resolver)" ;;
         7)  echo "connection refused (curl 7)" ;;
         22) echo "HTTP error >= 400 (curl 22)" ;;
@@ -1483,13 +1496,18 @@ download_small_file_bounded() {
 
     rm -f "$_dsf_dst" 2>/dev/null || true
 
+    case "$_dsf_url" in
+        https://*) ;;
+        *) warn "Download of ${_dsf_dst##*/} refused: HTTPS required"; return 1 ;;
+    esac
+
     if command -v curl >/dev/null 2>&1; then
         _dsf_try=1
         while [ "$_dsf_try" -le 3 ]; do
             small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: curl attempt $_dsf_try/3 (budget ${SMALL_TRANSFER_MAX_TIME}s)"
             rm -f "$_dsf_dst" 2>/dev/null || true
             _dsf_rc=0
-            curl -fLsS --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" \
+            curl -q -fLsS --proto =https --proto-redir =https --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" \
                 "$_dsf_url" -o "$_dsf_dst" 2>/dev/null || _dsf_rc=$?
             if [ "$_dsf_rc" -eq 0 ] && [ -s "$_dsf_dst" ]; then
                 return 0
@@ -1510,7 +1528,7 @@ download_small_file_bounded() {
         small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: IPv4/X25519 attempt 1/1"
         rm -f "$_dsf_dst" 2>/dev/null || true
         _dsf_rc=0
-        curl -fLsS --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" -4 --curves X25519 \
+        curl -q -fLsS --proto =https --proto-redir =https --connect-timeout 5 --max-time "$SMALL_TRANSFER_MAX_TIME" -4 --curves X25519 \
             "$_dsf_url" -o "$_dsf_dst" 2>/dev/null || _dsf_rc=$?
         if [ "$_dsf_rc" -eq 0 ] && [ -s "$_dsf_dst" ]; then
             return 0
@@ -1525,12 +1543,14 @@ download_small_file_bounded() {
         rm -f "$_dsf_dst" 2>/dev/null || true
     fi
 
-    if command -v wget >/dev/null 2>&1; then
+    # BusyBox wget follows redirects and cannot enforce this policy. Use
+    # the fallback only when wget can disable redirects and local config.
+    if wget --no-config --max-redirect=0 --tries=1 --version >/dev/null 2>&1; then
         small_transfer_attempt_feedback "Download ${_dsf_dst##*/}: wget fallback (3 attempts)"
         _dsf_wtry=1
         while [ "$_dsf_wtry" -le 3 ]; do
             rm -f "$_dsf_dst" 2>/dev/null || true
-            if wget -qO "$_dsf_dst" -T "$SMALL_TRANSFER_MAX_TIME" "$_dsf_url" 2>/dev/null &&
+            if wget --no-config --max-redirect=0 --tries=1 -qO "$_dsf_dst" -T "$SMALL_TRANSFER_MAX_TIME" "$_dsf_url" 2>/dev/null &&
                [ -s "$_dsf_dst" ]; then
                 return 0
             fi
@@ -2261,7 +2281,7 @@ ensure_bypass_policy_exit() {
 ensure_bypass_policy_exit "$PROXY_IFACE"
 
 # BEGIN MAGITRICKLE RUNTIME STATE v1
-# FIELD #427: a 'done' from the MagiTrickle init script is not proof of a
+# FIELD (MagiTrickle runtime gate): a 'done' from the MagiTrickle init script is not proof of a
 # live daemon. Same standalone contract as the Mihomo process state:
 # 0 running, 1 stopped, 2 unknown. A restricted proc view is unknown, never
 # absence. Process identity only - never DNS/Netfilter functional health
@@ -2367,7 +2387,7 @@ magitrickle_dns_listening() {
 }
 # Bounded post-start runtime confirmation, read-only toward the service: the
 # installer performs exactly ONE managed start above and this gate never
-# issues a second start. FIELD #427 owner review: upstream S99magitrickle
+# issues a second start. FIELD (MagiTrickle runtime gate) owner review: upstream S99magitrickle
 # start returns success before the daemon exists during early boot
 # (uptime <= 300 keeps an unmanaged 'startup_loop &' retrying every 5 s), so
 # an automatic retry here would race that background starter and can create
@@ -2424,8 +2444,8 @@ log "Ensuring MagiTrickle package repository..."
 # telling users to repeat an action that is already automated. Keep stderr visible.
 rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 # Small script payload: bounded metadata budget with explicit transport
-# classification (Issues #483/#169). The helper below keeps the downloaded
-# bytes unexecuted; sh -n below remains the authenticity gate.
+# classification (small-transfer tracking). The helper below keeps the downloaded
+# bytes unexecuted until the shell syntax check below.
 if ! download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
     err "Failed to download MagiTrickle repository helper through curl/wget"
 fi
@@ -2461,7 +2481,7 @@ fi
 
 log "Starting MagiTrickle..."
 /opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
-# FIELD #427: the init script result alone is not runtime proof; the
+# FIELD (MagiTrickle runtime gate): the init script result alone is not runtime proof; the
 # confirmation gate below is read-only (exactly one managed start above,
 # never an automatic retry that could race the upstream startup loop).
 magitrickle_dns_port
@@ -2751,7 +2771,7 @@ fi
 # no-op for the running service. Restart only when this installer changed
 # something Mihomo must reload. If the service is stopped, start it so the
 # installer can still satisfy its working-stack contract.
-# Issue #355: the init script is resolved by the guarded contract
+# The init script is resolved by the guarded contract
 # (S28mihomo or S99mihomo, exactly one authoritative script, ambiguity
 # fails closed) instead of the literal S99 path.
 mp_known || err "Runtime UNKNOWN; service action aborted."
@@ -2865,7 +2885,7 @@ else
     check_fail "Mihomo binary not found (/opt/sbin/mihomo or /opt/bin/mihomo)"
 fi
 
-# Mihomo init script (issue #355: guarded S28/S99 resolution)
+# Mihomo init script (guarded S28/S99 resolution)
 if resolve_mihomo_init; then
     check_ok "Mihomo init script present: $MIHOMO_INIT_RESOLVED"
 else
@@ -3129,7 +3149,7 @@ if opkg list-installed 2>/dev/null | grep -q "^magitrickle "; then
     else
         check_warn "MagiTrickle init script /opt/etc/init.d/S99magitrickle missing"
     fi
-    # FIELD #427: package/init-script presence is not runtime proof. The old
+    # FIELD (MagiTrickle runtime gate): package/init-script presence is not runtime proof. The old
     # outcome could claim success while magitrickled was already stopped.
     magitrickle_dns_port
     if mt_runtime_state; then

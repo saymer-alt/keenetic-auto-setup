@@ -8,6 +8,10 @@ PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setu
 INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
 CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
+# Wall-clock budget for one small metadata/script fetch (issue #89): matches
+# the --max-time 20 the curl paths above already use for the same payloads.
+# wget -T alone bounds connect/read gaps only, not the whole attempt.
+SETUP_SMALL_TRANSFER_MAX_TIME="${SETUP_SMALL_TRANSFER_MAX_TIME:-20}"
 
 # Terminal status colors are presentation only. Semantic prefixes remain the
 # source of truth; redirects/log captures stay plain and NO_COLOR/TERM=dumb
@@ -107,9 +111,19 @@ retry_wget_to_file() {
     _rw_url="$1"
     _rw_dst="$2"
     command -v wget >/dev/null 2>&1 || return 1
+    # wget -T bounds connect/read gaps only: a trickling server keeps one
+    # attempt alive indefinitely because every read arrives before -T fires.
+    # When a BusyBox/GNU timeout applet exists, each attempt additionally
+    # runs under the same wall-clock budget curl uses for these small
+    # payloads; without it the per-read timeout stays the only bound
+    # (issue #89). TLS/CA handling is untouched.
+    _rw_wrap=""
+    if command -v timeout >/dev/null 2>&1; then
+        _rw_wrap="timeout $SETUP_SMALL_TRANSFER_MAX_TIME"
+    fi
     for _rw_try in 1 2 3; do
         rm -f "$_rw_dst" 2>/dev/null || true
-        if wget -qO "$_rw_dst" -T 20 "$_rw_url" 2>/dev/null; then
+        if $_rw_wrap wget -qO "$_rw_dst" -T "$SETUP_SMALL_TRANSFER_MAX_TIME" "$_rw_url" 2>/dev/null; then
             return 0
         fi
         rm -f "$_rw_dst" 2>/dev/null || true

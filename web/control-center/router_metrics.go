@@ -53,9 +53,33 @@ type systemMetrics struct {
 		Total string `json:"total_kb"`
 		Free string `json:"free_kb"`
 	} `json:"swap"`
+	// Stage A: optional additive /opt storage observation.
+	// nil for collector 0.1.0 payloads; validated when present for 0.2.0+.
+	Storage *storageMetrics `json:"storage,omitempty"`
+}
+
+// storageMetrics is the optional additive /opt storage block (stage A
+// stage A): filesystem-level df capacity of the Entware /opt filesystem
+// with a Doctor-mirrored mount classification. The device source identifier
+// is deliberately not part of the contract.
+type storageMetrics struct {
+	Status      string `json:"status"`
+	Path        string `json:"path"`
+	MountClass  string `json:"mount_class"`
+	Fstype      string `json:"fstype"`
+	MountPoint  string `json:"mount_point"`
+	FreeKB      string `json:"free_kb"`
+	TotalKB     string `json:"total_kb"`
+	Source      string `json:"source"`
+	ObservedUTC string `json:"observed_utc"`
+	Note        string `json:"note"`
 }
 
 var metricNumber = regexp.MustCompile(`^[0-9]{1,12}(?:\.[0-9]{1,4})?$`)
+var storageNumber = regexp.MustCompile(`^[0-9]{1,10}$`)
+var storageFstype = regexp.MustCompile(`^[a-z0-9._-]{1,32}$`)
+var storageText = regexp.MustCompile(`^[^[:cntrl:]]*$`)
+var storageTimestamp = regexp.MustCompile(`^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|unknown)$`)
 func metricStatus(s string) bool { return s == "PASS" || s == "UNKNOWN" || s == "N/A" || s == "INFO" }
 func numericWhenObserved(status string, values ...string) bool {
 	if !metricStatus(status) { return false }
@@ -64,9 +88,42 @@ func numericWhenObserved(status string, values ...string) bool {
 	return true
 }
 
+// validateStorage: a PASS reading must carry plausible free/total kB
+// (free <= total, bounded, total > 0); a non-PASS reading must carry none,
+// so stale or partial numbers can never accompany an UNKNOWN/N-A status.
+func validateStorage(s *storageMetrics) bool {
+	if s == nil { return false }
+	switch s.Status { case "PASS", "UNKNOWN", "N/A": default: return false }
+	switch s.MountClass { case "internal", "external", "ram", "unknown": default: return false }
+	switch s.Source { case "df+proc_mounts", "df", "proc_mounts", "none": default: return false }
+	if !storageFstype.MatchString(s.Fstype) { return false }
+	if !storageText.MatchString(s.Path) || len(s.Path) < 1 || len(s.Path) > 200 { return false }
+	if !storageText.MatchString(s.MountPoint) || len(s.MountPoint) < 1 || len(s.MountPoint) > 200 { return false }
+	if !storageTimestamp.MatchString(s.ObservedUTC) { return false }
+	if !storageText.MatchString(s.Note) || len(s.Note) > 300 { return false }
+	if s.Status == "PASS" {
+		if !storageNumber.MatchString(s.FreeKB) || !storageNumber.MatchString(s.TotalKB) { return false }
+		free, _ := strconv.ParseUint(s.FreeKB, 10, 64)
+		total, _ := strconv.ParseUint(s.TotalKB, 10, 64)
+		if free > total || total == 0 || total > 9999999999 { return false }
+	} else if s.FreeKB != "" || s.TotalKB != "" {
+		return false
+	}
+	return true
+}
+
 func validateMetrics(m *systemMetrics) bool {
 	if m == nil || m.Schema != "router-metrics/v1" || m.Tool != "kas-sys-metrics.sh" ||
-		m.ToolVersion != "0.1.0" || m.ExitCode < 0 || m.ExitCode > 1 { return false }
+		m.ExitCode < 0 || m.ExitCode > 1 { return false }
+	switch m.ToolVersion {
+	case "0.1.0":
+		// collector 0.1.0 never emitted a storage block
+		if m.Storage != nil { return false }
+	case "0.2.0":
+		// optional additive storage block; validated when present below
+	default:
+		return false
+	}
 	if !numericWhenObserved(m.Temperature.Status, m.Temperature.Celsius) ||
 		!numericWhenObserved(m.Load.Status, m.Load.OneMin, m.Load.FiveMin, m.Load.FifteenMin) ||
 		!numericWhenObserved(m.Uptime.Status, m.Uptime.Seconds) ||
@@ -91,6 +148,7 @@ func validateMetrics(m *systemMetrics) bool {
 		t, _ := strconv.ParseUint(m.Swap.Total, 10, 64)
 		if a > t || t > 1000000000 { return false }
 	}
+	if m.Storage != nil && !validateStorage(m.Storage) { return false }
 	return true
 }
 
@@ -101,7 +159,9 @@ func runMetricsCollector(ctx context.Context, script []byte, sysRoot, procRoot s
 // Keenetic BusyBox ash does not support "sh -s". Write our trusted embedded
 // script to a private temporary file and pass it as a positional script name.
 // Shell path injection is reserved for testing the BusyBox-incompatible case.
-func runMetricsCollectorWithShell(ctx context.Context, shell string, script []byte, sysRoot, procRoot string) (*systemMetrics, error) {
+// extraEnv carries test-only collector injections (KAS_OPT_ROOT,
+// KAS_MOUNTS_SRC, KAS_DF_BIN); production callers pass none.
+func runMetricsCollectorWithShell(ctx context.Context, shell string, script []byte, sysRoot, procRoot string, extraEnv ...string) (*systemMetrics, error) {
 	if len(script) == 0 || len(script) > 32768 {
 		return nil, errors.New("metrics collector unavailable")
 	}
@@ -114,8 +174,8 @@ func runMetricsCollectorWithShell(ctx context.Context, shell string, script []by
 		return nil, errors.New("metrics collector unavailable")
 	}
 	cmd := exec.CommandContext(ctx, shell, scriptPath, "--json", path)
-	cmd.Env = []string{"PATH=/opt/bin:/usr/bin:/bin", "NO_COLOR=1", "TERM=dumb", "LC_ALL=C",
-		"KAS_SYSFS_ROOT="+sysRoot, "KAS_PROC_ROOT="+procRoot}
+	cmd.Env = append([]string{"PATH=/opt/bin:/usr/bin:/bin", "NO_COLOR=1", "TERM=dumb", "LC_ALL=C",
+		"KAS_SYSFS_ROOT="+sysRoot, "KAS_PROC_ROOT="+procRoot}, extraEnv...)
 	// Collector prints a verbose report; do not persist or expose it.
 	err = cmd.Run()
 	var exitErr *exec.ExitError
