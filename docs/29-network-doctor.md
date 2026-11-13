@@ -24,7 +24,23 @@ sh kas-network-doctor.sh --target example.com --json /opt/tmp/net-report.json
 sh kas-network-doctor.sh --target example.com --report /opt/tmp/net-report.txt --brief
 MIHOMO_PROXY_GROUP='GLOBAL' MIHOMO_API_SECRET='…' sh kas-network-doctor.sh --target example.com
 sh kas-network-doctor.sh --target example.com --no-egress   # без наблюдения egress
+sh kas-network-doctor.sh --list-vantages                    # только discovery, без проб
+sh kas-network-doctor.sh --target example.com --vantage if:wan2   # через интерфейс
+sh kas-network-doctor.sh --target example.com --vantage all       # сравнение выходов
 ```
+
+## Выбор исходящего интерфейса
+
+`--vantage if:DEV` добавляет к стандартному отчёту винтаж через конкретный Linux-интерфейс (физический WAN, WireGuard/AWG-netdev):
+
+- **Discovery** (read-only): `/sys/class/net` + `ip addr` — источник и состояние; в `--vantage all` кандидаты — интерфейсы с глобальным IPv4, исключая `lo`, docker/veth-мосты и Mihomo TUN (у него свой винтаж), максимум 4 интерфейса;
+- **Маршрут**: `ip route get <цель> from <src>` — только чтение; ядро само показывает, какой dev выберет пакет с привязанным источником. `curl --interface` сам по себе **не доказывает** маршрут;
+- **Пробы**: TCP (telnet-приём), TLS+HTTP и egress-наблюдение выполняются с `--interface <src>`; для доменных целей адрес закрепляется `--resolve`, чтобы привязанная проба не могла молча уйти через другое разрешение;
+- **DNS**: честно `NOT TESTED` для винтажа — доказать привязанный DNS без изменений policy-routing невозможно, а такие изменения инструмент не делает;
+- **Route proof** — разделяются три исхода: `egress-distinct` (привязанный выход отличается от default — доказательство), `egress-same-as-default` (совпадает — гипотеза H: policy routing переопределяет привязку или оба интерфейса делят один аплинк), `unproven` (egress не наблюдался);
+- **Бюджет**: масштабируется явно (+8 запросов на винтаж, максимум 4) и печатается в JSON `budget.requests_limit`;
+- В JSON добавляется аддитивный массив `vantages: [{dev, src, state, route_proof, egress}]` — существующие поля `network-diagnostics/v1` не меняются, парсеры совместимы;
+- ProxyN/интерфейсы без Linux-netdev — `UNSUPPORTED` (нет носителя для привязки), не фиктивный PASS; «наличие `ip global`» никогда не выдаётся за маршрут.
 
 Правила цели и порта: путь и query из URL-цели сохраняются и проверяются фактически (`--target https://example.com/missing` проверяет именно `/missing`, query-only URL вида `https://example.com?token=abc` проверяется с query); приоритет порта — явный `--port` > порт внутри URL > схема (443/80); IPv6-литералы и нечисловые порты — явная ошибка использования, а не молчаливая проверка другого адреса, и сообщения об ошибках не повторяют исходный ввод. Политика отчётов: **путь и query никогда не печатаются** — в stdout, текстовом отчёте и JSON любой непустой путь показывается как `[path withheld]`, query как `[query withheld]`, userinfo как `[credentials withheld]`; сетевая проба всегда идёт по полному URL.
 
