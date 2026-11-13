@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded PR qualification runs; keep push and dispatch runs going.
+concurrency:
+  group: core-package-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
 jobs:
   offline-opkg:
     runs-on: ubuntu-latest
@@ -33,10 +38,8 @@ jobs:
           sudo apt-get install -y busybox jq
       - name: Verify official Entware opkg
         run: |
-          curl --fail --location --connect-timeout 15 --max-time 120 \
-            --retry 2 --retry-delay 5 --retry-all-errors \
-            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
-          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          # Verify pinned Entware digest and ELF identity before use.
+          scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           sudo chown 0:0 "$RUNNER_TEMP/entware-opkg"
       - name: Qualify raw opkg semantics and protected script bundle
@@ -59,7 +62,8 @@ jobs:
               python3 tests/test_core_activation.py -v
           done
           python3 tests/download-regression.py
-          for file in packaging/core/*.sh ./*.sh ./S00ubifs; do
+          python3 tests/verify-entware-opkg-regression.py
+          for file in packaging/core/*.sh ./*.sh ./scripts/*.sh ./S00ubifs; do
             sh -n "$file"
             dash -n "$file"
           done

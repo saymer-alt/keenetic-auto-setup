@@ -35,6 +35,12 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded push verification; never cancel an explicitly dispatched
+# official candidate build.
+concurrency:
+  group: kas-web-candidate-build-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 jobs:
   metadata-tests:
     runs-on: ubuntu-latest
@@ -69,10 +75,8 @@ jobs:
           # Shared Entware mirror can be slow from CI (observed ~13 KB/s);
           # a timed-out download is an infra failure, not a version-ladder
           # failure, so budget a bounded retry instead of a bare 60s cap.
-          curl --fail --location --connect-timeout 15 --max-time 120 \
-            --retry 2 --retry-delay 5 --retry-all-errors \
-            https://bin.entware.net/x64-k3.2/installer/opkg -o "$RUNNER_TEMP/entware-opkg"
-          printf '%s  %s\n' 08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38 "$RUNNER_TEMP/entware-opkg" | sha256sum -c -
+          # Verify pinned Entware digest and ELF identity before use.
+          scripts/verify-entware-opkg.sh --output "$RUNNER_TEMP/entware-opkg"
           chmod 700 "$RUNNER_TEMP/entware-opkg"
           mkdir -p "$RUNNER_TEMP/offline/opt/tmp"
           printf 'dest root /opt\n' > "$RUNNER_TEMP/offline/opkg.conf"

@@ -6,14 +6,20 @@ on:
       - feat/kas-web-opt-in-lifecycle
     paths:
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
       - '.github/workflows/web-lifecycle.yml'
   pull_request:
     paths:
       - 'web/control-center/**'
+      - '!web/control-center/**/*.md'
       - '.github/workflows/web-lifecycle.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: web-lifecycle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   lifecycle:

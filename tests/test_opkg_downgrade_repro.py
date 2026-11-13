@@ -27,7 +27,7 @@ import tarfile
 import tempfile
 import unittest
 
-OPKG_SHA = "08c8feb2ef3153f025ba687f8df02adf915e4252a3605cc6798f8d105162cb38"
+OPKG_SHA = "49f3d1e047483dc068fcc8985d64dcd28d0041044434de2cb3ccd616f2fc0b10"
 
 
 def tar_gz(entries):
