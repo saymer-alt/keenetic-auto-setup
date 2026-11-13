@@ -339,7 +339,11 @@ TMP_DIR="/tmp"
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
 PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
 MIHOMO_STAGE_MARGIN_KB=4096
-ASSET_DOWNLOAD_MAX_TIME=180
+ASSET_DOWNLOAD_MAX_TIME=1800
+ASSET_DOWNLOAD_LOW_SPEED_LIMIT=1024
+ASSET_DOWNLOAD_LOW_SPEED_TIME=120
+# The big-IPK 30min cap tolerates an active slow transfer; abort sustained <1KiB/s.
+# Short metadata/script download budgets are unchanged.
 # Small metadata/script transfers (small-transfer tracking): bounded budget separate
 # from the large .ipk window.
 SMALL_TRANSFER_MAX_TIME=20
@@ -1259,14 +1263,14 @@ installer_asset_retry_curl() {
     _iar_dest="$2"
     _iar_attempt=1
     while [ "$_iar_attempt" -le 3 ]; do
-        installer_asset_feedback "Download ${_iar_dest##*/}: curl attempt $_iar_attempt/3 (max $ASSET_DOWNLOAD_MAX_TIME seconds); percent shown while receiving bytes"
+        installer_asset_feedback "Download ${_iar_dest##*/}: curl attempt $_iar_attempt/3 (cap $ASSET_DOWNLOAD_MAX_TIME seconds; low speed < ${ASSET_DOWNLOAD_LOW_SPEED_LIMIT} B/s for ${ASSET_DOWNLOAD_LOW_SPEED_TIME}s aborts); percent shown while receiving bytes"
         _iar_ok=1
         if [ -t 2 ]; then
-            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest"; then
+            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_iar_url" -o "$_iar_dest"; then
                 _iar_ok=0
             fi
         else
-            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_iar_url" -o "$_iar_dest" 2>/dev/null; then
+            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_iar_url" -o "$_iar_dest" 2>/dev/null; then
                 _iar_ok=0
             fi
         fi
@@ -1300,17 +1304,17 @@ installer_asset_retry_wget() {
         if [ -n "$_irw_wrap" ]; then
             installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (wall-clock budget $ASSET_DOWNLOAD_MAX_TIME seconds)"
         else
-            installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (per-read timeout $ASSET_DOWNLOAD_MAX_TIME seconds; no wall-clock cap available)"
+            installer_asset_feedback "Download ${_irw_dest##*/}: wget attempt $_irw_attempt/3 (per-read timeout $ASSET_DOWNLOAD_LOW_SPEED_TIME seconds; no wall-clock cap available)"
         fi
         _irw_ok=1
         # BusyBox wget lacks portable --progress=bar. Its native TTY
         # progress is shown when available; redirected output stays quiet.
         if [ -t 2 ]; then
-            if $_irw_wrap wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url"; then
+            if $_irw_wrap wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_irw_url"; then
                 _irw_ok=0
             fi
         else
-            if $_irw_wrap wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_irw_url" 2>/dev/null; then
+            if $_irw_wrap wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_irw_url" 2>/dev/null; then
                 _irw_ok=0
             fi
         fi
@@ -1339,11 +1343,11 @@ download_url_file() {
         rm -f "$_duf_dst" 2>/dev/null || true
         installer_asset_feedback "Download ${_duf_dst##*/}: IPv4/X25519 attempt 1/1"
         if [ -t 2 ]; then
-            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst"; then
+            if curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst"; then
                 [ -s "$_duf_dst" ] && return 0
             fi
         else
-            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
+            if curl -fL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" -4 --curves X25519 "$_duf_url" -o "$_duf_dst" 2>/dev/null; then
                 [ -s "$_duf_dst" ] && return 0
             fi
         fi
@@ -1370,10 +1374,10 @@ installer_asset_api_curl() {
     _iac_dest="$1"
     shift
     if [ -t 2 ]; then
-        curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+        curl -fL --progress-bar --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" \
             "$@" -o "$_iac_dest"
     else
-        curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" \
+        curl -fLsS --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" \
             "$@" -o "$_iac_dest" 2>/dev/null
     fi
 }
