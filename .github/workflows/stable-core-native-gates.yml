@@ -27,9 +27,9 @@ jobs:
   native-1:
     name: Native KAS lifecycle 1/3
     if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
     with:
-      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      emulator_ref: c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
       kas_ref: ${{ github.event.pull_request.head.sha }}
       stage: kas
 
@@ -37,9 +37,9 @@ jobs:
     name: Native KAS lifecycle 2/3
     needs: native-1
     if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
     with:
-      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      emulator_ref: c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
       kas_ref: ${{ github.event.pull_request.head.sha }}
       stage: kas
 
@@ -47,8 +47,8 @@ jobs:
     name: Native KAS lifecycle 3/3
     needs: native-2
     if: github.event.pull_request.head.repo.full_name == 'saymer-alt/keenetic-auto-setup'
-    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@9e59e0bff1319acbd191867dac1f5ace2df0655f
+    uses: saymer-alt/router-emulator/.github/workflows/ported-entware-kas.yml@c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
     with:
-      emulator_ref: 9e59e0bff1319acbd191867dac1f5ace2df0655f
+      emulator_ref: c2705cd21677bf001d3ae6cb36841e3bfb7daa6c
       kas_ref: ${{ github.event.pull_request.head.sha }}
       stage: kas
