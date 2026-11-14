@@ -6,11 +6,29 @@
 
 **If the panel is already installed** (releases that read GitHub Pages and newer), the primary update route is the **update button inside the panel itself** (the "Panel update" card, Beta channel): it offers the current prerelease, verifies SHA256 and asks for explicit confirmation. The manual IPK installation below is for **first-time installation** and for recovery when the panel is unreachable.
 
+## Quick channel installer
+
+For an already installed KAS Core, the optional Web panel can be installed or updated with:
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+This follows the published `experimental` (Web beta) channel, **not** GitHub's Latest Core release. It selects the correct Entware ABI, checks the Pages index against GitHub Release metadata and verifies IPK SHA256 and size before calling `opkg install`. Requires `curl`, `jq` and `sha256sum`. It does not install or update KAS Core, Mihomo or MagiTrickle.
+
+To check without installing:
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- beta --check
+```
+
+Future Web stable channel: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- stable`. If the stable channel has not been published, installation is refused rather than falling back to beta or Core. The one-line `curl | sh` approach trusts the first downloaded script; download and review it locally first for stronger bootstrap assurance.
+
 ## Requirements and access
 
 - Keenetic/Netcraze with Entware, SSH and a working KAS. The default web listener needs an unambiguous private IPv4 on the management `br0` interface; this is not necessarily a home network.
 - Determine the **actual Entware ABI** with `opkg print-architecture`. Published builds may include `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4` and `mips-3.4`. Do not guess from the router model.
-- The default listener is TCP **8081** on the `br0` IPv4 address. An earlier custom port may be preserved on upgrade.
+- The default listener starts on TCP **18080** and tries **18081–18090** when occupied, on router IPv4 interfaces; an earlier saved custom port may be preserved on upgrade. There is no TLS/password by default, so restrict network access to trusted management networks.
 - **No authentication or TLS by default.** Binding to `br0` does not block every routed subnet. Restrict access to trusted management networks, do not expose the UI on WAN or an unauthenticated proxy, and remember that HTTP Basic authentication does not encrypt credentials.
 - No automatic IPK rollback. Back up settings and YAML before changing them; do not force package operations or interrupt an installation.
 

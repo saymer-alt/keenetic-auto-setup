@@ -4,7 +4,7 @@
 
 [English](docs/EN/README.md)
 
-> 🪞 Зеркало (только чтение): [gitlab.com/saymer-alt/keenetic-auto-setup](https://gitlab.com/saymer-alt/keenetic-auto-setup) — синхронизируется автоматически из GitHub; Releases, Issues и PR ведутся только на GitHub. Подробности: [docs/gitlab-mirror.md](docs/gitlab-mirror.md).
+> Зеркало (только чтение): [gitlab.com/saymer-alt/keenetic-auto-setup](https://gitlab.com/saymer-alt/keenetic-auto-setup) — синхронизируется автоматически из GitHub; Releases, Issues и PR ведутся только на GitHub. Подробности: [docs/gitlab-mirror.md](docs/gitlab-mirror.md).
 
 **Быстрый переход:** [Частые команды](#частые-команды) · [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
 
@@ -75,6 +75,15 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
+
+**10. Установить/обновить Web beta**
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+[Режимы и подробности Web-панели](docs/26-kas-web-beta-install.md).
+
 
 ---
 
@@ -159,14 +168,6 @@ curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saym
 ```
 
 YAML сохраняются. Настройки ProxyN, DNS, политик и Netfilter KeeneticOS не удаляются. Проверено в QEMU и на KN-1010.
-
-## KAS Control Center — WEB-панель (тестовый канал)
-
-**Необязательная** панель для уже установленного KAS: обзор и Doctor, безопасный импорт YAML, фильтры подписок, ручные обновления. Ядро KAS/Mihomo не затрагивает.
-
-**Коротко:** выберите актуальный **Web prerelease** на [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) (**Latest** — это KAS Core), сверьте ABI (`opkg print-architecture`), проверьте IPK + `SHA256SUMS` из того же выпуска, `opkg install`. Уже установленная панель обновляется **собственной кнопкой проверки обновлений** (канал «Бета»). Адрес: `http://<IPv4-адрес-br0>:8081/`; пароля и TLS по умолчанию нет — ограничьте доступ доверенными сетями.
-
-**[Полная инструкция: установка, проверка IPK, безопасность, обновление и восстановление](docs/26-kas-web-beta-install.md).**
 
 ## 8. Справочник
 
