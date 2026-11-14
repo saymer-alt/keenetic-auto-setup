@@ -74,13 +74,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
-**10. Установить или обновить Web beta (KAS Control Center)**
+**10. Установить/обновить актуальную Web beta**
 
 ```sh
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
 ```
 
-Эта команда устанавливает **только Web-панель** актуального опубликованного beta-канала (текущая beta.9, последующие будут выбраны автоматически). Нужны `curl`, `jq` и `sha256sum` в Entware. Проверяются архитектура, SHA256 и данные GitHub Release, downgrade запрещён. Просмотреть доступное без установки: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- beta --check`. В будущем Web `stable`: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- stable` (до публикации Web stable корректно откажет). [Подробности и офлайн-восстановление](docs/26-kas-web-beta-install.md).
+Только Web, без Core. Версия — из опубликованного beta-канала, ABI и SHA256 проверяются, downgrade запрещён. Нужны `curl`, `jq`, `sha256sum`. [Проверка без установки и будущий Web stable](docs/26-kas-web-beta-install.md).
 
 
 ---
@@ -155,7 +155,7 @@ MagiTrickle: http://192.168.1.1:8080/
 
 `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` — цепочка стандартной установки.
 
-Основные отдельные инструменты после установки: [`kas-web-install.sh`](kas-web-install.sh) — Web beta/stable по каналам; [`kas-entware-preflight.sh`](kas-entware-preflight.sh) — диагностика Entware перед установкой без изменений системы; [`kas-universal-install.sh`](kas-universal-install.sh) — версионно закреплённый установщик Core/Web (перед запуском проверьте его текущие пины, он не обязательно содержит последнюю бету).
+Дополнительные: [`kas-web-install.sh`](kas-web-install.sh) — Web beta/stable; [`kas-entware-preflight.sh`](kas-entware-preflight.sh) — диагностика Entware; [`kas-universal-install.sh`](kas-universal-install.sh) — установщик Core/Web с закреплёнными версиями.
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
