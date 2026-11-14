@@ -74,13 +74,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
-**10. Установить/обновить актуальную Web beta**
+**10. Установить/обновить Web beta**
 
 ```sh
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
 ```
 
-Только Web, без Core. Версия — из опубликованного beta-канала, ABI и SHA256 проверяются, downgrade запрещён. Нужны `curl`, `jq`, `sha256sum`. [Проверка без установки и будущий Web stable](docs/26-kas-web-beta-install.md).
+[Режимы и подробности Web-панели](docs/26-kas-web-beta-install.md).
 
 
 ---
@@ -155,7 +155,6 @@ MagiTrickle: http://192.168.1.1:8080/
 
 `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` — цепочка стандартной установки.
 
-Дополнительные: [`kas-web-install.sh`](kas-web-install.sh) — Web beta/stable; [`kas-entware-preflight.sh`](kas-entware-preflight.sh) — диагностика Entware; [`kas-universal-install.sh`](kas-universal-install.sh) — установщик Core/Web с закреплёнными версиями.
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
