@@ -1,6 +1,6 @@
 # 🛡️ Keenetic Auto-Setup Suite — Mihomo + MagiTrickle
 
-Автоматизированная установка и интеграция **[Mihomo](https://github.com/MetaCubeX/mihomo) + [MagiTrickle](https://magitrickle.dev/)** на Keenetic с Entware. **Mihomo** обеспечивает прокси-подключения и маршруты к вашим серверам, а **MagiTrickle** управляет группами и правилами выбора трафика по DNS/доменам. Оба компонента важны для работы системы.
+Установка **[Mihomo](https://github.com/MetaCubeX/mihomo) + [MagiTrickle](https://magitrickle.dev/)** на Keenetic с Entware: прокси и маршруты через Mihomo, DNS- и доменные правила через MagiTrickle.
 
 **Core stable:** [v1.8.9 — надёжная установка и загрузка IPK](docs/releases/v1.8.9.md). KAS Web beta.9 выпускается отдельно.
 
@@ -48,7 +48,7 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
 
-Скачивает `config-import.sh` в приватный файл с резервами raw → IPv4/X25519 → GitHub Contents API и проверяет shebang, маркеры проекта и `sh -n` до запуска (issue #255).
+Импорт и резервные источники: [подробности](docs/13-config-import.md).
 
 **6. Проверить систему — Doctor**
 
@@ -73,6 +73,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
+
+**10. Установить/обновить Web beta**
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+[Режимы и подробности Web-панели](docs/26-kas-web-beta-install.md).
 
 ---
 
@@ -145,6 +153,7 @@ MagiTrickle: http://192.168.1.1:8080/
 ## 6. Скрипты проекта
 
 `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` — цепочка стандартной установки.
+
 
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
