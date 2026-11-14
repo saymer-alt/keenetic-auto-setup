@@ -76,6 +76,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
+**10. Установить/обновить актуальную Web beta**
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+Только Web; актуальный beta-канал, проверка ABI/SHA256 без downgrade. Нужны `curl`, `jq`, `sha256sum`. [`--check` и будущий Web stable](docs/26-kas-web-beta-install.md).
+
 ---
 
 ## 0. Что нужно
@@ -162,11 +170,9 @@ YAML сохраняются. Настройки ProxyN, DNS, политик и N
 
 ## KAS Control Center — WEB-панель (тестовый канал)
 
-**Необязательная** панель для уже установленного KAS: обзор и Doctor, безопасный импорт YAML, фильтры подписок, ручные обновления. Ядро KAS/Mihomo не затрагивает.
+Необязательная Web-панель для работающего Core. Установить или обновить текущую beta можно **командой №10**; существующая панель также поддерживает самостоятельную проверку обновлений. По умолчанию HTTP на порту 18080 (резерв 18081–18090), **без TLS и пароля**: доступ только из доверенной сети.
 
-**Коротко:** выберите актуальный **Web prerelease** на [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) (**Latest** — это KAS Core), сверьте ABI (`opkg print-architecture`), проверьте IPK + `SHA256SUMS` из того же выпуска, `opkg install`. Уже установленная панель обновляется **собственной кнопкой проверки обновлений** (канал «Бета»). Адрес: `http://<IPv4-адрес-br0>:8081/`; пароля и TLS по умолчанию нет — ограничьте доступ доверенными сетями.
-
-**[Полная инструкция: установка, проверка IPK, безопасность, обновление и восстановление](docs/26-kas-web-beta-install.md).**
+[Подробная инструкция и ручное восстановление](docs/26-kas-web-beta-install.md).
 
 ## 8. Справочник
 

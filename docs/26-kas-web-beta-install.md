@@ -6,6 +6,32 @@
 
 **Если панель уже установлена** (начиная с выпусков, читающих GitHub Pages), основной путь обновления — **кнопка проверки обновлений в самой панели** (карточка «Обновление панели», канал «Бета»): она предложит актуальный prerelease, проверит SHA256 и спросит подтверждение. Ручная установка IPK из Release ниже нужна для **первой установки** и для восстановления, когда панель недоступна.
 
+## Быстрая установка / обновление (рекомендуется)
+
+После установки KAS Core выполните в SSH роутера:
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+Это `kas-web-install.sh` из публичной ветки `stable` **KAS Core**, но версия панели выбирается не из Core Latest, а из **опубликованного индекса beta-канала** GitHub Pages (`experimental`). Поэтому команду не приходится менять при выпуске beta.10, beta.11 и следующих. Понадобятся `curl`, `jq` и `sha256sum` (при отсутствии: `opkg update && opkg install curl jq`). При отсутствии Entware или неподдерживаемой архитектуре скрипт откажется.
+
+Только проверить наличие и версию без установки:
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- beta --check
+```
+
+Будущий стабильный канал Web поддерживается изначально:
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- stable
+```
+
+Пока канал Web `stable` не опубликован в `channels.json`, команда завершится понятной ошибкой; **подмены его beta или KAS Core не будет**.
+
+Скрипт выбирает ABI через `opkg print-architecture`, сверяет канал GitHub Pages с **тем же** опубликованным GitHub Release (имя, тег, тип релиза, размер, SHA256), проверяет файл до `opkg install`, не понижает версию и запускает/перезапускает только `S98kas-control-center`. Никаких произвольных URLs из JSON и опций `opkg --force-*`. Команда через `curl | sh` наследует риск доверия к первому скачанному скрипту; более строгий вариант — предварительно скачать скрипт в файл и осмотреть его. При сбое/недоступности Pages используйте ручной метод IPK ниже.
+
 ## Требования и ограничения
 
 - Keenetic/Netcraze с Entware, SSH и работающим KAS. Для штатного запуска Web необходим IPv4 на интерфейсе управления `br0`; название пользовательского сегмента в KeeneticOS значения не имеет.
