@@ -8,6 +8,9 @@
 
 | Скрипт | Назначение / документация |
 | --- | --- |
+| [`kas-web-install.sh`](../kas-web-install.sh) | [Короткая установка/обновление опубликованной Web beta или будущего Web stable; SHA256 и `--check`](26-kas-web-beta-install.md) |
+| [`kas-entware-preflight.sh`](../kas-entware-preflight.sh) | [Read-only диагностика Entware/OPKG до установки Core](31-entware-busybox-preflight.md) |
+| [`kas-universal-install.sh`](../kas-universal-install.sh) | [Универсальный установщик с закреплёнными версиями Core/Web: `check|all|core|web|doctor`; перед использованием проверить текущие пины](26-kas-web-beta-install.md) |
 | [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |

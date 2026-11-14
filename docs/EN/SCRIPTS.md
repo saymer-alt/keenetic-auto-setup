@@ -8,6 +8,9 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 
 | Script | Purpose / documentation |
 | --- | --- |
+| [`kas-web-install.sh`](../../kas-web-install.sh) | [Install/update the latest published Web beta, future Web stable, verify ABI and SHA256, read-only `--check`](WEB_BETA_INSTALL.md) |
+| [`kas-entware-preflight.sh`](../../kas-entware-preflight.sh) | [Read-only Entware and OPKG preflight diagnostics](../31-entware-busybox-preflight.md) |
+| [`kas-universal-install.sh`](../../kas-universal-install.sh) | [Version-pinned Core/Web installer (`check|all|core|web|doctor`); check pinned versions before use](WEB_BETA_INSTALL.md) |
 | [`bootstrap.sh`](../../bootstrap.sh) | [Initial KAS launcher: fetches and validates `setup.sh` (or `--script config-import.sh` — the standalone importer, #255) with GitHub fallbacks before starting the selected target](SETUP.md#why-bootstrapsh-exists) |
 | [`setup.sh`](../../setup.sh) | [Setup wizard: detects `ram`/`disk`, delegates to `install.sh`, offers configuration import](SETUP.md) |
 | [`install.sh`](../../install.sh) | [Canonical installer with explicit profile selection](../03-install.md) |

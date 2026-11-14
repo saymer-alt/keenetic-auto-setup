@@ -74,6 +74,15 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
+**10. Установить или обновить Web beta (KAS Control Center)**
+
+```sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
+```
+
+Эта команда устанавливает **только Web-панель** актуального опубликованного beta-канала (текущая beta.9, последующие будут выбраны автоматически). Нужны `curl`, `jq` и `sha256sum` в Entware. Проверяются архитектура, SHA256 и данные GitHub Release, downgrade запрещён. Просмотреть доступное без установки: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- beta --check`. В будущем Web `stable`: `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh -s -- stable` (до публикации Web stable корректно откажет). [Подробности и офлайн-восстановление](docs/26-kas-web-beta-install.md).
+
+
 ---
 
 ## 0. Что нужно
