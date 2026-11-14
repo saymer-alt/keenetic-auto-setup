@@ -155,6 +155,8 @@ MagiTrickle: http://192.168.1.1:8080/
 
 `bootstrap.sh` → `setup.sh` → `install.sh` → `config-import.sh` — цепочка стандартной установки.
 
+Основные отдельные инструменты после установки: [`kas-web-install.sh`](kas-web-install.sh) — Web beta/stable по каналам; [`kas-entware-preflight.sh`](kas-entware-preflight.sh) — диагностика Entware перед установкой без изменений системы; [`kas-universal-install.sh`](kas-universal-install.sh) — версионно закреплённый установщик Core/Web (перед запуском проверьте его текущие пины, он не обязательно содержит последнюю бету).
+
 **[Полный список скриптов и их назначение](docs/SCRIPTS.md)**
 
 ## 7. Удаление

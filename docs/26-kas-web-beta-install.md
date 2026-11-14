@@ -149,6 +149,6 @@ opkg remove kas-control-center
 
 Если обновление завершилось ошибкой или панель не стартует, не выполняйте повторные установки параллельно. Через SSH проверьте `opkg status kas-control-center` и состояние службы; при `PANEL_RECOVERY_REQUIRED` воспользуйтесь документированным `/opt/bin/kas-control-center -recover-panel-update` после проверки отсутствия активной транзакции. Нет автоматического rollback. Если требуется переустановка, используйте **только проверенный IPK из текущего доступного релиза**; нельзя обещать восстановление старой удалённой beta-сборки.
 
-Подробности сетевой защиты: [LAN.md](../web/control-center/LAN.md). Технический контракт самообновления: [PANEL_UPDATE.md](../web/control-center/PANEL_UPDATE.md).
+Подробности сетевой защиты: [LAN.md](https://github.com/saymer-alt/keenetic-auto-setup/blob/main/web/control-center/LAN.md). Технический контракт самообновления: [PANEL_UPDATE.md](https://github.com/saymer-alt/keenetic-auto-setup/blob/main/web/control-center/PANEL_UPDATE.md).
 
-Готовое к отправке сообщение для Telegram-чата пользователей (со ссылкой на актуальный prerelease) собрано в [kas-web-beta8-acceptance-matrix.md](kas-web-beta8-acceptance-matrix.md); эта инструкция намеренно не привязана к номеру беты.
+Готовое к отправке сообщение для Telegram-чата пользователей (со ссылкой на актуальный prerelease) собрано в [kas-web-beta8-acceptance-matrix.md](https://github.com/saymer-alt/keenetic-auto-setup/blob/main/docs/kas-web-beta8-acceptance-matrix.md); эта инструкция намеренно не привязана к номеру беты.

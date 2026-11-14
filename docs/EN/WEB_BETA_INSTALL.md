@@ -88,4 +88,4 @@ This removes the optional web package, not KAS Core, Mihomo or MagiTrickle. Sett
 
 There is no automatic rollback. After a failed self-update, do not start competing `opkg` operations; inspect `opkg status kas-control-center` and the service state via SSH. For `PANEL_RECOVERY_REQUIRED`, follow the documented `/opt/bin/kas-control-center -recover-panel-update` recovery process only after the active transaction is no longer running. If a reinstall is required, use a verified package from a **currently available release**, not an assumed historical asset.
 
-Advanced network security: [LAN.md](../../web/control-center/LAN.md). Self-update protocol and recovery: [PANEL_UPDATE.md](../../web/control-center/PANEL_UPDATE.md).
+Advanced network security: [LAN.md](https://github.com/saymer-alt/keenetic-auto-setup/blob/main/web/control-center/LAN.md). Self-update protocol and recovery: [PANEL_UPDATE.md](https://github.com/saymer-alt/keenetic-auto-setup/blob/main/web/control-center/PANEL_UPDATE.md).
