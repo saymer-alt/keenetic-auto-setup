@@ -1,6 +1,6 @@
 # AGENTS.md — KAS agent essentials
 
-Small startup contract for Codex, ZCode and other coding agents. **Do not load whole documentation trees or historical archives by default.** Instructions here are binding summaries; [docs/CONSTITUTION.md](docs/CONSTITUTION.md) and explicit owner decisions define non-negotiable policy. Read task-specific docs only when needed.
+Short startup contract for coding agents. **Do not preload whole documentation trees or archives.** [docs/CONSTITUTION.md](docs/CONSTITUTION.md) and owner decisions remain binding; load task-specific docs on demand.
 
 ## Goal and scope
 
@@ -37,7 +37,7 @@ KAS is a KeeneticOS + Entware toolkit for Mihomo/ProxyN, MagiTrickle, bypass rul
 
 1. Identify affected component, exact SHA, callers and focused tests using the [on-demand source-reading map](docs/agent-guidance/07-component-reading-map.md). For **proven low-risk local edits**, read relevant functions/blocks plus callers, dependencies and tests, not whole scripts/docs. **Before editing safety-critical behavior** (install/update/import/migration, watchdog restart, locks/rollback, process identity, RAM/storage/SWAP, routing/DNS/firewall/ProxyN, Doctor severity/gates), read **each affected script fully once at the exact SHA**, plus relevant cross-script contracts. If risk or scope is uncertain, escalate to the full read; no token-saving shortcut may bypass safety or tests.
 2. Make the smallest safe diff with a negative/regression case; preserve working fallbacks. Run cheap local checks before costly CI/QEMU; never skip mandatory release gates. `sh -n` for every changed shell script; `sh tests/contracts.sh` for cross-component smoke when applicable.
-3. **Loop guard:** after two identical futile attempts without changed evidence, change hypothesis or mark BLOCKED. Reuse tests only for matching SHA, environment and scope. Follow [token efficiency](docs/agent-token-efficiency.md).
+3. **Token budget:** 2 identical FAIL → new hypothesis/BLOCKED; 3 fixes OR 3 heavy builds per blocker → STOP + owner GO. Reuse unchanged PASS. [Local rule](docs/agent-token-efficiency.md) · [shared contract](https://github.com/saymer-alt/saymer-alt/blob/main/AGENT-TASK-CONTRACT.md).
 4. Preserve output severity and no ANSI in persistent logs. Bounded managed downloads must remain **quiet per attempt**; see [output contract](docs/18-output-colors.md).
 5. Report final SHA, exact checks and evidence, gaps, risks and next step; never invent hardware acceptance. Don't silently expand a task to clean unrelated technical debt.
 
