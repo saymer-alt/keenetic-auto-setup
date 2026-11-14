@@ -76,13 +76,14 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
-**10. Установить/обновить актуальную Web beta**
+**10. Установить/обновить Web beta**
 
 ```sh
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh
 ```
 
-Только Web; актуальный beta-канал, проверка ABI/SHA256 без downgrade. Нужны `curl`, `jq`, `sha256sum`. [`--check` и будущий Web stable](docs/26-kas-web-beta-install.md).
+[Режимы и подробности Web-панели](docs/26-kas-web-beta-install.md).
+
 
 ---
 
@@ -167,12 +168,6 @@ curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saym
 ```
 
 YAML сохраняются. Настройки ProxyN, DNS, политик и Netfilter KeeneticOS не удаляются. Проверено в QEMU и на KN-1010.
-
-## KAS Control Center — WEB-панель (тестовый канал)
-
-Необязательная Web-панель для работающего Core. Установить или обновить текущую beta можно **командой №10**; существующая панель также поддерживает самостоятельную проверку обновлений. По умолчанию HTTP на порту 18080 (резерв 18081–18090), **без TLS и пароля**: доступ только из доверенной сети.
-
-[Подробная инструкция и ручное восстановление](docs/26-kas-web-beta-install.md).
 
 ## 8. Справочник
 
