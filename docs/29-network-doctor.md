@@ -13,28 +13,6 @@
 - UDP-транспорт за пределами косвенной работы резолвера — `UNSUPPORTED` (честно, без фиктивного PASS).
 - DNS-проба выполняется только при наличии утилиты `timeout` (лимит 6 с); без неё стадия честно `NOT TESTED` — неограниченное ожидание на слабом роутере исключено.
 
-## Быстрый запуск на новом роутере из `stable`
-
-Нужны SSH-доступ к Keenetic/Netcraze, работающий Entware (`/opt`, `opkg`), Интернет и `curl`. Если `curl` отсутствует, сначала установите **только эту утилиту**: `opkg update && opkg install curl`. KAS Web не нужен; отсутствие Mihomo/MagiTrickle/ProxyN не мешает запуску, но соответствующие этапы будут отмечены как непроверенные или неподдерживаемые.
-
-Скачайте проверенную версию из `stable` во временный `/tmp`, проверьте синтаксис и запустите диагностику указанного домена (замените `example.com` своим адресом):
-
-```sh
-curl -fSsL --retry 2 --max-time 60 -o /tmp/kas-network-doctor.sh \
-  https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-network-doctor.sh &&
-sh -n /tmp/kas-network-doctor.sh &&
-sh /tmp/kas-network-doctor.sh --target example.com
-```
-
-Для сохранения результатов после скачивания:
-
-```sh
-sh /tmp/kas-network-doctor.sh --target example.com \
-  --report /tmp/kas-network-report.txt --json /tmp/kas-network-report.json
-```
-
-Цепочка `&&` **не запускает скрипт**, если скачивание или синтаксическая проверка завершились ошибкой. Запуск Network Doctor намеренно выполняет внешние сетевые запросы с ограничениями времени и объёма; это **не установка KAS**, не изменение маршрутов и не фоновая служба. Файлы в `/tmp` временные, после перезагрузки могут исчезнуть. При недоступности GitHub можно перенести скрипт на роутер через SCP и запустить `sh /tmp/kas-network-doctor.sh --target example.com`.
-
 ## Запуск
 
 ```sh
@@ -46,7 +24,23 @@ sh kas-network-doctor.sh --target example.com --json /opt/tmp/net-report.json
 sh kas-network-doctor.sh --target example.com --report /opt/tmp/net-report.txt --brief
 MIHOMO_PROXY_GROUP='GLOBAL' MIHOMO_API_SECRET='…' sh kas-network-doctor.sh --target example.com
 sh kas-network-doctor.sh --target example.com --no-egress   # без наблюдения egress
+sh kas-network-doctor.sh --list-vantages                    # только discovery, без проб
+sh kas-network-doctor.sh --target example.com --vantage if:wan2   # через интерфейс
+sh kas-network-doctor.sh --target example.com --vantage all       # сравнение выходов
 ```
+
+## Выбор исходящего интерфейса
+
+`--vantage if:DEV` добавляет к стандартному отчёту винтаж через конкретный Linux-интерфейс (физический WAN, WireGuard/AWG-netdev):
+
+- **Discovery** (read-only): `/sys/class/net` + `ip addr` — источник и состояние; в `--vantage all` кандидаты — интерфейсы с глобальным IPv4, исключая `lo`, docker/veth-мосты и Mihomo TUN (у него свой винтаж), максимум 4 интерфейса;
+- **Маршрут**: `ip route get <цель> from <src>` — только чтение; ядро само показывает, какой dev выберет пакет с привязанным источником. `curl --interface` сам по себе **не доказывает** маршрут;
+- **Пробы**: TCP (telnet-приём), TLS+HTTP и egress-наблюдение выполняются с `--interface <src>`; для доменных целей адрес закрепляется `--resolve`, чтобы привязанная проба не могла молча уйти через другое разрешение;
+- **DNS**: честно `NOT TESTED` для винтажа — доказать привязанный DNS без изменений policy-routing невозможно, а такие изменения инструмент не делает;
+- **Route proof** — разделяются три исхода: `egress-distinct` (привязанный выход отличается от default — доказательство), `egress-same-as-default` (совпадает — гипотеза H: policy routing переопределяет привязку или оба интерфейса делят один аплинк), `unproven` (egress не наблюдался);
+- **Бюджет**: масштабируется явно (+8 запросов на винтаж, максимум 4) и печатается в JSON `budget.requests_limit`;
+- В JSON добавляется аддитивный массив `vantages: [{dev, src, state, route_proof, egress}]` — существующие поля `network-diagnostics/v1` не меняются, парсеры совместимы;
+- ProxyN/интерфейсы без Linux-netdev — `UNSUPPORTED` (нет носителя для привязки), не фиктивный PASS; «наличие `ip global`» никогда не выдаётся за маршрут.
 
 Правила цели и порта: путь и query из URL-цели сохраняются и проверяются фактически (`--target https://example.com/missing` проверяет именно `/missing`, query-only URL вида `https://example.com?token=abc` проверяется с query); приоритет порта — явный `--port` > порт внутри URL > схема (443/80); IPv6-литералы и нечисловые порты — явная ошибка использования, а не молчаливая проверка другого адреса, и сообщения об ошибках не повторяют исходный ввод. Политика отчётов: **путь и query никогда не печатаются** — в stdout, текстовом отчёте и JSON любой непустой путь показывается как `[path withheld]`, query как `[query withheld]`, userinfo как `[credentials withheld]`; сетевая проба всегда идёт по полному URL.
 
@@ -79,7 +73,7 @@ sh kas-network-doctor.sh --target example.com --no-egress   # без наблю�
 - Verto печатаются отдельно от гипотез: секция «Hypotheses» начинается с явного «NOT confirmed causes». Типовые гипотезы: NXDOMAIN (ошибка имени/перехват), curl 35 (известный полевой случай docs/03 — путь X25519/IPv6; DPI — лишь одна из гипотез), curl 60/19 (время устройства или `ca-bundle`), разрыв в TLS (DPI/MTU/сервер — без диагноза), captive-portal редирект (итоговый URL на приватный адрес), 4xx/5xx (сторона сервиса).
 - Согласованность ступеней печатается строкой «consistency: …» (например, DNS ответил, TCP отказал → далее отказ закономерен).
 
-## JSON-контракт для будущей интеграции с KAS Web
+## JSON-контракт для KAS Web beta.4
 
 `--json FILE` пишет `network-diagnostics/v1` на чистом POSIX sh (jq не требуется и для записи, и для чтения): схема, версия инструмента, UTC-время, exit-код, вердикт (summary/first_failed_stage/hypotheses/next_steps), цель, vantage (`router`), бюджет (таймауты, лимиты, счётчики), egress-наблюдения, счётчики статусов и массив `checks` со стабильными `id`/`status`/`detail`/`observed`. Все статусы — из фиксированного словаря. Формат предназначен для будущей панели; парсер Doctor 1.2.18/1.2.19 (doctor-report.js) не затронут.
 
