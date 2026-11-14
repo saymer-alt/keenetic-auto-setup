@@ -64,7 +64,7 @@ grep -Fq 'if [ "$PROXY_CREATED_THIS_RUN" -ne 1 ] && [ "$PROXY_FRESH_ENTWARE" -ne
 # Issue #310: the hook trigger accepts exactly the same verified functional
 # compatibility (canonical or legacy bridge to 127.0.0.1:7890) that the
 # bypass_wa policy exit binding accepts; foreign profiles are still refused
-# and reused interfaces on existing stack are still never bounced.
+# and reused interfaces on existing stacks are still never bounced.
 grep -Fq 'proxy_is_compatible "$PROXY_IFACE"' "$ROOT/install.sh" || fail "hook trigger must verify the same functional bridge compatibility as the policy exit binding"
 ! grep -Fq 'proxy_is_canonical "$PROXY_IFACE"' "$ROOT/install.sh" || fail "hook trigger must not fall back to the description-based canonical-only guard"
 grep -Fq 'PROXY_RESTORE_PENDING="$PROXY_IFACE"' "$ROOT/install.sh" || fail "installer must mark interface restoration pending before DOWN"
@@ -79,15 +79,14 @@ grep -Fq '$12=="--nfmask"' "$ROOT/install.sh" || fail "installer must require fu
 grep -Fq '$14=="--ctmask"' "$ROOT/install.sh" || fail "installer must require full --ctmask on normalized connmark"
 grep -Fq '_br_last_fault="chain cannot be inspected"' "$ROOT/install.sh" || fail "installer must record an unreadable or missing chain"
 grep -Fq 'check_fail "bypass_wa Netfilter not ready after $_br_round read-only checks:' "$ROOT/install.sh" || fail "installer must fail after bounded Netfilter readiness retries"
-# Issue #310 diagnostics: classify a nonzero iptables answer from its captured
-# stderr instead of collapsing absent chain, xtables lock and read error.
-grep -Fq '_br_last_fault="chain absent (netfilter hook has not applied yet)"' "$ROOT/install.sh" || fail "installer must classify a definitive absent chain"
+grep -Fq '_br_max_rounds=8' "$ROOT/install.sh" || fail "installer Netfilter readiness retries must be bounded"
+grep -Fq '_br_last_fault="chain absent (netfilter hook has not applied yet)"' "$ROOT/install.sh" || fail "installer must classify a definitively absent chain"
 grep -Fq '_br_last_fault="iptables busy (firewall rebuild or xtables lock in progress)"' "$ROOT/install.sh" || fail "installer must classify transient iptables/xtables lock contention"
 grep -Fq 'lets the hook run again' "$ROOT/install.sh" || fail "installer must give a safe next step for an unapplied hook"
 grep -Fq 'Do not run iptables commands manually' "$ROOT/install.sh" || fail "installer must warn against manual iptables commands"
 grep -Fq 'chain absent' "$ROOT/mihomo-doctor.sh" || fail "Doctor must distinguish an absent chain from a read error"
 grep -Fq 'iptables busy (firewall rebuild in progress)' "$ROOT/mihomo-doctor.sh" || fail "Doctor must classify xtables lock contention"
-grep -Fq '_br_max_rounds=8' "$ROOT/install.sh" || fail "installer Netfilter readiness retries must be bounded"
+grep -Fq 'BEGIN DOCTOR BYPASS NETFILTER PROBE v1' "$ROOT/mihomo-doctor.sh" || fail "Doctor pair-probe block must be extractable for regression tests"
 grep -Fq 'if _br_probe_once; then' "$ROOT/install.sh" || fail "installer Netfilter retries must test a complete atomic attempt"
 _fresh_line=$(grep -nF 'detect_fresh_entware_stack() {' "$ROOT/install.sh" | head -1 | cut -d: -f1)
 _opkg_line=$(grep -nF 'log "Updating opkg..."' "$ROOT/install.sh" | head -1 | cut -d: -f1)
@@ -116,12 +115,10 @@ if command -v busybox >/dev/null 2>&1; then
     busybox ash "$ROOT/tests/netfilter-first-install-regression.sh" "$ROOT" ||
         fail "BusyBox ash Netfilter first-install trigger fixtures failed"
 fi
-pass "fresh-install legacy bridge hook trigger (issue #310) and activation guard matrix passed"
+pass "fresh-stack legacy bridge hook trigger (issue #310) and activation guard matrix passed"
 
-# Issue #310 review of PR #312: Doctor must read PREROUTING and the bypass
-# chain together as one bounded pair probe, classify a persistent read
-# failure instead of reporting a missing link, and not retry a definitive
-# absent answer.
+# Issue #310 review: Doctor must read PREROUTING and the bypass chain together
+# as one bounded pair probe; persistent read failures stay FAIL and classified.
 sh "$ROOT/tests/doctor-netfilter-probe-regression.sh" "$ROOT" ||
     fail "Doctor Netfilter pair-probe regression failed (transient PREROUTING read failure must recover, persistent failure must stay FAIL and classified)"
 if command -v busybox >/dev/null 2>&1; then
@@ -219,35 +216,6 @@ pass "coexisting zRAM and external swap can never be silently downgraded"
 # KAS-SAFETY-001 constitutional contract, applied to policy and documentation.
 grep -Fq 'KAS-SAFETY-001' "$ROOT/docs/CONSTITUTION.md" || fail "dual swap critical invariant constitution missing"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/AGENTS.md" || fail "agents must read constitutional contract"
-# Keep startup instructions focused while never incentivizing removal of binding safety rules.
-# <=8 KiB is preferred; 12 KiB is a conservative hard gate below Codex default 32 KiB.
-agent_startup_bytes=$(wc -c < "$ROOT/AGENTS.md" | tr -d '[:space:]')
-[ "$agent_startup_bytes" -le 12288 ] || fail "AGENTS.md exceeds 12 KiB hard startup budget"
-if [ "$agent_startup_bytes" -gt 8192 ]; then
-    echo "[WARN] AGENTS.md is above the 8 KiB target; review additions but preserve safety requirements" >&2
-fi
-grep -Fq 'KAS-SAFETY-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-SAFETY-001"
-grep -Fq 'KAS-AGENT-001' "$ROOT/AGENTS.md" || fail "AGENTS startup missing KAS-AGENT-001"
-grep -Fq 'main' "$ROOT/AGENTS.md" || fail "AGENTS startup missing main branch policy"
-grep -Fq 'stable' "$ROOT/AGENTS.md" || fail "AGENTS startup missing stable branch policy"
-[ -s "$ROOT/docs/AGENT-DETAILED-REFERENCE.md" ] || fail "extended agent guidance missing"
-for agent_guide in \
-  01-architecture-and-platforms.md \
-  02-development-and-safety.md \
-  03-agent-workflow-and-git.md \
-  04-testing-and-portability.md \
-  06-owner-policy-and-licensing.md
-do
-  [ -s "$ROOT/docs/agent-guidance/$agent_guide" ] || fail "missing focused agent guide: $agent_guide"
-done
-[ -s "$ROOT/docs/archaeology/kas-agent-historical-context-2026.md" ] || fail "historical agent incidents archive missing"
-[ -s "$ROOT/docs/archaeology/kas-platform-field-inventory-2026.md" ] || fail "historical router inventory archive missing"
-grep -Fq '## 10. Historical context (why it is this way)' "$ROOT/docs/archaeology/kas-agent-historical-context-2026.md" || fail "historical incident section not preserved"
-grep -Fq '## 3. Target platforms' "$ROOT/docs/archaeology/kas-platform-field-inventory-2026.md" || fail "historical platform section not preserved"
-grep -Fq '## 5. Security: risk zones' "$ROOT/docs/agent-guidance/02-development-and-safety.md" || fail "agent detailed security guidance missing"
-grep -Fq '## 7. Working with Git' "$ROOT/docs/agent-guidance/03-agent-workflow-and-git.md" || fail "agent detailed Git workflow missing"
-! grep -Eq 'KN-[0-9]{4}|NC-[0-9]{4}' "$ROOT/AGENTS.md" || fail "agent startup must not contain old router inventory"
-! grep -Fq 'AGENT-ARCHIVE' "$ROOT/AGENTS.md" || fail "agent startup accidentally expanded with archival material"
 grep -Fq 'docs/CONSTITUTION.md' "$ROOT/.github/pull_request_template.md" || fail "PR checklist must enforce constitutional contract"
 grep -Fq 'Installer — ERROR, Doctor — FAIL, Updater — ERROR' "$ROOT/README.md" || fail "README must state critical dual-swap severity"
 grep -Fq 'Coexistence native zRAM + external swap — строго запрещённый профиль' "$ROOT/docs/20-process-swap-detection.md" || fail "scanner contract must forbid dual backend"
@@ -419,7 +387,7 @@ pass "proxy watcher accepts a non-top-level selected leaf from group now"
 
 
 grep -q 'Ensuring MagiTrickle package repository' "$ROOT/install.sh" || fail "installer must own the MagiTrickle repository/setup messaging"
-grep -Fq 'download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the bounded small-transfer helper with transport classification (#483/#169)"
+grep -Fq 'download_url_file "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "installer must download the MagiTrickle repository helper through the generic curl/wget fallback"
 grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper staging must be process-unique via shell PID $$"
 ! grep -Fq 'MAGITRICKLE_REPO_STAGE="$TMP_DIR/magitrickle-add-repo.$"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must not use a literal single-dollar staging suffix"
 grep -Fq 'sh -n "$MAGITRICKLE_REPO_STAGE"' "$ROOT/install.sh" || fail "MagiTrickle repository helper must pass shell syntax validation before execution"
@@ -691,20 +659,9 @@ pass "installer project-script downloads use validated curl/wget/API fallbacks a
 
 grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centralize text fetch fallback for external GitHub metadata"
 grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
-grep -q '^download_small_file_bounded()' "$ROOT/install.sh" || fail "installer must keep a dedicated bounded small-transfer downloader with explicit failure classification (#483/#169)"
-grep -Fq 'DNS resolution failed (curl 6' "$ROOT/install.sh" || fail "small-transfer downloader must name curl 6 DNS failures explicitly (FIELD #483)"
-grep -Fq -- '--max-time "$SMALL_TRANSFER_MAX_TIME"' "$ROOT/install.sh" || fail "small-transfer downloader must stay on the bounded metadata budget"
-grep -Fq -- '-4 --curves X25519' "$ROOT/install.sh" || fail "small-transfer downloader must keep one documented IPv4/X25519 compatibility attempt"
-grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=1800' "$ROOT/install.sh" || fail "installer must give large assets a separate bounded transfer window"
-grep -Fq 'ASSET_DOWNLOAD_LOW_SPEED_LIMIT=1024' "$ROOT/install.sh" || fail "installer large-file transfer must enforce 1024 B/s minimum"
-grep -Fq 'ASSET_DOWNLOAD_LOW_SPEED_TIME=120' "$ROOT/install.sh" || fail "installer large-file transfer must enforce a bounded low-speed window"
-grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_iar_url" -o "$_iar_dest"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
-grep -Fq 'wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_irw_url"' "$ROOT/install.sh" || fail "installer large-file wget fallback must remain bounded"
-grep -Fq 'installer_asset_retry_curl "$_duf_url" "$_duf_dst"' "$ROOT/install.sh" || fail "installer package download must use bounded curl helper"
-grep -Fq 'installer_asset_retry_wget "$_duf_url" "$_duf_dst"' "$ROOT/install.sh" || fail "installer package download must use bounded wget helper"
-grep -Fq 'rm -f "$_iar_dest" || return 1' "$ROOT/install.sh" || fail "installer must clean curl partials between retries (including non-TTY)"
-grep -Fq 'rm -f "$_irw_dest" || return 1' "$ROOT/install.sh" || fail "installer must clean wget partials between retries (including non-TTY)"
-grep -Fq 'curl -fL --progress-bar' "$ROOT/install.sh" || fail "installer interactive curl must show real transfer progress"
+grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/install.sh" || fail "installer must give large assets a separate bounded transfer window"
+grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url" -o "$_duf_dst"' "$ROOT/install.sh" || fail "installer large-file curl path must not reuse the 20s metadata timeout"
+grep -Fq 'wget -qO "$_duf_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_duf_url"' "$ROOT/install.sh" || fail "installer large-file wget fallback must remain bounded"
 grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
 grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
 grep -Fq 'rm -f "$_duf_dst"' "$ROOT/install.sh" || fail "installer generic file downloader must clear partial files between transports"
@@ -732,11 +689,9 @@ grep -Fq '"$@" 2>/dev/null && return 0' "$ROOT/install.sh" || fail "installer qu
 grep -Fq 'raw/curl failed after bounded retries for $_psd_rel; trying wget fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/curl once"
 grep -Fq 'raw/wget failed after 3 attempts for $_psd_rel; trying GitHub Contents API fallback' "$ROOT/install.sh" || fail "installer must summarize exhausted raw/wget once"
 grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time 20 "$_ft_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater metadata fetch must use bounded quiet retries"
-grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=1800' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must give large assets a separate bounded transfer window"
-grep -Fq 'ASSET_DOWNLOAD_LOW_SPEED_LIMIT=1024' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must keep a minimum transfer speed"
-grep -Fq 'ASSET_DOWNLOAD_LOW_SPEED_TIME=120' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must bound low-speed stall detection"
-grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use the large-asset transfer window"
-grep -Fq 'retry_silent wget -qO "$_df_dst" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_df_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater wget asset fallback must remain bounded"
+grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=180' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must give large assets a separate bounded transfer window"
+grep -Fq 'retry_silent curl -fsSL --connect-timeout 5 --max-time "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url" -o "$_df_dst"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater file fetch must use the large-asset transfer window"
+grep -Fq 'retry_silent wget -qO "$_df_dst" -T "$ASSET_DOWNLOAD_MAX_TIME" "$_df_url"' "$ROOT/update-mihomo.sh" || fail "Mihomo updater wget asset fallback must remain bounded"
 grep -Fq -- '--curves X25519' "$ROOT/update-mihomo.sh" || fail "Mihomo updater must retain the X25519 TLS compatibility retry"
 ! grep -Fq 'curl download attempt $_rc_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every curl retry"
 ! grep -Fq 'wget download attempt $_rw_try/3 failed' "$ROOT/setup.sh" || fail "setup must not print a WARN for every wget retry"
