@@ -1,5 +1,5 @@
 #!/bin/sh
-# Universal KAS installer: Core v1.8.8 + Web v0.1.0-beta.8
+# Universal KAS installer: Core v1.8.9 + Web v0.1.0-beta.9
 # Entware ABIs: aarch64-3.10, armv7-3.2, mipsel-3.4, mips-3.4
 # Usage: sh kas-universal-install.sh check|all|core|web|doctor
 set -eu
@@ -7,19 +7,21 @@ PATH=/opt/bin:/opt/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 umask 077
 
-CORE_REF=v1.8.8
-# Tag v1.8.8 is a lightweight tag resolving to this commit; a tag can be
+CORE_REF=v1.8.9
+# Tag v1.8.9 is a lightweight tag resolving to this commit; a tag can be
 # retargeted, a commit cannot. The digests below are SHA256 of the exact
-# bootstrap.sh / mihomo-doctor.sh bytes served for that commit, verified
-# through two independent channels (GitHub Contents API base64 and
-# raw.githubusercontent.com, byte-identical) before being pinned here.
-CORE_COMMIT=c80e47c7050a31f70f65312dcd8999bfb13c9bef
+# bootstrap.sh / mihomo-doctor.sh bytes served for that commit. Those bytes
+# are unchanged since v1.8.8, where they were verified through two
+# independent channels (GitHub Contents API base64 and
+# raw.githubusercontent.com, byte-identical); re-hashed from the v1.8.9
+# git blobs on 2026-11-14.
+CORE_COMMIT=44c6b901709343a30e2503949037c7e66dd6e831
 CORE_BOOTSTRAP_SHA256=853e4badf57ee3a2065953a87caed300093adc68c971294a973d93f531dc697c
 CORE_DOCTOR_SHA256=10cb06803ed712cb50cc1be44a8d3fa75ce5a58dbbcf65ed99a60f671f5e0fb1
 # Ceiling for launcher-fetched scripts; the pinned Doctor is ~170 KiB.
 SCRIPT_MAX_BYTES=1048576
-WEB_TAG=v0.1.0-beta.8
-WEB_PKG_VER=0.1.0.beta.8-1
+WEB_TAG=v0.1.0-beta.9
+WEB_PKG_VER=0.1.0.beta.9-1
 GITHUB=https://github.com/saymer-alt/keenetic-auto-setup
 RAW=https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup
 MODE=${1:-check}
@@ -33,7 +35,7 @@ command -v opkg >/dev/null 2>&1 || fail 'Entware opkg is missing. Install Entwar
 command -v awk >/dev/null 2>&1 || fail 'awk is required.'
 command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required for verified Web install.'
 
-# Match the canonical v1.8.8 selector, including Entware *_kn suffix.
+# Match the canonical installer selector, including Entware *_kn suffix.
 ABI=$(opkg print-architecture | awk '
   $1 == "arch" && $2 !~ /^(all|noarch)$/ {
     a=$2; sub(/_kn$/, "", a)
@@ -43,11 +45,14 @@ ABI=$(opkg print-architecture | awk '
   END { if (!bad && count == 1) print selected; else exit 1 }
 ') || fail 'Entware architecture is unsupported or ambiguous; stopped.'
 
+# SHA256 of the official $WEB_TAG release IPK assets, verified 2026-11-14
+# through three independent channels (published SHA256SUMS, a fresh download
+# re-hashed locally, and the GitHub asset digest field).
 case "$ABI" in
-  aarch64-3.10) HASH=9653423bcb4baaa352108bc51a2cba99aa6516beb3143ea03e279b64b5ae3a06 ;;
-  armv7-3.2)   HASH=421c528971aa30ff60808548b5eeddb70da66d42de297bea64f94c2b4204da85 ;;
-  mipsel-3.4)  HASH=7184b8a2c945bc71122377225878e6c2f9cf6fbf316d4ebc65e013c6a1fa7fc8 ;;
-  mips-3.4)    HASH=5d0e8c97d14b421ed4b05f8d7cb9f38f55011285665a3a3c0e6f1f748953f275 ;;
+  aarch64-3.10) HASH=4cc2576787962a010ba924985ce9015e641fbe06148ffb495ae59f9f6721bcca ;;
+  armv7-3.2)   HASH=ff8c6e1d2e9bc78e6d58b598cc1589a89427d49251aece07376b7cfd66d34b7c ;;
+  mipsel-3.4)  HASH=3a3fb6aa415a74028b4ada2d62ca47dc00b0733c359f25d2267e361b379781b5 ;;
+  mips-3.4)    HASH=9c32ea160ff612682a64bb0a63cfbcbfc13b513f4ed5682aa863c9f81a2b2592 ;;
 esac
 
 msg "Entware ABI: $ABI"
@@ -128,7 +133,7 @@ if [ "$MODE" = all ] || [ "$MODE" = core ]; then
   fi
   grep -Fq 'KAS_FIRSTFETCH_V1' "$WORK/bootstrap.sh" || fail 'Unexpected bootstrap payload.'
   printf '%s  %s\n' "$CORE_BOOTSTRAP_SHA256" "$WORK/bootstrap.sh" | sha256sum -c - \
-    || fail 'Bootstrap SHA-256 mismatch with pinned v1.8.8 content; execution refused.'
+    || fail 'Bootstrap SHA-256 mismatch with pinned v1.8.9 content; execution refused.'
   sh -n "$WORK/bootstrap.sh" || fail 'Bootstrap syntax invalid.'
   msg 'Running pinned Core installer. If importer offers YAML input, type s and Enter to skip.'
   KAS_BOOTSTRAP_REF="$CORE_COMMIT" KEENETIC_AUTO_SETUP_REF="$CORE_COMMIT" \
@@ -191,7 +196,7 @@ if [ "$MODE" = doctor ]; then
     fail 'Doctor payload is an HTML/404 error page, not the pinned script.'
   fi
   printf '%s  %s\n' "$CORE_DOCTOR_SHA256" "$WORK/doctor.sh" | sha256sum -c - \
-    || fail 'Doctor SHA-256 mismatch with pinned v1.8.8 content; execution refused.'
+    || fail 'Doctor SHA-256 mismatch with pinned v1.8.9 content; execution refused.'
   sh -n "$WORK/doctor.sh" || fail 'Doctor syntax invalid.'
   sh "$WORK/doctor.sh"
 fi

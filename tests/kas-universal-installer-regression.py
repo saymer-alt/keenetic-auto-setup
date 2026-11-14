@@ -8,7 +8,7 @@ and the mock opkg logs mutating subcommands instead of running them.
 
 Focus of the suite:
 - static pin integrity: the launcher's commit URL and SHA256 constants must
-  stay exactly the values verified against the real v1.8.8 blobs;
+  stay exactly the values verified against the real v1.8.9 blobs;
 - check and doctor never run `opkg update`/`opkg install`;
 - doctor without a usable curl refuses with actionable instructions;
 - doctor with curl performs only the single pinned diagnostic download;
@@ -18,6 +18,11 @@ Focus of the suite:
   zero opkg mutations and none of the payload bytes running;
 - installing modes (all|core|web) keep the permitted curl bootstrap, and
   the Web SHA-256 gate stays fail-closed;
+- the Web version guard refuses a downgrade of an installed newer version
+  before any download, allows the upgrade from the previous published
+  beta.8 pin, and skips download/install entirely when the installed
+  version already equals the pinned one; happy-path all|web installs reach
+  `opkg install` only with digest-verified bytes;
 - an existing user YAML is backed up before the first download attempt
   and survives transport failure and tampered-payload refusal, while a
   symlinked config.yaml is refused with the target untouched and no
@@ -47,18 +52,43 @@ ABIS = ['aarch64-3.10', 'armv7-3.2', 'mipsel-3.4', 'mips-3.4',
 REAL_TOOLS = ['id', 'awk', 'sha256sum', 'df', 'grep', 'date', 'mktemp',
               'rm', 'rmdir', 'sh', 'wc', 'tr', 'cp', 'chmod']
 
-# Ground truth for the pre-execution authenticity pins, verified 2026-11-09
-# against tag v1.8.8 (a lightweight tag resolving to CORE_COMMIT): the
-# bootstrap.sh / mihomo-doctor.sh bytes were fetched through two independent
-# channels (GitHub Contents API base64 and raw.githubusercontent.com), are
-# byte-identical across channels (cmp), and hash to the digests below. The
-# static test refuses any launcher edit that drifts these constants without
-# consciously re-verifying the pinned blobs.
-REAL_CORE_COMMIT = 'c80e47c7050a31f70f65312dcd8999bfb13c9bef'
+# Ground truth for the pre-execution authenticity pins. The bootstrap.sh /
+# mihomo-doctor.sh bytes are byte-identical between Core v1.8.8 (verified
+# 2026-11-09 through two independent channels: GitHub Contents API base64
+# and raw.githubusercontent.com, cmp-identical) and the published Core
+# v1.8.9; the digests below were re-hashed from the v1.8.9 git blobs
+# (commit 44c6b901709343a30e2503949037c7e66dd6e831, lightweight tag
+# v1.8.9) on 2026-11-14. The static test refuses any launcher edit that
+# drifts these constants without consciously re-verifying the pinned blobs.
+REAL_CORE_COMMIT = '44c6b901709343a30e2503949037c7e66dd6e831'
 REAL_BOOTSTRAP_SHA256 = ('853e4badf57ee3a2065953a87caed3000'
                          '93adc68c971294a973d93f531dc697c')
 REAL_DOCTOR_SHA256 = ('10cb06803ed712cb50cc1be44a8d3fa75ce5a'
                       '58dbbcf65ed99a60f671f5e0fb1')
+REAL_CORE_REF = 'v1.8.9'
+
+# Web release pins, verified 2026-11-14 against the published beta.9
+# release: every IPK digest matches three independent channels (the
+# release's SHA256SUMS asset, a fresh download re-hashed locally, and the
+# GitHub asset digest field). The static test refuses launcher drift of
+# these constants without consciously re-verifying the release assets.
+REAL_WEB_TAG = 'v0.1.0-beta.9'
+REAL_WEB_PKG_VER = '0.1.0.beta.9-1'
+REAL_WEB_HASHES = {
+    'aarch64-3.10':
+        '4cc2576787962a010ba924985ce9015e641fbe06148ffb495ae59f9f6721bcca',
+    'armv7-3.2':
+        'ff8c6e1d2e9bc78e6d58b598cc1589a89427d49251aece07376b7cfd66d34b7c',
+    'mipsel-3.4':
+        '3a3fb6aa415a74028b4ada2d62ca47dc00b0733c359f25d2267e361b379781b5',
+    'mips-3.4':
+        '9c32ea160ff612682a64bb0a63cfbcbfc13b513f4ed5682aa863c9f81a2b2592',
+}
+# Strictly newer than the pinned package version for the downgrade-guard
+# scenario (numeric field-wise comparison: 10 > 1 in the last field).
+NEWER_WEB_THAN_PIN = REAL_WEB_PKG_VER + '0'
+# The previous published Web release the upgrade path starts from.
+OLD_WEB_PKG_VER = '0.1.0.beta.8-1'
 
 # Exact bootstrap.sh bytes served for CORE_COMMIT (4214 bytes), embedded so
 # the suite can re-hash the real pinned content offline and prove the pin
@@ -147,6 +177,9 @@ REAL_BOOTSTRAP_CONTENT = base64.b64decode(''.join(REAL_BOOTSTRAP_B64.split()))
 # "served bytes" and "pinned bytes" always agree per scenario.
 HAPPY_BOOTSTRAP = b'#!/bin/sh\n# KAS_FIRSTFETCH_V1\necho CORE_BOOTSTRAP_MOCK_RAN\n'
 HAPPY_DOCTOR = b'#!/bin/sh\necho DOCTOR_MOCK_RAN\n'
+HAPPY_WEB = b'KAS_WEB_IPK_MOCK_PAYLOAD_V1\n'
+# Served bytes that must fail the Web digest gate: never equals a patched pin.
+BAD_WEB_IPK = b'badipk'
 # Tampered payloads keep whatever cheaper checks would accept (the bootstrap
 # marker) but carry live canaries: if a single byte of them ever ran, the
 # mock opkg would log `update` and stdout would show TAMPER_EXECUTED.
@@ -164,7 +197,27 @@ case "$1" in
       multiple) printf "arch all 1\\narch aarch64-3.10 10\\narch mipsel-3.4 10\\n" ;;
       *) printf "arch all 1\\narch %s 10\\n" "$TEST_ABI" ;;
     esac ;;
-  status) exit 0 ;;
+  status)
+    if [ "$2" = kas-control-center ] && [ -n "$TEST_WEB_CURRENT" ]; then
+      printf 'Package: kas-control-center\\nVersion: %s\\nStatus: install user installed\\n' "$TEST_WEB_CURRENT"
+    fi
+    exit 0 ;;
+  compare-versions)
+    # The launcher's only comparison: opkg compare-versions "$CURRENT" '>'
+    # "$WEB_PKG_VER" -> here $2 = installed version, $3 = operator,
+    # $4 = requested pinned version; exit 0 iff $2 is strictly greater.
+    # Field-wise numeric compare on [.-] splits is exact for the pinned
+    # dotted test versions.
+    [ "$3" = '>' ] || { echo "unexpected-op-$3" >&2; exit 91; }
+    awk -v a="$2" -v b="$4" 'BEGIN {
+      n = split(a, A, /[.-]/); m = split(b, B, /[.-]/)
+      for (i = 1; i <= n || i <= m; i++) {
+        x = (i <= n ? A[i] + 0 : -1); y = (i <= m ? B[i] + 0 : -1)
+        if (x > y) exit 0
+        if (x < y) exit 1
+      }
+      exit 1
+    }' ;;
   update) echo update >> "$TEST_LOG" ;;
   install)
     echo install >> "$TEST_LOG"
@@ -200,7 +253,7 @@ while [ "$#" -gt 0 ]; do
     case "$ARGS" in
       *mihomo-doctor.sh*) cp "$TEST_DOCTOR_PAYLOAD" "$1" ;;
       *bootstrap.sh*) cp "$TEST_BOOTSTRAP_PAYLOAD" "$1" ;;
-      *.ipk*) printf 'badipk' > "$1" ;;
+      *.ipk*) cp "$TEST_WEB_PAYLOAD" "$1" ;;
       *) printf 'unexpected-download-target' > "$1" ;;
     esac
     break
@@ -241,15 +294,17 @@ def snapshot_yaml_dir(cfg_dir):
 
 def run(mode, abi='mipsel-3.4', curl=True, failcurl=False,
         bootstrap_payload=HAPPY_BOOTSTRAP, doctor_payload=HAPPY_DOCTOR,
-        bootstrap_served=None, doctor_served=None, interpreter=('sh',),
+        bootstrap_served=None, doctor_served=None, web_payload=HAPPY_WEB,
+        web_served=None, web_current='', interpreter=('sh',),
         yaml_fixture=None):
     """Run one launcher scenario against a hermetic mock root.
 
     *_payload is the scenario's legitimate expected content: the launcher's
-    pinned digest constants are patched to its SHA256. *_served is what the
-    mock curl actually delivers (defaults to the payload); a served value
-    that differs from the pin drives the tamper/HTML/empty/oversize refusal
-    paths. Every scenario runs against a private stand-in for the hard-coded
+    pinned digest constants (including all four ABI Web IPK pins) are
+    patched to its SHA256. *_served is what the mock curl actually delivers
+    (defaults to the payload); a served value that differs from the pin
+    drives the tamper/HTML/empty/oversize refusal paths. web_current is the
+    installed kas-control-center version the mock opkg reports ('' = none). Every scenario runs against a private stand-in for the hard-coded
     /opt/etc/mihomo: all canonical-path occurrences are patched to a private
     temp directory, keeping runs off the host /opt whatever exists there;
     yaml_fixture stages user YAML into that stand-in (YAML_FIXTURE_FILE:
@@ -290,6 +345,9 @@ def run(mode, abi='mipsel-3.4', curl=True, failcurl=False,
         served_doctor_file = root / 'doctor-served'
         served_doctor_file.write_bytes(
             doctor_served if doctor_served is not None else doctor_payload)
+        served_web_file = root / 'web-served'
+        served_web_file.write_bytes(
+            web_served if web_served is not None else web_payload)
         patched = SRC.replace(PATH_LINE, 'PATH=%s' % bin_dir)
         assert patched != SRC, 'PATH shim site not found in launcher source'
         patched, n = re.subn(r'CORE_BOOTSTRAP_SHA256=[0-9a-f]{64}',
@@ -302,6 +360,10 @@ def run(mode, abi='mipsel-3.4', curl=True, failcurl=False,
                              % hashlib.sha256(doctor_payload).hexdigest(),
                              patched)
         assert n == 1, 'doctor digest pin site not found in launcher source'
+        patched, n = re.subn(r'HASH=[0-9a-f]{64}',
+                             'HASH=%s' % hashlib.sha256(web_payload).hexdigest(),
+                             patched)
+        assert n == 4, 'Web IPK digest pin sites not found in launcher source'
         cfg_dir = root / 'opt-etc-mihomo'
         cfg_dir.mkdir()
         if yaml_fixture is not None:
@@ -322,6 +384,8 @@ def run(mode, abi='mipsel-3.4', curl=True, failcurl=False,
                    TEST_CURL_TEMPLATE=str(curl_template),
                    TEST_BOOTSTRAP_PAYLOAD=str(served_bootstrap_file),
                    TEST_DOCTOR_PAYLOAD=str(served_doctor_file),
+                   TEST_WEB_PAYLOAD=str(served_web_file),
+                   TEST_WEB_CURRENT=web_current,
                    TEST_FAILCURL='1' if failcurl else '0')
         proc = subprocess.run(list(interpreter) + [str(script), mode],
                               capture_output=True, text=True, env=env,
@@ -336,9 +400,10 @@ def run(mode, abi='mipsel-3.4', curl=True, failcurl=False,
 
 def expect_static_pins():
     """Offline integrity anchors, no launcher execution involved: the pinned
-    constants must stay the verified v1.8.8 values, script downloads must
-    use the immutable commit URL (never the mutable tag), and the embedded
-    real bootstrap bytes must still hash to the pinned digest."""
+    constants must stay the verified v1.8.9 Core values and the published
+    beta.9 Web values, script downloads must use the immutable commit URL
+    (never the mutable tag), and the embedded real bootstrap bytes must
+    still hash to the pinned digest."""
     m = re.search(r'^CORE_COMMIT=([0-9a-f]{40})$', SRC, re.M)
     assert m and m.group(1) == REAL_CORE_COMMIT, 'CORE_COMMIT drifted'
     m = re.search(r'^CORE_BOOTSTRAP_SHA256=([0-9a-f]{64})$', SRC, re.M)
@@ -355,6 +420,16 @@ def expect_static_pins():
         'mutable release tag must not be forwarded to bootstrap')
     assert hashlib.sha256(REAL_BOOTSTRAP_CONTENT).hexdigest() == REAL_BOOTSTRAP_SHA256
     assert b'KAS_FIRSTFETCH_V1' in REAL_BOOTSTRAP_CONTENT
+    m = re.search(r'^CORE_REF=(\S+)$', SRC, re.M)
+    assert m and m.group(1) == REAL_CORE_REF, 'CORE_REF drifted'
+    m = re.search(r'^WEB_TAG=(\S+)$', SRC, re.M)
+    assert m and m.group(1) == REAL_WEB_TAG, 'WEB_TAG drifted'
+    m = re.search(r'^WEB_PKG_VER=(\S+)$', SRC, re.M)
+    assert m and m.group(1) == REAL_WEB_PKG_VER, 'WEB_PKG_VER drifted'
+    for _abi, _digest in REAL_WEB_HASHES.items():
+        assert re.search(r'^\s*%s\)\s+HASH=%s ;;$'
+                         % (re.escape(_abi), _digest), SRC, re.M), \
+            'Web IPK pin drifted for %s' % _abi
 
 
 def expect_static_yaml_guards():
@@ -499,7 +574,7 @@ def expect_real_bootstrap_gate(rc, out, events, calls):
     assert len(calls) == 4, calls  # pinned bootstrap + 3 setup.sh transports
     assert REAL_CORE_COMMIT in calls[0], calls
     assert REAL_CORE_COMMIT + '/setup.sh' in calls[1], calls  # immutable ref
-    assert 'v1.8.8/setup.sh' not in calls[1], calls
+    assert 'v1.8.9/setup.sh' not in calls[1], calls
 
 
 def expect_yaml_preserved_transport_fail(rc, out, events, calls):
@@ -545,6 +620,48 @@ def expect_yaml_symlink_refusal(rc, out, events, calls):
     assert snap.get('real.yaml') == YAML_CONFIG, snap
     assert not any(k.startswith('config.yaml.pre-kas-') for k in snap), snap
     assert len(snap) == 2, snap
+
+
+def expect_web_downgrade_refused(rc, out, events, calls):
+    """An installed Web version strictly newer than the pinned one must be
+    refused before any download or package mutation."""
+    assert rc != 0 and 'downgrade refused' in out, (rc, out)
+    assert events == [] and calls == [], (events, calls)
+
+
+def expect_web_already_installed_skip(rc, out, events, calls):
+    """Installed version exactly equal to the pinned one: skip download and
+    install entirely, surface the init-script absence, exit clean."""
+    assert rc == 0 and 'already installed; not reinstalling' in out, (rc, out)
+    assert events == [] and calls == [], (events, calls)
+
+
+def expect_web_happy_install(rc, out, events, calls):
+    """Digest-verified IPK reaches opkg install; nothing else mutates."""
+    assert rc == 0 and 'Installing package through opkg' in out, (rc, out)
+    assert events == ['install'], out
+    assert len(calls) == 1 and '.ipk' in calls[0], calls
+
+
+def expect_all_happy_install(rc, out, events, calls):
+    """Full happy path without host curl: pinned core bootstrap runs, the
+    verified Web IPK installs through opkg."""
+    assert rc == 0 and 'CORE_BOOTSTRAP_MOCK_RAN' in out, (rc, out)
+    assert 'Installing package through opkg' in out, out
+    assert events == ['update', 'install', 'install'], out
+    assert len(calls) == 2, calls
+    assert 'bootstrap.sh' in calls[0] and '.ipk' in calls[1], calls
+
+
+def expect_all_upgrade_web_from_beta8(rc, out, events, calls):
+    """Real upgrade path: core bootstrap unchanged, a previously published
+    beta.8 installed -> the pinned beta.9 IPK is downloaded, verified and
+    installed (the guard must not mistake an upgrade for a downgrade)."""
+    assert rc == 0 and 'CORE_BOOTSTRAP_MOCK_RAN' in out, (rc, out)
+    assert 'Installing package through opkg' in out, out
+    assert events == ['install'], out
+    assert len(calls) == 2, calls
+    assert 'bootstrap.sh' in calls[0] and '.ipk' in calls[1], calls
 
 
 expect_static_pins()
@@ -600,9 +717,26 @@ SCENARIOS = [
      dict(mode='core', curl=True, failcurl=True, yaml_fixture=YAML_FIXTURE_SYMLINK),
      expect_yaml_symlink_refusal),
     ('all bootstrap retained + web hash gate fail-closed',
-     dict(mode='all', curl=False), expect_all_bootstrap_and_hash_gate),
+     dict(mode='all', curl=False, web_served=BAD_WEB_IPK),
+     expect_all_bootstrap_and_hash_gate),
     ('web invalid-hash fail-closed',
-     dict(mode='web', curl=True), expect_web_hash_gate),
+     dict(mode='web', curl=True, web_served=BAD_WEB_IPK),
+     expect_web_hash_gate),
+    ('web downgrade of installed newer version refused before download',
+     dict(mode='web', curl=True, web_current=NEWER_WEB_THAN_PIN),
+     expect_web_downgrade_refused),
+    ('web already at pinned version skips download and install',
+     dict(mode='web', curl=True, web_current=REAL_WEB_PKG_VER),
+     expect_web_already_installed_skip),
+    ('web upgrade from previous published beta.8 installs pinned beta.9',
+     dict(mode='web', curl=True, web_current=OLD_WEB_PKG_VER,
+          web_served=HAPPY_WEB), expect_web_happy_install),
+    ('all happy path: pinned core bootstrap + verified web install',
+     dict(mode='all', curl=False, web_served=HAPPY_WEB),
+     expect_all_happy_install),
+    ('all core bootstrap + web upgrade from previous published beta.8',
+     dict(mode='all', curl=True, web_current=OLD_WEB_PKG_VER,
+          web_served=HAPPY_WEB), expect_all_upgrade_web_from_beta8),
     ('web curl-failure fail-closed',
      dict(mode='web', curl=True, failcurl=True), expect_web_curl_fail),
 ]
