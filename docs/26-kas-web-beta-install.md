@@ -151,4 +151,4 @@ opkg remove kas-control-center
 
 Подробности сетевой защиты: [LAN.md](../web/control-center/LAN.md). Технический контракт самообновления: [PANEL_UPDATE.md](../web/control-center/PANEL_UPDATE.md).
 
-Готовое к отправке сообщение для Telegram-чата пользователей (со ссылкой на актуальный prerelease) собрано в [kas-web-beta8-acceptance-matrix.md](kas-web-beta8-acceptance-matrix.md); эта инструкция намеренно не привязана к номеру беты.
+**Исторический материал:** [матрица приёмки прежнего выпуска](kas-web-beta8-acceptance-matrix.md) сохранена как отчёт о старом выпуске и не является инструкцией для актуальной версии. Для установки новой beta используйте опубликованный канал `experimental` и шаги выше.
