@@ -64,7 +64,7 @@ sh /opt/etc/init.d/S98kas-control-center status
 opkg status kas-control-center
 ```
 
-Open `http://<br0-IPv4>:8081/` or the configured custom port. Installation does not start the service automatically. If GitHub access fails on the router, fetch the verified files on a trusted PC and transfer them using SCP/SFTP.
+Open `http://<router-IPv4>:18080/` or the actual service port (fallback `18081–18090` or a previously saved custom port). Manual IPK installation does not start the service automatically. If GitHub access fails on the router, fetch the verified files on a trusted PC and transfer them using SCP/SFTP.
 
 ## Operation and updates
 
