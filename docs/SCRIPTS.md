@@ -8,6 +8,12 @@
 
 | Скрипт | Назначение / документация |
 | --- | --- |
+| [`kas-web-install.sh`](../kas-web-install.sh) | [Короткая установка/обновление опубликованной Web beta или будущего Web stable; SHA256 и `--check`](26-kas-web-beta-install.md) |
+| [`kas-entware-preflight.sh`](../kas-entware-preflight.sh) | [Read-only диагностика Entware/OPKG до установки Core](31-entware-busybox-preflight.md) |
+| [`kas-universal-install.sh`](../kas-universal-install.sh) | [Универсальный установщик с закреплёнными версиями Core/Web: `check|all|core|web|doctor`; перед использованием проверить текущие пины](26-kas-web-beta-install.md) |
+| [`kas-download-check.sh`](../kas-download-check.sh) | [Read-only проверка загрузки KAS: DNS, TLS, HTTP, SHA256, доступность источников](27-download-check.md) |
+| [`kas-exposure-check.sh`](../kas-exposure-check.sh) | [Read-only аудит открытых портов и настроек сетевого доступа](28-exposure-check.md) |
+| [`uninstall.sh`](../uninstall.sh) | [Read-only `--check`/`--plan`; полное удаление `--remove`/`--purge` намеренно заблокировано](23-uninstall.md) |
 | [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |
