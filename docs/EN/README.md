@@ -158,7 +158,7 @@ Advanced or higher-risk actions are documented separately rather than duplicated
 
 **Optional** interface for an existing KAS installation: Doctor, safe YAML import, subscription exclusions and manual updates. The script-based KAS core remains independent.
 
-**In short:** visit [GitHub Releases](https://github.com/saymer-alt/keenetic-auto-setup/releases) and select the **current KAS Control Center / KAS WEB prerelease** (GitHub's **Latest** points to **KAS Core**, not the panel). Match the Entware ABI with `opkg print-architecture`, verify the IPK against its `SHA256SUMS`, install with `opkg install`. An installed panel updates through **its own update button** (Beta channel). Default URL: `http://<br0-IPv4>:8081/`; no password or TLS by default — restrict access to trusted management networks.
+**Quick install/update (published Web beta; Core unchanged):** `curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/kas-web-install.sh | sh`. This selects the correct Entware ABI and verifies the IPK before installing. Existing panels can also update via their own confirmation button. Default HTTP URL: `http://<router-IPv4>:18080/` (fallback ports `18081–18090`, or a saved custom port). **No TLS/password by default:** restrict access to trusted management networks. For manual IPK recovery, see the full guide.
 
 **[Full installation, integrity checks, security, update and recovery guide](WEB_BETA_INSTALL.md).**
 
