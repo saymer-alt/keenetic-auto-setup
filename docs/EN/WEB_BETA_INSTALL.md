@@ -26,10 +26,10 @@ Future Web stable channel: `curl -fSsL https://raw.githubusercontent.com/saymer-
 
 ## Requirements and access
 
-- Keenetic/Netcraze with Entware, SSH and a working KAS. The default web listener needs an unambiguous private IPv4 on the management `br0` interface; this is not necessarily a home network.
+- Keenetic/Netcraze with Entware, SSH and working KAS. The panel requires a single private IPv4 on `br0` for management-address discovery; the default IPK listener is **not limited to `br0`**.
 - Determine the **actual Entware ABI** with `opkg print-architecture`. Published builds may include `aarch64-3.10`, `armv7-3.2`, `mipsel-3.4` and `mips-3.4`. Do not guess from the router model.
-- The default listener starts on TCP **18080** and tries **18081–18090** when occupied, on router IPv4 interfaces; an earlier saved custom port may be preserved on upgrade. There is no TLS/password by default, so restrict network access to trusted management networks.
-- **No authentication or TLS by default.** Binding to `br0` does not block every routed subnet. Restrict access to trusted management networks, do not expose the UI on WAN or an unauthenticated proxy, and remember that HTTP Basic authentication does not encrypt credentials.
+- By default the panel listens on **`0.0.0.0:18080`** (all router IPv4 addresses, including loopback). Only if this port is occupied does it try **18081–18090**; a previously saved custom port takes precedence.
+- **No authentication or TLS by default.** Binding to all router IPv4 addresses does not bypass the KeeneticOS firewall, but can allow access from other routed networks. Restrict access to trusted management networks; never expose the panel over WAN or an unauthenticated proxy. HTTP Basic without TLS does not encrypt credentials.
 - No automatic IPK rollback. Back up settings and YAML before changing them; do not force package operations or interrupt an installation.
 
 ## Find and install the current package
