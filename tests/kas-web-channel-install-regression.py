@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -36,6 +37,10 @@ class InstallerTest(unittest.TestCase):
             if variant == 'stale_registry': reg['channels']['experimental']['tag']='v0.1.0-beta.8'
             if variant == 'duplicate_arch': idx['packages'].append(dict(pkg))
             if variant == 'wrong_arch': idx['packages'][0]['architecture']='aarch64-3.10'
+            if variant == 'invalid_tag': reg['channels']['experimental']['tag']=idx['tag']=TAG+'/escape'
+            if variant == 'invalid_version': idx['packages'][0]['version']=VER+'/escape'
+            if variant == 'invalid_sha256': idx['packages'][0]['sha256']='g'+SHA[1:]
+            if variant == 'invalid_name': idx['packages'][0]['name']=NAME+'.wrong'
             for label,content in [('registry',reg),('index',idx),('release',release)]:
                 (fixtures/(label+'.json')).write_text(json.dumps(content),encoding='utf-8')
             wrong = b'bad-data'.ljust(len(DATA),b'X')
@@ -74,8 +79,24 @@ esac
 """,encoding='utf8')
             curl.chmod(0o755)
             opkg.chmod(0o755)
+            # Real Entware jq can lack ONIGURUMA. Simulate that build and
+            # fail whenever a future installer reintroduces jq regex calls.
+            real_jq = shutil.which('jq')
+            if not real_jq:
+                raise RuntimeError('jq needed for offline regression')
+            jq_shim = bindir / 'jq'
+            jq_shim.write_text("""#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *'test('*|*'match('*|*'gsub('*|*'sub('*) echo 'jq: no ONIGURUMA: regex functions unavailable' >&2; exit 3 ;;
+  esac
+done
+exec "$REAL_JQ" "$@"
+""", encoding='utf8')
+            jq_shim.chmod(0o755)
             env = dict(os.environ,PATH=str(bindir)+os.pathsep+os.environ['PATH'],TMPDIR=tmp,
-                       FAKE_FILES=str(fixtures),FAKE_CURRENT=current,FAKE_MARKER=str(root/'installed'))
+                       FAKE_FILES=str(fixtures),FAKE_CURRENT=current,FAKE_MARKER=str(root/'installed'),
+                       REAL_JQ=real_jq)
             result = subprocess.run(['sh',str(SCRIPT),*args],capture_output=True,text=True,env=env,timeout=30)
             return result.returncode, result.stdout+result.stderr, (root/'installed').exists()
 
@@ -127,6 +148,27 @@ esac
     def test_wrong_arch_rejected(self):
         code,_,installed=self.run_case(variant='wrong_arch')
         self.assertNotEqual(code,0)
+        self.assertFalse(installed)
+    def test_jq_without_oniguruma_beta_check(self):
+        code, log, installed = self.run_case()
+        self.assertEqual(code, 0, log)
+        self.assertIn('Check only: metadata verified, no install', log)
+        self.assertFalse(installed)
+    def test_bad_tag_rejected_without_regex(self):
+        code, _, installed = self.run_case(variant='invalid_tag')
+        self.assertNotEqual(code, 0)
+        self.assertFalse(installed)
+    def test_bad_version_rejected_without_regex(self):
+        code, _, installed = self.run_case(variant='invalid_version')
+        self.assertNotEqual(code, 0)
+        self.assertFalse(installed)
+    def test_bad_sha256_rejected_without_regex(self):
+        code, _, installed = self.run_case(variant='invalid_sha256')
+        self.assertNotEqual(code, 0)
+        self.assertFalse(installed)
+    def test_bad_filename_rejected_without_regex(self):
+        code, _, installed = self.run_case(variant='invalid_name')
+        self.assertNotEqual(code, 0)
         self.assertFalse(installed)
 
 if __name__ == '__main__':
