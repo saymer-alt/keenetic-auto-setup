@@ -35,6 +35,7 @@ jobs:
   core-sync-evidence:
     name: Core release drift report (read-only)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
