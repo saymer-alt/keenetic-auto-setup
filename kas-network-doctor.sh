@@ -74,6 +74,17 @@ REQUESTS_USED=0
 EGRESS_URL="https://api.ipify.org"
 DNS_QUERY_TIMEOUT=6
 
+# Interface vantage state (issue #323 stage A). VANTAGE_IF is a single
+# explicitly named interface; ALL_VANTAGES appends every discovered
+# candidate. VANTAGE_RECORDS accumulates additive JSON fragments for the
+# network-diagnostics/v1 "vantages" array; nothing here mutates routes.
+ALL_VANTAGES=0
+VANTAGE_IF=""
+LIST_VANTAGES=0
+VANTAGE_RECORDS=""
+N_VANTAGES=0
+MAX_INTERFACE_VANTAGES=4
+
 # Terminal status colors are presentation only (docs/18). Semantic prefixes
 # remain the source of truth; NO_COLOR/TERM=dumb and non-TTY keep it plain.
 COLOR_RESET=""
@@ -117,6 +128,20 @@ Options:
                     path/query is probed as given; the query is never printed
   --dns-server <h>  additionally resolve the target against this DNS server
   --no-egress       skip the small egress-address observation (api.ipify.org)
+  --vantage if:DEV  additionally diagnose through network interface DEV:
+                    the TCP/TLS/HTTP probes and the egress observation are
+                    bound to DEV's source address (curl --interface); the
+                    kernel route decision is read via `ip route get ... from`
+                    (read-only). DNS stays resolved by the system route and
+                    is honestly reported NOT TESTED for this vantage. No
+                    routes, rules, NAT or policies are ever changed
+  --vantage all     run the standard router and Mihomo vantages, then every
+                    discovered candidate interface (max 4; excludes lo,
+                    docker/veth/bridges and the Mihomo TUN), each with its
+                    own probe slice; the request budget is scaled and the
+                    scaled limit is reported
+  --list-vantages   print the discovered candidate interfaces and exit;
+                    performs no network probes
   --json <file>     also write the network-diagnostics/v1 JSON report
   --report <file>   also write the human-readable report to <file>
   --brief           print only stage statuses and the verdict
@@ -152,6 +177,16 @@ while [ "$#" -gt 0 ]; do
             case "$2" in ''|*[!A-Za-z0-9._:-]*) fail_out "Unsupported --dns-server: $2"; exit 2 ;; esac
             DNS_SERVER=$2; shift ;;
         --no-egress) DO_EGRESS=0 ;;
+        --vantage)
+            [ "$#" -ge 2 ] || { fail_out "--vantage requires a value"; exit 2; }
+            case "$2" in
+                all) ALL_VANTAGES=1 ;;
+                if:*) VANTAGE_IF=${2#if:}
+                    case "$VANTAGE_IF" in ''|.*|*[!A-Za-z0-9._@-]*) fail_out "Unsupported --vantage interface: $2"; exit 2 ;; esac ;;
+                *) fail_out "Unsupported --vantage: $2 (expected if:DEV or all)"; exit 2 ;;
+            esac
+            shift ;;
+        --list-vantages) LIST_VANTAGES=1 ;;
         --json)
             [ "$#" -ge 2 ] || { fail_out "--json requires a value"; exit 2; }
             JSON_FILE=$2; shift ;;
@@ -163,6 +198,73 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+
+# ---------------------------------------------------------------
+# Interface discovery (issue #323 stage A). READ-ONLY inputs only:
+# /sys/class/net entries, `ip addr/route get` queries and optional
+# ndmc interface names. No route/rule/policy mutation exists anywhere
+# in this tool; the static guard in tests/network-doctor-regression.py
+# pins that contract.
+# ---------------------------------------------------------------
+# Discover one interface: prints "<src>|<state>" on success.
+# The first global-scope IPv4 address wins (bounded to one line).
+NET_SYSFS="${KAS_DOCTOR_SYSFS_NET:-/sys/class/net}"
+
+discover_interface() {
+    _di_dev=$1
+    [ -n "$_di_dev" ] || return 1
+    case "$_di_dev" in *[!A-Za-z0-9._@-]*) return 1 ;; esac
+    [ -e "$NET_SYSFS/$_di_dev" ] || return 1
+    _di_src=""
+    if command -v ip >/dev/null 2>&1; then
+        _di_src=$(ip -4 -o addr show dev "$_di_dev" scope global 2>/dev/null \
+            | awk '{n=split($4,a,"/"); if (n>1) {print a[1]; exit}}')
+        if [ -z "$_di_src" ]; then
+            _di_src=$(ip -4 -o addr show dev "$_di_dev" 2>/dev/null \
+                | awk '{n=split($4,a,"/"); if (n>1) {print a[1]; exit}}')
+        fi
+    fi
+    [ -n "$_di_src" ] || return 1
+    _di_state=$(cat "$NET_SYSFS/$_di_dev/operstate" 2>/dev/null || printf 'unknown')
+    printf '%s|%s\n' "$_di_src" "$_di_state"
+}
+
+# Candidate netdevs for the ALL mode, one per line. Service-plane devices
+# (lo, docker bridges/veths) and the Mihomo TUN (its own vantage above)
+# are excluded; WireGuard-like and physical WAN devices qualify.
+list_interface_candidates() {
+    _lc_out=""
+    if [ -d "$NET_SYSFS" ]; then
+        for _lc_d in "$NET_SYSFS"/*; do
+            [ -e "$_lc_d" ] || continue
+            _lc_dev=${_lc_d##*/}
+            case "$_lc_dev" in
+                lo|lo$|docker*|veth*|br-*|mihomo-tun*|tun-mihomo*) continue ;;
+            esac
+            discover_interface "$_lc_dev" >/dev/null 2>&1 || continue
+            printf '%s\n' "$_lc_dev"
+        done
+    fi
+    return 0
+}
+
+# --list-vantages is standalone: it needs no --target and performs no
+# network probes (pure /sys + ip addr reads).
+if [ "$LIST_VANTAGES" -eq 1 ]; then
+    # Helpers like rep()/section() are not defined yet: print directly.
+    printf '=== Discovered interface vantages (read-only discovery, no probes) ===\n'
+    _lv_n=0
+    for _lv_dev in $(list_interface_candidates); do
+        _lv_info=$(discover_interface "$_lv_dev" 2>/dev/null) || continue
+        _lv_src=${_lv_info%%|*}; _lv_state=${_lv_info#*|}
+        printf 'if:%s  src=%s  state=%s\n' "$_lv_dev" "$_lv_src" "$_lv_state"
+        _lv_n=$((_lv_n + 1))
+        [ "$_lv_n" -lt "$MAX_INTERFACE_VANTAGES" ] || break
+    done
+    [ "$_lv_n" -gt 0 ] || printf 'no candidate interfaces with a global IPv4 address discovered\n'
+    printf 'use: --vantage if:DEV to diagnose through one interface, --vantage all for the sequential comparison\n'
+    exit 0
+fi
 
 case "$TARGET_INPUT" in
     '') fail_out "--target is required"; exit 2 ;;
@@ -1223,6 +1325,205 @@ else
 fi
 
 # ---------------------------------------------------------------
+# Interface vantage (issue #323 stage A): bound-source probes through a
+# named interface. Nothing here changes routes, rules, NAT or policies:
+# the kernel route decision is only READ via `ip route get ... from`, the
+# probes are source-bound via curl --interface, and the actual egress is
+# compared against the default-vantage observation. A bound source does
+# NOT by itself prove the egress path (policy routing may override); only
+# a distinct egress address is treated as route evidence.
+# ---------------------------------------------------------------
+vantage_interface_probe() {
+    _vp_dev=$1
+    section "Interface vantage: if:$_vp_dev"
+    _vp_info=""
+    if ! _vp_info=$(discover_interface "$_vp_dev" 2>/dev/null); then
+        if [ -e "$NET_SYSFS/$_vp_dev" ]; then
+            unsup_out "vantage.if.$_vp_dev: interface exists but has no global IPv4 address; a bound IPv4 vantage is UNSUPPORTED here"
+            record "vantage.if.$_vp_dev.discovery" "UNSUPPORTED" "interface has no global IPv4 address to bind" "state: $(cat "/sys/class/net/$_vp_dev/operstate" 2>/dev/null || printf unknown)"
+        else
+            fail_out "vantage.if.$_vp_dev: interface not found"
+            record "vantage.if.$_vp_dev.discovery" "FAIL" "interface not found in /sys/class/net"
+        fi
+        _vp_frag=$(printf '{"dev":"%s","route_proof":"unproven","status":"unavailable"}' "$(json_escape "$_vp_dev")")
+        VANTAGE_RECORDS=${VANTAGE_RECORDS:+$VANTAGE_RECORDS,}$_vp_frag
+        return 0
+    fi
+    _vp_src=${_vp_info%%|*}; _vp_state=${_vp_info#*|}
+    pass_out "vantage.if.$_vp_dev: netdev present, state=$_vp_state, source=$_vp_src"
+    record "vantage.if.$_vp_dev.discovery" "PASS" "interface present with a bindable global IPv4 address" "src: $_vp_src; state: $_vp_state"
+    N_VANTAGES=$((N_VANTAGES + 1))
+
+    # DNS for this vantage: the system resolver's route is unaffected by
+    # the bound probe sockets; proving a bound-DNS path would require
+    # policy-routing changes that this tool refuses to make.
+    nt_out "dns.vantage.if.$_vp_dev: DNS is resolved by the system route (a bound-DNS proof would require policy-routing changes, which are out of scope)"
+    record "dns.vantage.if.$_vp_dev" "NOT TESTED" "system-resolver DNS is outside the bound-source vantage; no policy-routing changes are made"
+
+    # Route evidence, read-only: what does the kernel pick for this source?
+    _vp_route=""
+    if command -v ip >/dev/null 2>&1 && [ -n "$TARGET_IP_VANTAGE" ]; then
+        _vp_route=$(ip route get "$TARGET_IP_VANTAGE" from "$_vp_src" 2>/dev/null | head -n 1)
+        case "$_vp_route" in
+            *"$_vp_dev"*)
+                pass_out "route.get: kernel picks dev $_vp_dev for $TARGET_IP_VANTAGE from $_vp_src ($(printf '%s' "$_vp_route" | head -c 160))"
+                record "vantage.if.$_vp_dev.route.get" "PASS" "kernel route lookup (read-only) selects this interface for the bound source" "route: $(printf '%s' "$_vp_route" | head -c 200)"
+                ;;
+            '')
+                unknown_out "route.get: 'ip route get' unavailable or returned nothing; the route decision stays UNKNOWN (the egress observation below decides empirically)"
+                record "vantage.if.$_vp_dev.route.get" "UNKNOWN" "ip route get did not return a usable route line"
+                ;;
+            *)
+                rep "H: route.get: kernel picks a DIFFERENT path than $_vp_dev ($(printf '%s' "$_vp_route" | head -c 160)); the bound probes below may fail or leak - reported as observed"
+                record "vantage.if.$_vp_dev.route.get" "UNKNOWN" "kernel route lookup does not select this interface for the bound source" "route: $(printf '%s' "$_vp_route" | head -c 200)"
+                ;;
+        esac
+    else
+        unknown_out "route.get: no usable target address or no ip tool; route decision UNKNOWN"
+        record "vantage.if.$_vp_dev.route.get" "UNKNOWN" "ip route get unavailable or no resolved target address"
+    fi
+
+    # Bound probes. For hostname targets the addresses observed by the
+    # system resolver are pinned with --resolve so the TCP/TLS/HTTP stage
+    # cannot silently use a different (unbound) resolution. These probes
+    # classify locally: the main-chain DNS/TCP/TLS/HTTP statuses above are
+    # never overwritten by a vantage slice.
+    _vp_bind=""
+    if [ -n "$TARGET_IP_VANTAGE" ] && [ -n "$TARGET_HOST" ]; then
+        _vp_bind="--resolve $TARGET_HOST:$TARGET_PORT:$TARGET_IP_VANTAGE"
+    fi
+    _vp_tcp_status="NOT TESTED"; _vp_tls_status="NOT TESTED"; _vp_http_status="NOT TESTED"
+    if [ "$CURL_HAS_TELNET" = "1" ] && [ -n "$TARGET_IP_VANTAGE" ]; then
+        if [ -n "$_vp_bind" ]; then
+            probe_http "tcp.vantage.if.$_vp_dev" "telnet://$TARGET_IP_VANTAGE:$TARGET_PORT" --noproxy '*' --interface "$_vp_src" $_vp_bind
+        else
+            probe_http "tcp.vantage.if.$_vp_dev" "telnet://$TARGET_IP_VANTAGE:$TARGET_PORT" --noproxy '*' --interface "$_vp_src"
+        fi
+        case "$R_RC" in
+            0|56) _vp_tcp_status="PASS" ;;
+            7)    _vp_tcp_status="FAIL" ;;
+            28)   _vp_tcp_status="FAIL" ;;
+            *)    _vp_tcp_status="UNKNOWN" ;;
+        esac
+        case "$_vp_tcp_status" in
+            PASS) pass_out "tcp.vantage.if.$_vp_dev: bound TCP connect to $TARGET_IP_VANTAGE:$TARGET_PORT established (exit $R_RC)" ;;
+            FAIL) fail_out "tcp.vantage.if.$_vp_dev: bound TCP connect failed (curl exit $R_RC)" ;;
+            *)    unknown_out "tcp.vantage.if.$_vp_dev: bound TCP connect inconclusive (curl exit $R_RC)" ;;
+        esac
+        record "tcp.vantage.if.$_vp_dev" "$_vp_tcp_status" "source-bound TCP connect through $_vp_dev (src $_vp_src)" "curl exit: $R_RC"
+    else
+        record "tcp.vantage.if.$_vp_dev" "NOT TESTED" "no resolved target address to bind, or curl lacks the telnet protocol"
+    fi
+    if [ "$TARGET_SCHEME" = "https" ] || [ "$TARGET_SCHEME" = "http" ]; then
+        if [ -n "$_vp_bind" ]; then
+            probe_http "tls+http.vantage.if.$_vp_dev" "$PROBE_URL" --interface "$_vp_src" $_vp_bind
+        else
+            probe_http "tls+http.vantage.if.$_vp_dev" "$PROBE_URL" --interface "$_vp_src"
+        fi
+        _vp_rc=$R_RC
+        _vp_code=${R_INFO%%|*}
+        case "$_vp_rc" in
+            0) case "$_vp_code" in
+                   ''|0) _vp_tls_status="UNKNOWN"; _vp_http_status="UNKNOWN" ;;
+                   *) if [ "$TARGET_SCHEME" = "https" ]; then _vp_tls_status="PASS"; fi
+                      _vp_http_status="PASS" ;;
+               esac ;;
+            35|58|60|77|82|90) _vp_tls_status="FAIL"; _vp_http_status="NOT TESTED" ;;
+            7|28) _vp_tls_status="NOT TESTED"; _vp_http_status="FAIL" ;;
+            *) _vp_tls_status="UNKNOWN"; _vp_http_status="UNKNOWN" ;;
+        esac
+        case "$_vp_tls_status" in
+            PASS) pass_out "tls.vantage.if.$_vp_dev: bound TLS handshake verified" ;;
+            FAIL) fail_out "tls.vantage.if.$_vp_dev: bound TLS handshake failed (curl exit $_vp_rc)" ;;
+            NOT\ TESTED) : ;;
+            *) unknown_out "tls.vantage.if.$_vp_dev: bound TLS inconclusive (curl exit $_vp_rc)" ;;
+        esac
+        record "tls.vantage.if.$_vp_dev" "$_vp_tls_status" "source-bound TLS through $_vp_dev" "curl exit: $_vp_rc"
+        case "$_vp_http_status" in
+            PASS) pass_out "http.vantage.if.$_vp_dev: bound HTTP answered ($_vp_code)" ;;
+            FAIL) fail_out "http.vantage.if.$_vp_dev: bound HTTP failed (curl exit $_vp_rc)" ;;
+            *) unknown_out "http.vantage.if.$_vp_dev: bound HTTP inconclusive (curl exit $_vp_rc)" ;;
+        esac
+        record "http.vantage.if.$_vp_dev" "$_vp_http_status" "source-bound HTTP through $_vp_dev" "http_code: $_vp_code"
+    else
+        record "tls.vantage.if.$_vp_dev" "NOT TESTED" "unsupported target scheme for this vantage"
+        record "http.vantage.if.$_vp_dev" "NOT TESTED" "unsupported target scheme for this vantage"
+    fi
+
+    # Bound egress observation and the honest route-proof classification.
+    _vp_egress=""
+    if [ "$DO_EGRESS" -eq 1 ]; then
+        if [ -n "$_vp_bind" ]; then
+            fetch_small "egress.vantage.if.$_vp_dev" "$EGRESS_URL" --interface "$_vp_src" $_vp_bind
+        else
+            fetch_small "egress.vantage.if.$_vp_dev" "$EGRESS_URL" --interface "$_vp_src"
+        fi
+        if [ "$R_RC" -eq 0 ]; then
+            _vp_egress=$(printf '%s' "$R_BODY" | tr -d '[:space:]' | head -c 64)
+        fi
+        case "$_vp_egress" in
+            ''|*[!0-9.]*)
+                unknown_out "egress.vantage.if.$_vp_dev: observation inconclusive (curl exit $R_RC); route proof stays UNKNOWN"
+                record "egress.vantage.if.$_vp_dev" "UNKNOWN" "bound egress observation returned no plain IPv4 answer" "curl exit: $R_RC"
+                ;;
+            *)
+                pass_out "egress.vantage.if.$_vp_dev: bound traffic currently exits from $_vp_egress"
+                record "egress.vantage.if.$_vp_dev" "PASS" "bound egress address observed at probe time" "address: $_vp_egress"
+                ;;
+        esac
+    else
+        record "egress.vantage.if.$_vp_dev" "NOT TESTED" "disabled by --no-egress"
+    fi
+    _vp_proof="unproven"
+    if [ -n "$_vp_egress" ] && [ -n "$EGRESS_DIRECT" ]; then
+        if [ "$_vp_egress" != "$EGRESS_DIRECT" ]; then
+            _vp_proof="egress-distinct"
+            rep "fact: if:$_vp_dev exits from $_vp_egress, the default vantage exits from $EGRESS_DIRECT - the bound path demonstrably uses a different egress"
+        else
+            _vp_proof="egress-same-as-default"
+            rep "fact: if:$_vp_dev exits from the SAME address as the default vantage ($_vp_egress); the binding may not influence the route (H: policy routing overrides the source binding, or both interfaces share one upstream)"
+        fi
+    elif [ -n "$_vp_egress" ] && [ -z "$EGRESS_DIRECT" ]; then
+        _vp_proof="egress-observed"
+        rep "fact: if:$_vp_dev exits from $_vp_egress; no default-vantage egress to compare against"
+    fi
+
+    _vp_frag=$(printf '{"dev":"%s","src":"%s","state":"%s","route_proof":"%s","egress":"%s"}' \
+        "$(json_escape "$_vp_dev")" "$(json_escape "$_vp_src")" "$(json_escape "$_vp_state")" \
+        "$_vp_proof" "$(json_escape "$_vp_egress")")
+    VANTAGE_RECORDS=${VANTAGE_RECORDS:+$VANTAGE_RECORDS,}$_vp_frag
+}
+
+# The bound stages need one concrete destination address: the first IPv4
+# observed by the system resolver, or the literal IP target itself.
+TARGET_IP_VANTAGE=""
+if [ -n "${DNS_OBSERVED:-}" ]; then
+    TARGET_IP_VANTAGE=$(printf '%s' "$DNS_OBSERVED" | tr ' ' '\n' | awk '/^[0-9.]+$/ {print; exit}')
+fi
+case "$TARGET_HOST" in
+    *[!0-9.]*) : ;;
+    *) TARGET_IP_VANTAGE="$TARGET_HOST" ;;
+esac
+
+if [ -n "$VANTAGE_IF" ]; then
+    # Scale the budget for one extra vantage slice (bounded probes below),
+    # then run it. The scaled limit is what the JSON budget reports.
+    MAX_REQUESTS=$((MAX_REQUESTS + 8))
+    vantage_interface_probe "$VANTAGE_IF"
+elif [ "$ALL_VANTAGES" -eq 1 ]; then
+    section "Interface vantages: sequential comparison (--vantage all)"
+    _av_n=0
+    for _av_dev in $(list_interface_candidates); do
+        [ "$_av_n" -lt "$MAX_INTERFACE_VANTAGES" ] || break
+        budget_left || { rep "interface vantages: request budget exhausted; remaining interfaces NOT TESTED"; break; }
+        MAX_REQUESTS=$((MAX_REQUESTS + 8))
+        vantage_interface_probe "$_av_dev"
+        _av_n=$((_av_n + 1))
+    done
+    [ "$_av_n" -gt 0 ] || rep "no candidate interfaces discovered for the interface vantage comparison"
+fi
+
+# ---------------------------------------------------------------
 # Honest limits of this version
 # ---------------------------------------------------------------
 section "Limits of this version"
@@ -1475,6 +1776,9 @@ if [ -n "$JSON_FILE" ]; then
         printf '    "scheme": "%s"\n' "$TARGET_SCHEME"
         printf '  },\n'
         printf '  "vantage": "router",\n'
+        if [ -n "$VANTAGE_RECORDS" ]; then
+            printf '  "vantages": [%s],\n' "$VANTAGE_RECORDS"
+        fi
         printf '  "budget": {\n'
         printf '    "connect_timeout_s": %s,\n' "$CONNECT_TIMEOUT"
         printf '    "request_timeout_s": %s,\n' "$REQ_TIMEOUT"
