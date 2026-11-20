@@ -20,26 +20,28 @@
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-**2. Открыть конфигурацию Mihomo**
+**2. Открыть конфигурацию Mihomo для ручного редактирования (без очистки)**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**3. Сохранить копию, очистить конфиг и открыть nano**
+Ключ `-I` отключает чтение проблемных `nanorc` (например, ошибку `Error expanding /usr/share/nano/*.nanorc`). Для замены всего YAML **предпочтителен безопасный импорт, команда №5**: не очищайте рабочий файл перед открытием редактора.
 
-⚠️ Текущий файл очищается **до открытия редактора**; старая версия сохраняется в `config.yaml.bak` (существующая `.bak` будет перезаписана).
+**3. Сделать резервную копию и открыть nano (без очистки файла)**
+
+⚠️ Существующая `config.yaml.bak` будет перезаписана. Эта команда не обнуляет действующий YAML.
 
 ```bash
-cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+cp -p /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**4. Очистить конфиг без резервной копии и открыть nano**
+**4. Проверить имя установленного init-скрипта Mihomo**
 
-⚠️ **Опасно:** содержимое `config.yaml` будет потеряно. Не перезапускайте Mihomo, пока не сохраните исправный YAML.
+В зависимости от сборки Entware устанавливается `S28mihomo` **или** `S99mihomo`. Если обнаружены оба, остановитесь и запустите Doctor — состояние неоднозначно.
 
-```bash
-: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```sh
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 **5. Заменить конфиг Mihomo новым YAML без `nano` (рекомендуется)**
@@ -60,14 +62,32 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Перезапустить Mihomo**
 
-```bash
-/opt/etc/init.d/S99mihomo restart
+Не используйте фиксированное имя `S99mihomo`: новая сборка может устанавливать `S28mihomo`. Команда выбирает единственный исполняемый скрипт и останавливается при неоднозначности.
+
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: both S28mihomo and S99mihomo exist; run Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo restart
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo restart
+else
+  echo "ERROR: Mihomo init script not found or not executable" >&2
+fi
 ```
 
 **8. Проверить статус Mihomo**
 
-```bash
-/opt/etc/init.d/S99mihomo status
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: both S28mihomo and S99mihomo exist; run Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: Mihomo init script not found or not executable" >&2
+fi
 ```
 
 **9. Обновить Mihomo**
