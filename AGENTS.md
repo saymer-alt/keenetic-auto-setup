@@ -52,3 +52,11 @@ KAS is a KeeneticOS + Entware toolkit for Mihomo/ProxyN, MagiTrickle, bypass rul
 | Licensing decision | [owner policy](docs/agent-guidance/06-owner-policy-and-licensing.md) when relevant |
 
 Historical incidents and old device lists are **archival evidence only**, not ordinary agent instructions. The [documentation index](docs/AGENT-DETAILED-REFERENCE.md) can locate them when investigating a specific old incident. Never infer today's device fleet or code state from an archive.
+
+## Privacy boundary — public issue/PR/documentation output
+
+- Do not disclose actual user or operator names, home/work/village/site nicknames, exact field locations, management IPs, real subscription identifiers, private network inventories or other correlated attributes in public repositories. Use stable opaque case IDs (example: `FIELD-RCI-019`) for hardware field reports; keep the mapping outside public Git.
+- WARPSCOUT/WARP provider measurements are **restricted operational research**. Never publish a real-world matrix or combinations of ISP, place, timestamp, endpoint/IP:port, NODE/SEEN AS, protocol, working ratio, latency, speed, source report filenames, raw TXT or sensitive routing details. Treat even metrics-only tables as potentially identifying when cross-referenced.
+- This public repository contains only non-sensitive methodology and compatibility stubs for prior URLs. Authorized agents may consult their own private project context under the relevant permissions; **never name, link or reveal the internal storage location in public code, issues, comments, PRs or commit messages**.
+- Before any externally visible write, review the **full title, body, comments, file changes and generated logs/artifacts** for accidental identifying or operational data. If it cannot be sanitized without losing meaning, keep it internal instead of publishing.
+- Editing public files does not purge commit history, GitHub issue edit history, forks or third-party caches. Escalate historical exposure and any confirmed secret leak for separate owner-approved remediation.
