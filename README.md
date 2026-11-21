@@ -62,37 +62,29 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Перезапустить Mihomo**
 
-Блок сам находит S28/S99 (в т.ч. битые ссылки); при неоднозначности — отказ.
-
+Новые пакеты Entware (`S28mihomo`):
 ```sh
-(
-D=/opt/etc/init.d
-for F in $D/S28mihomo $D/S99mihomo; do
-  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
-done
-if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
-  "$I" restart
-else
-  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
-fi
-)
+/opt/etc/init.d/S28mihomo restart
+```
+
+Старые пакеты (`S99mihomo`):
+```sh
+/opt/etc/init.d/S99mihomo restart
 ```
 
 **8. Проверить статус Mihomo**
 
+Новые пакеты (`S28mihomo`):
 ```sh
-(
-D=/opt/etc/init.d
-for F in $D/S28mihomo $D/S99mihomo; do
-  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
-done
-if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
-  "$I" status
-else
-  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
-fi
-)
+/opt/etc/init.d/S28mihomo status
 ```
+
+Старые пакеты (`S99mihomo`):
+```sh
+/opt/etc/init.d/S99mihomo status
+```
+
+**Выполняйте только подходящую команду** (см. №4). Если есть оба init-скрипта — сначала Doctor.
 
 **9. Обновить Mihomo**
 
