@@ -1,6 +1,6 @@
 # Safe config.yaml import
 
-\`config-import.sh\` bridges the user-facing gap between the generator and a running Mihomo without requiring manual editing in \`nano\`.
+`config-import.sh` bridges the user-facing gap between the generator and a running Mihomo without requiring manual editing in `nano`.
 
 ## Normal flow
 
@@ -8,26 +8,28 @@
 2. Copy the complete YAML.
 3. On the Keenetic router run:
 
-\`\`\`bash
+```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
-\`\`\`
+```
 
 The launcher stages `config-import.sh` privately and verifies shebang, stable project markers and `sh -n` before running it. Sources are tried in turn with bounded time: raw → IPv4/X25519 → GitHub Contents API (issue #255: a field case of `curl: (35)` on raw while IPv4/X25519 worked). The large importer is no longer executed as a partially delivered `curl | sh`. If every source fails, nothing is executed and an explicit error is printed; then download `config-import.sh` on a PC and copy it to the router over SCP/SFTP (for example `/tmp/config-import.sh`) and run `sh /tmp/config-import.sh`.
 
 4. Paste the YAML and press **Ctrl+D**.
 
-Interactive input is read from \`/dev/tty\`, so this still works when the importer itself is delivered through \`curl | sh\`.
+**Use this importer (or YAML upload through KAS Web)** instead of manual `nano` and commands like `: > /opt/etc/mihomo/config.yaml`: they empty the current file before the new YAML is even validated. If `nano` reports `Error expanding /usr/share/nano/*.nanorc`, edit manually with `nano -I /opt/etc/mihomo/config.yaml` (without clearing the file).
+
+Interactive input is read from `/dev/tty`, so this still works when the importer itself is delivered through `curl | sh`.
 
 When you run the importer manually with `curl | sh`, curl exit 23 means a local write error. For example, `sh` may close the pipe after the importer finishes. Check the importer's output for the result. If it printed no result, use the verified download command above before retrying.
 
 ## Transaction
 
-- the candidate is staged beside \`config.yaml\`;
-- the project \`mixed-port: 7890\` contract is checked before downtime;
+- the candidate is staged beside `config.yaml`;
+- the project `mixed-port: 7890` contract is checked before downtime;
 - a running Mihomo is stopped and confirmed down so validation never launches a second Mihomo beside the daemon;
-- \`/tmp/mihomo.maintenance\` pauses the watchdog during planned downtime;
-- the candidate is tested by real \`mihomo -t\`;
-- the current *valid* config is saved as \`/opt/etc/mihomo/config.yaml.bak\` (see "Recovery" below);
+- `/tmp/mihomo.maintenance` pauses the watchdog during planned downtime;
+- the candidate is tested by real `mihomo -t`;
+- the current *valid* config is saved as `/opt/etc/mihomo/config.yaml.bak` (see "Recovery" below);
 - the candidate is committed by one same-filesystem rename;
 - if the service was running before import it is started again and both process state and port 7890 are checked;
 - failed validation/start/port verification restores the previous config and previous service state.
@@ -36,11 +38,15 @@ In development, the importer acquires the [shared lifecycle lock (RU)](../19-lif
 
 ## File mode
 
-Advanced use:
+If the ready YAML is **already saved on the router** as `/tmp/config.yaml`, first download the importer itself, then pass the file path:
 
-\`\`\`bash
-sh config-import.sh /tmp/config.yaml
-\`\`\`
+```sh
+curl -fSsL --connect-timeout 7 --max-time 25 -o /tmp/kas-config-import.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/config-import.sh &&
+sh -n /tmp/kas-config-import.sh &&
+sh /tmp/kas-config-import.sh /tmp/config.yaml
+```
+
+This is a separate advanced scenario: the direct download does not use the `bootstrap.sh` fallback sources. If GitHub raw is unreachable, use the normal interactive import above or KAS Web. The command `sh config-import.sh /tmp/config.yaml` works only when `config-import.sh` is already in the current directory.
 
 The file follows the same transaction. The importer never streams input directly into the canonical config.
 
@@ -48,20 +54,20 @@ The file follows the same transaction. The importer never streams input directly
 
 After success the immediately previous configuration remains at:
 
-\`\`\`text
+```text
 /opt/etc/mihomo/config.yaml.bak
-\`\`\`
+```
 
 A later successful import replaces that backup with the then-current config.
 
 ## Recovery (issue #320)
 
-If the current \`config.yaml\` is missing, empty, or fails \`mihomo -t\`, the import is not blocked: KAS is provably installed (the init script was found), so the importer performs a **recovery import** of the new valid YAML and prints a \`[WARN] recovery\` line. Protection rules:
+If the current `config.yaml` is missing, empty, or fails `mihomo -t`, the import is not blocked: KAS is provably installed (the init script was found), so the importer performs a **recovery import** of the new valid YAML and prints a `[WARN] recovery` line. Protection rules:
 
-- an existing good \`config.yaml.bak\` is **never overwritten** by a missing or empty current config or by invalid nonempty content: such current content never reaches the backup;
-- a failed import rolls back to the last known-good config from \`.bak\`; without a \`.bak\` the importer reports the missing rollback point honestly instead of pretending;
-- **the damaged original is preserved byte-for-byte**: when the current \`config.yaml\` is nonempty but invalid, its content is copied to \`config.yaml.invalid\` (or \`config.yaml.invalid.1\`, \`.2\`, … up to \`.99\` if the name is taken) with \`0600\` permissions and a \`cmp -s\` integrity check. Publication is an **atomic create-without-overwrite**: a POSIX hard link (\`ln\` without \`-f\`) from the stage file on the same filesystem, so an existing name (a regular file, a symlink, or a dangling link) can never be overwritten even under a race — \`ln\` fails on an occupied name and the next suffix is taken. This is **not** a working backup and **not** an automatic rollback source — the file exists for manual inspection only (it may contain server addresses and subscription parameters). Existing recovery files are never overwritten, and the file content is never printed. If preservation cannot be completed safely (no space, write failure, \`cmp\` unavailable, a filesystem without hard-link support), the import aborts **before** the replacement: the original stays in place and nothing is lost;
-- the misleading \`Run setup.sh first\` hint is gone in this situation: it belonged to a genuinely not-installed KAS (missing directory or init script only).
+- an existing good `config.yaml.bak` is **never overwritten** by a missing or empty current config or by invalid nonempty content: such current content never reaches the backup;
+- a failed import rolls back to the last known-good config from `.bak`; without a `.bak` the importer reports the missing rollback point honestly instead of pretending;
+- **the damaged original is preserved byte-for-byte**: when the current `config.yaml` is nonempty but invalid, its content is copied to `config.yaml.invalid` (or `config.yaml.invalid.1`, `.2`, … up to `.99` if the name is taken) with `0600` permissions and a `cmp -s` integrity check. Publication is an **atomic create-without-overwrite**: a POSIX hard link (`ln` without `-f`) from the stage file on the same filesystem, so an existing name (a regular file, a symlink, or a dangling link) can never be overwritten even under a race — `ln` fails on an occupied name and the next suffix is taken. This is **not** a working backup and **not** an automatic rollback source — the file exists for manual inspection only (it may contain server addresses and subscription parameters). Existing recovery files are never overwritten, and the file content is never printed. If preservation cannot be completed safely (no space, write failure, `cmp` unavailable, a filesystem without hard-link support), the import aborts **before** the replacement: the original stays in place and nothing is lost;
+- the misleading `Run setup.sh first` hint is gone in this situation: it belonged to a genuinely not-installed KAS (missing directory or init script only).
 
 ## Non-goals
 

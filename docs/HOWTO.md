@@ -348,7 +348,7 @@ In order:
 9. Installs **MagiTrickle** (adds its package repo, installs, starts).
 10. Installs the VoIP bypass hook `020-bypass_wa.sh` into `/opt/etc/ndm/netfilter.d/`.
 11. Installs the **watchdog** into `/opt/etc/cron.5mins/` and wires it into cron (a run-parts `cron.5mins` entry is reused if present; otherwise a direct crontab line is added).
-12. Manages `S99mihomo` based on actual installer changes: restart only when Mihomo was installed or the bootstrap `config.yaml` changed; when binary/config are unchanged and the daemon is already running, restart is skipped. A stopped daemon is started. Then the installation self-check runs.
+12. Manages the resolved Mihomo init service (`S28mihomo` on fresh entware-go 1.19.34-3+ packages, `S99mihomo` on older) based on actual installer changes: restart only when Mihomo was installed or the bootstrap `config.yaml` changed; when binary/config are unchanged and the daemon is already running, restart is skipped. A stopped daemon is started. Then the installation self-check runs.
 
 ### 3.3 Is it safe to re-run?
 
@@ -403,8 +403,10 @@ There is no generic `--force`: `--allow-internal-disk` bypasses only this storag
 Nothing works until a valid config exists. **After installation this step is mandatory.**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
+
+The `-I` flag skips the problematic `nanorc` (the `Error expanding /usr/share/nano/*.nanorc` error). To install a ready YAML, prefer the safe import (see [config import](13-config-import.md)); do not clear the file before editing.
 
 A minimal working example:
 
@@ -445,18 +447,39 @@ sh mihomo-interface-check.sh    # or curl it from the repo on the router
 
 Apply and verify:
 
-```bash
-/opt/etc/init.d/S99mihomo restart
-/opt/etc/init.d/S99mihomo status      # expect: alive
-curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # expect the proxy exit IP
+The init script name depends on the Entware package: fresh `entware-go` (1.19.34-3+) installs `S28mihomo`, older builds install `S99mihomo`. Resolve the single executable script and refuse ambiguity (if both exist, stop and run `mihomo-doctor.sh`):
+
+```sh
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" restart
+  "$I" status      # expect: alive
+  curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # expect the proxy exit IP
+else
+  echo "ERROR: no usable Mihomo init script; run mihomo-doctor.sh" >&2
+fi
+)
 ```
 
 Do not run `mihomo -t` in parallel with the running daemon: on some Keenetic devices a second Mihomo process causes SIGSEGV. For an executable syntax check, stop the service first, run the check, then start it again:
 
-```bash
-/opt/etc/init.d/S99mihomo stop
-mihomo -d /opt/etc/mihomo -t
-/opt/etc/init.d/S99mihomo start
+```sh
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ] && "$I" stop; then
+  mihomo -d /opt/etc/mihomo -t
+  "$I" start
+else
+  echo "ERROR: no usable Mihomo init script or stop failed; check aborted" >&2
+fi
+)
 ```
 
 For normal read-only diagnostics of a running installation, use `mihomo-doctor.sh`: it obeys the one-Mihomo rule and does not start a second process.
@@ -945,9 +968,18 @@ wget https://github.com/MetaCubeX/mihomo/releases/download/vX.Y.Z/mihomo-linux-a
 gzip -d mihomo-linux-arm64-vX.Y.Z.gz && chmod +x mihomo-linux-arm64-vX.Y.Z
 ./mihomo-linux-arm64-vX.Y.Z -v                       # must print a version
 which mihomo                                          # e.g. /opt/bin/mihomo
-/opt/etc/init.d/S99mihomo stop
-mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
-/opt/etc/init.d/S99mihomo start
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ] && "$I" stop; then
+  mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
+  "$I" start
+else
+  echo "ERROR: no usable Mihomo init script or stop failed; binary not replaced" >&2
+fi
+)
 ```
 
 3. Verify: `mihomo -v`, `ps | grep mihomo`, then the proxy curl from section 5.
@@ -960,7 +992,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 
 | Question | Command | Healthy answer |
 | --- | --- | --- |
-| Mihomo alive? | `/opt/etc/init.d/S99mihomo status` | `alive` |
+| Mihomo alive? | `N=0; for F in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"; done; if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then "$I" status; else echo "ERROR: no usable Mihomo init script; run mihomo-doctor.sh"; fi` (standalone) | `alive` |
 | Mihomo RAM usage? | `grep VmRSS /proc/$(pidof mihomo)/status` | measure before/after changes — no fixed norm |
 | Proxy forwards traffic? | `curl -x socks5://127.0.0.1:7890 https://ipinfo.io` | exit IP of your server |
 | Which leaf server is selected right now / failover timeline? | `sh mihomo-proxy-selection-watch.sh` (one-shot) or `--watch 1` (changes-only) | `GLOBAL -> ... -> <server>` + `CURRENT SERVER:`; timestamped changes |
@@ -1092,7 +1124,7 @@ Platform notes that remain:
 - **Entware is not a full Linux.** BusyBox quirks (`$RANDOM`, `pidof`, `ss`, `run-parts`), trimmed packages — keep that in mind before "modernizing" the scripts.
 - **Logs in RAM vanish on reboot** — the flash-protection trade.
 - **IPv6 is disabled on purpose** in the base configuration — for predictability, not by accident. Enabling it is an advanced change with its own verification (see Troubleshooting).
-- **Docker is not part of this stack.** Mihomo on Keenetic is managed by its init script (`/opt/etc/init.d/S99mihomo`) — the watchdog and the updater use the same. `docker restart mihomo`-style commands belong to other environments.
+- **Docker is not part of this stack.** Mihomo on Keenetic is managed by its init script (`S28mihomo` on fresh entware-go packages, `S99mihomo` on older) — the watchdog and the updater use the same. `docker restart mihomo`-style commands belong to other environments.
 - Production delivery uses the `stable` branch; `main` remains the development branch. Changes pass CI and an explicit `main → stable` promotion before a release tag is placed on the exact production commit.
 
 More boundaries and the reasoning behind them: [docs/09-limitations.md](09-limitations.md) (RU).

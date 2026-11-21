@@ -20,26 +20,28 @@
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-**2. Открыть конфигурацию Mihomo**
+**2. Открыть конфиг Mihomo (без очистки)**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**3. Сохранить копию, очистить конфиг и открыть nano**
+Ключ `-I` обходит ошибочный `nanorc` (`Error expanding /usr/share/nano/*.nanorc`); без `-I` — `nano /opt/etc/mihomo/config.yaml`. Для замены всего YAML предпочтительнее безопасный импорт — команда №5; рабочий файл не очищайте.
 
-⚠️ Текущий файл очищается **до открытия редактора**; старая версия сохраняется в `config.yaml.bak` (существующая `.bak` будет перезаписана).
+**3. Резервная копия и nano (без очистки)**
+
+⚠️ Существующая `config.yaml.bak` будет перезаписана; рабочий YAML не обнуляется.
 
 ```bash
-cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+cp -p /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**4. Очистить конфиг без резервной копии и открыть nano**
+**4. Проверить имя init-скрипта Mihomo**
 
-⚠️ **Опасно:** содержимое `config.yaml` будет потеряно. Не перезапускайте Mihomo, пока не сохраните исправный YAML.
+Свежая сборка Entware ставит `S28mihomo`, старая — `S99mihomo`. Существуют оба? Остановитесь и запустите Doctor.
 
-```bash
-: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```sh
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 **5. Заменить конфиг Mihomo новым YAML без `nano` (рекомендуется)**
@@ -60,14 +62,36 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Перезапустить Mihomo**
 
-```bash
-/opt/etc/init.d/S99mihomo restart
+Блок сам находит S28/S99 (в т.ч. битые ссылки); при неоднозначности — отказ.
+
+```sh
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" restart
+else
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
+fi
+)
 ```
 
 **8. Проверить статус Mihomo**
 
-```bash
-/opt/etc/init.d/S99mihomo status
+```sh
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" status
+else
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
+fi
+)
 ```
 
 **9. Обновить Mihomo**
