@@ -14,21 +14,13 @@
 // manually by the operator; wiring the one-action handoff is Stage B3, not B1.
 import { buildMiniMihomoConfig, createMiniUiState, readWgFileEntries } from './entry-kas-mini.js';
 
-const CSS = `
-.kas-mini-root p { margin: 6px 0; }
-.kas-mini-root textarea { width: 100%; box-sizing: border-box; min-height: 110px; font-family: ui-monospace, monospace; }
-.kas-mini-root #km-preview { min-height: 220px; }
-.kas-mini-root .km-label { display: block; margin: 8px 0 2px; }
-.kas-mini-root .km-opt { display: inline-flex; gap: 6px; align-items: center; margin: 4px 14px 4px 0; }
-.kas-mini-root fieldset { border: 1px solid #8884; border-radius: 8px; margin: 10px 0; }
-.kas-mini-root .km-btn { padding: 6px 14px; margin: 6px 6px 0 0; }
-.kas-mini-root #km-report { margin-top: 10px; }
-.kas-mini-root .km-err { color: #c0392b; }
-.kas-mini-root .km-warn { color: #b8860b; }
-.kas-mini-root .km-note { color: #666; font-size: 12px; }
-.kas-mini-root .km-hidden { display: none; }
-.kas-mini-root #km-subwrap.km-off { opacity: .5; }
-`;
+// beta.10 (issue saymer-alt/keenetic-auto-setup-dev#225): the panel CSP is
+// `style-src 'self'` (main.go), so a dynamically created <style> element is
+// blocked in the browser and every rule it carried — including the hiding of
+// the native WG/AWG file picker (.km-hidden) — silently did not apply. All
+// kas-mini styles therefore live in the self-hosted web/style.css (shipped by
+// the panel); this source must not inject inline styles of any kind again.
+// The regression test is tests/kas-mini-vendor.test.cjs (mount CSP contract test).
 
 const MARKUP = `
 <p class="km-note"><b>Эксперимент Phase 0 (issue #425, Stage B1).</b> Только локальная генерация нового ПОЛНОГО
@@ -45,14 +37,14 @@ Nothing here applies config, restarts services or touches the router.</p>
 </div>
 <span class="km-opt"><button type="button" id="km-wgBtn" class="km-btn">📂 Добавить WireGuard / AmneziaWG (.conf, .wg, .awg)</button>
 <span id="km-wgCount" class="km-note"></span></span>
-<input type="file" id="km-wgFiles" multiple accept=".conf,.wg,.awg" class="km-hidden">
+<input type="file" id="km-wgFiles" multiple accept=".conf,.wg,.awg" class="km-hidden" hidden>
 <div id="km-wgList" class="km-note"></div>
 <p class="km-note">⚠️ Экспериментально, ограниченная поддержка: conf с <code>DNS =</code> или неизвестными полями отклоняется целиком (без молчаливой потери параметров). Полная поддержка WG DNS — отдельное решение после Phase 0.</p>
 <p class="km-label">Настройки</p>
 <fieldset>
   <label class="km-opt"><input type="checkbox" id="km-allowLan" checked> 🌐 Allow LAN (0.0.0.0)</label>
   <label class="km-opt"><input type="checkbox" id="km-mixedOn" checked> 🔌 Mixed Port</label>
-  <input type="number" id="km-mixedPort" min="1" max="65535" value="7890" style="width:90px">
+  <input type="number" id="km-mixedPort" class="km-port" min="1" max="65535" value="7890">
   <label class="km-opt"><input type="checkbox" id="km-webUI" checked> 🖥️ Web UI (MetaCubeXD, secret обязателен)</label>
   <label class="km-opt"><input type="checkbox" id="km-tun" checked> 🛡️ TUN Interface</label>
   <label class="km-opt"><input type="checkbox" id="km-mips" checked> ⚡ MIPS stack для TUN</label>
@@ -78,10 +70,7 @@ export function mountKasMini(root) {
     if (!root || root.dataset.kasMiniMounted) return null;
     root.dataset.kasMiniMounted = '1';
 
-    const style = document.createElement('style');
-    style.textContent = CSS;
     root.innerHTML = '';
-    root.appendChild(style);
     const body = document.createElement('div');
     body.className = 'kas-mini-root';
     body.innerHTML = MARKUP;

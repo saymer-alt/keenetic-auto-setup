@@ -10,14 +10,14 @@
     "kas-mini-mount.js"
   ],
   "esbuild": {
-    "version": "0.27.2 (ESBUILD_BIN)",
+    "version": "0.27.2",
     "flags": "--bundle --format=iife --global-name=KasMini --platform=browser --minify --charset=utf8"
   },
   "integrationBoundary": "Variant A (docs/35-web-autosetup-stage-a.md §4.1): classic <script defer>, global namespace window.KasMini, handoff only through the exported API; the panel never reads kas-mini DOM",
   "files": {
     "kas-mini.js": {
-      "sha256": "e191ecf33da7419123cba44343b1bfe4784acb6eb80da2c312dd9b962f05da9d",
-      "bytes": 93186
+      "sha256": "08e863c8785a908458b6941e6162941da021c34a9a18c6ab51d695e96d836868",
+      "bytes": 92290
     }
   },
   "updatePolicy": "Update only via an explicit sync PR that bumps sourceSha and regenerates this file with build-vendor.mjs --update-provenance; CI rebuilds from sourceSha and requires a byte-identical committed asset (web-control-center.yml)."
