@@ -30,7 +30,7 @@ curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootst
 nano -I /opt/etc/mihomo/config.yaml
 ```
 
-`-I` skips the faulty `nanorc` (`Error expanding /usr/share/nano/*.nanorc`). To replace the whole YAML prefer the safe import (command №5); do not clear the working file.
+`-I` skips the faulty `nanorc` (`Error expanding /usr/share/nano/*.nanorc`); plain: `nano /opt/etc/mihomo/config.yaml`. To replace the whole YAML prefer the safe import (command №5); do not clear the working file.
 
 **3. Back up and open nano (no clearing)**
 
