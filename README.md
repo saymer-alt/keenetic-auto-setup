@@ -26,7 +26,7 @@ opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com
 nano -I /opt/etc/mihomo/config.yaml
 ```
 
-Ключ `-I` обходит ошибочный `nanorc` (`Error expanding /usr/share/nano/*.nanorc`). Для замены всего YAML предпочтительнее безопасный импорт — команда №5; рабочий файл не очищайте.
+Ключ `-I` обходит ошибочный `nanorc` (`Error expanding /usr/share/nano/*.nanorc`); без `-I` — `nano /opt/etc/mihomo/config.yaml`. Для замены всего YAML предпочтительнее безопасный импорт — команда №5; рабочий файл не очищайте.
 
 **3. Резервная копия и nano (без очистки)**
 
