@@ -65,24 +65,33 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 **7. Restart Mihomo**
 
 ```sh
-if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
-  echo "ERROR: ambiguous Mihomo init scripts; run Doctor" >&2
-  exit 1
-elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
-  INIT=/opt/etc/init.d/S28mihomo
-elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
-  INIT=/opt/etc/init.d/S99mihomo
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" restart
 else
-  echo "ERROR: no executable Mihomo init script" >&2
-  exit 1
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
 fi
-"$INIT" restart
+)
 ```
 
 **8. Check Mihomo status**
 
 ```sh
-"$INIT" status
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" status
+else
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
+fi
+)
 ```
 
 **9. Update Mihomo**
