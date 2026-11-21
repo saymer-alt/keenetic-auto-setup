@@ -5,6 +5,7 @@ on:
     paths:
       - kas-web-install.sh
       - tests/kas-web-channel-install-regression.py
+      - tests/kas-curl-opkg-status-regression.py
       - .github/workflows/kas-web-channel-install.yml
   workflow_dispatch:
 
@@ -22,4 +23,5 @@ jobs:
           sudo apt-get install -y jq busybox
           sh -n kas-web-install.sh
           busybox ash -n kas-web-install.sh
+          python3 tests/kas-curl-opkg-status-regression.py
           python3 tests/kas-web-channel-install-regression.py

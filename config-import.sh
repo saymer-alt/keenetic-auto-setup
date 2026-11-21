@@ -963,3 +963,6 @@ if [ "$SERVICE_WAS_RUNNING" -eq 1 ]; then
 else
     status_out "$COLOR_CYAN" "[info] Mihomo was stopped before import and was left stopped."
 fi
+
+# Full-content EOF contract marker for staged validation (issue #232).
+# KAS_EOF_V1

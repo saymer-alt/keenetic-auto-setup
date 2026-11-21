@@ -76,6 +76,7 @@ ledger_check() {
         /^enabled[|]dns[|]intercept$/ { next }
         /^owned[|]package[|](mihomo|magitrickle)$/ { next }
         /^owned[|]repository[|]magitrickle.conf$/ { next }
+        /^owned[|]repository[|]kas-mt-arch.conf$/ { next }
         /^owned[|]hook[|]020-bypass_wa.sh$/ { next }
         /^owned[|]watchdog[|](binary|wrapper)$/ { next }
         /^owned[|]service[|]S00ubifs$/ { next }
@@ -248,6 +249,9 @@ _KAS_PROXY_DEPS
     fi
     if grep -Fqx 'owned|repository|magitrickle.conf' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
         report REVIEW 'opkg/magitrickle.conf' 'owned feed; check other users before removal'
+    fi
+    if grep -Fqx 'owned|repository|kas-mt-arch.conf' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
+        report REVIEW 'opkg/kas-mt-arch.conf' 'owned arch fragment; remove only after the magitrickle package (docs/37)'
     fi
     if grep -Fqx 'owned|hook|020-bypass_wa.sh' "$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"; then
         report REVIEW '020-bypass_wa.sh' 'owned hook; active mangle jump/chain require independent check'

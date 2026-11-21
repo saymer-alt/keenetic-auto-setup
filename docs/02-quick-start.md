@@ -23,13 +23,19 @@
 
 ### Основной путь — `setup.sh`
 
-`setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. После запуска `setup.sh` дочерние project-скрипты скачиваются через устойчивую fallback-цепочку bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API.
+`setup.sh` сам определяет обычный профиль хранения (`ram`/`disk`), передаёт safety-gates каноническому `install.sh` и после успешной установки запускает безопасный Config Import. После запуска `setup.sh` дочерние project-скрипты скачиваются через устойчивую fallback-цепочку bounded normal curl → X25519 compatibility retry → raw/wget → GitHub Contents API → верифицированное зеркало GitLab (issue #232: привязка blob_id + размер + SHA256, контракт конца файла `# KAS_EOF_V1`, fail-closed при любом расхождении).
 
 ```bash
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-Короткая команда загружает первый `bootstrap.sh` по HTTPS и передаёт его в `sh` потоком (принятый компромисс: без предварительной проверки этого первого файла). `curl -fSsL` показывает ошибки, но скрывает индикатор прогресса; дополнительное ограничение в 25 секунд не задаётся. Сам `bootstrap.sh` скачивает и проверяет `setup.sh` через raw → IPv4/X25519 → GitHub Contents API. При сбое первой загрузки используйте [расширенную команду](03-install.md#расширенная-установка-с-проверкой-первой-загрузки); при сетевых сбоях ожидание первой загрузки может быть долгим.
+Короткая команда загружает первый `bootstrap.sh` по HTTPS и передаёт его в `sh` потоком (принятый компромисс: без предварительной проверки этого первого файла). `curl -fSsL` показывает ошибки, но скрывает индикатор прогресса; дополнительное ограничение в 25 секунд не задаётся. Сам `bootstrap.sh` скачивает и проверяет `setup.sh` через raw → IPv4/X25519 → GitHub Contents API, а при недоступности GitHub — с верифицированного зеркала GitLab (см. [gitlab-mirror.md](gitlab-mirror.md)). При сбое первой загрузки используйте [расширенную команду](03-install.md#расширенная-установка-с-проверкой-первой-загрузки); при сетевых сбоях ожидание первой загрузки может быть долгим.
+
+Если GitHub полностью недоступен, тот же первый `bootstrap.sh` можно взять прямо с зеркала (только чтение):
+
+```bash
+curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
+```
 
 Архитектура определяется автоматически: aarch64 / armv7 / mipsel / mips (включая MT7621). Отдельного MT7621-установщика больше нет.
 
@@ -80,8 +86,10 @@ rules:
 
 Для обычного fresh-install сценария проверьте состояние:
 
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 Должно быть:
@@ -138,7 +146,7 @@ cat /opt/var/log/mihomo_watchdog.log
 ### Mihomo не стартует
 
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 → почти всегда проблема в `config.yaml`

@@ -284,8 +284,10 @@ WAN check → fail → ничего не делаем
 
 1.
 
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 2.

@@ -50,6 +50,12 @@ pass "Doctor human summary severity and config-import terminal guidance are pinn
 grep -Fq 'refusing to change Netfilter rules' "$ROOT/020-bypass-wa.sh" || fail "bypass hook must fail closed on missing policy mark"
 grep -Fq "jq -er '[.[] | select(.description == \"bypass_wa\") | .mark]" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must require a unique API-derived mark"
 grep -Fq "case \"\$mark_id_\" in" "$ROOT/020-bypass-wa.sh" || fail "bypass hook must validate hexadecimal mark before Netfilter mutation"
+# Standalone scripts embed the exact companion hashes for their revision.
+for _entry in 'KAS_BYPASS_HOOK_SHA256 020-bypass-wa.sh' 'KAS_S00UBIFS_SHA256 S00ubifs' 'KAS_WATCHDOG_SHA256 mihomo-watchdog.sh'; do
+    _hash=$(sha256sum < "$ROOT/${_entry#* }") || fail "cannot hash installer companion"
+    grep -Fxq "${_entry%% *}=\"${_hash%% *}\"" "$ROOT/install.sh" ||
+        fail "installer digest out of sync for ${_entry#* }"
+done
 pass "bypass hook fails closed instead of using mark=1"
 
 # Fresh Entware is evaluated BEFORE opkg populates it; even an existing
@@ -635,7 +641,9 @@ grep -Fq 'MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)' "$ROOT/install.sh" || f
 grep -Fq 'MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)' "$ROOT/install.sh" || fail "installer must capture repository configuration after the MagiTrickle helper"
 grep -Fq 'if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then' "$ROOT/install.sh" || fail "second opkg update must be gated on an actual repository-config change"
 grep -Fq 'initial opkg update already refreshed its metadata' "$ROOT/install.sh" || fail "unchanged MagiTrickle repo must skip the duplicate metadata refresh"
-grep -Fq 'retry opkg update || err "opkg update after changing the MagiTrickle repository failed"' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still refresh metadata reliably"
+grep -Fq 'if ! retry opkg update; then' "$ROOT/install.sh" || fail "changed MagiTrickle repo must still attempt bounded metadata refresh"
+grep -Fq 'warn "MT feed refresh failed; pinned backup may be used for first install"' "$ROOT/install.sh" || fail "failed MagiTrickle refresh must be explicit and enter verified backup path"
+grep -Fq 'mt_verified_kn_fallback ||' "$ROOT/install.sh" || fail "missing/invalid upstream MagiTrickle feed must use pinned _kn-only backup or fail closed"
 pass "MagiTrickle helper avoids duplicate opkg update when repository configuration is unchanged"
 
 # Project-managed helper delivery must survive a transient/raw-host failure without
@@ -650,10 +658,10 @@ grep -Fq 'retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" 
 grep -Fq 'Accept: application/vnd.github.raw+json' "$ROOT/install.sh" || fail "project-script delivery must retain GitHub Contents API raw fallback"
 grep -Fq '_psd_stage="${_psd_dest}.new.$$"' "$ROOT/install.sh" || fail "project-script delivery must stage beside the destination before commit"
 grep -Fq 'project_script_candidate_ok "$_psd_stage"' "$ROOT/install.sh" || fail "project-script delivery must validate the same-filesystem stage"
-grep -Fq 'project_script_download "S00ubifs" "$_ita_script"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
+grep -Fq 'project_script_download "S00ubifs" "$_ita_script" "$KAS_S00UBIFS_SHA256"' "$ROOT/install.sh" || fail "S00ubifs must use resilient project-script delivery"
 grep -Fq 'S00_SCRIPT="/opt/etc/init.d/S00ubifs"' "$ROOT/install.sh" || fail "S00ubifs activation must use canonical service path"
-grep -Fq 'project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"' "$ROOT/install.sh" || fail "bypass hook must use resilient project-script delivery"
-grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
+grep -Fq 'project_script_download "020-bypass-wa.sh" "$_kas_bypass_hook" "$KAS_BYPASS_HOOK_SHA256"' "$ROOT/install.sh" || fail "bypass hook must use resilient project-script delivery"
+grep -Fq 'project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new" "$KAS_WATCHDOG_SHA256"' "$ROOT/install.sh" || fail "watchdog must use resilient project-script delivery"
 grep -Fq 'rm -f "$_psd_tmp"' "$ROOT/install.sh" || fail "installer project downloader must clear partial candidates between transports"
 pass "installer project-script downloads use validated curl/wget/API fallbacks and atomic destination commit"
 
@@ -661,6 +669,10 @@ grep -q '^fetch_url_text()' "$ROOT/install.sh" || fail "installer must centraliz
 grep -q '^download_url_file()' "$ROOT/install.sh" || fail "installer must centralize file download fallback for external assets"
 grep -Fq 'ASSET_DOWNLOAD_MAX_TIME=1800' "$ROOT/install.sh" || fail "installer large assets must have the verified 1800s transfer window"
 grep -Fq -- '--max-time "$ASSET_DOWNLOAD_MAX_TIME" --speed-limit "$ASSET_DOWNLOAD_LOW_SPEED_LIMIT" --speed-time "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_iar_url" -o "$_iar_dest"' "$ROOT/install.sh" || fail "installer large-file curl must enforce total budget and low-speed guard"
+# The reviewed wget fallback is wall-clock bounded via the timeout wrapper
+# (when the applet exists) and per-read bounded via -T; both branches checked.
+grep -Fq -- '_irw_wrap="timeout $ASSET_DOWNLOAD_MAX_TIME"' "$ROOT/install.sh" || fail "installer large-file wget fallback must be wall-clock bounded when timeout exists"
+grep -Fq -- 'wget -O "$_irw_dest" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_irw_url"' "$ROOT/install.sh" || fail "installer large-file wget TTY fallback must remain bounded"
 grep -Fq 'wget -qO "$_irw_dest" -T "$ASSET_DOWNLOAD_LOW_SPEED_TIME" "$_irw_url"' "$ROOT/install.sh" || fail "installer large-file wget must use the explicit per-read stall bound"
 grep -Fq 'ASSETS_JSON=$(fetch_url_text "$API_URL")' "$ROOT/install.sh" || fail "installer entware-go release metadata must use curl/wget fallback"
 grep -Fq 'if download_url_file "$DOWNLOAD_URL" "$TMP_DIR/mihomo.ipk"; then' "$ROOT/install.sh" || fail "installer Mihomo package download must use curl/wget fallback"
@@ -740,6 +752,8 @@ pass "updater lock/stage/backup/atomic-commit/rollback invariants remain pinned"
 grep -Fq 'Already up to date ($CURRENT_VER). Use --force to replace anyway.' "$ROOT/update-mihomo.sh" || fail "same-version update retains the skip message when no newer project package release is known"
 grep -Fq 'Same runtime version ($CURRENT_VER): applying newer package release or explicit --force.' "$ROOT/update-mihomo.sh" || fail "--force must retain same-version binary replacement semantics"
 grep -Fq 'stale metadata - expected after binary-only updates' "$ROOT/mihomo-doctor.sh" || fail "Doctor must explain stale opkg metadata as expected binary-only update state"
+grep -Fq "applies this older feed record and replaces the newer project-managed binary" "$ROOT/mihomo-doctor.sh" || fail "Doctor must warn that an external opkg upgrade applies the stale record and downgrades the binary (issue #58/#320)"
+grep -Fq "This check is diagnostics-only - an opkg hold is a manual owner decision" "$ROOT/mihomo-doctor.sh" || fail "Doctor opkg downgrade warning must stay diagnostics-only (no automatic holds)"
 pass "binary-only Mihomo update and stale-opkg semantics remain pinned"
 grep -Fq 'BINARY_STATE="/opt/etc/keenetic-auto-setup-mihomo.state"' "$ROOT/update-mihomo.sh" || fail "updater must persist project-owned Mihomo binary state"
 grep -Fq 'TMP_STATE_BACKUP="$TMP_DIR/mihomo-binary-state.backup.$$"' "$ROOT/update-mihomo.sh" || fail "updater must back up binary state before replacement"

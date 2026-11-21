@@ -18,6 +18,12 @@ Frequently used SSH commands in one place. **Copy one block at a time.** More de
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
+GitHub unreachable? Mirror alternative:
+
+```bash
+curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
+```
+
 **2. Edit the Mihomo configuration**
 
 ```bash
@@ -57,13 +63,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 **7. Restart Mihomo**
 
 ```bash
-/opt/etc/init.d/S99mihomo restart
+/opt/etc/init.d/S28mihomo restart   # older installs: S99mihomo
 ```
 
 **8. Check Mihomo status**
 
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 **9. Update Mihomo**

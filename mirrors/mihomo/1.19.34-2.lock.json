@@ -1,0 +1,45 @@
+{
+  "schema": "kas-mihomo-official-mirror/v1",
+  "upstream_repository": "saymer-alt/entware-go",
+  "upstream_release_tag": "latest",
+  "upstream_release_published": "2026-05-16T17:45:50Z",
+  "package_version": "1.19.34-2",
+  "packages": [
+    {
+      "architecture": "aarch64-3.10",
+      "name": "mihomo_1.19.34-2_aarch64-3.10.ipk",
+      "size": 13317150,
+      "sha256": "ed5385fec56c31cd411780c41c0bd99ca204c068723f4095b568b781718bdcf8"
+    },
+    {
+      "architecture": "armv7-3.2",
+      "name": "mihomo_1.19.34-2_armv7-3.2.ipk",
+      "size": 12884030,
+      "sha256": "355ef60f591d49368507b0533640e3fef407959c45da79b30753cc7a39b42abc"
+    },
+    {
+      "architecture": "mips-3.4",
+      "name": "mihomo_1.19.34-2_mips-3.4.ipk",
+      "size": 12672559,
+      "sha256": "5aa6a264ba159a99dd4ef60cb7bedead587ad845a457c6c461b5a34542520d18"
+    },
+    {
+      "architecture": "mipsel-3.4",
+      "name": "mihomo_1.19.34-2_mipsel-3.4.ipk",
+      "size": 12892791,
+      "sha256": "290c0802e60b12e38eb43f58656de3d8f0de317532a0bb67d2dda30b80fdadf6"
+    },
+    {
+      "architecture": "armv7-3.2",
+      "package": "mihomo_nohf",
+      "name": "mihomo_nohf_1.19.34-2_armv7-3.2.ipk",
+      "size": 12878682,
+      "sha256": "a4836021eaa428611b6ef64915eebe354ac222866dc95478385fb96cf2a87f5c"
+    }
+  ],
+  "notes": [
+    "Verified 2026-11-12 by Agent D: downloaded from the official saymer-alt/entware-go release asset list and hashed independently; control fields checked (Package/Version/Architecture/Depends: ca-bundle).",
+    "The upstream tag 'latest' is a MOVING tag: this manifest pins the exact asset bytes observed at verification time; any upstream republish invalidates it and requires a new reviewed manifest version.",
+    "The nohf variant is an explicitly named distinct package (mihomo_nohf), not a substitute for armv7-3.2 mihomo."
+  ]
+}

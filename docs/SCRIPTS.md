@@ -14,7 +14,7 @@
 | [`kas-download-check.sh`](../kas-download-check.sh) | [Read-only проверка загрузки KAS: DNS, TLS, HTTP, SHA256, доступность источников](27-download-check.md) |
 | [`kas-exposure-check.sh`](../kas-exposure-check.sh) | [Read-only аудит открытых портов и настроек сетевого доступа](28-exposure-check.md) |
 | [`uninstall.sh`](../uninstall.sh) | [Read-only `--check`/`--plan`; полное удаление `--remove`/`--purge` намеренно заблокировано](23-uninstall.md) |
-| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
+| [`bootstrap.sh`](../bootstrap.sh) | [Стартовый загрузчик KAS: получает и проверяет `setup.sh` (или `--script config-import.sh` — автономный импортёр, #255), использует резервные источники GitHub и верифицированное зеркало GitLab (#232) и запускает выбранную цель](14-setup.md#зачем-нужен-bootstrapsh) |
 | [`setup.sh`](../setup.sh) | [Мастер: определяет `ram`/`disk`, вызывает `install.sh` и предлагает импорт конфигурации](14-setup.md) |
 | [`install.sh`](../install.sh) | [Основной установщик с ручным выбором профиля](03-install.md) |
 | [`config-import.sh`](../config-import.sh) | [Импорт и безопасная замена `config.yaml`](13-config-import.md) |
@@ -36,3 +36,11 @@
 
 
 Подробности загрузки и проверки первого скрипта: [мастер установки](14-setup.md) и [расширенная установка](03-install.md).
+
+Если GitHub полностью недоступен, тот же первый `bootstrap.sh` можно взять с зеркала (только чтение):
+
+```bash
+curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
+```
+
+Схема источников, привязка целостности и фактическая матрица доступности: [gitlab-mirror.md](gitlab-mirror.md).

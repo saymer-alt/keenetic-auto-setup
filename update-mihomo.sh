@@ -1788,3 +1788,6 @@ fi
 # -----------------------------
 log "Success! Updated to $AVAILABLE_VER (from $ASSET_NAME)"
 status_out "$COLOR_GREEN" "[OK] Mihomo updated successfully"
+
+# Full-content EOF contract marker for staged validation (issue #232).
+# KAS_EOF_V1

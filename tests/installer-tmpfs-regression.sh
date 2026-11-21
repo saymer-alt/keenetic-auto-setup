@@ -27,6 +27,8 @@ grep -q '^installer_tmpfs_protection_ready()' "$TMP/activation.sh" || fail "miss
 grep -q '^project_script_candidate_ok()' "$TMP/validator.sh" || fail "missing candidate validator"
 . "$TMP/activation.sh"
 . "$TMP/validator.sh"
+KAS_S00UBIFS_SHA256=$(sha256sum < "$ROOT/S00ubifs")
+KAS_S00UBIFS_SHA256=${KAS_S00UBIFS_SHA256%% *}
 grep -Fq 'if installer_tmpfs_protection_ready "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"; then' "$INSTALL" ||
     fail "final verdict must check live protection"
 grep -Fq 'installer_tmpfs_activate "$S00_SCRIPT" "$S00_ROOT" "$PROC_MOUNTS"' "$INSTALL" ||

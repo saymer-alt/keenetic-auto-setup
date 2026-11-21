@@ -2,9 +2,11 @@
 
 Установка **[Mihomo](https://github.com/MetaCubeX/mihomo) + [MagiTrickle](https://magitrickle.dev/)** на Keenetic с Entware: прокси и маршруты через Mihomo, DNS- и доменные правила через MagiTrickle.
 
-**Core stable:** [v1.8.9 — надёжная установка и загрузка IPK](docs/releases/v1.8.9.md). KAS Web beta.9 выпускается отдельно.
+**Core stable:** [v1.8.10 — защищённая доставка скриптов и MagiTrickle `_kn`](docs/releases/v1.8.10.md). KAS Web beta.9 выпускается отдельно.
 
 [English](docs/EN/README.md)
+
+> Зеркало (только чтение): [gitlab.com/saymer-alt/keenetic-auto-setup](https://gitlab.com/saymer-alt/keenetic-auto-setup) — синхронизируется автоматически из GitHub; Releases, Issues и PR ведутся только на GitHub. Подробнее — [Зеркало GitLab](docs/gitlab-mirror.md).
 
 **Быстрый переход:** [Частые команды](#частые-команды) · [Установка](#1-установка) · [Конфигурация](#2-конфигурация-mihomo) · [Проверка](#3-проверка-и-запуск) · [Обновление](#4-обновление) · [Другие команды](#5-дополнительные-команды)
 
@@ -53,25 +55,25 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 **6. Проверить систему — Doctor**
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script mihomo-doctor.sh
 ```
 
 **7. Перезапустить Mihomo**
 
 ```bash
-/opt/etc/init.d/S99mihomo restart
+/opt/etc/init.d/S28mihomo restart   # старые установки: S99mihomo
 ```
 
 **8. Проверить статус Mihomo**
 
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 **9. Обновить Mihomo**
 
 ```bash
-curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
+curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script update-mihomo.sh
 ```
 
 **10. Установить/обновить Web beta**

@@ -5,6 +5,7 @@ Real temp files, shell validation and rename; only curl/wget and retry sleep
 are stubbed. Contents API uses raw media in production, not a JSON decoder.
 """
 from pathlib import Path
+import hashlib
 import json
 import os
 import subprocess
@@ -59,7 +60,7 @@ def function(text, name):
     return text[start:text.index('\n}',start)+2]+'\n'
 
 
-def run(shell, name, plan, success, baseline=False):
+def run(shell, name, plan, success, baseline=False, expected_digest=""):
     text=(subprocess.check_output(['git','show','fa3a45f208bf5a8a841f6269d668d471a4fead02:install.sh'],cwd=ROOT,text=True)
           if baseline else (ROOT/'install.sh').read_text())
     names=['retry_silent','project_script_candidate_ok','project_script_download']
@@ -93,9 +94,9 @@ mv() {
 '''+functions+'''
 # A stale valid prefix from a previous call must also be invalidated.
 printf '#!/bin/sh\\necho stale\\n' > "$TMP_DIR/.keenetic-auto-setup-download.$$"
-project_script_download helper.sh "$LAB/canonical"
+project_script_download helper.sh "$LAB/canonical" "$EXPECTED_DIGEST"
 '''
-        p=subprocess.run(shell,input=body,env=dict(os.environ,LAB=str(lab)),text=True,capture_output=True,timeout=20)
+        p=subprocess.run(shell,input=body,env=dict(os.environ,LAB=str(lab), EXPECTED_DIGEST=expected_digest),text=True,capture_output=True,timeout=20)
         dest=(lab/'canonical').read_text()
         events=[json.loads(line) for line in (lab/'events').read_text().splitlines()]
         order=(lab/'order').read_text().splitlines() if (lab/'order').exists() else []
@@ -138,6 +139,11 @@ def main():
         if '--baseline' in sys.argv:
             run(shell,'baseline',dict(curl=['partial'],wget=['partial'],api=['partial']),False,True)
             continue
+        run(shell, 'right revision', dict(curl=['complete']), True,
+            expected_digest=hashlib.sha256(COMPLETE.encode()).hexdigest())
+        run(shell, 'well-formed script from the wrong revision',
+            dict(curl=['complete'], wget=['complete'], api=['complete']), False,
+            expected_digest=hashlib.sha256(ORIGINAL.encode()).hexdigest())
         cases=[
             ('curl partial', ['partial'], ['fail'], ['fail'], False),
             ('wget partial', ['fail'], ['partial'], ['fail'], False),

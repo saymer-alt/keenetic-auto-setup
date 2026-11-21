@@ -30,8 +30,10 @@
 
 #### Симптом
 
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 # dead
 ````
 
@@ -56,7 +58,7 @@ ls -la /opt/etc/mihomo/config.yaml
 `config.yaml` (`nano /opt/etc/mihomo/config.yaml`), потом:
 
 ```bash
-/opt/etc/init.d/S99mihomo restart
+/opt/etc/init.d/S28mihomo restart
 ```
 
 ---
@@ -83,7 +85,7 @@ netstat -ln | grep 7890
 #### Решение
 
 ```bash
-/opt/etc/init.d/S99mihomo restart
+/opt/etc/init.d/S28mihomo restart
 ```
 
 ---
@@ -476,7 +478,7 @@ mount | grep tmpfs
 ### Mihomo жив?
 
 ```bash
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 ---
