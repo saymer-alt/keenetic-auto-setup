@@ -150,10 +150,12 @@ DIRECT  /  proxy-group  /  proxy
 
 Только то, что реально используется и подтверждено кодом и конфигом проекта:
 
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+
 | Элемент | Что это здесь | Пометка |
 | --- | --- | --- |
 | Версия | initial install при отсутствии canonical binary берёт актуальную сборку из latest release `saymer-alt/entware-go`; fallback — `opkg install mihomo` из настроенного Entware feed. Повторный `install.sh` уже установленный Mihomo не заменяет: обновление выполняет `update-mihomo.sh` | Проверено в проекте |
-| Запуск | `/opt/etc/init.d/S99mihomo` (`status` / `restart`) | Проверено в проекте |
+| Запуск | `/opt/etc/init.d/S28mihomo` (`status` / `restart`) | Проверено в проекте |
 | Рабочий каталог и конфиг | `/opt/etc/mihomo`, конфиг — `config.yaml` | Проверено в проекте (`-d /opt/etc/mihomo`) |
 | Вход | **mixed-port `127.0.0.1:7890`** (одновременно HTTP- и SOCKS5-прокси) | Проверено в проекте (базовый конфиг) |
 | Точка входа от Keenetic | **проектный ProxyN** — локальная SOCKS5-точка входа в Mihomo (прокси-интерфейс KeeneticOS, цель `127.0.0.1:7890`), подпись `mihomo t2sN`; установщик сам находит или создаёт его: `Proxy0`, если тот свободен, иначе первый свободный `ProxyN` (занятый чужим конфигурацией `Proxy0` не трогается) | Проверено в проекте (install.sh) |
@@ -197,7 +199,7 @@ DIRECT  /  proxy-group  /  proxy
 [HOWTO, раздел 11](../HOWTO_RU.md#11-быстрая-диагностика)):
 
 ```bash
-/opt/etc/init.d/S99mihomo status        # жив ли процесс: ожидаем alive
+/opt/etc/init.d/S28mihomo status        # жив ли процесс: ожидаем alive
 /tmp/mihomo-doctor.sh                    # read-only диагностика без второго Mihomo
 netstat -tln | grep 7890                # слушает ли вход (127.0.0.1:7890)
 curl --proxy 127.0.0.1:7890 http://google.com/generate_204   # сквозной ответ: 204

@@ -36,3 +36,11 @@ Full list of scripts and detailed guides. The [README](README.md) stays concise 
 
 
 For the launcher chain, see [setup wizard](SETUP.md) and the [advanced installation guide](../03-install.md).
+
+If GitHub is fully unreachable, the same first `bootstrap.sh` is available from the read-only mirror:
+
+```bash
+curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
+```
+
+Source scheme, integrity binding and the measured availability matrix: [gitlab-mirror.md](../gitlab-mirror.md).

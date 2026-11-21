@@ -20,7 +20,11 @@ opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com
 
 ### Расширенная установка с проверкой первой загрузки
 
-Этот отдельный вариант сохраняет временный файл, проверки `sh -n`/маркера и резервные каналы для первого `bootstrap.sh`; используйте его при сбоях raw GitHub или когда хотите более строгую проверку первой загрузки.
+Этот отдельный вариант сохраняет временный файл, проверки `sh -n`/маркера и резервные каналы для первого `bootstrap.sh`; используйте его при сбоях raw GitHub или когда хотите более строгую проверку первой загрузки. Он остаётся GitHub-only; автоматический `bootstrap.sh` после всех GitHub-транспортов дополнительно пробует верифицированное зеркало GitLab и требует контракт конца файла `# KAS_EOF_V1` у `setup.sh` (см. [gitlab-mirror.md](gitlab-mirror.md)). Первый файл с зеркала:
+
+```bash
+curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
+```
 
 ```bash
 opkg update && opkg install curl && sh -c '
@@ -292,8 +296,10 @@ invariant.
 
 Создаётся сервис:
 
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+
 ```bash id="svc1"
-/opt/etc/init.d/S99mihomo
+/opt/etc/init.d/S28mihomo
 ```
 
 ---
@@ -514,7 +520,7 @@ date
 ### 3. Mihomo не запускается
 
 ```bash id="dbg3"
-/opt/etc/init.d/S99mihomo status
+/opt/etc/init.d/S28mihomo status
 ```
 
 → почти всегда `config.yaml`
