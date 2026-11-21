@@ -77,18 +77,14 @@ get "$PAGES/$CHANNEL/panel-update.json" "$WORK/index.json" 1048576 35
 
 row=$(jq -er --arg ch "$CHANNEL" --arg arch "$ARCH" --arg registry_tag "$registry_tag" '
   select(.schema == 1 and .channel == $ch and .tag == $registry_tag)
-  | select((.tag | type) == "string" and (
-      if $ch=="experimental" then (.tag | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$"))
-      else (.tag | test("^kas-web-v[0-9]+\\.[0-9]+\\.[0-9]+$")) end))
+  | select((.tag | type) == "string")
   | select((.packages | type) == "array" and (.packages | length) > 0 and (.packages | length) <= 4)
   | [.packages[] | select(.architecture == $arch)] as $matches
   | select($matches | length == 1) | $matches[0] as $pkg
-  | select(($pkg.version | type) == "string" and ($pkg.version | test("^[0-9A-Za-z.~+-]+$")))
-  | select(($pkg.name | type) == "string" and $pkg.name ==
-      ("kas-control-center_" + ($pkg.version | gsub("~"; ".")) + "_" + $arch + ".ipk"))
-  | select(($pkg.sha256 | type) == "string" and ($pkg.sha256 | test("^[a-f0-9]{64}$")))
+  | select(($pkg.version | type) == "string" and ($pkg.name | type) == "string" and
+           ($pkg.sha256 | type) == "string")
   | select(($pkg.size | type) == "number" and $pkg.size > 0 and
-      $pkg.size <= 20971520 and $pkg.size == ($pkg.size | floor))
+           $pkg.size <= 20971520 and $pkg.size == ($pkg.size | floor))
   | [.tag, $pkg.version, $pkg.name, ($pkg.size | tostring), $pkg.sha256] | @tsv
 ' "$WORK/index.json") || fail 'Invalid index or unsupported Web IPK'
 set -f
@@ -96,6 +92,24 @@ set -- $row
 set +f
 [ "$#" -eq 5 ] || fail 'Ambiguous index fields'
 TAG="$1"; VERSION="$2"; NAME="$3"; SIZE="$4"; DIGEST="$5"
+# Entware jq may be built without ONIGURUMA: validate ASCII formats using
+# POSIX awk instead of jq regex. Keep the same anchored tag/version/SHA256
+# checks and never accept data-driven GitHub asset URLs.
+printf '%s\n%s\n%s\n' "$TAG" "$VERSION" "$DIGEST" | LC_ALL=C awk -v ch="$CHANNEL" '
+  NR == 1 {
+    if (ch == "experimental") {
+      if ($0 !~ /^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$/) exit 1
+    } else if (ch == "stable") {
+      if ($0 !~ /^kas-web-v[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    } else exit 1
+  }
+  NR == 2 { if ($0 !~ /^[0-9A-Za-z.~+-]+$/) exit 1 }
+  NR == 3 { if (length($0) != 64 || $0 !~ /^[a-f0-9]+$/) exit 1 }
+  END { if (NR != 3) exit 1 }
+' || fail 'Invalid index tag, package version or SHA256'
+NORMALIZED_VERSION=$(printf '%s' "$VERSION" | tr '~' '.')
+[ "$NAME" = "kas-control-center_${NORMALIZED_VERSION}_${ARCH}.ipk" ] ||
+  fail 'Index package filename does not match verified version and architecture'
 ASSET_URL="https://github.com/$REPO/releases/download/$TAG/$NAME"
 get "$RELEASE_API/$TAG" "$WORK/release.json" 1048576 35
 jq -e --arg tag "$TAG" --arg name "$NAME" --arg size "$SIZE" \

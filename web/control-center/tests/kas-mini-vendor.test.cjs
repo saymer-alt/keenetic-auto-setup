@@ -97,3 +97,34 @@ test('panel boundary: core panel scripts never reference kas-mini; wiring is ind
     assert.equal(html.split('src="/kas-mini.js"').length - 1, 1, 'exactly one kas-mini script tag');
     assert.ok(!/type="module"/.test(html), 'panel stays classic-script (Variant A)');
 });
+
+// beta.10 regression (issue saymer-alt/keenetic-auto-setup-dev#225): the panel CSP is
+// style-src 'self', so an inline <style> injected by the mount was blocked in the browser
+// and the native WG/AWG file picker showed up next to the blue button (two pickers, one
+// chooser). The mount must stay free of inline CSS, the file input must carry the native
+// hidden attribute, and the kas-mini rules must live in the self-hosted style.css.
+test('mount CSP contract: no inline <style>/style= in the adapter, styles served from style.css', () => {
+    const mount = fs.readFileSync(path.join(panelDir, 'kas-mini-vendor', 'kas-mini-mount.js'), 'utf8');
+    assert.ok(!mount.includes("createElement('style')") && !mount.includes('createElement("style")'),
+        'mount must not inject an inline <style> element (CSP style-src \'self\' blocks it)');
+    assert.ok(!/style\s*=\s*["']/.test(mount), 'mount markup must not rely on inline style attributes');
+
+    const filesInput = mount.match(/<input type="file" id="km-wgFiles"[^>]*>/);
+    assert.ok(filesInput, 'km-wgFiles input must exist in the mount markup');
+    assert.match(filesInput[0], /\bhidden\b/, 'km-wgFiles must carry the native hidden attribute');
+
+    const css = fs.readFileSync(path.join(panelDir, 'web', 'style.css'), 'utf8');
+    assert.ok(css.includes('[hidden]{display:none!important}'),
+        'shared style.css must keep the native-hidden fallback rule');
+    assert.ok(css.includes('.kas-mini-root .km-hidden{display:none}'),
+        'kas-mini .km-hidden rule must be served from style.css');
+    assert.ok(css.includes('.kas-mini-root .km-port{width:90px}'),
+        'mixed-port width must come from the .km-port class, not an inline style');
+    for (const rule of ['.kas-mini-root .km-btn', '.kas-mini-root #km-report', '.kas-mini-root .km-err', '.kas-mini-root #km-subwrap.km-off']) {
+        assert.ok(css.includes(rule), `moved kas-mini rule missing in style.css: ${rule}`);
+    }
+
+    const html = fs.readFileSync(indexHtmlPath, 'utf8');
+    assert.match(html, /<link rel="stylesheet" href="\/style\.css">/,
+        'index.html must link the self-hosted stylesheet that carries the kas-mini rules');
+});

@@ -41,3 +41,23 @@
 @media(max-width:680px){.brand-version{font-size:10px;margin-top:3px}.brand-copy{max-width:min(100%,190px)}}
 /* beta.8: readable known Doctor findings, expandable original evidence. */
 .doctor-finding-title{font-weight:650;margin:0 0 5px}.doctor-finding>.caption{margin:0 0 5px}.doctor-finding>a{display:inline-block;font-size:12px;margin:4px 0 8px}.doctor-finding details summary{min-height:44px}.doctor-finding details p{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* beta.10 (issue #225): kas-mini styles moved out of the vendor mount. The panel CSP
+   is style-src 'self', so kas-mini-mount.js must not inject an inline <style> element;
+   these rules are the former mount CSS, unchanged, plus .km-port (the former inline
+   style="width:90px" of #km-mixedPort). #km-wgFiles additionally hides through the
+   native [hidden]{display:none!important} rule above, independent of these classes. */
+.kas-mini-root p{margin:6px 0}
+.kas-mini-root textarea{width:100%;box-sizing:border-box;min-height:110px;font-family:ui-monospace,monospace}
+.kas-mini-root #km-preview{min-height:220px}
+.kas-mini-root .km-label{display:block;margin:8px 0 2px}
+.kas-mini-root .km-opt{display:inline-flex;gap:6px;align-items:center;margin:4px 14px 4px 0}
+.kas-mini-root fieldset{border:1px solid #8884;border-radius:8px;margin:10px 0}
+.kas-mini-root .km-btn{padding:6px 14px;margin:6px 6px 0 0}
+.kas-mini-root #km-report{margin-top:10px}
+.kas-mini-root .km-err{color:#c0392b}
+.kas-mini-root .km-warn{color:#b8860b}
+.kas-mini-root .km-note{color:#666;font-size:12px}
+.kas-mini-root .km-hidden{display:none}
+.kas-mini-root #km-subwrap.km-off{opacity:.5}
+.kas-mini-root .km-port{width:90px}
