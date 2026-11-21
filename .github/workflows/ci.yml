@@ -112,6 +112,9 @@ jobs:
           sudo python3 tests/mihomo-init-contract-regression.py
           python3 tests/mihomo-init-safety-regression.py
 
+      - name: Entware/BusyBox preflight regression (issue #356, read-only)
+        run: sudo python3 tests/busybox-preflight-regression.py
+
       - name: Transaction invariants
         run: python3 tests/transaction-invariants.py
 
@@ -127,6 +130,14 @@ jobs:
       - name: MagiTrickle post-install runtime health regression (issue #427)
         run: python3 tests/magitrickle-runtime-regression.py
 
+      - name: MagiTrickle KN fallback and fresh-Entware arch registration regression
+        run: |
+          python3 tests/magitrickle-kn-fallback-regression.py
+          python3 tests/magitrickle-kn-arch-regression.py
+
+      - name: Uninstall read-only preflight and blocked removal regression
+        run: python3 tests/uninstall-audit-regression.py
+
       - name: Doctor Netfilter chain classification (dash and BusyBox ash)
         run: |
           sh tests/doctor-netfilter-probe-regression.sh .
@@ -140,6 +151,16 @@ jobs:
 
       - name: Downloader partial-transfer regression (dash and BusyBox ash)
         run: python3 tests/download-regression.py
+
+      - name: Installer tmpfs protection regression (dash and BusyBox ash)
+        run: |
+          sh tests/installer-tmpfs-regression.sh
+          busybox sh tests/installer-tmpfs-regression.sh
+
+      - name: Installer script pinning and trusted-directory hardening regression (dash and BusyBox ash)
+        run: |
+          sh tests/installer-hardening-regression.sh
+          busybox sh tests/installer-hardening-regression.sh
 
       - name: Process discovery and KAS-SAFETY-001 executable policy matrix (dash and BusyBox ash)
         run: |
