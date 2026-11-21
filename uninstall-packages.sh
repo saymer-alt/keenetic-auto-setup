@@ -227,10 +227,14 @@ if [ "$PURGE" -eq 1 ]; then
 fi
 
 # Separate opt-in file cleanup, limited to resources recorded as KAS-created.
+# Runs only after every package removal succeeded (failed == 0), so the
+# MagiTrickle architecture fragment (kas-mt-arch.conf) is deleted strictly
+# after the magitrickle package: opkg remove needs the registered arch to
+# still exist (docs/37 invariant).
 if [ "$CLEANUP" -eq 1 ] && [ "$failed" -eq 0 ]; then
     ledger="$ROOT/opt/etc/keenetic-auto-setup/ownership.v1"
     if [ -f "$ledger" ] && [ ! -L "$ledger" ]; then
-        for item in 'repository:magitrickle.conf:etc/opkg/magitrickle.conf' 'hook:020-bypass_wa.sh:etc/ndm/netfilter.d/020-bypass_wa.sh'; do
+        for item in 'repository:magitrickle.conf:etc/opkg/magitrickle.conf' 'repository:kas-mt-arch.conf:etc/opkg/kas-mt-arch.conf' 'hook:020-bypass_wa.sh:etc/ndm/netfilter.d/020-bypass_wa.sh'; do
             kind=${item%%:*}; rest=${item#*:}; claim=${rest%%:*}; rel=${rest#*:}
             path="$ROOT/opt/$rel"
             grep -Fqx "owned|$kind|$claim" "$ledger" || continue

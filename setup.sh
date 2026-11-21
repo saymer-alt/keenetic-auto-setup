@@ -3,8 +3,38 @@
 set -e
 
 PROJECT_REF="${KEENETIC_AUTO_SETUP_REF:-stable}"
-PROJECT_RAW_BASE="https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/${PROJECT_REF}"
-PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
+# Test-only endpoint overrides (issue #232 offline regressions). Without them
+# the production sources are used. An override is accepted only as a plain
+# loopback HTTP URL, so a stray environment can never redirect a real install
+# at an arbitrary host.
+pick_mock_base() {
+    _pmb_name=${1:-}
+    eval "_pmb_val=\${$_pmb_name:-}"
+    if [ -z "$_pmb_val" ]; then printf '%s\n' "$2"; return 0; fi
+    case "$_pmb_val" in
+        http://127.0.0.1:*|http://localhost:*)
+            _pmb_port=${_pmb_val#http://}
+            _pmb_port=${_pmb_port%%/*}
+            _pmb_port=${_pmb_port#*:}
+            case "$_pmb_port" in
+                ''|*[!0-9]*) ;;
+                *)
+                    case "$_pmb_val" in
+                        *[!A-Za-z0-9_./:-]*) ;;
+                        *) printf '%s\n' "$_pmb_val"; return 0 ;;
+                    esac ;;
+            esac ;;
+    esac
+    printf '[ERROR] %s must be unset or a loopback http URL\n' "$_pmb_name" >&2
+    return 2
+}
+MOCK_NOR=
+[ -z "${KAS_MOCK_GH_RAW_BASE:-}${KAS_MOCK_GH_API_BASE:-}${KAS_MOCK_GL_RAW_BASE:-}${KAS_MOCK_GL_API_BASE:-}" ] || MOCK_NOR='--max-redirs 0'
+
+PROJECT_RAW_BASE="$(pick_mock_base KAS_MOCK_GH_RAW_BASE 'https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup')/${PROJECT_REF}" || exit 2
+PROJECT_API_CONTENTS="$(pick_mock_base KAS_MOCK_GH_API_BASE 'https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents')" || exit 2
+PROJECT_GL_RAW_BASE="$(pick_mock_base KAS_MOCK_GL_RAW_BASE 'https://gitlab.com/saymer-alt/keenetic-auto-setup')" || exit 2
+PROJECT_GL_API_BASE="$(pick_mock_base KAS_MOCK_GL_API_BASE 'https://gitlab.com/api/v4')" || exit 2
 INSTALL_STAGE="/tmp/keenetic-auto-setup-install.$$"
 CONFIG_IMPORT_STAGE="/tmp/keenetic-auto-setup-config-import.$$"
 PROC_MOUNTS="${SETUP_MOUNTS:-/proc/mounts}"
@@ -52,8 +82,29 @@ trap cleanup EXIT INT TERM HUP
 
 script_candidate_ok() {
     _sc_file="$1"
+    _sc_rel="$2"
     [ -s "$_sc_file" ] || return 1
     [ "$(head -n 1 "$_sc_file" 2>/dev/null)" = "#!/bin/sh" ] || return 1
+    # Full-content EOF/size contract (issue #232): reject any truncated or
+    # partial candidate even when the head and sh -n look correct; curl may
+    # exit 0 on a short read. The size floor stays far below released sizes
+    # so legitimate future versions can never trip it; the exact sentinel
+    # line is the authoritative completeness check, sh -n is only syntax.
+    [ "$(tail -n 1 "$_sc_file" 2>/dev/null)" = "# KAS_EOF_V1" ] || return 1
+    _sc_size=$(wc -c < "$_sc_file" 2>/dev/null | tr -d ' \t')
+    [ -n "$_sc_size" ] && [ "$_sc_size" -ge 5000 ] || return 1
+    # Each staged script keeps its own stable project markers, so an HTML,
+    # JSON, or unrelated syntactically valid response cannot pass.
+    case "$_sc_rel" in
+        install.sh)
+            grep -Fq 'MIHOMO_LIFECYCLE_LOCK=' "$_sc_file" || return 1
+            grep -Fq 'magitrickle' "$_sc_file" || return 1
+            ;;
+        config-import.sh)
+            grep -Fq 'BEGIN MIHOMO LIFECYCLE LOCK v1' "$_sc_file" || return 1
+            grep -Fq 'mixed-port: 7890' "$_sc_file" || return 1
+            ;;
+    esac
     sh -n "$_sc_file" >/dev/null 2>&1
 }
 
@@ -64,21 +115,21 @@ curl_to_file_once() {
     _rc_curve="${4:-}"
     if [ "$_rc_api" -eq 1 ]; then
         if [ -n "$_rc_curve" ]; then
-            curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
+            curl -fSsL $MOCK_NOR --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$_rc_url" -o "$_rc_dst" 2>/dev/null
         else
-            curl -fSsL --connect-timeout 5 --max-time 20 \
+            curl -fSsL $MOCK_NOR --connect-timeout 5 --max-time 20 \
                 -H "Accept: application/vnd.github.raw+json" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$_rc_url" -o "$_rc_dst" 2>/dev/null
         fi
     elif [ -n "$_rc_curve" ]; then
-        curl -fSsL --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
+        curl -fSsL $MOCK_NOR --connect-timeout 5 --max-time 20 -4 --curves "$_rc_curve" \
             "$_rc_url" -o "$_rc_dst" 2>/dev/null
     else
-        curl -fSsL --connect-timeout 5 --max-time 20 \
+        curl -fSsL $MOCK_NOR --connect-timeout 5 --max-time 20 \
             "$_rc_url" -o "$_rc_dst" 2>/dev/null
     fi
 }
@@ -110,6 +161,10 @@ retry_curl_to_file() {
 retry_wget_to_file() {
     _rw_url="$1"
     _rw_dst="$2"
+    # BusyBox wget has no portable redirect limit. In explicit mock mode,
+    # never let a loopback test URL redirect to an arbitrary network host.
+    # Normal (non-mock) wget fallback stays unchanged.
+    [ -z "$MOCK_NOR" ] || return 1
     command -v wget >/dev/null 2>&1 || return 1
     # wget -T bounds connect/read gaps only: a trickling server keeps one
     # attempt alive indefinitely because every read arrives before -T fires.
@@ -141,27 +196,27 @@ download_project_script() {
     rm -f "$_dps_dst" 2>/dev/null || true
 
     if retry_curl_to_file "$_dps_raw" "$_dps_dst"; then
-        if script_candidate_ok "$_dps_dst"; then
+        if script_candidate_ok "$_dps_dst" "$_dps_rel"; then
             return 0
         fi
         rm -f "$_dps_dst" 2>/dev/null || true
-        if command -v wget >/dev/null 2>&1; then
+        if [ -z "$MOCK_NOR" ] && command -v wget >/dev/null 2>&1; then
             warn "raw/curl returned an invalid script candidate for $_dps_rel; trying wget fallback"
         else
             warn "raw/curl returned an invalid script candidate for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
         fi
     else
         rm -f "$_dps_dst" 2>/dev/null || true
-        if command -v wget >/dev/null 2>&1; then
+        if [ -z "$MOCK_NOR" ] && command -v wget >/dev/null 2>&1; then
             warn "raw/curl failed after bounded retries for $_dps_rel; trying wget fallback"
         else
             warn "raw/curl failed after bounded retries for $_dps_rel; wget unavailable, trying GitHub Contents API fallback"
         fi
     fi
 
-    if command -v wget >/dev/null 2>&1; then
+    if [ -z "$MOCK_NOR" ] && command -v wget >/dev/null 2>&1; then
         if retry_wget_to_file "$_dps_raw" "$_dps_dst"; then
-            if script_candidate_ok "$_dps_dst"; then
+            if script_candidate_ok "$_dps_dst" "$_dps_rel"; then
                 return 0
             fi
             rm -f "$_dps_dst" 2>/dev/null || true
@@ -173,14 +228,80 @@ download_project_script() {
     fi
 
     if retry_curl_to_file "$_dps_api" "$_dps_dst" 1; then
-        if script_candidate_ok "$_dps_dst"; then
+        if script_candidate_ok "$_dps_dst" "$_dps_rel"; then
             return 0
         fi
         warn "GitHub Contents API returned an invalid script candidate for $_dps_rel"
     fi
 
+    # Verified GitLab mirror stage (issue #232): runs only after every GitHub
+    # transport failed. The mirror's own repository files API attests the
+    # exact blob id, byte size and content SHA256 for the same ref; the
+    # candidate must reproduce all three locally before the full script
+    # contract applies. Any miss fails closed: no partial, drifted, or
+    # foreign content is ever executed.
+    if download_project_script_gitlab "$_dps_rel" "$_dps_dst"; then
+        return 0
+    fi
+
     rm -f "$_dps_dst" 2>/dev/null || true
     return 1
+}
+
+download_project_script_gitlab() {
+    _dpg_rel="$1"
+    _dpg_dst="$2"
+    command -v sha256sum >/dev/null 2>&1 || {
+        warn "sha256sum unavailable; GitLab mirror fallback disabled"
+        return 1
+    }
+    command -v sha1sum >/dev/null 2>&1 || {
+        warn "sha1sum unavailable; GitLab mirror fallback disabled"
+        return 1
+    }
+    if ! retry_curl_to_file "$PROJECT_GL_API_BASE/projects/saymer-alt%2Fkeenetic-auto-setup/repository/files/$_dpg_rel?ref=$PROJECT_REF" "$_dpg_dst.meta"; then
+        warn "GitLab mirror attestation request failed for $_dpg_rel"
+        rm -f "$_dpg_dst.meta" 2>/dev/null || true
+        return 1
+    fi
+    _dpg_blob=$(grep -oE '"blob_id":"[0-9a-f]{40}"' "$_dpg_dst.meta" 2>/dev/null | head -n 1 | cut -d '"' -f4)
+    _dpg_size=$(grep -oE '"size":[0-9]+' "$_dpg_dst.meta" 2>/dev/null | head -n 1 | tr -cd '0-9')
+    _dpg_sha=$(grep -oE '"content_sha256":"[0-9a-f]{64}"' "$_dpg_dst.meta" 2>/dev/null | head -n 1 | cut -d '"' -f4)
+    rm -f "$_dpg_dst.meta" 2>/dev/null || true
+    if [ -z "$_dpg_blob" ] || [ -z "$_dpg_size" ] || [ -z "$_dpg_sha" ]; then
+        warn "GitLab mirror attestation incomplete for $_dpg_rel; refusing to use mirror"
+        return 1
+    fi
+    if ! retry_curl_to_file "$PROJECT_GL_RAW_BASE/-/raw/$PROJECT_REF/$_dpg_rel" "$_dpg_dst"; then
+        warn "GitLab mirror download failed for $_dpg_rel"
+        rm -f "$_dpg_dst" 2>/dev/null || true
+        return 1
+    fi
+    _dpg_got=$(wc -c < "$_dpg_dst" 2>/dev/null | tr -d ' \t')
+    if [ "$_dpg_got" != "$_dpg_size" ]; then
+        warn "GitLab mirror partial/wrong size for $_dpg_rel (got $_dpg_got); refusing"
+        rm -f "$_dpg_dst" 2>/dev/null || true
+        return 1
+    fi
+    _dpg_have=$(sha256sum "$_dpg_dst" 2>/dev/null | awk '{print $1}')
+    if [ "$_dpg_have" != "$_dpg_sha" ]; then
+        warn "GitLab mirror SHA256 does not match attestation for $_dpg_rel; refusing"
+        rm -f "$_dpg_dst" 2>/dev/null || true
+        return 1
+    fi
+    _dpg_gitblob=$( { printf 'blob %s\0' "$(wc -c < "$_dpg_dst")"; cat "$_dpg_dst"; } | sha1sum | awk '{print $1}')
+    if [ "$_dpg_gitblob" != "$_dpg_blob" ]; then
+        warn "GitLab mirror git blob id does not match attestation for $_dpg_rel; refusing"
+        rm -f "$_dpg_dst" 2>/dev/null || true
+        return 1
+    fi
+    if ! script_candidate_ok "$_dpg_dst" "$_dpg_rel"; then
+        warn "GitLab mirror content contract failed for $_dpg_rel; refusing execution"
+        rm -f "$_dpg_dst" 2>/dev/null || true
+        return 1
+    fi
+    log "Validated source from verified GitLab mirror for $_dpg_rel"
+    return 0
 }
 
 classify_mount() {
@@ -284,3 +405,6 @@ echo
 echo "Optional full diagnostic:"
 echo "  curl -fSsL --connect-timeout 5 --max-time 20 ${PROJECT_RAW_BASE}/mihomo-doctor.sh | sh"
 echo "If raw GitHub TLS stalls before script output, retry curl with: --curves X25519"
+
+# Full-content EOF contract marker for bootstrap staging (issue #232).
+# KAS_EOF_V1

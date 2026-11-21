@@ -1,0 +1,47 @@
+{
+  "schema": "kas-mihomo-official-mirror/v1",
+  "upstream_repository": "saymer-alt/entware-go",
+  "upstream_release_tag": "latest",
+  "upstream_release_published": "2026-05-16T17:45:50Z",
+  "package_version": "1.19.34-3",
+  "packages": [
+    {
+      "architecture": "aarch64-3.10",
+      "name": "mihomo_1.19.34-3_aarch64-3.10.ipk",
+      "size": 13315678,
+      "sha256": "8b4f4b5b4bad42253b3aa886606f82e019412346bec2ac0b796455bcbb973f07"
+    },
+    {
+      "architecture": "armv7-3.2",
+      "name": "mihomo_1.19.34-3_armv7-3.2.ipk",
+      "size": 12883878,
+      "sha256": "f93b1937b0f31d95264965941e13e8bce8bb8eabeba787e4bbb70e6c547ec2d9"
+    },
+    {
+      "architecture": "mips-3.4",
+      "name": "mihomo_1.19.34-3_mips-3.4.ipk",
+      "size": 12671314,
+      "sha256": "3b06d5414b8b1181dba0b2c94ee201061e61c515dac3135808aeede15599048b"
+    },
+    {
+      "architecture": "mipsel-3.4",
+      "name": "mihomo_1.19.34-3_mipsel-3.4.ipk",
+      "size": 12892993,
+      "sha256": "3176e3f402f7f7f10aca3659fb57f0cd53c4d9d2b34d3e270a620c0dfdfc948f"
+    },
+    {
+      "architecture": "armv7-3.2",
+      "package": "mihomo_nohf",
+      "name": "mihomo_nohf_1.19.34-3_armv7-3.2.ipk",
+      "size": 12879049,
+      "sha256": "7ae722584f219a2aa008e384be171be9fe04153ef01f8afda83741a9d8d66283"
+    }
+  ],
+  "notes": [
+    "Verified 2026-11-19/20: downloaded from the official saymer-alt/entware-go release tag 'latest' and hashed independently; control fields checked (Package: mihomo / mihomo_nohf, Version: 1.19.34-3, Architecture per ABI, Depends: ca-bundle); sizes and SHA256 re-confirmed against the GitHub API asset digests on 2026-11-20.",
+    "This is the first snapshot shipping the upstream S28mihomo init script (Entware/entware-go ee4b689 network-service ordering): data.tar.gz contains ./opt/etc/init.d/S28mihomo (0755, package-owned) and no S99mihomo; scripts/verify_mihomo_mirror.py enforces the data-level init identity for each reviewed snapshot (1.19.34-2 -> S99mihomo, 1.19.34-3 -> S28mihomo).",
+    "The upstream tag 'latest' is a MOVING tag and its releases/latest REST pointer may be hijacked by newer archive releases (entware-go issue #71): this manifest pins the exact asset bytes observed at verification time; any upstream republish invalidates it and requires a new reviewed manifest version.",
+    "The nohf variant is an explicitly named distinct package (mihomo_nohf), not a substitute for armv7-3.2 mihomo.",
+    "The upstream release also carries mihomo_1.19.34-3_x64-3.2.ipk (16065944 bytes, sha256 0b9b4b6d5a9010ecaf07048c87e6cbc14c469d122b625f237861493b78078652); it is deliberately out of the router mirror scope, same as in the reviewed 1.19.34-2 snapshot."
+  ]
+}

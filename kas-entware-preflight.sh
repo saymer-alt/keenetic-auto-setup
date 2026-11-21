@@ -222,6 +222,68 @@ else
     esac
 fi
 
+# Parse exactly one installed OPKG record with shell builtins only.
+# Do not rely on /opt-provided sed/head/grep while diagnosing broken BusyBox
+# applets: ambiguous or missing metadata becomes UNKNOWN, never false PASS.
+opkg_installed_version() {
+    _oiv_name=$1
+    _oiv_data=$2
+    _oiv_package=''
+    _oiv_version=''
+    _oiv_state=''
+    _oiv_package_count=0
+    _oiv_version_count=0
+    _oiv_state_count=0
+    while IFS= read -r _oiv_line; do
+        case "$_oiv_line" in
+            'Package: '*)
+                _oiv_package=${_oiv_line#'Package: '}
+                _oiv_package_count=$((_oiv_package_count + 1)) ;;
+            'Version: '*)
+                _oiv_version=${_oiv_line#'Version: '}
+                _oiv_version_count=$((_oiv_version_count + 1)) ;;
+            'Status: '*)
+                _oiv_state=${_oiv_line#'Status: '}
+                _oiv_state_count=$((_oiv_state_count + 1)) ;;
+        esac
+    done <<EOF
+$_oiv_data
+EOF
+    [ "$_oiv_package_count" -eq 1 ] || return 1
+    [ "$_oiv_version_count" -eq 1 ] || return 1
+    [ "$_oiv_state_count" -eq 1 ] || return 1
+    [ "$_oiv_package" = "$_oiv_name" ] || return 1
+    [ "$_oiv_state" = 'install ok installed' ] || return 1
+    case "$_oiv_version" in
+        ''|*[!A-Za-z0-9.~+-]*) return 1 ;;
+    esac
+    printf '%s\n' "$_oiv_version"
+}
+
+# --- 5b. curl/libcurl version skew (field bug #254) --------------------------
+# The real Entware feed declares 'Depends: ..., libcurl' WITHOUT a version
+# bound, so a selective 'opkg install curl' can upgrade the binary alone and
+# leave an ABI-incompatible library (field 2026-11-17: curl 8.23.0-1 +
+# libcurl 8.15.0-2 -> 'undefined symbol: curl_multi_get_offt').  Read-only
+# comparison of the installed versions; repair stays a manual operator step.
+if [ -z "$OPKG_BIN" ]; then
+    emit UNKNOWN "curl-libcurl-skew" "opkg unavailable; curl/libcurl version skew cannot be checked"
+else
+    # Missing/incomplete opkg status is UNKNOWN, never an implicit PASS.
+    # Keep the preflight read-only and independent of executing /opt/bin/curl.
+    _curl_status=$("$OPKG_BIN" status curl 2>/dev/null) || _curl_status=""
+    _libcurl_status=$("$OPKG_BIN" status libcurl 2>/dev/null) || _libcurl_status=""
+    _curl_ver=$(opkg_installed_version curl "$_curl_status") || _curl_ver=''
+    _libcurl_ver=$(opkg_installed_version libcurl "$_libcurl_status") || _libcurl_ver=''
+    if [ -z "$_curl_ver" ] || [ -z "$_libcurl_ver" ]; then
+        emit UNKNOWN "curl-libcurl-skew" "curl/libcurl installed-version metadata missing or incomplete; cannot establish version alignment"
+    elif [ "$_curl_ver" != "$_libcurl_ver" ]; then
+        emit FAIL "curl-libcurl-skew" "curl $_curl_ver vs libcurl $_libcurl_ver: unversioned feed dependency allowed a partial upgrade; downloads with this curl are unreliable — realign the libcurl package from the feed manually (see docs/32-entware-curl-libcurl-skew.md) before using KAS installers"
+    else
+        emit PASS "curl-libcurl-skew" "installed curl/libcurl package versions agree ($_curl_ver); this does not prove runtime ABI or HTTPS"
+    fi
+fi
+
 # --- 6. poorbox fallback (informational, optional) --------------------------
 if [ -x /opt/usr/bin/poorbox ] || { [ -L /opt/usr/bin/poorbox ] && [ -e /opt/usr/bin/poorbox ]; }; then
     emit PASS "poorbox-fallback" "/opt/usr/bin/poorbox present (limited historical fallback; not a full shell)"

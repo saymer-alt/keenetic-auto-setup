@@ -33,6 +33,67 @@ command -v curl >/dev/null 2>&1 || fail 'curl required: opkg update && opkg inst
 command -v jq >/dev/null 2>&1 || fail 'jq required: opkg update && opkg install jq'
 command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum required'
 command -v opkg >/dev/null 2>&1 || fail 'Entware opkg required'
+# Root cause of field bug #254: the real Entware feed declares
+# 'Depends: ..., libcurl' WITHOUT a version bound, so 'opkg install curl'
+# upgrades the binary alone and leaves an ABI-incompatible libcurl installed
+# (field: curl 8.23.0-1 + libcurl 8.15.0-2 -> undefined curl_multi_get_offt).
+# A direct package-database comparison catches that skew before any download,
+# independently of what 'curl -V' manages to start. Read-only: never upgrade
+# feeds or touch package ownership; the repair stays an explicit operator step.
+# Share the preflight's read-only, strict installed-record parser (POSIX sh).
+# An absent, duplicated, malformed or uninstalled OPKG record is NOT a
+# guarantee that curl and libcurl have matching versions.
+opkg_installed_version() {
+    _oiv_name=$1
+    _oiv_data=$2
+    _oiv_package=''
+    _oiv_version=''
+    _oiv_state=''
+    _oiv_package_count=0
+    _oiv_version_count=0
+    _oiv_state_count=0
+    while IFS= read -r _oiv_line; do
+        case "$_oiv_line" in
+            'Package: '*)
+                _oiv_package=${_oiv_line#'Package: '}
+                _oiv_package_count=$((_oiv_package_count + 1)) ;;
+            'Version: '*)
+                _oiv_version=${_oiv_line#'Version: '}
+                _oiv_version_count=$((_oiv_version_count + 1)) ;;
+            'Status: '*)
+                _oiv_state=${_oiv_line#'Status: '}
+                _oiv_state_count=$((_oiv_state_count + 1)) ;;
+        esac
+    done <<EOF
+$_oiv_data
+EOF
+    [ "$_oiv_package_count" -eq 1 ] || return 1
+    [ "$_oiv_version_count" -eq 1 ] || return 1
+    [ "$_oiv_state_count" -eq 1 ] || return 1
+    [ "$_oiv_package" = "$_oiv_name" ] || return 1
+    [ "$_oiv_state" = 'install ok installed' ] || return 1
+    case "$_oiv_version" in
+        ''|*[!A-Za-z0-9.~+-]*) return 1 ;;
+    esac
+    printf '%s\n' "$_oiv_version"
+}
+_curl_status=$(opkg status curl 2>/dev/null) || _curl_status=''
+_libcurl_status=$(opkg status libcurl 2>/dev/null) || _libcurl_status=''
+_curl_ver=$(opkg_installed_version curl "$_curl_status") || _curl_ver=''
+_libcurl_ver=$(opkg_installed_version libcurl "$_libcurl_status") || _libcurl_ver=''
+if [ -z "$_curl_ver" ] || [ -z "$_libcurl_ver" ]; then
+  fail 'curl/libcurl installed-package records missing, malformed or unconfirmed: inspect opkg status curl and opkg status libcurl, repair Entware package state manually before retrying'
+fi
+if [ "$_curl_ver" != "$_libcurl_ver" ]; then
+  fail "curl/libcurl version skew detected ($_curl_ver vs $_libcurl_ver): run 'opkg update && opkg install libcurl' to realign, then retry (field bug: undefined curl_multi_get_offt)"
+fi
+# An executable curl path is not enough: a partial Entware package upgrade
+# can leave curl and libcurl ABI-incompatible (field: aarch64-3.10, 2026-11-17).
+# LD_BIND_NOW catches lazily resolved undefined symbols that plain curl -V can
+# miss. Read-only probe: never auto-upgrade feeds or mutate package ownership.
+if ! LD_BIND_NOW=1 curl -V >/dev/null 2>&1; then
+  fail 'curl cannot start (possible curl/libcurl ABI mismatch); check: opkg list-installed | grep -E "^(curl|libcurl)"; verify feeds and repair libcurl manually before retrying'
+fi
 ARCH=$(opkg print-architecture | awk '
   $1=="arch" {
     a=$2; sub(/_kn$/,"",a)

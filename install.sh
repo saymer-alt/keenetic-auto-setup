@@ -969,7 +969,8 @@ kas_ledger_record() {
             ;;
         owned\|policy\|bypass_wa|enabled\|dns\|intercept|\
         owned\|package\|mihomo|owned\|package\|magitrickle|\
-        owned\|repository\|magitrickle.conf|owned\|hook\|020-bypass_wa.sh|\
+        owned\|repository\|magitrickle.conf|owned\|repository\|kas-mt-arch.conf|\
+        owned\|hook\|020-bypass_wa.sh|\
         owned\|watchdog\|binary|owned\|watchdog\|wrapper|owned\|service\|S00ubifs) ;;
         *) return 1 ;;
     esac
@@ -1035,8 +1036,47 @@ fi
 # ---------------------------
 # OPKG UPDATE
 # ---------------------------
+# BEGIN MAGITRICKLE FEED PROBE v1
+# A MagiTrickle feed outage alone must not abort the whole install before the
+# MagiTrickle section below can try its pinned fallback. Probe only the
+# MagiTrickle feed URLs; return 0 when every MagiTrickle feed URL is
+# unreachable (so the failure is attributable to that feed, not verified for
+# other feeds — a real Entware outage still surfaces at the strict base
+# package installs immediately after this step).
+mt_feed_unreachable() {
+    [ -e /opt/etc/opkg/magitrickle.conf ] || return 1
+    _mtfu_urls=$(awk '$1 == "src/gz" { print $3 }' /opt/etc/opkg/magitrickle.conf 2>/dev/null)
+    [ -n "$_mtfu_urls" ] || return 1
+    for _mtfu_url in $_mtfu_urls; do
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fsS --connect-timeout 4 --max-time 10 -o /dev/null "$_mtfu_url/Packages.gz" ||
+               curl -fsS --connect-timeout 4 --max-time 10 -o /dev/null "$_mtfu_url/Packages"; then
+                return 1
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -q -T 10 -O /dev/null "$_mtfu_url/Packages.gz" ||
+               wget -q -T 10 -O /dev/null "$_mtfu_url/Packages"; then
+                return 1
+            fi
+        else
+            return 1
+        fi
+    done
+    return 0
+}
+
 log "Updating opkg..."
-retry opkg update || err "opkg update failed"
+if retry opkg update; then
+    :
+else
+    if ! opkg list-installed 2>/dev/null | grep -q "^magitrickle " &&
+       mt_feed_unreachable; then
+        warn "opkg update failed while every MagiTrickle feed URL is unreachable and MagiTrickle is not installed; continuing so the MagiTrickle section can use its pinned fallback"
+    else
+        err "opkg update failed"
+    fi
+fi
+# END MAGITRICKLE FEED PROBE v1
 
 # ---------------------------
 # BASE PACKAGES (strict install)
@@ -1088,12 +1128,81 @@ command -v jq >/dev/null 2>&1 || err "jq not available after install"
 # with a same-filesystem rename. A failed transfer never truncates an already
 # installed project file.
 PROJECT_API_CONTENTS="https://api.github.com/repos/saymer-alt/keenetic-auto-setup/contents"
+# Pin the contents of each project script downloaded by this installer.
+KAS_BYPASS_HOOK_SHA256="b36ae2308edd3f4a62a3c91cd698342a4bec9d8d9262aaba935b6b5232226a8c"
+KAS_S00UBIFS_SHA256="e597d96154c1775b7b0a9cb916ba62401dc51b29ac20da78aaf1e321ccddf9fe"
+KAS_WATCHDOG_SHA256="af7a1b10423cd24aaa41d1f14b367b36989521301f40ccbdacfd11c6aec53822"
+
+# BEGIN KAS TRUSTED DIRECTORY
+# Ported KeeneticOS ships /bin/sh but no firmware BusyBox. On those
+# builds the normal root-managed Entware executable is the trust base.
+kas_busybox() {
+    if [ -x /bin/busybox ]; then
+        /bin/busybox "$@"
+    else
+        /opt/bin/busybox "$@"
+    fi
+}
+# The firmware may mount /opt or provide a symlink to Entware. Use the
+# validated physical path and reject writable ancestors and links below it.
+kas_trusted_directory() {
+    kas_path=$1
+    kas_opt=$2
+    case "$kas_path" in "$kas_opt"/*) ;; *) return 1 ;; esac
+    kas_real=$(kas_busybox readlink -f "$kas_opt") || return 1
+    case "$kas_real" in /*) ;; *) return 1 ;; esac
+    [ "$kas_real" != / ] || return 1
+    kas_parent=
+    kas_tail="${kas_real#"$kas_parent"/}${kas_path#"$kas_opt"}"
+    while :; do
+        [ ! -L "${kas_parent:-/}" ] && [ -d "${kas_parent:-/}" ] || return 1
+        kas_immutable=0
+        if [ -z "$kas_parent" ] && kas_busybox awk '
+            $2=="/" { roots++; if ($3=="squashfs" && $4 ~ /(^|,)ro(,|$)/) readonly=1 }
+            END { exit !(roots==1 && readonly) }
+        ' /proc/self/mounts; then
+            kas_immutable=1
+        fi
+        LC_ALL=C kas_busybox ls -ldn "${kas_parent:-/}" 2>/dev/null |
+            kas_busybox awk -v owner=0 -v immutable="$kas_immutable" '
+                NR==1 && $1 ~ /^d/ && $3==owner &&
+                    (immutable || (substr($1,6,1)!="w" && substr($1,9,1)!="w")) { safe=1 }
+                END { exit !(NR==1 && safe) }
+            ' || return 1
+        [ -n "$kas_tail" ] || break
+        kas_component=${kas_tail%%/*}
+        case "$kas_component" in ''|.|..) return 1 ;; esac
+        kas_parent="$kas_parent/$kas_component"
+        case "$kas_tail" in */*) kas_tail=${kas_tail#*/} ;; *) kas_tail= ;; esac
+    done
+    kas_trusted_path=$kas_parent
+}
+# END KAS TRUSTED DIRECTORY
+
 
 project_script_candidate_ok() {
     _psc_file="$1"
     [ -s "$_psc_file" ] || return 1
     [ "$(head -n 1 "$_psc_file" 2>/dev/null)" = "#!/bin/sh" ] || return 1
-    sh -n "$_psc_file" >/dev/null 2>&1
+    sh -n "$_psc_file" >/dev/null 2>&1 || return 1
+    [ -n "${2:-}" ] || return 0
+    _psc_digest=$(sha256sum < "$_psc_file") || return 1
+    [ "${_psc_digest%% *}" = "$2" ]
+}
+
+# Reuse a project script already present at its destination without a second
+# download only when it is a regular, executable file that passes the same
+# validator as a freshly downloaded candidate, including the mandatory digest
+# pin. Any miss (missing file, link, wrong revision, no sha256sum) falls back
+# to the download path, which stays fail-closed.
+project_script_reuse_pinned() {
+    _psr_file="$1"
+    _psr_digest="${2:-}"
+    [ -n "$_psr_digest" ] || return 1
+    [ -f "$_psr_file" ] || return 1
+    [ ! -L "$_psr_file" ] || return 1
+    [ -x "$_psr_file" ] || return 1
+    project_script_candidate_ok "$_psr_file" "$_psr_digest"
 }
 
 # Invalidate each attempt, including retries within one transport. A successful
@@ -1142,6 +1251,7 @@ project_script_curl_retry() {
 project_script_download() {
     _psd_rel="$1"
     _psd_dest="$2"
+    _psd_digest="${3:-}"
     _psd_tmp="$TMP_DIR/.keenetic-auto-setup-download.$$"
     _psd_stage="${_psd_dest}.new.$$"
     _psd_raw="$PROJECT_RAW_BASE/$_psd_rel"
@@ -1150,7 +1260,7 @@ project_script_download() {
     rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || return 1
 
     if project_script_curl_retry "$_psd_raw" "$_psd_tmp"; then
-        if project_script_candidate_ok "$_psd_tmp"; then
+        if project_script_candidate_ok "$_psd_tmp" "$_psd_digest"; then
             :
         else
             rm -f "$_psd_tmp" || return 1
@@ -1174,7 +1284,7 @@ project_script_download() {
     if [ ! -s "$_psd_tmp" ] && command -v wget >/dev/null 2>&1; then
         rm -f "$_psd_tmp" || return 1
         if retry_silent project_script_transfer "$_psd_tmp" wget -qO "$_psd_tmp" -T 20 "$_psd_raw"; then
-            if project_script_candidate_ok "$_psd_tmp"; then
+            if project_script_candidate_ok "$_psd_tmp" "$_psd_digest"; then
                 :
             else
                 warn "raw/wget returned an invalid script candidate for $_psd_rel; trying GitHub Contents API fallback"
@@ -1189,7 +1299,7 @@ project_script_download() {
     if [ ! -s "$_psd_tmp" ]; then
         rm -f "$_psd_tmp" || return 1
         if project_script_curl_retry "$_psd_api" "$_psd_tmp" 1; then
-            if ! project_script_candidate_ok "$_psd_tmp"; then
+            if ! project_script_candidate_ok "$_psd_tmp" "$_psd_digest"; then
                 warn "GitHub Contents API returned an invalid script candidate for $_psd_rel"
                 rm -f "$_psd_tmp" || return 1
             fi
@@ -1200,7 +1310,7 @@ project_script_download() {
         fi
     fi
 
-    if ! project_script_candidate_ok "$_psd_tmp"; then
+    if ! project_script_candidate_ok "$_psd_tmp" "$_psd_digest"; then
         rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
         return 1
     fi
@@ -1212,7 +1322,7 @@ project_script_download() {
         return 1
     }
 
-    if ! cp -f "$_psd_tmp" "$_psd_stage" || ! project_script_candidate_ok "$_psd_stage"; then
+    if ! cp -f "$_psd_tmp" "$_psd_stage" || ! project_script_candidate_ok "$_psd_stage" "$_psd_digest"; then
         rm -f "$_psd_tmp" "$_psd_stage" 2>/dev/null || true
         return 1
     fi
@@ -1660,7 +1770,7 @@ installer_tmpfs_activate() {
     _ita_root="$2"
     _ita_mounts="$3"
 
-    if project_script_download "S00ubifs" "$_ita_script"; then
+    if project_script_download "S00ubifs" "$_ita_script" "$KAS_S00UBIFS_SHA256"; then
         chmod +x "$_ita_script" || err "Cannot make S00ubifs executable; RAM mode initialization incomplete"
     else
         warn "S00ubifs download failed after raw/curl, raw/wget and GitHub API fallbacks"
@@ -1961,8 +2071,9 @@ ensure_bootstrap_config() {
 # mixed-port 7890 is the project contract port (Proxy0, watchdog, self-check);
 # until it listens, Proxy0 and the watchdog tunnel check stay down.
 # Replace this file with your real Mihomo config (docs/HOWTO, or build one at
-# https://github.com/saymer-alt/link-generators), then:
-#   /opt/etc/init.d/S99mihomo restart
+# https://github.com/saymer-alt/link-generators), then restart the installed
+# init script (S28mihomo on current packages, S99mihomo on older ones):
+#   /opt/etc/init.d/S28mihomo restart
 mixed-port: 7890
 EOF
         MIHOMO_RESTART_NEEDED=1
@@ -2421,6 +2532,269 @@ mt_confirm_after_start() {
 }
 # END MAGITRICKLE RUNTIME STATE v1
 
+# BEGIN MAGITRICKLE KN FALLBACK v1 (issue #505)
+# Strictly use official Entware _kn builds. GitHub is 0.8.2-2 and GitLab
+# is 0.8.2-1: same upstream core version, DIFFERENT package revisions.
+# Never replace or downgrade an existing MagiTrickle during fallback.
+mt_select_kn_arch() {
+    MT_KN_ARCH=""
+    _mt_arch_list=$(opkg print-architecture 2>/dev/null) || return 1
+    while read -r _mt_type _mt_candidate _mt_prio _mt_extra; do
+        [ "$_mt_type" = arch ] && [ -z "$_mt_extra" ] || continue
+        case "$_mt_candidate" in
+            aarch64-3.10_kn|mips-3.4_kn|mipsel-3.4_kn)
+                [ -z "$MT_KN_ARCH" ] || return 1
+                MT_KN_ARCH=$_mt_candidate ;;
+        esac
+    done <<EOF
+$_mt_arch_list
+EOF
+    [ -n "$MT_KN_ARCH" ]
+}
+
+mt_verify_installed_kn() {
+    _mt_status=$(opkg status magitrickle 2>/dev/null) || return 1
+    _mt_inst_arch=$(printf '%s\n' "$_mt_status" |
+        awk -F ': ' '$1 == "Architecture" { print $2; exit }')
+    [ "$_mt_inst_arch" = "$MT_KN_ARCH" ]
+}
+
+mt_verified_kn_fallback() {
+    # Only for clean installs; opkg failure/partial transaction is a hard stop.
+    pkg_is_installed magitrickle && return 1
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    _mt_dir=$(mktemp -d "$TMP_DIR/kas-mt-kn.XXXXXXXX") || return 1
+    _mt_ipk="$_mt_dir/magitrickle.ipk"
+    case "$MT_KN_ARCH" in
+        aarch64-3.10_kn)
+            _mt_github_sha=d3423385f542b012fb583f1135ce9c10ff90b4570a03af4bc2e272fa18d783ef
+            _mt_github_size=2548308
+            _mt_gitlab_sha=9ae3df3c33f8c836aa1adc34f79c5de4fd620dee5da96cef26015b0cec186c9b
+            _mt_gitlab_size=2547127 ;;
+        mips-3.4_kn)
+            _mt_github_sha=4fe3a712196e7498e336589c65240c0f109f63b3be4bc50473344c043a68b10b
+            _mt_github_size=2379639
+            _mt_gitlab_sha=21eb0d8e2a97fbe571998cdcc963c771c314d1bb4ea3e044e4951711162de9ea
+            _mt_gitlab_size=2380080 ;;
+        mipsel-3.4_kn)
+            _mt_github_sha=ad2732a4ab3d25abbf38a65ab8306d22138a959173234f6b2deb5326923fcd93
+            _mt_github_size=2418194
+            _mt_gitlab_sha=5a10083cc063731536d8c7820c008348e99a16cf821534f51f1a415f50421c0e
+            _mt_gitlab_size=2418259 ;;
+        *) rmdir "$_mt_dir" 2>/dev/null || true; return 1 ;;
+    esac
+    _mt_ok=1
+    for _mt_source in github gitlab; do
+        rm -f "$_mt_ipk"
+        case "$_mt_source" in
+            github)
+                _mt_expected=$_mt_github_sha
+                _mt_size=$_mt_github_size
+                _mt_revision=0.8.2-2
+                _mt_url="https://github.com/MagiTrickle/MagiTrickle/releases/download/0.8.2-rev2/magitrickle_0.8.2-2_entware_$MT_KN_ARCH.ipk" ;;
+            gitlab)
+                _mt_expected=$_mt_gitlab_sha
+                _mt_size=$_mt_gitlab_size
+                _mt_revision=0.8.2-1
+                _mt_url="https://gitlab.com/api/v4/projects/69165954/packages/generic/magitrickle/0.8.2/magitrickle_0.8.2-1_entware_$MT_KN_ARCH.ipk" ;;
+        esac
+        log "MT backup $_mt_source: $_mt_revision for $MT_KN_ARCH"
+        if command -v curl >/dev/null 2>&1; then
+            # HTTPS-only, including redirects: the pinned candidates are
+            # GitHub/GitLab https URLs and must never follow a downgrade.
+            if ! curl -q -fSsL --proto =https --proto-redir =https --connect-timeout 7 --max-time 50 "$_mt_url" -o "$_mt_ipk"; then
+                warn "MT backup $_mt_source download failed"
+                continue
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if ! wget -q -T 50 -O "$_mt_ipk" "$_mt_url"; then
+                warn "MT backup $_mt_source download failed"
+                continue
+            fi
+        else
+            warn "MT backup needs curl or wget"
+            break
+        fi
+        _mt_actual_size=$(wc -c < "$_mt_ipk" 2>/dev/null) || _mt_actual_size=""
+        _mt_actual_sha=$(sha256sum "$_mt_ipk" 2>/dev/null | awk '{print $1}') || _mt_actual_sha=""
+        if [ "$_mt_actual_size" != "$_mt_size" ] || [ "$_mt_actual_sha" != "$_mt_expected" ]; then
+            warn "MT backup $_mt_source SHA256/size mismatch; refusing unverified IPK"
+            continue
+        fi
+        log "MT backup $_mt_source hash OK; installing verified $MT_KN_ARCH IPK"
+        if opkg install "$_mt_ipk" && pkg_is_installed magitrickle &&
+           mt_verify_installed_kn; then
+            _mt_ok=0
+        else
+            warn "MT backup opkg/architecture failure: inspect partial package state"
+        fi
+        # Never retry a different package revision after an opkg transaction.
+        break
+    done
+    rm -f "$_mt_ipk"
+    rmdir "$_mt_dir" 2>/dev/null || true
+    return "$_mt_ok"
+}
+# END MAGITRICKLE KN FALLBACK v1
+
+# BEGIN MAGITRICKLE KN ARCH PREP v1 (issue #505 follow-up: fresh Entware)
+# mt_select_kn_arch requires a registered *_kn opkg architecture, but a
+# fresh Entware stack registers only the plain platform architecture and
+# the upstream add_repo.sh helper never registers any architecture. The
+# unconditional gate that used to sit here aborted the whole installer on
+# every fresh device. The derivation below is deliberately narrow:
+#   - the plain arch must already be registered by Entware itself
+#     (platform truth from opkg print-architecture, never uname/model);
+#   - the _kn name is the exact upstream-published variant of that plain
+#     arch (whitelist-guarded base name plus "_kn" suffix);
+#   - package bytes still pass the pinned SHA256/size gate and the
+#     post-install architecture re-check.
+# Registration writes a KAS-owned fragment that the official opkg reads
+# through its /opt/etc/opkg/*.conf glob in default-mode runs, which is how
+# install.sh invokes opkg on a device (verified against the official
+# Entware opkg binary; --offline-root disables the glob, a lab-rig quirk
+# only). Entware's opkg.conf and the helper-managed magitrickle.conf are
+# never modified. opkg remove needs the fragment to still exist: KAS
+# uninstall must remove the magitrickle package BEFORE this file.
+mt_arch_conf_path() {
+    printf '%s\n' "${KAS_MT_ARCH_CONF:-/opt/etc/opkg/kas-mt-arch.conf}"
+}
+
+mt_installed_mt_arch() {
+    # Print the single Architecture value of the installed magitrickle.
+    # rc 0 = value printed; rc 1 = not installed / not parseable;
+    # rc 2 = ambiguous distinct values (refuse to guess).
+    _mt_ima_status=$(opkg status magitrickle 2>/dev/null) || return 1
+    _mt_ima_found=""
+    _mt_ima_ambig=0
+    while IFS= read -r _mt_ima_line; do
+        case "$_mt_ima_line" in
+            "Architecture: "*)
+                _mt_ima_value=${_mt_ima_line#"Architecture: "}
+                [ -n "$_mt_ima_value" ] || continue
+                if [ -z "$_mt_ima_found" ]; then
+                    _mt_ima_found=$_mt_ima_value
+                elif [ "$_mt_ima_found" != "$_mt_ima_value" ]; then
+                    _mt_ima_ambig=1
+                fi ;;
+        esac
+    done <<EOF
+$_mt_ima_status
+EOF
+    [ "$_mt_ima_ambig" -eq 0 ] || return 2
+    [ -n "$_mt_ima_found" ] || return 1
+    printf '%s\n' "$_mt_ima_found"
+}
+
+mt_register_kn_arch() {
+    # Append "arch $MT_KN_ARCH <prio>" exactly once. The priority sits one
+    # above the registered plain arch so the Keenetic variant wins
+    # equal-version candidate ties during later manual opkg updates; when
+    # print-architecture offers no priority, 500 stays above every
+    # realistic Entware priority. Returns 1 when the fragment cannot be
+    # written, 2 when the creation cannot be journaled (a mutation must
+    # never stay unowned).
+    _mt_rk_conf=$(mt_arch_conf_path)
+    if [ -f "$_mt_rk_conf" ]; then
+        while IFS= read -r _mt_rk_line; do
+            case "$_mt_rk_line" in
+                "arch $MT_KN_ARCH"|"arch $MT_KN_ARCH "*) return 0 ;;
+            esac
+        done < "$_mt_rk_conf"
+    fi
+    _mt_rk_prio=""
+    _mt_rk_plain=${MT_KN_ARCH%_kn}
+    _mt_rk_list=$(opkg print-architecture 2>/dev/null) || _mt_rk_list=""
+    while read -r _mt_rk_t _mt_rk_n _mt_rk_p _mt_rk_x; do
+        [ "$_mt_rk_t" = arch ] || continue
+        [ "$_mt_rk_n" = "$_mt_rk_plain" ] || continue
+        case "$_mt_rk_p" in
+            ''|*[!0-9]*) _mt_rk_p="" ;;
+        esac
+        [ -n "$_mt_rk_p" ] && _mt_rk_prio=$_mt_rk_p
+    done <<EOF
+$_mt_rk_list
+EOF
+    if [ -n "$_mt_rk_prio" ]; then
+        _mt_rk_prio=$((_mt_rk_prio + 1))
+    else
+        _mt_rk_prio=500
+    fi
+    printf 'arch %s %s\n' "$MT_KN_ARCH" "$_mt_rk_prio" >> "$_mt_rk_conf" || return 1
+    log "Registered Keenetic Entware architecture: arch $MT_KN_ARCH $_mt_rk_prio ($_mt_rk_conf)"
+    kas_ledger_record owned repository kas-mt-arch.conf || return 2
+}
+
+mt_prepare_kn_arch() {
+    # rc 0 = provisioning may proceed with MT_KN_ARCH set; rc 1 = skip the
+    # whole MagiTrickle section with a warning. A device that cannot host
+    # a verified _kn package (fresh armv7/unknown arch, foreign generic
+    # install, unreadable state) must never abort the rest of the
+    # installer; an installed working MagiTrickle is never touched.
+    MT_KN_ARCH=""
+    if pkg_is_installed magitrickle; then
+        _mt_prep_arch=$(mt_installed_mt_arch); _mt_prep_rc=$?
+        if [ "$_mt_prep_rc" -eq 2 ]; then
+            warn "Installed MagiTrickle reports an ambiguous opkg architecture; refusing to guess, skipping MagiTrickle provisioning"
+            return 1
+        fi
+        if [ "$_mt_prep_rc" -eq 1 ]; then
+            warn "MagiTrickle is installed but its opkg architecture is not readable; leaving it untouched, skipping MagiTrickle provisioning"
+            return 1
+        fi
+        case "$_mt_prep_arch" in
+            aarch64-3.10_kn|mips-3.4_kn|mipsel-3.4_kn)
+                MT_KN_ARCH=$_mt_prep_arch
+                return 0 ;;
+            *)
+                warn "MagiTrickle is installed with non-Keenetic architecture '$_mt_prep_arch'; KAS never replaces a working installation and never migrates generic builds; skipping MagiTrickle provisioning"
+                return 1 ;;
+        esac
+    fi
+    if mt_select_kn_arch; then
+        return 0
+    fi
+    # Fresh (or unregistered) device: derive the single supported _kn
+    # architecture from the plain platform architecture Entware itself
+    # registered, then register it in the KAS-owned fragment.
+    _mt_prep_plain=""
+    _mt_prep_ambig=0
+    _mt_prep_list=$(opkg print-architecture 2>/dev/null) || _mt_prep_list=""
+    while read -r _mt_prep_t _mt_prep_n _mt_prep_p _mt_prep_x; do
+        [ "$_mt_prep_t" = arch ] && [ -z "$_mt_prep_x" ] || continue
+        case "$_mt_prep_n" in
+            aarch64-3.10|mips-3.4|mipsel-3.4)
+                [ -n "$_mt_prep_plain" ] && [ "$_mt_prep_plain" != "$_mt_prep_n" ] &&
+                    _mt_prep_ambig=1
+                _mt_prep_plain=$_mt_prep_n ;;
+        esac
+    done <<EOF
+$_mt_prep_list
+EOF
+    if [ "$_mt_prep_ambig" -ne 0 ] || [ -z "$_mt_prep_plain" ]; then
+        warn "No supported Keenetic Entware _kn architecture is derivable from the registered opkg architectures; upstream publishes no _kn build for this platform (e.g. armv7-3.2) and generic MagiTrickle IPKs are forbidden; skipping MagiTrickle provisioning, install manually via upstream if needed"
+        return 1
+    fi
+    MT_KN_ARCH="${_mt_prep_plain}_kn"
+    _mt_reg_rc=0
+    mt_register_kn_arch || _mt_reg_rc=$?
+    if [ "$_mt_reg_rc" -eq 2 ]; then
+        err "Cannot journal the KAS MagiTrickle architecture registration; installation aborted"
+    fi
+    if [ "$_mt_reg_rc" -ne 0 ]; then
+        MT_KN_ARCH=""
+        warn "Could not register the derived Keenetic Entware architecture; skipping MagiTrickle provisioning"
+        return 1
+    fi
+    mt_select_kn_arch || {
+        MT_KN_ARCH=""
+        warn "Registration did not yield a unique supported Keenetic Entware _kn architecture; skipping MagiTrickle provisioning"
+        return 1
+    }
+    return 0
+}
+# END MAGITRICKLE KN ARCH PREP v1
+
 # ---------------------------
 # MAGITRICKLE
 # ---------------------------
@@ -2436,78 +2810,151 @@ opkg_repo_snapshot() {
     done
 }
 
-_kas_mt_repo_existed=0
-if [ -e /opt/etc/opkg/magitrickle.conf ] || [ -L /opt/etc/opkg/magitrickle.conf ]; then
-    _kas_mt_repo_existed=1
-fi
-MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)
+# BEGIN MAGITRICKLE PROVISION v1
+mt_provision_install() {
+    _kas_mt_repo_existed=0
+    if [ -e /opt/etc/opkg/magitrickle.conf ] || [ -L /opt/etc/opkg/magitrickle.conf ]; then
+        _kas_mt_repo_existed=1
+    fi
+    MAGITRICKLE_REPO_BEFORE=$(opkg_repo_snapshot)
+    _mt_repo_usable=1
 
-log "Ensuring MagiTrickle package repository..."
-# The upstream helper prints an interactive "do not forget to install magitrickle"
-# reminder. install.sh performs that step itself, so suppress helper stdout to avoid
-# telling users to repeat an action that is already automated. Keep stderr visible.
-rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
-# Small script payload: bounded metadata budget with explicit transport
-# classification (small-transfer tracking). The helper below keeps the downloaded
-# bytes unexecuted until the shell syntax check below.
-if ! download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
-    err "Failed to download MagiTrickle repository helper through curl/wget"
-fi
-if ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
-    err "Downloaded MagiTrickle repository helper failed shell syntax validation"
-fi
-if ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
-    err "Failed to add MagiTrickle package repository"
-fi
-rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
+    log "Ensuring MagiTrickle package repository..."
+    # The upstream helper prints an interactive "do not forget to install magitrickle"
+    # reminder. install.sh performs that step itself, so suppress helper stdout to avoid
+    # telling users to repeat an action that is already automated. Keep stderr visible.
+    rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
+    # Small script payload: bounded metadata budget with explicit transport
+    # classification (small-transfer tracking). The helper below keeps the downloaded
+    # bytes unexecuted until the shell syntax check below; sh -n remains the
+    # authenticity gate. A MagiTrickle feed outage alone must not abort the whole
+    # install: the pinned fallback below covers a first install when the
+    # repository cannot be prepared.
+    if ! download_small_file_bounded "https://bin.magitrickle.dev/packages/add_repo.sh" "$MAGITRICKLE_REPO_STAGE"; then
+        warn "MT upstream helper unavailable; pinned backup may be used for first install"
+        _mt_repo_usable=0
+    elif ! sh -n "$MAGITRICKLE_REPO_STAGE"; then
+        warn "MT helper failed shell validation; refusing to execute"
+        _mt_repo_usable=0
+    elif ! sh "$MAGITRICKLE_REPO_STAGE" >/dev/null; then
+        warn "MT repository helper failed; pinned backup may be used for first install"
+        _mt_repo_usable=0
+    fi
+    rm -f "$MAGITRICKLE_REPO_STAGE" 2>/dev/null || true
 
-MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
-if [ "$_kas_mt_repo_existed" -eq 0 ] &&
-   [ -f /opt/etc/opkg/magitrickle.conf ] && [ ! -L /opt/etc/opkg/magitrickle.conf ]; then
-    kas_ledger_record owned repository magitrickle.conf ||
-        err "Cannot journal newly created MagiTrickle OPKG source."
-fi
-if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
-    log "MagiTrickle repository configuration changed - refreshing package metadata..."
-    retry opkg update || err "opkg update after changing the MagiTrickle repository failed"
+    if [ "$_mt_repo_usable" -eq 1 ]; then
+        MAGITRICKLE_REPO_AFTER=$(opkg_repo_snapshot)
+        if [ "$_kas_mt_repo_existed" -eq 0 ] &&
+           [ -f /opt/etc/opkg/magitrickle.conf ] && [ ! -L /opt/etc/opkg/magitrickle.conf ]; then
+            kas_ledger_record owned repository magitrickle.conf ||
+                err "Cannot journal newly created MagiTrickle OPKG source."
+        fi
+        if [ "$MAGITRICKLE_REPO_BEFORE" != "$MAGITRICKLE_REPO_AFTER" ]; then
+            log "MagiTrickle repository configuration changed - refreshing package metadata..."
+            if ! retry opkg update; then
+                warn "MT feed refresh failed; pinned backup may be used for first install"
+                _mt_repo_usable=0
+            fi
+        else
+            log "MagiTrickle repository configuration unchanged - initial opkg update already refreshed its metadata"
+        fi
+    fi
+
+    if pkg_is_installed magitrickle; then
+        mt_verify_installed_kn ||
+            err "Installed MagiTrickle architecture does not match Keenetic _kn; no automatic replacement"
+        log "MagiTrickle already installed with matching Keenetic _kn architecture"
+    else
+        if [ "$_mt_repo_usable" -eq 1 ]; then
+            # With both generic and _kn feeds present, an unqualified
+            # "opkg install magitrickle" may not choose the Keenetic variant.
+            # Trust the feed only if its package metadata lists exactly one
+            # eligible architecture. Otherwise use pinned _kn artifacts.
+            _mt_candidates=$(opkg info magitrickle 2>/dev/null |
+                awk -F ': ' '$1 == "Architecture" { print $2 }') || _mt_candidates=""
+            if [ "$_mt_candidates" != "$MT_KN_ARCH" ]; then
+                warn "MagiTrickle OPKG candidate is missing/ambiguous/non-_kn; using pinned _kn backup instead"
+                _mt_repo_usable=0
+            fi
+        fi
+        if [ "$_mt_repo_usable" -eq 1 ]; then
+            log "Installing MagiTrickle from official OPKG feed..."
+            if ! opkg install magitrickle; then
+                err "MT official OPKG install failed; refusing revision-switch after possible partial transaction"
+            fi
+            pkg_is_installed magitrickle ||
+                err "MagiTrickle OPKG install returned success but package is absent"
+            mt_verify_installed_kn ||
+                err "Official feed selected non-_kn MagiTrickle; refusing to mark installation successful"
+        else
+            log "Trying pinned Keenetic MagiTrickle GitHub, then GitLab backup..."
+            mt_verified_kn_fallback ||
+                err "No verified _kn MagiTrickle backup could be installed"
+        fi
+    fi
+
+    pkg_is_installed magitrickle || err "MagiTrickle is absent after installation"
+    if kas_package_was_absent magitrickle; then
+        kas_ledger_record owned package magitrickle || err "Cannot journal new MagiTrickle package installation."
+    fi
+    [ -x /opt/etc/init.d/S99magitrickle ] || err "MagiTrickle init script missing after installation"
+
+    log "Starting MagiTrickle..."
+    /opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
+    # FIELD (MagiTrickle runtime gate): the init script result alone is not runtime proof; the
+    # confirmation gate below is read-only (exactly one managed start above,
+    # never an automatic retry that could race the upstream startup loop).
+    magitrickle_dns_port
+    mt_confirm_after_start || true
+}
+# END MAGITRICKLE PROVISION v1
+
+if mt_prepare_kn_arch; then
+    mt_provision_install
 else
-    log "MagiTrickle repository configuration unchanged - initial opkg update already refreshed its metadata"
+    log "MagiTrickle provisioning skipped; continuing with the rest of the install"
 fi
-
-log "Installing MagiTrickle package..."
-pkg_ensure magitrickle
-
-pkg_is_installed magitrickle || err "MagiTrickle package is not present after installation"
-if kas_package_was_absent magitrickle; then
-    kas_ledger_record owned package magitrickle || err "Cannot journal new MagiTrickle package installation."
-fi
-[ -x /opt/etc/init.d/S99magitrickle ] || err "MagiTrickle init script missing after installation"
-
-log "Starting MagiTrickle..."
-/opt/etc/init.d/S99magitrickle start || err "MagiTrickle start failed"
-# FIELD (MagiTrickle runtime gate): the init script result alone is not runtime proof; the
-# confirmation gate below is read-only (exactly one managed start above,
-# never an automatic retry that could race the upstream startup loop).
-magitrickle_dns_port
-mt_confirm_after_start || true
 
 # ---------------------------
 # BYPASS RULES
 # ---------------------------
 log "Installing bypass rules..."
 
-mkdir -p /opt/etc/ndm/netfilter.d
+kas_trusted_directory /opt/etc /opt || err "Cannot verify the Entware configuration directory."
+_kas_ndm_dir="$kas_trusted_path/ndm"
+if [ -e "$_kas_ndm_dir" ] || [ -L "$_kas_ndm_dir" ]; then
+    kas_trusted_directory /opt/etc/ndm /opt || err "Cannot verify the Netfilter parent directory."
+    [ "$kas_trusted_path" = "$_kas_ndm_dir" ] || err "Entware root changed during hook delivery."
+fi
+if [ ! -e "$_kas_ndm_dir/netfilter.d" ] && [ ! -L "$_kas_ndm_dir/netfilter.d" ]; then
+    mkdir -p "$_kas_ndm_dir/netfilter.d" || err "Cannot create the Netfilter hook directory."
+fi
+kas_trusted_directory /opt/etc/ndm/netfilter.d /opt || err "Cannot verify the Netfilter hook directory."
+[ "$kas_trusted_path" = "$_kas_ndm_dir/netfilter.d" ] || err "Entware root changed during hook delivery."
 
 _kas_bypass_hook_existed=0
-if [ -e /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ] ||
-   [ -L /opt/etc/ndm/netfilter.d/020-bypass_wa.sh ]; then _kas_bypass_hook_existed=1; fi
-if project_script_download "020-bypass-wa.sh" "/opt/etc/ndm/netfilter.d/020-bypass_wa.sh"; then
-    chmod +x /opt/etc/ndm/netfilter.d/020-bypass_wa.sh
-    if [ "$_kas_bypass_hook_existed" -eq 0 ]; then
-        kas_ledger_record owned hook 020-bypass_wa.sh || err "Cannot journal newly installed Netfilter hook."
-    fi
+_kas_bypass_hook="$kas_trusted_path/020-bypass_wa.sh"
+if [ -e "$_kas_bypass_hook" ] || [ -L "$_kas_bypass_hook" ]; then
+    [ ! -L "$_kas_bypass_hook" ] && [ -f "$_kas_bypass_hook" ] ||
+        err "Existing Netfilter hook path is not a regular file."
+    _kas_bypass_hook_existed=1
+fi
+# A hook already present in the trusted directory is reused without a second
+# download only when it is a regular executable file whose sha256 matches the
+# pinned installer revision. Every other case goes through the verified
+# download chain below and stays fail-closed.
+if [ "$_kas_bypass_hook_existed" -eq 1 ] &&
+    project_script_reuse_pinned "$_kas_bypass_hook" "$KAS_BYPASS_HOOK_SHA256"; then
+    log "Existing bypass hook matches the pinned installer revision; re-download skipped"
 else
-    warn "bypass download failed after raw/curl, raw/wget and GitHub API fallbacks"
+    if project_script_download "020-bypass-wa.sh" "$_kas_bypass_hook" "$KAS_BYPASS_HOOK_SHA256"; then
+        chmod +x "$_kas_bypass_hook"
+        if [ "$_kas_bypass_hook_existed" -eq 0 ]; then
+            kas_ledger_record owned hook 020-bypass_wa.sh || err "Cannot journal newly installed Netfilter hook."
+        fi
+    else
+        err "No verified bypass hook from the installer revision after raw/curl, raw/wget and GitHub API fallbacks."
+    fi
 fi
 
 # On a first install, the KeeneticOS proxy configuration may survive a
@@ -2686,7 +3133,7 @@ watchdog_is_canonical() {
 
 install_watchdog_bin() {
     mkdir -p /opt/bin || return 1
-    if ! project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new"; then
+    if ! project_script_download "mihomo-watchdog.sh" "$TMP_DIR/mihomo-watchdog.new" "$KAS_WATCHDOG_SHA256"; then
         warn "Watchdog download failed after raw/curl, raw/wget and GitHub API fallbacks"
         return 1
     fi
@@ -3253,3 +3700,6 @@ if [ "$WARNS" -gt 0 ]; then
 else
     status_out "$COLOR_GREEN" "[OK] Done"
 fi
+
+# Full-content EOF contract marker for staged validation (issue #232).
+# KAS_EOF_V1

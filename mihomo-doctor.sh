@@ -1933,7 +1933,7 @@ if [ -n "$BIN" ]; then
                 *) _opkg_base=${_opkg_mihomo%-"${_opkg_mihomo#*-}"} ;;
             esac
             if [ -n "$BIN_VER" ] && [ "$_opkg_base" != "$BIN_VER" ]; then
-                info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected after binary-only updates, including update-mihomo.sh or Mihomo/Web-UI self-upgrade; runtime version above is the truth)"
+                info "opkg database: mihomo $_opkg_mihomo (stale metadata - expected after binary-only updates, including update-mihomo.sh or Mihomo/Web-UI self-upgrade; runtime version above is the truth). Caution: a later 'opkg upgrade' or 'opkg install mihomo' applies this older feed record and replaces the newer project-managed binary with the feed ELF (field downgrade case, issues #58/#320); if that has already happened, re-run update-mihomo.sh. This check is diagnostics-only - an opkg hold is a manual owner decision."
             else
                 info "opkg database: mihomo $_opkg_mihomo"
             fi
@@ -3618,3 +3618,6 @@ else
     status_out "$COLOR_GREEN" "[OK] Overall status: OK"
     exit 0
 fi
+
+# Full-content EOF contract marker for staged validation (issue #232).
+# KAS_EOF_V1
