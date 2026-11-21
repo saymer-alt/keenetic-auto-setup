@@ -47,6 +47,14 @@ class InstallerTest(unittest.TestCase):
             (fixtures/'asset.ipk').write_bytes(wrong if variant == 'bad_ipk_digest' else DATA)
             curl = bindir/'curl'
             curl.write_text("""#!/bin/sh
+if [ "$1" = "-V" ]; then
+  if [ "${FAKE_BROKEN_CURL:-0}" = 1 ] && [ "${LD_BIND_NOW:-}" = 1 ]; then
+    echo 'curl: symbol lookup error: curl: undefined symbol: curl_multi_get_offt' >&2
+    exit 127
+  fi
+  echo 'curl 8.23.0 libcurl/8.23.0'
+  exit 0
+fi
 out=; url=
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -68,7 +76,23 @@ cp "$src" "$out" || exit 9
             opkg.write_text("""#!/bin/sh
 case "$1" in
  print-architecture) printf 'arch all 1\\narch mipsel-3.4 10\\narch mipsel-3.4_kn 15\\n' ;;
- status) if [ -n "$FAKE_CURRENT" ]; then printf 'Package: kas-control-center\\nVersion: %s\\nStatus: install ok installed\\n' "$FAKE_CURRENT"; fi ;;
+ status)
+   case "$2" in
+     curl)
+       if [ -n "$FAKE_CURL_VER" ]; then
+         printf 'Package: %s\\nVersion: %s\\nStatus: %s\\n' \
+           "$FAKE_CURL_PACKAGE" "$FAKE_CURL_VER" "$FAKE_CURL_STATUS"
+       fi ;;
+     libcurl)
+       if [ -n "$FAKE_LIBCURL_VER" ]; then
+         printf 'Package: libcurl\\nVersion: %s\\nStatus: install ok installed\\n' \
+           "$FAKE_LIBCURL_VER"
+         if [ "$FAKE_DUPLICATE_LIBCURL" = 1 ]; then
+           printf 'Version: %s\\n' "$FAKE_LIBCURL_VER"
+         fi
+       fi ;;
+     *) if [ -n "$FAKE_CURRENT" ]; then printf 'Package: kas-control-center\\nVersion: %s\\nStatus: install ok installed\\n' "$FAKE_CURRENT"; fi ;;
+   esac ;;
  compare-versions)
    if [ "$3" = '=' ]; then [ "$2" = "$4" ]
    elif [ "$3" = '<' ]; then [ "$2" = '0.1.0~beta.8-1' ]
@@ -96,9 +120,65 @@ exec "$REAL_JQ" "$@"
             jq_shim.chmod(0o755)
             env = dict(os.environ,PATH=str(bindir)+os.pathsep+os.environ['PATH'],TMPDIR=tmp,
                        FAKE_FILES=str(fixtures),FAKE_CURRENT=current,FAKE_MARKER=str(root/'installed'),
-                       REAL_JQ=real_jq)
+                       REAL_JQ=real_jq, FAKE_BROKEN_CURL='1' if variant in ('broken_curl_loader', 'skewed_versions_broken_curl') else '0',
+                       FAKE_CURL_VER='' if variant in ('missing_curl_record', 'missing_both_records') else '8.23.0-1',
+                       FAKE_LIBCURL_VER='' if variant in ('missing_libcurl_record', 'missing_both_records') else
+                            ('8.15.0-2' if variant in ('skewed_versions', 'skewed_versions_broken_curl') else '8.23.0-1'),
+                       FAKE_CURL_PACKAGE='another-package' if variant == 'wrong_curl_package' else 'curl',
+                       FAKE_CURL_STATUS='deinstall ok config-files' if variant == 'uninstalled_curl_record' else 'install ok installed',
+                       FAKE_DUPLICATE_LIBCURL='1' if variant == 'duplicate_libcurl_version' else '0')
             result = subprocess.run(['sh',str(SCRIPT),*args],capture_output=True,text=True,env=env,timeout=30)
             return result.returncode, result.stdout+result.stderr, (root/'installed').exists()
+
+    def test_broken_curl_libcurl_loader_fails_closed_before_download(self):
+        # Field bug #254: curl binary upgraded, old libcurl missing symbol.
+        # A shell mock mimics a lazy symbol: curl -V alone passes,
+        # but LD_BIND_NOW=1 curl -V fails. A real ELF/OPKG
+        # reproduction belongs to the isolated router-emulator gate.
+        code, log, installed = self.run_case(variant='broken_curl_loader')
+        self.assertNotEqual(code, 0, log)
+        self.assertIn('curl cannot start', log)
+        self.assertIn('curl/libcurl ABI mismatch', log)
+        self.assertIn('repair libcurl manually', log)
+        self.assertNotIn('Channel: ', log)  # no metadata/IPK download attempt
+        self.assertFalse(installed)
+
+    def test_skewed_curl_libcurl_versions_fail_closed_before_download(self):
+        # Root cause of #254 (real Entware metadata, 2026-11-18): curl declares
+        # 'Depends: ..., libcurl' with NO version bound, so opkg upgrades curl
+        # alone. The package-database comparison catches the skew even when
+        # curl -V happens to start (mismatch classes the probe cannot see).
+        code, log, installed = self.run_case(variant='skewed_versions')
+        self.assertNotEqual(code, 0, log)
+        self.assertIn('version skew detected (8.23.0-1 vs 8.15.0-2)', log)
+        self.assertIn('opkg install libcurl', log)
+        self.assertNotIn('Channel: ', log)
+        self.assertFalse(installed)
+
+    def test_version_skew_is_reported_before_broken_loader(self):
+        # On aarch64 curl -V can fail before the version check unless
+        # the package database is inspected first. Use the more precise error.
+        code, log, installed = self.run_case(variant='skewed_versions_broken_curl')
+        self.assertNotEqual(code, 0, log)
+        self.assertIn('version skew detected (8.23.0-1 vs 8.15.0-2)', log)
+        self.assertNotIn('curl cannot start', log)
+        self.assertNotIn('Channel: ', log)
+        self.assertFalse(installed)
+
+    def test_missing_or_unreliable_opkg_records_fail_closed(self):
+        # curl -V success does not establish the integrity of the OPKG DB.
+        variants = (
+            'missing_curl_record', 'missing_libcurl_record',
+            'missing_both_records', 'wrong_curl_package',
+            'uninstalled_curl_record', 'duplicate_libcurl_version',
+        )
+        for variant in variants:
+            with self.subTest(variant=variant):
+                code, log, installed = self.run_case(variant=variant)
+                self.assertNotEqual(code, 0, log)
+                self.assertIn('installed-package records missing, malformed or unconfirmed', log)
+                self.assertNotIn('Channel: ', log)
+                self.assertFalse(installed)
 
     def test_current_beta(self):
         code,log,installed=self.run_case()
