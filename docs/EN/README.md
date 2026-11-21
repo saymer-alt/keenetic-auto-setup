@@ -24,26 +24,28 @@ GitHub unreachable? Mirror alternative:
 curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootstrap.sh | sh
 ```
 
-**2. Edit the Mihomo configuration**
+**2. Open the Mihomo config**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**3. Back up, empty the config and open nano**
+`-I` skips the faulty `nanorc` (`Error expanding /usr/share/nano/*.nanorc`). To replace the whole YAML prefer the safe import (command №5); do not clear the working file.
 
-⚠️ The file is emptied **before nano opens**. The original is copied to `config.yaml.bak` (overwrites an existing `.bak`).
+**3. Back up and open nano (no clearing)**
+
+⚠️ An existing `config.yaml.bak` is overwritten; the working YAML is not emptied.
 
 ```bash
-cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+cp -p /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**4. Empty config without a backup and open nano**
+**4. Check the Mihomo init script name**
 
-⚠️ **Danger:** this discards the existing `config.yaml`. Do not restart Mihomo until a working YAML has been saved.
+Fresh Entware installs `S28mihomo`, older builds `S99mihomo`. If both exist, stop and run Doctor.
 
-```bash
-: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```sh
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 **5. Safely import YAML instead (recommended)**
@@ -52,7 +54,7 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
 
-Downloads `config-import.sh` into a private file with raw → IPv4/X25519 → GitHub Contents API fallbacks and verifies shebang, project markers and `sh -n` before running it (issue #255).
+Stages `config-import.sh` privately with three fallback sources and verifies it before running (issue #255).
 
 **6. Inspect the setup — Doctor**
 
@@ -62,14 +64,25 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Restart Mihomo**
 
-```bash
-/opt/etc/init.d/S28mihomo restart   # older installs: S99mihomo
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: ambiguous Mihomo init scripts; run Doctor" >&2
+  exit 1
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  INIT=/opt/etc/init.d/S28mihomo
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  INIT=/opt/etc/init.d/S99mihomo
+else
+  echo "ERROR: no executable Mihomo init script" >&2
+  exit 1
+fi
+"$INIT" restart
 ```
 
 **8. Check Mihomo status**
 
-```bash
-/opt/etc/init.d/S28mihomo status
+```sh
+"$INIT" status
 ```
 
 **9. Update Mihomo**

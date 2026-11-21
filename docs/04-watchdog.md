@@ -191,7 +191,7 @@ Mihomo до этого работал, но один SOCKS5h-запрос не �
 
 > Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
 
-→ /opt/etc/init.d/S28mihomo restart
+→ /opt/etc/init.d/S28mihomo restart   # старые установки: S99mihomo; существуют оба — Doctor
 ```
 
 ---

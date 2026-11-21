@@ -32,10 +32,18 @@
 
 > Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
 
-```bash
-/opt/etc/init.d/S28mihomo status
-# dead
-````
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
+# dead или пусто → сервис не запущен
+```
 
 ---
 
@@ -55,10 +63,18 @@ ls -la /opt/etc/mihomo/config.yaml
 Если конфига нет вообще — bootstrap обязателен и создаётся установщиком:
 повтори `install.sh` (он пишет минимальный `mixed-port: 7890` и фейл-фаст,
 если записать не смог). Если конфиг есть, но с ошибкой — правь свой
-`config.yaml` (`nano /opt/etc/mihomo/config.yaml`), потом:
+`config.yaml` (`nano -I /opt/etc/mihomo/config.yaml` — `-I` обходит ошибочный nanorc, не очищайте файл), потом:
 
-```bash
-/opt/etc/init.d/S28mihomo restart
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo restart
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo restart
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 ---
@@ -84,8 +100,16 @@ netstat -ln | grep 7890
 
 #### Решение
 
-```bash
-/opt/etc/init.d/S28mihomo restart
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo restart
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo restart
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 ---
@@ -477,8 +501,16 @@ mount | grep tmpfs
 
 ### Mihomo жив?
 
-```bash
-/opt/etc/init.d/S28mihomo status
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 ---
