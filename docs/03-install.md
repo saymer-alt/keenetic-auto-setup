@@ -288,10 +288,12 @@ invariant.
 
 ### После установки
 
-Создаётся сервис:
+Создаётся сервис (имя зависит от версии пакета entware-go):
 
 ```bash id="svc1"
-/opt/etc/init.d/S99mihomo
+# свежие пакеты entware-go (1.19.34-3+): S28mihomo
+# старые сборки:                         S99mihomo
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 ---
@@ -512,7 +514,15 @@ date
 ### 3. Mihomo не запускается
 
 ```bash id="dbg3"
-/opt/etc/init.d/S99mihomo status
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 → почти всегда `config.yaml`

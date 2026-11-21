@@ -18,26 +18,28 @@ Frequently used SSH commands in one place. **Copy one block at a time.** More de
 opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh
 ```
 
-**2. Edit the Mihomo configuration**
+**2. Open the Mihomo config**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**3. Back up, empty the config and open nano**
+`-I` skips the faulty `nanorc` (`Error expanding /usr/share/nano/*.nanorc`). To replace the whole YAML prefer the safe import (command №5); do not clear the working file.
 
-⚠️ The file is emptied **before nano opens**. The original is copied to `config.yaml.bak` (overwrites an existing `.bak`).
+**3. Back up and open nano (no clearing)**
+
+⚠️ An existing `config.yaml.bak` is overwritten; the working YAML is not emptied.
 
 ```bash
-cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+cp -p /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && nano -I /opt/etc/mihomo/config.yaml
 ```
 
-**4. Empty config without a backup and open nano**
+**4. Check the Mihomo init script name**
 
-⚠️ **Danger:** this discards the existing `config.yaml`. Do not restart Mihomo until a working YAML has been saved.
+Fresh Entware installs `S28mihomo`, older builds `S99mihomo`. If both exist, stop and run Doctor.
 
-```bash
-: > /opt/etc/mihomo/config.yaml && nano /opt/etc/mihomo/config.yaml
+```sh
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 **5. Safely import YAML instead (recommended)**
@@ -46,9 +48,9 @@ cp /opt/etc/mihomo/config.yaml /opt/etc/mihomo/config.yaml.bak && : > /opt/etc/m
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/bootstrap.sh | sh -s -- --script config-import.sh
 ```
 
-Downloads `config-import.sh` into a private file with raw → IPv4/X25519 → GitHub Contents API fallbacks and verifies shebang, project markers and `sh -n` before running it (issue #255).
+Stages `config-import.sh` privately with three fallback sources and verifies it before running (issue #255).
 
-**6. Inspect the setup — Doctor**
+**6. Run Doctor**
 
 ```bash
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/mihomo-doctor.sh | sh
@@ -56,14 +58,25 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Restart Mihomo**
 
-```bash
-/opt/etc/init.d/S99mihomo restart
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: ambiguous Mihomo init scripts; run Doctor" >&2
+  exit 1
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  INIT=/opt/etc/init.d/S28mihomo
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  INIT=/opt/etc/init.d/S99mihomo
+else
+  echo "ERROR: no executable Mihomo init script" >&2
+  exit 1
+fi
+"$INIT" restart
 ```
 
 **8. Check Mihomo status**
 
-```bash
-/opt/etc/init.d/S99mihomo status
+```sh
+"$INIT" status
 ```
 
 **9. Update Mihomo**
@@ -72,13 +85,13 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/update-mihomo.sh | sh
 ```
 
-**10. Remove only Mihomo and MagiTrickle packages (no /opt formatting)**
+**10. Remove only Mihomo and MagiTrickle packages**
 
 ~~~sh
 curl -fSsL -o /tmp/kas-remove-packages.sh https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stable/uninstall-packages.sh && sh /tmp/kas-remove-packages.sh
 ~~~
 
-**Minimal native-service removal, NOT full KeeneticOS rollback.** Disables the KAS cron watchdog, disables native autostart and calls the two Entware init.d stop scripts before `opkg remove`. Checks that both daemons stopped. YAML is preserved by default using copies under `/opt/var/kas-yaml.*` and missing files restored. Use `--purge-config` to explicitly remove YAML after packages, or `--cleanup` to additionally remove recorded KAS MagiTrickle feed and Netfilter hook files. KeeneticOS ProxyN, policy, DNS interception and live Netfilter rules are NOT modified; review routing separately (`sh uninstall.sh --plan`). Verified by full Router Emulator QEMU E2E and on the KN-1010 test router, including repeat removal and reboot. No IPK rollback cache or drive formatting.
+**Minimal native-service removal, NOT full KeeneticOS rollback.** Disables the KAS cron watchdog and native autostart, stops both Entware init.d services before `opkg remove`, verifies both daemons are stopped. YAML preserved by default (`/opt/var/kas-yaml.*`); `--purge-config` removes YAML, `--cleanup` also removes MagiTrickle feed and Netfilter hook files. KeeneticOS ProxyN/policy/DNS interception and live Netfilter rules are NOT modified — review routing separately (`sh uninstall.sh --plan`). No IPK rollback cache or drive formatting.
 
 ---
 

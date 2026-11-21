@@ -348,7 +348,7 @@ opkg update && opkg install curl && curl -fSsL https://raw.githubusercontent.com
 9. Устанавливает **MagiTrickle** (добавляет его репозиторий пакетов, ставит, запускает).
 10. Ставит VoIP-хук `020-bypass_wa.sh` в `/opt/etc/ndm/netfilter.d/`.
 11. Устанавливает **watchdog** в `/opt/etc/cron.5mins/` и подключает к cron (если уже есть run-parts-запись `cron.5mins` — используется она; иначе добавляется прямая строка в crontab).
-12. Управляет `S99mihomo` по изменению состояния: restart только если installer установил Mihomo или изменил bootstrap `config.yaml`; при неизменных binary/config и уже работающем daemon restart пропускается. Если daemon остановлен — сервис запускается. Затем выполняется **самопроверка установки** (`[ok]/[WARN]/[FAIL]` — см. 3.4).
+12. Управляет найденным init-сервисом Mihomo (`S28mihomo` на свежих пакетах entware-go 1.19.34-3+, `S99mihomo` на старых) по изменению состояния: restart только если installer установил Mihomo или изменил bootstrap `config.yaml`; при неизменных binary/config и уже работающем daemon restart пропускается. Если daemon остановлен — сервис запускается. Затем выполняется **самопроверка установки** (`[ok]/[WARN]/[FAIL]` — см. 3.4).
 
 ### 3.3 Безопасно ли запускать повторно?
 
@@ -407,8 +407,10 @@ sh install.sh disk --allow-internal-disk
 Без валидного конфига ничего не работает. **После установки этот шаг обязателен.**
 
 ```bash
-nano /opt/etc/mihomo/config.yaml
+nano -I /opt/etc/mihomo/config.yaml
 ```
+
+Ключ `-I` обходит проблемный `nanorc` (ошибка `Error expanding /usr/share/nano/*.nanorc`). Для установки готового YAML предпочитайте безопасный импорт (см. [импорт конфига](13-config-import.md)); не очищайте файл перед редактированием.
 
 Минимальный рабочий пример:
 
@@ -449,18 +451,31 @@ sh mihomo-interface-check.sh    # или скачайте его из репо �
 
 Применить и проверить:
 
-```bash
-/opt/etc/init.d/S99mihomo restart
-/opt/etc/init.d/S99mihomo status      # ожидаем: alive
+Имя init-скрипта зависит от пакета: свежий `entware-go` (1.19.34-3+) ставит `S28mihomo`, старые сборки — `S99mihomo`. Найдите единственный исполняемый скрипт; при неоднозначности откажитесь (если существуют оба — остановитесь и запустите `mihomo-doctor.sh`):
+
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите mihomo-doctor.sh" >&2
+  exit 1
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  INIT=/opt/etc/init.d/S28mihomo
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  INIT=/opt/etc/init.d/S99mihomo
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+  exit 1
+fi
+"$INIT" restart
+"$INIT" status      # ожидаем: alive
 curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # ожидаем IP выходного сервера
 ```
 
 Не запускайте `mihomo -t` параллельно с работающим демоном: на части Keenetic второй экземпляр Mihomo приводит к SIGSEGV. Для исполняемой проверки синтаксиса сначала остановите сервис, выполните проверку и затем снова запустите его:
 
-```bash
-/opt/etc/init.d/S99mihomo stop
+```sh
+"$INIT" stop
 mihomo -d /opt/etc/mihomo -t
-/opt/etc/init.d/S99mihomo start
+"$INIT" start
 ```
 
 Для обычной read-only диагностики работающей установки используйте `mihomo-doctor.sh`: он соблюдает правило одного Mihomo и не запускает второй экземпляр.
@@ -963,9 +978,9 @@ wget https://github.com/MetaCubeX/mihomo/releases/download/vX.Y.Z/mihomo-linux-a
 gzip -d mihomo-linux-arm64-vX.Y.Z.gz && chmod +x mihomo-linux-arm64-vX.Y.Z
 ./mihomo-linux-arm64-vX.Y.Z -v                       # должна напечататься версия
 which mihomo                                          # например /opt/bin/mihomo
-/opt/etc/init.d/S99mihomo stop
+"$INIT" stop                                          # INIT определён как в разделе 5 (S28mihomo или S99mihomo)
 mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
-/opt/etc/init.d/S99mihomo start
+"$INIT" start
 ```
 
 3. После запуска проверьте один процесс (`pidof mihomo`) и curl-проверку прокси из раздела 5. Не запускайте `mihomo -v` параллельно с работающим демоном.
@@ -978,7 +993,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 
 | Вопрос | Команда | Здоровый ответ |
 | --- | --- | --- |
-| Mihomo жив? | `/opt/etc/init.d/S99mihomo status` | `alive` |
+| Mihomo жив? | `$INIT status` (init-скрипт определён как в разделе 5: `S28mihomo` или `S99mihomo`) | `alive` |
 | RAM Mihomo? | `grep VmRSS /proc/$(pidof mihomo)/status` | замеряйте до/после изменений — фиксированной нормы нет |
 | Прокси пропускает трафик? | `curl -x socks5://127.0.0.1:7890 https://ipinfo.io` | IP выходного сервера |
 | Какой лист-сервер выбран сейчас / таймлайн фейловера? | `sh mihomo-proxy-selection-watch.sh` (разово) или `--watch 1` (только изменения) | `GLOBAL -> ... -> <сервер>` + `CURRENT SERVER:`; изменения с таймстампами |
@@ -1111,7 +1126,7 @@ MT7621/mipsel-устройства используют тот же универ
 - **Entware — не полноценный Linux.** Причуды BusyBox (`$RANDOM`, `pidof`, `ss`, `run-parts`), урезанные пакеты — держите это в голове, прежде чем «модернизировать» скрипты.
 - **Логи в RAM пропадают при reboot** — плата за защиту флешки.
 - **IPv6 выключен намеренно** в базовой конфигурации — ради предсказуемости, а не по недосмотру. Включение — продвинутое изменение со своей проверкой (см. Типовые проблемы).
-- **Docker в этом стеке не используется.** Mihomo на Keenetic управляется init-скриптом (`/opt/etc/init.d/S99mihomo`) — watchdog и updater используют тот же механизм. Команды вида `docker restart mihomo` относятся к другим средам.
+- **Docker в этом стеке не используется.** Mihomo на Keenetic управляется init-скриптом (`S28mihomo` на свежих пакетах entware-go, `S99mihomo` на старых) — watchdog и updater используют тот же механизм. Команды вида `docker restart mihomo` относятся к другим средам.
 - Production-доставка использует ветку `stable`; `main` остаётся веткой разработки. Изменения идут через CI и осознанное продвижение `main → stable`, после чего тег релиза ставится на точный production commit.
 
 Больше границ и рассуждения за ними: [docs/09-limitations.md](09-limitations.md).
