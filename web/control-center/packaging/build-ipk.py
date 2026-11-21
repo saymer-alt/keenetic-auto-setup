@@ -20,7 +20,10 @@ HERE = Path(__file__).resolve().parent
 def archive(entries):
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode='w', format=tarfile.USTAR_FORMAT) as tf:
-        directories = sorted({str(parent) for name, _, _ in entries for parent in Path(name).parents if str(parent) != '.'}, key=lambda p: (p.count('/'), p))
+        # POSIX dir names in the tar regardless of host platform: str(Path) emits
+        # backslashes on Windows, and opkg then litters the target root with
+        # backslash-named directories instead of creating opt/bin etc.
+        directories = sorted({parent.as_posix() for name, _, _ in entries for parent in Path(name).parents if str(parent) != '.'}, key=lambda p: (p.count('/'), p))
         for directory in directories:
             ti = tarfile.TarInfo(directory + '/')
             ti.type, ti.mode, ti.mtime = tarfile.DIRTYPE, 0o755, 0
