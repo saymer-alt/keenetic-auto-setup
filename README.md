@@ -62,27 +62,36 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Перезапустить Mihomo**
 
-Имя зависит от пакета: `S28mihomo` (свежие сборки) или `S99mihomo` (старые).
+Блок сам находит S28/S99 (в т.ч. битые ссылки); при неоднозначности — отказ.
 
 ```sh
-if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
-  echo "ERROR: both S28mihomo and S99mihomo exist; run Doctor" >&2
-  exit 1
-elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
-  INIT=/opt/etc/init.d/S28mihomo
-elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
-  INIT=/opt/etc/init.d/S99mihomo
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" restart
 else
-  echo "ERROR: Mihomo init script not found or not executable" >&2
-  exit 1
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
 fi
-"$INIT" restart
+)
 ```
 
 **8. Проверить статус Mihomo**
 
 ```sh
-"$INIT" status
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" status
+else
+  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
+fi
+)
 ```
 
 **9. Обновить Mihomo**

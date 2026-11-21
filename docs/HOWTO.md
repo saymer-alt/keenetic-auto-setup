@@ -450,28 +450,36 @@ Apply and verify:
 The init script name depends on the Entware package: fresh `entware-go` (1.19.34-3+) installs `S28mihomo`, older builds install `S99mihomo`. Resolve the single executable script and refuse ambiguity (if both exist, stop and run `mihomo-doctor.sh`):
 
 ```sh
-if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
-  echo "ERROR: both S28mihomo and S99mihomo exist; run mihomo-doctor.sh" >&2
-  exit 1
-elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
-  INIT=/opt/etc/init.d/S28mihomo
-elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
-  INIT=/opt/etc/init.d/S99mihomo
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
+  "$I" restart
+  "$I" status      # expect: alive
+  curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # expect the proxy exit IP
 else
-  echo "ERROR: Mihomo init script not found or not executable" >&2
-  exit 1
+  echo "ERROR: no usable Mihomo init script; run mihomo-doctor.sh" >&2
 fi
-"$INIT" restart
-"$INIT" status      # expect: alive
-curl -x socks5://127.0.0.1:7890 https://ipinfo.io   # expect the proxy exit IP
+)
 ```
 
 Do not run `mihomo -t` in parallel with the running daemon: on some Keenetic devices a second Mihomo process causes SIGSEGV. For an executable syntax check, stop the service first, run the check, then start it again:
 
 ```sh
-"$INIT" stop
-mihomo -d /opt/etc/mihomo -t
-"$INIT" start
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ] && "$I" stop; then
+  mihomo -d /opt/etc/mihomo -t
+  "$I" start
+else
+  echo "ERROR: no usable Mihomo init script or stop failed; check aborted" >&2
+fi
+)
 ```
 
 For normal read-only diagnostics of a running installation, use `mihomo-doctor.sh`: it obeys the one-Mihomo rule and does not start a second process.
@@ -960,9 +968,18 @@ wget https://github.com/MetaCubeX/mihomo/releases/download/vX.Y.Z/mihomo-linux-a
 gzip -d mihomo-linux-arm64-vX.Y.Z.gz && chmod +x mihomo-linux-arm64-vX.Y.Z
 ./mihomo-linux-arm64-vX.Y.Z -v                       # must print a version
 which mihomo                                          # e.g. /opt/bin/mihomo
-"$INIT" stop                                          # INIT resolved as in section 5 (S28mihomo or S99mihomo)
-mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
-"$INIT" start
+(
+D=/opt/etc/init.d
+for F in $D/S28mihomo $D/S99mihomo; do
+  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
+done
+if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ] && "$I" stop; then
+  mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
+  "$I" start
+else
+  echo "ERROR: no usable Mihomo init script or stop failed; binary not replaced" >&2
+fi
+)
 ```
 
 3. Verify: `mihomo -v`, `ps | grep mihomo`, then the proxy curl from section 5.
@@ -975,7 +992,7 @@ mv /tmp/mihomo-linux-arm64-vX.Y.Z "$(which mihomo)"
 
 | Question | Command | Healthy answer |
 | --- | --- | --- |
-| Mihomo alive? | `$INIT status` (init script resolved as in section 5: `S28mihomo` or `S99mihomo`) | `alive` |
+| Mihomo alive? | `N=0; for F in /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo; do [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"; done; if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then "$I" status; else echo "ERROR: no usable Mihomo init script; run mihomo-doctor.sh"; fi` (standalone) | `alive` |
 | Mihomo RAM usage? | `grep VmRSS /proc/$(pidof mihomo)/status` | measure before/after changes — no fixed norm |
 | Proxy forwards traffic? | `curl -x socks5://127.0.0.1:7890 https://ipinfo.io` | exit IP of your server |
 | Which leaf server is selected right now / failover timeline? | `sh mihomo-proxy-selection-watch.sh` (one-shot) or `--watch 1` (changes-only) | `GLOBAL -> ... -> <server>` + `CURRENT SERVER:`; timestamped changes |
