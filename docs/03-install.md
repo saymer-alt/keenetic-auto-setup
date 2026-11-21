@@ -294,12 +294,12 @@ invariant.
 
 ### После установки
 
-Создаётся сервис:
+Создаётся сервис (имя зависит от версии пакета entware-go):
 
-> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`. Если существуют оба — состояние неоднозначно, запустите Doctor.
 
 ```bash id="svc1"
-/opt/etc/init.d/S28mihomo
+ls -l /opt/etc/init.d/S28mihomo /opt/etc/init.d/S99mihomo 2>/dev/null
 ```
 
 ---
@@ -520,7 +520,15 @@ date
 ### 3. Mihomo не запускается
 
 ```bash id="dbg3"
-/opt/etc/init.d/S28mihomo status
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 → почти всегда `config.yaml`

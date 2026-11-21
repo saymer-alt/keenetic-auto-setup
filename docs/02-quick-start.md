@@ -49,7 +49,7 @@ curl -fSsL https://gitlab.com/saymer-alt/keenetic-auto-setup/-/raw/stable/bootst
 
 После установки `setup.sh` сразу переходит в безопасный **Mihomo Config Import**. Создайте полный YAML в [Mihomo Unified Generator](https://saymer-alt.github.io/link-generators/), вставьте его в SSH и нажмите **Ctrl+D один раз**. Importer проверяет конфиг реальным `mihomo -t`, соблюдает one-Mihomo invariant, делает backup/atomic commit и откатывается, если сервис или порт 7890 не поднимаются.
 
-Если на этом этапе вы выбрали skip, импорт можно запустить позже через `config-import.sh`. Ручное редактирование `nano /opt/etc/mihomo/config.yaml` остаётся advanced-путём.
+Если на этом этапе вы выбрали skip, импорт можно запустить позже через `config-import.sh`. Ручное редактирование `nano -I /opt/etc/mihomo/config.yaml` остаётся advanced-путём (`-I` обходит ошибочный nanorc; не очищайте `config.yaml` перед редактированием).
 
 Минимальный учебный пример, если нужно понять структуру:
 
@@ -86,10 +86,18 @@ rules:
 
 Для обычного fresh-install сценария проверьте состояние:
 
-> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`.
+> Примечание: свежие пакеты entware-go (1.19.34-3+) ставят сервис `S28mihomo`; на старых установках он называется `S99mihomo` — используйте имя, которое реально есть в `/opt/etc/init.d/`. Если существуют оба — состояние неоднозначно, запустите Doctor.
 
-```bash
-/opt/etc/init.d/S28mihomo status
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 Должно быть:
@@ -145,8 +153,16 @@ cat /opt/var/log/mihomo_watchdog.log
 
 ### Mihomo не стартует
 
-```bash
-/opt/etc/init.d/S28mihomo status
+```sh
+if [ -e /opt/etc/init.d/S28mihomo ] && [ -e /opt/etc/init.d/S99mihomo ]; then
+  echo "ERROR: существуют и S28mihomo, и S99mihomo; запустите Doctor" >&2
+elif [ -x /opt/etc/init.d/S28mihomo ] && [ ! -L /opt/etc/init.d/S28mihomo ]; then
+  /opt/etc/init.d/S28mihomo status
+elif [ -x /opt/etc/init.d/S99mihomo ] && [ ! -L /opt/etc/init.d/S99mihomo ]; then
+  /opt/etc/init.d/S99mihomo status
+else
+  echo "ERROR: init-скрипт Mihomo не найден или не исполняем" >&2
+fi
 ```
 
 → почти всегда проблема в `config.yaml`
