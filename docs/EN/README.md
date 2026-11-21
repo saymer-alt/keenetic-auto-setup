@@ -64,35 +64,29 @@ curl -fSsL https://raw.githubusercontent.com/saymer-alt/keenetic-auto-setup/stab
 
 **7. Restart Mihomo**
 
+New Entware packages (`S28mihomo`):
 ```sh
-(
-D=/opt/etc/init.d
-for F in $D/S28mihomo $D/S99mihomo; do
-  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
-done
-if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
-  "$I" restart
-else
-  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
-fi
-)
+/opt/etc/init.d/S28mihomo restart
+```
+
+Older packages (`S99mihomo`):
+```sh
+/opt/etc/init.d/S99mihomo restart
 ```
 
 **8. Check Mihomo status**
 
+New packages (`S28mihomo`):
 ```sh
-(
-D=/opt/etc/init.d
-for F in $D/S28mihomo $D/S99mihomo; do
-  [ -e "$F" -o -L "$F" ] && N=$((N+1)) && I="$F"
-done
-if [ "$N" = 1 ] && [ -x "$I" ] && [ ! -L "$I" ]; then
-  "$I" status
-else
-  echo "ERROR: no usable Mihomo init script; run Doctor" >&2
-fi
-)
+/opt/etc/init.d/S28mihomo status
 ```
+
+Older packages (`S99mihomo`):
+```sh
+/opt/etc/init.d/S99mihomo status
+```
+
+**Run only the matching command** (see #4). If both init scripts exist, run Doctor first.
 
 **9. Update Mihomo**
 
