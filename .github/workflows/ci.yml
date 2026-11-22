@@ -179,6 +179,9 @@ jobs:
       - name: Local Markdown links
         run: python3 tests/docs-links.py
 
+      - name: Local Markdown links regression (docs-links.py behaviour)
+        run: python3 tests/docs-links-regression.py
+
       - name: Maintenance audit regressions (dash and BusyBox ash)
         run: python3 tests/maintenance-regression.py
 

@@ -9,7 +9,16 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+INLINE_CODE_RE = re.compile(r"(`+)(.+?)\1")
+COMMENT_OPEN = "<!--"
+# A link is `[label](dest)`. The destination may contain arbitrarily nested,
+# balanced parentheses (`guide_(v2(beta)).md`, `…/a_(b(c))`); a regex with the
+# balanced-paren alternation is not portable across regex engines and hits
+# recursion limits at nested depths, so the matched content is balanced by hand
+# in scan_destination(). This is not a full Markdown engine: only well-formed
+# balanced destinations are consumed, an unterminated `(` is left unmatched.
+LINK_OPEN_RE = re.compile(r"!?\[[^\]]*\]\(")
 SCHEMES = {"http", "https", "mailto", "tel", "data"}
 # Current user-facing KAS Web guides must not depend on a fast-moving beta tag.
 # Historical ADRs, release transactions, CI fixtures, changelogs and the
@@ -48,8 +57,105 @@ def destination(raw: str) -> str:
     return raw.split(None, 1)[0]
 
 
+def link_scan_view(text: str) -> str:
+    """Mask HTML comments, fenced code blocks and inline code spans.
+
+    Comments are masked before fence recognition, including consecutive
+    comments on one line and comments spanning multiple lines. Backticks
+    inside a comment must not alter the fence state.
+    """
+    lines: list[str] = []
+    fence: str | None = None
+    in_comment = False
+    for line in text.split("\n"):
+        if fence is not None:
+            marker = FENCE_RE.match(line)
+            if marker and marker.group(1)[0] == fence[0] and len(marker.group(1)) >= len(fence) \
+                    and not line.strip().strip(fence[0]):
+                fence = None
+            lines.append("")
+            continue
+
+        if in_comment:
+            end = line.find("-->")
+            if end < 0:
+                lines.append("")
+                continue
+            line = " " * (end + 3) + line[end + 3:]
+            in_comment = False
+
+        # Mask every complete comment, not just the first on the line.
+        # An unclosed comment masks the remainder and continues on later lines.
+        search_from = 0
+        while True:
+            start = line.find(COMMENT_OPEN, search_from)
+            if start < 0:
+                break
+            end = line.find("-->", start + len(COMMENT_OPEN))
+            if end < 0:
+                line = line[:start]
+                in_comment = True
+                break
+            line = line[:start] + " " * (end + 3 - start) + line[end + 3:]
+            search_from = end + 3
+
+        marker = FENCE_RE.match(line)
+        if marker:
+            fence = marker.group(1)
+            lines.append("")
+        else:
+            lines.append(inline_code_only(line))
+    return "\n".join(lines)
+
+
+def inline_code_only(line: str) -> str:
+    """Mask inline code spans, keeping the rest of a line intact."""
+    return INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)
+
+
+def scan_destinations(text: str):
+    """Yield raw link destinations from text, tracking balanced parentheses.
+
+    Recognises `[label](dest)` where dest may contain arbitrarily nested
+    balanced parentheses. Positional labels (`[x][id]`, `[x]: url`) are not
+    link labels and are naturally skipped because they have no `(` right after
+    the label. A `(` opened but never closed is left untouched (matches nothing).
+    """
+    pos = 0
+    while True:
+        m = LINK_OPEN_RE.search(text, pos)
+        if m is None:
+            return
+        i = m.end()
+        depth = 0
+        j = i
+        length = len(text)
+        while j < length:
+            ch = text[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif ch in "\r\n" and depth == 0:
+                break
+            j += 1
+        if depth == 0 and j < length and text[j] == ")":
+            yield text[i:j]
+            pos = j + 1
+        else:
+            # Unbalanced/unterminated destination: do not consume its '(' and
+            # keep scanning after the label so later links still match.
+            pos = m.start() + 1
+
+
 def resolve(doc: Path, target: str) -> Path | None:
     if not target or target.startswith("#"):
+        return None
+
+    # Scheme-less web link: a bare authority is external, never a repository path.
+    if target.lower().startswith("www."):
         return None
 
     parsed = urlsplit(target)
@@ -84,8 +190,8 @@ def main() -> int:
             if pattern.search(text):
                 artifacts.append((str(doc.relative_to(ROOT)), label))
 
-        for match in LINK_RE.finditer(text):
-            raw = destination(match.group(1))
+        for raw in scan_destinations(link_scan_view(text)):
+            raw = destination(raw)
             candidate = resolve(doc, raw)
             if candidate is None:
                 continue
