@@ -188,6 +188,7 @@ YAML сохраняются. Настройки ProxyN, DNS, политик и N
 ## 8. Справочник
 
 - [Полное HOWTO](docs/HOWTO_RU.md)
+- [TeleMT + Mihomo: FAQ по SOCKS5, VPN и маршрутизации](docs/telemt-mihomo-faq.md)
 - [Энциклопедия / карта системы](docs/encyclopedia/00-karta-sistemy.md)
 - [Roadmap](docs/10-roadmap.md)
 - [CHANGELOG](CHANGELOG.md)
