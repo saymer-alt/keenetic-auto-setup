@@ -6,7 +6,7 @@ import shlex
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-texts = [(ROOT / name).read_text() for name in ('install.sh', 'update-mihomo.sh')]
+texts = [(ROOT / name).read_text(encoding="utf-8") for name in ('install.sh', 'update-mihomo.sh')]
 def block(text):
     a = text.index('# BEGIN MIHOMO PACKAGE SELECTION')
     b = text.index('# END MIHOMO PACKAGE SELECTION', a)

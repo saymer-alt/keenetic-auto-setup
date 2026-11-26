@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# mihomo-proxy-selection-watch.sh v1.2.0
+# mihomo-proxy-selection-watch.sh v1.3.1
 #
 # Watches the selected Mihomo proxy-group chain.
 # This script does NOT inspect or change Keenetic/Linux routing tables.
@@ -47,8 +47,8 @@
 #      the doctor will tell you)
 #   3  HTTP 401/403 - secret required or wrong
 #   4  start group not found in /proxies
-#   5  selection anomaly (cycle, depth cap, unknown "now",
-#      malformed JSON response)
+#   5  selection anomaly (cycle, depth cap, unknown "now") or
+#      malformed / unusable Controller JSON response
 #
 # Dependencies: curl, jq (both already project-standard).
 # No files are written; everything goes to stdout/stderr.
@@ -58,12 +58,14 @@ GROUP="GLOBAL"
 URL="http://127.0.0.1:9090"
 SECRET="${MIHOMO_API_SECRET:-}"
 WATCH=""
+SAMPLES=""
+SAMPLES_SET=0
 CURL_TIMEOUT=5
 MAX_HOPS=32
 
 usage() {
     cat <<'USAGE'
-mihomo-proxy-selection-watch.sh v1.2.0
+mihomo-proxy-selection-watch.sh v1.3.1
 
 What it does:
   Reads Mihomo Controller GET /proxies and follows the selected proxy-group
@@ -90,6 +92,9 @@ Options:
               MIHOMO_API_SECRET is preferred so the secret is not typed into
               the command line
   --watch N   poll every N seconds and print only changes
+  --samples N stop after 1..30 Controller polls (requires --watch).
+              Sum of wait intervals must be at most 300 seconds.
+              Exit 6 on missing/invalid Controller observation.
   -h, --help  show this help
   -V, --version
               print script version
@@ -97,6 +102,7 @@ Options:
 Examples:
   sh mihomo-proxy-selection-watch.sh
   sh mihomo-proxy-selection-watch.sh --watch 1
+  sh mihomo-proxy-selection-watch.sh --watch 1 --samples 6
   sh mihomo-proxy-selection-watch.sh -g "My Group"
   sh mihomo-proxy-selection-watch.sh -u http://192.168.1.1:9090
   MIHOMO_API_SECRET='secret' sh mihomo-proxy-selection-watch.sh --watch 1
@@ -107,7 +113,9 @@ Typical output:
 
 Read-only contract: the only HTTP request ever made is GET /proxies.
 Exit codes: 0 ok, 1 usage/missing tool, 2 Controller unreachable,
-3 auth (401/403), 4 start group not found, 5 selection anomaly.
+3 auth (401/403), 4 start group not found, 5 anomaly or malformed
+response, 6 incomplete bounded observations. Selection is NOT proof of
+actual egress.
 USAGE
 }
 
@@ -128,8 +136,11 @@ while [ $# -gt 0 ]; do
         --watch)     [ $# -ge 2 ] || usage_err "option $1 requires an argument"
                      WATCH=$2; shift 2 ;;
         --watch=*)   WATCH=${1#--watch=}; shift ;;
+        --samples)   [ $# -ge 2 ] || usage_err "option $1 requires an argument"
+                     SAMPLES=$2; SAMPLES_SET=1; shift 2 ;;
+        --samples=*) SAMPLES=${1#--samples=}; SAMPLES_SET=1; shift ;;
         -h|--help)   usage; exit 0 ;;
-        -V|--version) echo "mihomo-proxy-selection-watch.sh v1.2.0"; exit 0 ;;
+        -V|--version) echo "mihomo-proxy-selection-watch.sh v1.3.1"; exit 0 ;;
         --)          shift; break ;;
         *)           usage_err "unknown option: $1" ;;
     esac
@@ -141,6 +152,17 @@ case "$WATCH" in
     *[!0-9]*) usage_err "--watch requires a number of seconds" ;;
     0) usage_err "--watch requires at least 1 second" ;;
 esac
+if [ "$SAMPLES_SET" -eq 1 ]; then
+    [ -n "$WATCH" ] || usage_err "--samples requires --watch N"
+    case "$SAMPLES" in ''|*[!0-9]*) usage_err "--samples expects 1..30" ;; esac
+    SAMPLES=$(printf '%s' "$SAMPLES" | sed 's/^0*//')
+    [ -n "$SAMPLES" ] || usage_err "--samples expects 1..30"
+    [ "$SAMPLES" -le 30 ] 2>/dev/null || usage_err "--samples exceeds 30"
+    _watch_seconds=$(printf '%s' "$WATCH" | sed 's/^0*//')
+    [ -n "$_watch_seconds" ] || usage_err "--watch must be positive"
+    [ "$_watch_seconds" -le 300 ] 2>/dev/null || usage_err "--watch exceeds budget"
+    [ $(((SAMPLES - 1) * _watch_seconds)) -le 300 ] || usage_err "samples exceed 300s wait budget"
+fi
 
 command -v curl >/dev/null 2>&1 || {
     echo "[proxy-selection-watch] curl is required but not installed" >&2
@@ -152,7 +174,7 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 # fetch_state(): one GET /proxies; sets FETCH_STATE and PROXIES_JSON.
-# Classification is by curl exit code and HTTP status only.
+# Classification is by curl exit code, HTTP status and body shape only.
 fetch_state() {
     set --
     if [ -n "$SECRET" ]; then
@@ -173,7 +195,13 @@ fetch_state() {
         404) FETCH_STATE="notfound"; return 0 ;;
         *)   FETCH_STATE="http"; return 0 ;;
     esac
-    PROXIES_JSON=$(printf '%s' "$BODY" | jq -c '.proxies // empty' 2>/dev/null)
+    # .proxies must be a JSON object (Mihomo returns a map of proxies).
+    # select() prints nothing for a missing or non-object value, so a
+    # syntactically valid but corrupted snapshot ({"proxies":[]}, a
+    # string, null, malformed JSON) is classified as badjson instead of
+    # leaking an array/string into node_exists(), where has($n) would
+    # misreport it as an absent group.
+    PROXIES_JSON=$(printf '%s' "$BODY" | jq -c '.proxies | select(type == "object")' 2>/dev/null)
     if [ -z "$PROXIES_JSON" ]; then
         FETCH_STATE="badjson"
         return 0
@@ -269,7 +297,7 @@ if [ -z "$WATCH" ]; then
             echo "[proxy-selection-watch] unexpected HTTP status from the controller: $CODE" >&2
             exit 2 ;;
         badjson)
-            echo "[proxy-selection-watch] controller returned malformed JSON" >&2
+            echo "[proxy-selection-watch] controller returned malformed or unusable JSON response" >&2
             exit 5 ;;
     esac
     resolve "$GROUP"
@@ -294,6 +322,14 @@ fi
 # ---------------- watch mode ----------------
 trap 'exit 0' INT TERM HUP
 _prev="__init__"
+_attempted=0
+_observed=0
+_unobserved=0
+_leaf_changes=0
+_direct_seen=0
+_balanced_seen=0
+_last_leaf=""
+_have_leaf=0
 while :; do
     fetch_state
     line=""
@@ -328,6 +364,37 @@ while :; do
     if [ "$line" != "$_prev" ]; then
         printf '%s %s\n' "$(date '+%H:%M:%S')" "$line"
         _prev="$line"
+    fi
+    if [ "$SAMPLES_SET" -eq 1 ]; then
+        _attempted=$((_attempted + 1))
+        if [ "$FETCH_STATE" = "ok" ]; then
+            _observed=$((_observed + 1))
+            if [ "$RESOLVE_STATUS" = "load-balanced" ]; then
+                _sample_leaf="[load-balanced]"
+                _balanced_seen=$((_balanced_seen + 1))
+            else
+                _sample_leaf=$LEAF
+                [ "$LEAF" != "DIRECT" ] || _direct_seen=$((_direct_seen + 1))
+            fi
+            if [ "$_have_leaf" -eq 1 ] && [ "$_last_leaf" != "$_sample_leaf" ]; then
+                _leaf_changes=$((_leaf_changes + 1))
+            fi
+            _last_leaf=$_sample_leaf
+            _have_leaf=1
+        else
+            _unobserved=$((_unobserved + 1))
+        fi
+        if [ "$_attempted" -ge "$SAMPLES" ]; then
+            printf 'SELECTION SUMMARY: polls=%s observed=%s incomplete=%s leaf-changes=%s direct-observed=%s load-balanced=%s\n' \
+                "$_attempted" "$_observed" "$_unobserved" "$_leaf_changes" "$_direct_seen" "$_balanced_seen"
+            printf '%s\n' 'LIMIT: Controller selection only; not proof of actual IP egress, DNS, IPv6 or LAN-client route.'
+            if [ "$_unobserved" -gt 0 ]; then
+                printf '%s\n' 'SELECTION RESULT: INCONCLUSIVE (one or more polls unavailable)'
+                exit 6
+            fi
+            printf '%s\n' 'SELECTION RESULT: OBSERVED (not a route safety verdict)'
+            exit 0
+        fi
     fi
     sleep "$WATCH"
 done

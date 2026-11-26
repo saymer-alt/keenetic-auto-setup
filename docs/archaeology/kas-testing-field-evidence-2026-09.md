@@ -106,7 +106,7 @@ to inspect, not proof of a current Mihomo outage.
 After the router moved to **KeeneticOS 5.1.6**, the required components and runtime path
 remained healthy and the same wrapped presentation class remained observable. Same-evening
 MCP now confirms 5.1.6, **no USB storage**, `opkg disk storage:/` (internal storage),
-a 1 Gbit/s Ethernet WAN (`Sotsenergo 126 Eth`), and a live project `Proxy0`.
+a 1 Gbit/s Ethernet WAN (`example Ethernet WAN`), and a live project `Proxy0`.
 Current MCP component inventory confirms `proxy`, `dns-filter`, `opkg-kmod-netfilter`, `dns-tls` and `dns-https` as installed on the 5.1.6 router. `ext` is present, while `ext-utils` is not in the slim installed list; because this profile uses internal `storage:/`, the project does not require the external-storage `ext` + `ext-utils` pair here. This device is the real-hardware reason the project now normalizes only the understood
 `components:` field before exact matching; it remains a regression anchor for both
 wrapped component IDs and live Netfilter bypass rules.
